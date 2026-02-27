@@ -3,20 +3,24 @@ import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, MessageSquare, FolderKanban, CalendarDays,
   Target, BookOpen, Plug, Settings, ChevronLeft, ChevronRight,
-  Building2, Bell, Search, Sparkles, MessageCircle
+  Building2, Bell, Search, Sparkles, MessageCircle, Phone, CalendarPlus, Shield
 } from 'lucide-react';
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/chat', icon: MessageSquare, label: 'Chat' },
-  { to: '/projects', icon: FolderKanban, label: 'Proyectos' },
+  { to: '/calls', icon: Phone, label: 'Llamadas' },
+  { to: '/whatsapp', icon: MessageSquare, label: 'WhatsApp' },
+  { to: '/appointments', icon: CalendarPlus, label: 'Agenda' },
+  { to: '/chat', icon: MessageCircle, label: 'Chat Interno' },
   { to: '/calendar', icon: CalendarDays, label: 'Calendario' },
+  { to: '/projects', icon: FolderKanban, label: 'Proyectos' },
+  { to: '/knowledge', icon: BookOpen, label: 'Knowledge Hub' },
   { to: '/okrs', icon: Target, label: 'OKRs' },
-  { to: '/knowledge', icon: BookOpen, label: 'Conocimiento' },
 ];
 
 const adminItems = [
   { to: '/integrations', icon: Plug, label: 'Integraciones' },
+  { to: '/audit', icon: Shield, label: 'Auditoría' },
   { to: '/settings', icon: Settings, label: 'Configuración' },
 ];
 

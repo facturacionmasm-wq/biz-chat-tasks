@@ -14,16 +14,689 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      appointments: {
+        Row: {
+          calendar_event_id: string | null
+          call_record_id: string | null
+          contact_email: string | null
+          contact_name: string
+          contact_phone: string | null
+          created_at: string
+          deleted_at: string | null
+          end_at: string
+          id: string
+          notes: string | null
+          service_type: string | null
+          source: string | null
+          start_at: string
+          status: string
+          tenant_id: string
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          calendar_event_id?: string | null
+          call_record_id?: string | null
+          contact_email?: string | null
+          contact_name: string
+          contact_phone?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          end_at: string
+          id?: string
+          notes?: string | null
+          service_type?: string | null
+          source?: string | null
+          start_at: string
+          status?: string
+          tenant_id: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          calendar_event_id?: string | null
+          call_record_id?: string | null
+          contact_email?: string | null
+          contact_name?: string
+          contact_phone?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          end_at?: string
+          id?: string
+          notes?: string | null
+          service_type?: string | null
+          source?: string | null
+          start_at?: string
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "appointments_call_record_id_fkey"
+            columns: ["call_record_id"]
+            isOneToOne: false
+            referencedRelation: "call_records"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "appointments_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      audit_events: {
+        Row: {
+          actor_id: string | null
+          created_at: string
+          event_type: string
+          id: string
+          payload: Json | null
+          resource_id: string | null
+          resource_type: string | null
+          tenant_id: string
+        }
+        Insert: {
+          actor_id?: string | null
+          created_at?: string
+          event_type: string
+          id?: string
+          payload?: Json | null
+          resource_id?: string | null
+          resource_type?: string | null
+          tenant_id: string
+        }
+        Update: {
+          actor_id?: string | null
+          created_at?: string
+          event_type?: string
+          id?: string
+          payload?: Json | null
+          resource_id?: string | null
+          resource_type?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audit_events_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      availability_rules: {
+        Row: {
+          active: boolean | null
+          buffer_after: number | null
+          buffer_before: number | null
+          created_at: string
+          day_of_week: number
+          end_time: string
+          id: string
+          max_appointments: number | null
+          service_type: string | null
+          start_time: string
+          tenant_id: string
+          user_id: string | null
+        }
+        Insert: {
+          active?: boolean | null
+          buffer_after?: number | null
+          buffer_before?: number | null
+          created_at?: string
+          day_of_week: number
+          end_time: string
+          id?: string
+          max_appointments?: number | null
+          service_type?: string | null
+          start_time: string
+          tenant_id: string
+          user_id?: string | null
+        }
+        Update: {
+          active?: boolean | null
+          buffer_after?: number | null
+          buffer_before?: number | null
+          created_at?: string
+          day_of_week?: number
+          end_time?: string
+          id?: string
+          max_appointments?: number | null
+          service_type?: string | null
+          start_time?: string
+          tenant_id?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "availability_rules_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      call_records: {
+        Row: {
+          agent_user_id: string | null
+          audio_url: string | null
+          channel: string | null
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          duration: number | null
+          ended_at: string | null
+          external_call_id: string | null
+          extracted_data: Json | null
+          from_number: string | null
+          id: string
+          started_at: string | null
+          status: string
+          summary_human: string | null
+          summary_system: string | null
+          summary_version: number | null
+          tags: string[] | null
+          tenant_id: string
+          to_number: string | null
+          transcript: string | null
+          transcript_confidence: number | null
+          transcript_language: string | null
+          updated_at: string
+        }
+        Insert: {
+          agent_user_id?: string | null
+          audio_url?: string | null
+          channel?: string | null
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          duration?: number | null
+          ended_at?: string | null
+          external_call_id?: string | null
+          extracted_data?: Json | null
+          from_number?: string | null
+          id?: string
+          started_at?: string | null
+          status?: string
+          summary_human?: string | null
+          summary_system?: string | null
+          summary_version?: number | null
+          tags?: string[] | null
+          tenant_id: string
+          to_number?: string | null
+          transcript?: string | null
+          transcript_confidence?: number | null
+          transcript_language?: string | null
+          updated_at?: string
+        }
+        Update: {
+          agent_user_id?: string | null
+          audio_url?: string | null
+          channel?: string | null
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          duration?: number | null
+          ended_at?: string | null
+          external_call_id?: string | null
+          extracted_data?: Json | null
+          from_number?: string | null
+          id?: string
+          started_at?: string | null
+          status?: string
+          summary_human?: string | null
+          summary_system?: string | null
+          summary_version?: number | null
+          tags?: string[] | null
+          tenant_id?: string
+          to_number?: string | null
+          transcript?: string | null
+          transcript_confidence?: number | null
+          transcript_language?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "call_records_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      internal_messages: {
+        Row: {
+          attachments: Json | null
+          body: string
+          channel_id: string | null
+          created_at: string
+          id: string
+          sender_id: string
+          tenant_id: string
+        }
+        Insert: {
+          attachments?: Json | null
+          body: string
+          channel_id?: string | null
+          created_at?: string
+          id?: string
+          sender_id: string
+          tenant_id: string
+        }
+        Update: {
+          attachments?: Json | null
+          body?: string
+          channel_id?: string | null
+          created_at?: string
+          id?: string
+          sender_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "internal_messages_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      knowledge_items: {
+        Row: {
+          active: boolean | null
+          author_id: string | null
+          category: string | null
+          content: string
+          created_at: string
+          deleted_at: string | null
+          id: string
+          tags: string[] | null
+          tenant_id: string
+          title: string
+          updated_at: string
+          version: number | null
+          visibility: string
+        }
+        Insert: {
+          active?: boolean | null
+          author_id?: string | null
+          category?: string | null
+          content?: string
+          created_at?: string
+          deleted_at?: string | null
+          id?: string
+          tags?: string[] | null
+          tenant_id: string
+          title: string
+          updated_at?: string
+          version?: number | null
+          visibility?: string
+        }
+        Update: {
+          active?: boolean | null
+          author_id?: string | null
+          category?: string | null
+          content?: string
+          created_at?: string
+          deleted_at?: string | null
+          id?: string
+          tags?: string[] | null
+          tenant_id?: string
+          title?: string
+          updated_at?: string
+          version?: number | null
+          visibility?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "knowledge_items_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      message_read_receipts: {
+        Row: {
+          id: string
+          message_id: string
+          read_at: string
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          message_id: string
+          read_at?: string
+          user_id: string
+        }
+        Update: {
+          id?: string
+          message_id?: string
+          read_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "message_read_receipts_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "internal_messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      otp_challenges: {
+        Row: {
+          attempts: number | null
+          code_hash: string
+          created_at: string
+          expires_at: string
+          id: string
+          max_attempts: number | null
+          phone: string
+          tenant_id: string
+          verified_at: string | null
+        }
+        Insert: {
+          attempts?: number | null
+          code_hash: string
+          created_at?: string
+          expires_at: string
+          id?: string
+          max_attempts?: number | null
+          phone: string
+          tenant_id: string
+          verified_at?: string | null
+        }
+        Update: {
+          attempts?: number | null
+          code_hash?: string
+          created_at?: string
+          expires_at?: string
+          id?: string
+          max_attempts?: number | null
+          phone?: string
+          tenant_id?: string
+          verified_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "otp_challenges_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          email: string | null
+          id: string
+          name: string
+          phone: string | null
+          status: string
+          tenant_id: string
+          updated_at: string
+          user_id: string
+          whatsapp_number: string | null
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          email?: string | null
+          id?: string
+          name: string
+          phone?: string | null
+          status?: string
+          tenant_id: string
+          updated_at?: string
+          user_id: string
+          whatsapp_number?: string | null
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          email?: string | null
+          id?: string
+          name?: string
+          phone?: string | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+          user_id?: string
+          whatsapp_number?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profiles_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenants: {
+        Row: {
+          created_at: string
+          elevenlabs_config: Json | null
+          google_calendar_config: Json | null
+          id: string
+          name: string
+          notification_rules: Json | null
+          settings_json: Json | null
+          timezone: string
+          updated_at: string
+          whatsapp_config: Json | null
+        }
+        Insert: {
+          created_at?: string
+          elevenlabs_config?: Json | null
+          google_calendar_config?: Json | null
+          id?: string
+          name: string
+          notification_rules?: Json | null
+          settings_json?: Json | null
+          timezone?: string
+          updated_at?: string
+          whatsapp_config?: Json | null
+        }
+        Update: {
+          created_at?: string
+          elevenlabs_config?: Json | null
+          google_calendar_config?: Json | null
+          id?: string
+          name?: string
+          notification_rules?: Json | null
+          settings_json?: Json | null
+          timezone?: string
+          updated_at?: string
+          whatsapp_config?: Json | null
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          permissions_json: Json | null
+          role: Database["public"]["Enums"]["app_role"]
+          tenant_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          permissions_json?: Json | null
+          role?: Database["public"]["Enums"]["app_role"]
+          tenant_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          permissions_json?: Json | null
+          role?: Database["public"]["Enums"]["app_role"]
+          tenant_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_roles_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_conversations: {
+        Row: {
+          assigned_user_id: string | null
+          contact_name: string | null
+          contact_phone: string
+          created_at: string
+          id: string
+          last_message_at: string | null
+          notes: string | null
+          status: string
+          tags: string[] | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          assigned_user_id?: string | null
+          contact_name?: string | null
+          contact_phone: string
+          created_at?: string
+          id?: string
+          last_message_at?: string | null
+          notes?: string | null
+          status?: string
+          tags?: string[] | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          assigned_user_id?: string | null
+          contact_name?: string | null
+          contact_phone?: string
+          created_at?: string
+          id?: string
+          last_message_at?: string | null
+          notes?: string | null
+          status?: string
+          tags?: string[] | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_conversations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_messages: {
+        Row: {
+          body: string | null
+          conversation_id: string
+          created_at: string
+          direction: string
+          id: string
+          media_url: string | null
+          metadata: Json | null
+          status: string
+          template_id: string | null
+          tenant_id: string
+        }
+        Insert: {
+          body?: string | null
+          conversation_id: string
+          created_at?: string
+          direction?: string
+          id?: string
+          media_url?: string | null
+          metadata?: Json | null
+          status?: string
+          template_id?: string | null
+          tenant_id: string
+        }
+        Update: {
+          body?: string | null
+          conversation_id?: string
+          created_at?: string
+          direction?: string
+          id?: string
+          media_url?: string | null
+          metadata?: Json | null
+          status?: string
+          template_id?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_messages_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_user_tenant_id: { Args: { _user_id: string }; Returns: string }
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
+      has_tenant_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _tenant_id: string
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role:
+        | "super_admin"
+        | "owner"
+        | "admin"
+        | "staff"
+        | "partner"
+        | "guest"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +823,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["super_admin", "owner", "admin", "staff", "partner", "guest"],
+    },
   },
 } as const

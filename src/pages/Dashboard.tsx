@@ -1,12 +1,12 @@
-import { CalendarDays, CheckCircle2, AlertTriangle, TrendingUp, Clock, Target, FolderKanban, Sparkles, ArrowRight } from 'lucide-react';
+import { CalendarDays, CheckCircle2, AlertTriangle, TrendingUp, Clock, Target, FolderKanban, Sparkles, ArrowRight, Phone, PhoneMissed, MessageSquare, CalendarPlus } from 'lucide-react';
 import { tasks, projects, okrs, calendarEvents } from '@/data/mockData';
+import { mockCallRecords, mockAppointments, mockWAConversations } from '@/data/mockCallsData';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Link } from 'react-router-dom';
 
 const Dashboard = () => {
   const urgentTasks = tasks.filter(t => t.priority === 'high' && t.status !== 'done');
-  const blockedTasks = tasks.filter(t => t.status === 'blocked');
   const todayEvents = calendarEvents.filter(e => {
     const today = new Date();
     return e.date.toDateString() === today.toDateString() || e.date > today;
@@ -14,11 +14,20 @@ const Dashboard = () => {
   const activeProjects = projects.filter(p => p.status === 'active');
   const avgOkrProgress = Math.round(okrs.reduce((sum, o) => sum + o.progress, 0) / okrs.length);
 
+  const callStats = {
+    total: mockCallRecords.length,
+    completed: mockCallRecords.filter(c => c.status === 'completed').length,
+    missed: mockCallRecords.filter(c => c.status === 'missed').length,
+  };
+  const openWA = mockWAConversations.filter(c => c.status === 'open' || c.status === 'pending').length;
+  const unreadWA = mockWAConversations.reduce((s, c) => s + c.unreadCount, 0);
+  const upcomingApts = mockAppointments.filter(a => a.status === 'scheduled' || a.status === 'confirmed');
+
   const stats = [
-    { label: 'Tareas pendientes', value: tasks.filter(t => t.status === 'todo').length, icon: Clock, color: 'text-warning' },
-    { label: 'En progreso', value: tasks.filter(t => t.status === 'in_progress').length, icon: TrendingUp, color: 'text-primary' },
-    { label: 'Completadas', value: tasks.filter(t => t.status === 'done').length, icon: CheckCircle2, color: 'text-success' },
-    { label: 'Bloqueadas', value: blockedTasks.length, icon: AlertTriangle, color: 'text-destructive' },
+    { label: 'Llamadas hoy', value: callStats.total, icon: Phone, color: 'text-primary', link: '/calls' },
+    { label: 'WhatsApp abiertos', value: openWA, icon: MessageSquare, color: 'text-success', link: '/whatsapp' },
+    { label: 'Citas próximas', value: upcomingApts.length, icon: CalendarPlus, color: 'text-warning', link: '/appointments' },
+    { label: 'Llamadas perdidas', value: callStats.missed, icon: PhoneMissed, color: 'text-destructive', link: '/calls' },
   ];
 
   return (
@@ -27,7 +36,7 @@ const Dashboard = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Buenos días 👋</h1>
-          <p className="text-muted-foreground text-sm mt-1">Aquí tienes un resumen de lo que está pasando hoy.</p>
+          <p className="text-muted-foreground text-sm mt-1">Resumen de comunicación, atención y agenda.</p>
         </div>
         <div className="flex items-center gap-2 bg-primary/10 text-primary border border-primary/20 rounded-lg px-4 py-2 text-sm font-medium">
           <Sparkles size={16} />
@@ -38,106 +47,97 @@ const Dashboard = () => {
       {/* Stats */}
       <div className="grid grid-cols-4 gap-4">
         {stats.map(s => (
-          <div key={s.label} className="bg-card border border-border rounded-xl p-4 shadow-sm">
+          <Link to={s.link} key={s.label} className="bg-card border border-border rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm text-muted-foreground">{s.label}</span>
               <s.icon size={18} className={s.color} />
             </div>
             <p className="text-2xl font-bold text-foreground">{s.value}</p>
-          </div>
+          </Link>
         ))}
       </div>
 
       <div className="grid grid-cols-3 gap-6">
-        {/* Upcoming events */}
+        {/* Recent calls */}
         <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold text-foreground flex items-center gap-2">
-              <CalendarDays size={16} className="text-primary" /> Próximos eventos
+              <Phone size={16} className="text-primary" /> Llamadas recientes
             </h3>
-            <Link to="/calendar" className="text-xs text-primary hover:underline flex items-center gap-1">
-              Ver todos <ArrowRight size={12} />
-            </Link>
-          </div>
-          <div className="space-y-3">
-            {todayEvents.map(ev => (
-              <div key={ev.id} className="flex items-start gap-3 p-2 rounded-lg hover:bg-secondary/50 transition-colors">
-                <div className="text-center shrink-0 w-10">
-                  <p className="text-[10px] uppercase text-muted-foreground">{format(ev.date, 'MMM', { locale: es })}</p>
-                  <p className="text-lg font-bold text-foreground leading-tight">{format(ev.date, 'd')}</p>
-                </div>
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-foreground truncate">{ev.title}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {ev.endDate ? `${format(ev.date, 'HH:mm')} - ${format(ev.endDate, 'HH:mm')}` : 'Todo el día'}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Urgent tasks */}
-        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-foreground flex items-center gap-2">
-              <AlertTriangle size={16} className="text-warning" /> Tareas urgentes
-            </h3>
-            <Link to="/projects" className="text-xs text-primary hover:underline flex items-center gap-1">
+            <Link to="/calls" className="text-xs text-primary hover:underline flex items-center gap-1">
               Ver todas <ArrowRight size={12} />
             </Link>
           </div>
           <div className="space-y-2">
-            {urgentTasks.slice(0, 5).map(task => (
-              <div key={task.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-secondary/50 transition-colors">
-                <div className={`w-2 h-2 rounded-full shrink-0 ${task.status === 'blocked' ? 'bg-destructive' : 'bg-warning'}`} />
+            {mockCallRecords.slice(0, 4).map(call => (
+              <div key={call.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-secondary/50 transition-colors">
+                <div className={`w-2 h-2 rounded-full shrink-0 ${call.status === 'completed' ? 'bg-success' : call.status === 'missed' ? 'bg-destructive' : 'bg-warning'}`} />
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-foreground truncate">{task.title}</p>
-                  <p className="text-xs text-muted-foreground">{task.assignee} {task.dueDate ? `· ${format(task.dueDate, 'd MMM', { locale: es })}` : ''}</p>
+                  <p className="text-sm font-medium text-foreground truncate">{call.extractedData.contactName || call.fromNumber}</p>
+                  <p className="text-xs text-muted-foreground">{call.agentName} · {format(call.startedAt, 'HH:mm')}</p>
                 </div>
+                <span className="text-xs text-muted-foreground">{call.duration > 0 ? `${Math.floor(call.duration / 60)}m` : '—'}</span>
               </div>
             ))}
           </div>
         </div>
 
-        {/* OKR Progress */}
+        {/* WhatsApp unread */}
         <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold text-foreground flex items-center gap-2">
-              <Target size={16} className="text-primary" /> Avance OKRs
+              <MessageSquare size={16} className="text-success" /> WhatsApp ({unreadWA} sin leer)
             </h3>
-            <Link to="/okrs" className="text-xs text-primary hover:underline flex items-center gap-1">
-              Ver todos <ArrowRight size={12} />
+            <Link to="/whatsapp" className="text-xs text-primary hover:underline flex items-center gap-1">
+              Inbox <ArrowRight size={12} />
             </Link>
           </div>
-          <div className="text-center mb-4">
-            <div className="relative w-20 h-20 mx-auto">
-              <svg className="w-20 h-20 -rotate-90" viewBox="0 0 36 36">
-                <circle cx="18" cy="18" r="15.5" fill="none" stroke="hsl(var(--border))" strokeWidth="3" />
-                <circle cx="18" cy="18" r="15.5" fill="none" stroke="hsl(var(--primary))" strokeWidth="3"
-                  strokeDasharray={`${avgOkrProgress} ${100 - avgOkrProgress}`} strokeLinecap="round" />
-              </svg>
-              <span className="absolute inset-0 flex items-center justify-center text-lg font-bold text-foreground">{avgOkrProgress}%</span>
-            </div>
-            <p className="text-xs text-muted-foreground mt-2">Promedio general Q1</p>
+          <div className="space-y-2">
+            {mockWAConversations.filter(c => c.status !== 'closed').slice(0, 4).map(conv => (
+              <div key={conv.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-secondary/50 transition-colors">
+                <div className="w-7 h-7 rounded-full bg-success/10 flex items-center justify-center text-[10px] font-bold text-success">
+                  {conv.contactName.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-foreground truncate">{conv.contactName}</p>
+                  <p className="text-xs text-muted-foreground">{conv.assignedTo} · {format(conv.lastMessageAt, 'HH:mm')}</p>
+                </div>
+                {conv.unreadCount > 0 && (
+                  <span className="bg-success text-success-foreground text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center">{conv.unreadCount}</span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Upcoming appointments */}
+        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-foreground flex items-center gap-2">
+              <CalendarPlus size={16} className="text-warning" /> Citas próximas
+            </h3>
+            <Link to="/appointments" className="text-xs text-primary hover:underline flex items-center gap-1">
+              Ver agenda <ArrowRight size={12} />
+            </Link>
           </div>
           <div className="space-y-2">
-            {okrs.map(okr => (
-              <div key={okr.id} className="flex items-center gap-2">
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium text-foreground truncate">{okr.title}</p>
+            {upcomingApts.map(apt => (
+              <div key={apt.id} className="flex items-start gap-3 p-2 rounded-lg hover:bg-secondary/50 transition-colors">
+                <div className="text-center shrink-0 w-10">
+                  <p className="text-[10px] uppercase text-muted-foreground">{format(apt.startAt, 'MMM', { locale: es })}</p>
+                  <p className="text-lg font-bold text-foreground leading-tight">{format(apt.startAt, 'd')}</p>
                 </div>
-                <div className="w-16 h-1.5 bg-secondary rounded-full overflow-hidden">
-                  <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${okr.progress}%` }} />
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-foreground truncate">{apt.contactName}</p>
+                  <p className="text-xs text-muted-foreground">{apt.serviceType} · {format(apt.startAt, 'HH:mm')}</p>
                 </div>
-                <span className="text-xs text-muted-foreground w-8 text-right">{okr.progress}%</span>
               </div>
             ))}
           </div>
         </div>
       </div>
 
-      {/* Projects at risk & AI Summary */}
+      {/* Projects & AI Summary */}
       <div className="grid grid-cols-2 gap-6">
         <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
           <h3 className="font-semibold text-foreground flex items-center gap-2 mb-4">
@@ -155,7 +155,6 @@ const Dashboard = () => {
                 <div className="w-full h-1.5 bg-secondary rounded-full overflow-hidden">
                   <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${proj.progress}%` }} />
                 </div>
-                <p className="text-xs text-muted-foreground mt-2">{proj.description}</p>
               </div>
             ))}
           </div>
@@ -167,16 +166,16 @@ const Dashboard = () => {
           </h3>
           <div className="space-y-3 text-sm text-muted-foreground">
             <div className="p-3 bg-primary/5 rounded-lg border border-primary/10">
-              <p className="font-medium text-foreground mb-1">📊 Productividad</p>
-              <p>El equipo completó 12 tareas esta semana, un 20% más que la semana anterior. Carlos fue el más productivo con 5 tareas completadas.</p>
+              <p className="font-medium text-foreground mb-1">📞 Comunicación</p>
+              <p>Se atendieron {callStats.completed} llamadas esta semana. {callStats.missed} perdidas. {openWA} conversaciones de WhatsApp abiertas con {unreadWA} mensajes sin leer.</p>
             </div>
             <div className="p-3 bg-warning/5 rounded-lg border border-warning/10">
-              <p className="font-medium text-foreground mb-1">⚠️ Alertas</p>
-              <p>Hay 1 tarea bloqueada (integrar pasarela de pago) y 2 tareas próximas a vencer. Se recomienda reasignar recursos.</p>
+              <p className="font-medium text-foreground mb-1">⚠️ Atención requerida</p>
+              <p>Hay {mockWAConversations.filter(c => c.status === 'pending').length} conversación(es) de WhatsApp sin asignar. Se sugiere asignar a un agente para evitar demoras.</p>
             </div>
             <div className="p-3 bg-success/5 rounded-lg border border-success/10">
-              <p className="font-medium text-foreground mb-1">✅ Logros</p>
-              <p>Se completó la migración a Cloud y los mockups del proyecto v2.0 están al 90%. El OKR de satisfacción del equipo va en excelente camino.</p>
+              <p className="font-medium text-foreground mb-1">✅ Citas y seguimiento</p>
+              <p>{upcomingApts.length} citas programadas. La próxima es con {upcomingApts[0]?.contactName} el {upcomingApts[0] ? format(upcomingApts[0].startAt, "d MMM 'a las' HH:mm", { locale: es }) : '—'}.</p>
             </div>
           </div>
         </div>
