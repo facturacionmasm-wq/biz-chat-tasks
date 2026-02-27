@@ -1,8 +1,11 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { Phone, PhoneIncoming, PhoneMissed, PhoneOff, Clock, User, Tag, Play, CalendarPlus, MessageSquare, ChevronRight, Search, Filter, ArrowLeft, CheckCircle2, Edit3, Save } from 'lucide-react';
 import { mockCallRecords, mockAppointments, type CallRecord } from '@/data/mockCallsData';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import VoiceAgent from '@/components/VoiceAgent';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
 const statusConfig: Record<string, { icon: any; label: string; className: string }> = {
   completed: { icon: Phone, label: 'Completada', className: 'text-success bg-success/10' },
@@ -24,6 +27,27 @@ const CallsPage = () => {
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [editingSummary, setEditingSummary] = useState(false);
   const [humanSummary, setHumanSummary] = useState('');
+  const [lastCallSummary, setLastCallSummary] = useState<string | null>(null);
+  const [isSummarizing, setIsSummarizing] = useState(false);
+
+  const handleCallEnd = useCallback(async (transcript: string) => {
+    if (!transcript.trim()) return;
+    setIsSummarizing(true);
+    toast.info('Generando resumen de llamada con IA...');
+    try {
+      const { data, error } = await supabase.functions.invoke('ai-copilot', {
+        body: { action: 'summarize_call', data: { transcript, extractedData: {} } },
+      });
+      if (error) throw error;
+      setLastCallSummary(data?.summary || 'No se pudo generar resumen');
+      toast.success('Resumen generado exitosamente');
+    } catch (err) {
+      console.error('Summary error:', err);
+      toast.error('Error al generar resumen');
+    } finally {
+      setIsSummarizing(false);
+    }
+  }, []);
 
   const filtered = mockCallRecords.filter(c =>
     (!statusFilter || c.status === statusFilter) &&
@@ -208,7 +232,24 @@ const CallsPage = () => {
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div className="p-6 max-w-7xl mx-auto space-y-6">
+      {/* Voice Agent */}
+      <VoiceAgent onCallEnd={handleCallEnd} />
+
+      {/* AI Summary from last call */}
+      {(isSummarizing || lastCallSummary) && (
+        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+          <h3 className="font-semibold text-foreground mb-3">🤖 Resumen automático de última llamada</h3>
+          {isSummarizing ? (
+            <p className="text-sm text-muted-foreground animate-pulse">Analizando transcripción...</p>
+          ) : (
+            <div className="prose prose-sm text-foreground whitespace-pre-line text-sm leading-relaxed">
+              {lastCallSummary}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Stats */}
       <div className="grid grid-cols-4 gap-4 mb-6">
         <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
