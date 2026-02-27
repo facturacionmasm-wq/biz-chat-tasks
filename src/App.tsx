@@ -3,7 +3,15 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import Index from "./pages/Index";
+import AppLayout from "./components/AppLayout";
+import Dashboard from "./pages/Dashboard";
+import ChatPage from "./pages/ChatPage";
+import ProjectsPage from "./pages/ProjectsPage";
+import CalendarPage from "./pages/CalendarPage";
+import OKRsPage from "./pages/OKRsPage";
+import KnowledgePage from "./pages/KnowledgePage";
+import IntegrationsPage from "./pages/IntegrationsPage";
+import SettingsPage from "./pages/SettingsPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -15,8 +23,14 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Index />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+          <Route path="/" element={<AppLayout><Dashboard /></AppLayout>} />
+          <Route path="/chat" element={<AppLayout><ChatPage /></AppLayout>} />
+          <Route path="/projects" element={<AppLayout><ProjectsPage /></AppLayout>} />
+          <Route path="/calendar" element={<AppLayout><CalendarPage /></AppLayout>} />
+          <Route path="/okrs" element={<AppLayout><OKRsPage /></AppLayout>} />
+          <Route path="/knowledge" element={<AppLayout><KnowledgePage /></AppLayout>} />
+          <Route path="/integrations" element={<AppLayout><IntegrationsPage /></AppLayout>} />
+          <Route path="/settings" element={<AppLayout><SettingsPage /></AppLayout>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
