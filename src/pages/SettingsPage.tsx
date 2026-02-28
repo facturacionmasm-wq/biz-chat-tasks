@@ -143,7 +143,7 @@ const SettingsPage = () => {
         const tenantId = myProfile.tenant_id;
         const { data: myRole } = await supabase.from('user_roles').select('role').eq('user_id', user.id).eq('tenant_id', tenantId).maybeSingle();
         setIsSuperAdmin(myRole?.role === 'super_admin' || myRole?.role === 'owner');
-        const { data: profiles } = await supabase.from('profiles').select('user_id, name, email, status, phone, whatsapp_number').eq('tenant_id', tenantId);
+        const { data: profiles } = await supabase.from('profiles_safe' as any).select('user_id, name, email, status, phone, whatsapp_number').eq('tenant_id', tenantId) as { data: any[] | null };
         const { data: roles } = await supabase.from('user_roles').select('user_id, role, permissions_json').eq('tenant_id', tenantId);
         const roleMap = new Map((roles || []).map(r => [r.user_id, { role: r.role, permissions: r.permissions_json }]));
 
@@ -247,7 +247,7 @@ const SettingsPage = () => {
       const { data: myProfile } = await supabase.from('profiles').select('tenant_id').eq('user_id', user!.id).maybeSingle();
       if (myProfile) {
         const tenantId = myProfile.tenant_id;
-        const { data: profiles } = await supabase.from('profiles').select('user_id, name, email, status, phone, whatsapp_number').eq('tenant_id', tenantId);
+        const { data: profiles } = await supabase.from('profiles_safe' as any).select('user_id, name, email, status, phone, whatsapp_number').eq('tenant_id', tenantId) as { data: any[] | null };
         const { data: roles } = await supabase.from('user_roles').select('user_id, role, permissions_json').eq('tenant_id', tenantId);
         const roleMap = new Map((roles || []).map(r => [r.user_id, { role: r.role, permissions: r.permissions_json }]));
         setTeamData((profiles || []).map(p => {

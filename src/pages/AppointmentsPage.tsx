@@ -73,7 +73,7 @@ const AppointmentsPage = () => {
           .gte('start_at', weekStart.toISOString())
           .lte('start_at', weekEnd.toISOString())
           .order('start_at', { ascending: true }),
-        supabase.from('profiles').select('user_id, name').eq('status', 'active'),
+        supabase.from('profiles_safe' as any).select('user_id, name').eq('status', 'active') as unknown as Promise<{ data: any[] | null; error: any }>,
         supabase.from('availability_rules').select('*').eq('active', true),
       ]);
 

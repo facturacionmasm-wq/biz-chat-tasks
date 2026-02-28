@@ -968,7 +968,56 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      profiles_safe: {
+        Row: {
+          avatar_url: string | null
+          created_at: string | null
+          email: string | null
+          id: string | null
+          name: string | null
+          phone: string | null
+          status: string | null
+          tenant_id: string | null
+          updated_at: string | null
+          user_id: string | null
+          whatsapp_number: string | null
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string | null
+          email?: string | null
+          id?: string | null
+          name?: string | null
+          phone?: string | null
+          status?: string | null
+          tenant_id?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+          whatsapp_number?: string | null
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string | null
+          email?: string | null
+          id?: string | null
+          name?: string | null
+          phone?: string | null
+          status?: string | null
+          tenant_id?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+          whatsapp_number?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profiles_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       get_tenant_branding: { Args: { _tenant_id: string }; Returns: Json }
