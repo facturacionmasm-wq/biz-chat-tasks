@@ -1,12 +1,14 @@
-import { useState } from 'react';
-import { Building2, Users, Shield, CreditCard, Bell, Database, Brain, Globe, ChevronRight, User, KeyRound, Loader2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Building2, Users, Shield, CreditCard, Bell, Database, Brain, Globe, ChevronRight, User, KeyRound, Loader2, Palette, Save, Upload } from 'lucide-react';
 import { teamMembers } from '@/data/mockData';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { useAuth } from '@/contexts/AuthContext';
 
 const settingsSections = [
   { id: 'profile', label: 'Mi Perfil', icon: User },
   { id: 'general', label: 'General', icon: Building2 },
+  { id: 'branding', label: 'Branding', icon: Palette },
   { id: 'team', label: 'Equipo', icon: Users },
   { id: 'roles', label: 'Roles y permisos', icon: Shield },
   { id: 'billing', label: 'Suscripción', icon: CreditCard },
@@ -22,10 +24,110 @@ const plans = [
 ];
 
 const SettingsPage = () => {
+  const { user } = useAuth();
   const [activeSection, setActiveSection] = useState('profile');
   const [pin, setPin] = useState('');
   const [pinConfirm, setPinConfirm] = useState('');
   const [savingPin, setSavingPin] = useState(false);
+
+  // General settings state
+  const [orgName, setOrgName] = useState('');
+  const [timezone, setTimezone] = useState('America/Mexico_City');
+  const [savingGeneral, setSavingGeneral] = useState(false);
+
+  // Branding state
+  const [primaryColor, setPrimaryColor] = useState('#6366f1');
+  const [secondaryColor, setSecondaryColor] = useState('#8b5cf6');
+  const [companySlogan, setCompanySlogan] = useState('');
+  const [companyWebsite, setCompanyWebsite] = useState('');
+  const [companyPhone, setCompanyPhone] = useState('');
+  const [companyAddress, setCompanyAddress] = useState('');
+  const [savingBranding, setSavingBranding] = useState(false);
+
+  // Load tenant data
+  useEffect(() => {
+    if (!user) return;
+    const load = async () => {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('tenant_id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (!profile) return;
+
+      const { data: tenant } = await supabase
+        .from('tenants')
+        .select('name, timezone, settings_json')
+        .eq('id', profile.tenant_id)
+        .maybeSingle();
+      if (tenant) {
+        setOrgName(tenant.name || '');
+        setTimezone(tenant.timezone || 'America/Mexico_City');
+        const settings = (tenant.settings_json || {}) as Record<string, any>;
+        setPrimaryColor(settings.primary_color || '#6366f1');
+        setSecondaryColor(settings.secondary_color || '#8b5cf6');
+        setCompanySlogan(settings.slogan || '');
+        setCompanyWebsite(settings.website || '');
+        setCompanyPhone(settings.phone || '');
+        setCompanyAddress(settings.address || '');
+      }
+    };
+    load();
+  }, [user]);
+
+  const getTenantId = async () => {
+    if (!user) throw new Error('No autenticado');
+    const { data } = await supabase.from('profiles').select('tenant_id').eq('user_id', user.id).maybeSingle();
+    if (!data) throw new Error('Perfil no encontrado');
+    return data.tenant_id;
+  };
+
+  const handleSaveGeneral = async () => {
+    setSavingGeneral(true);
+    try {
+      const tenantId = await getTenantId();
+      const { error } = await supabase
+        .from('tenants')
+        .update({ name: orgName, timezone } as any)
+        .eq('id', tenantId);
+      if (error) throw error;
+      toast.success('Configuración general guardada');
+    } catch (err: any) {
+      toast.error(err.message || 'Error al guardar');
+    } finally {
+      setSavingGeneral(false);
+    }
+  };
+
+  const handleSaveBranding = async () => {
+    setSavingBranding(true);
+    try {
+      const tenantId = await getTenantId();
+      const { data: tenant } = await supabase.from('tenants').select('settings_json').eq('id', tenantId).maybeSingle();
+      const current = ((tenant?.settings_json || {}) as Record<string, any>);
+      const updated = {
+        ...current,
+        primary_color: primaryColor,
+        secondary_color: secondaryColor,
+        slogan: companySlogan,
+        website: companyWebsite,
+        phone: companyPhone,
+        address: companyAddress,
+      };
+      const { error } = await supabase
+        .from('tenants')
+        .update({ settings_json: updated } as any)
+        .eq('id', tenantId);
+      if (error) throw error;
+      toast.success('Branding guardado correctamente');
+    } catch (err: any) {
+      toast.error(err.message || 'Error al guardar branding');
+    } finally {
+      setSavingBranding(false);
+    }
+  };
+
+  const inputClass = "w-full bg-secondary rounded-lg px-3 py-2 text-sm outline-none border border-border focus:border-primary text-foreground placeholder:text-muted-foreground";
 
   return (
     <div className="flex h-full">
@@ -61,31 +163,17 @@ const SettingsPage = () => {
                   <KeyRound size={16} className="text-warning" /> PIN de autenticación WhatsApp
                 </h4>
                 <p className="text-xs text-muted-foreground mb-4">
-                  Este PIN te permite autenticarte como empleado a través del asistente de WhatsApp. 
+                  Este PIN te permite autenticarte como empleado a través del asistente de WhatsApp.
                   Debe ser un número de 4 a 6 dígitos que recuerdes fácilmente.
                 </p>
                 <div className="space-y-3">
                   <div>
                     <label className="text-xs font-medium text-muted-foreground mb-1 block">Nuevo PIN</label>
-                    <input
-                      type="password"
-                      value={pin}
-                      onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                      placeholder="Ej: 1234"
-                      maxLength={6}
-                      className="w-full bg-secondary rounded-lg px-3 py-2 text-sm outline-none border border-border focus:border-primary text-foreground placeholder:text-muted-foreground"
-                    />
+                    <input type="password" value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="Ej: 1234" maxLength={6} className={inputClass} />
                   </div>
                   <div>
                     <label className="text-xs font-medium text-muted-foreground mb-1 block">Confirmar PIN</label>
-                    <input
-                      type="password"
-                      value={pinConfirm}
-                      onChange={e => setPinConfirm(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                      placeholder="Repite tu PIN"
-                      maxLength={6}
-                      className="w-full bg-secondary rounded-lg px-3 py-2 text-sm outline-none border border-border focus:border-primary text-foreground placeholder:text-muted-foreground"
-                    />
+                    <input type="password" value={pinConfirm} onChange={e => setPinConfirm(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="Repite tu PIN" maxLength={6} className={inputClass} />
                   </div>
                   <button
                     disabled={savingPin || pin.length < 4 || pin !== pinConfirm}
@@ -94,35 +182,24 @@ const SettingsPage = () => {
                       if (pin.length < 4) { toast.error('El PIN debe tener al menos 4 dígitos'); return; }
                       setSavingPin(true);
                       try {
-                        // Hash the PIN client-side with SHA-256
                         const encoder = new TextEncoder();
                         const data = encoder.encode(pin);
                         const hashBuffer = await crypto.subtle.digest('SHA-256', data);
                         const hashArray = Array.from(new Uint8Array(hashBuffer));
                         const pinHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-
-                        const { data: { user } } = await supabase.auth.getUser();
                         if (!user) throw new Error('No autenticado');
-
-                        const { error } = await supabase
-                          .from('profiles')
-                          .update({ pin_hash: pinHash } as any)
-                          .eq('user_id', user.id);
-
+                        const { error } = await supabase.from('profiles').update({ pin_hash: pinHash } as any).eq('user_id', user.id);
                         if (error) throw error;
                         toast.success('PIN guardado correctamente');
-                        setPin('');
-                        setPinConfirm('');
+                        setPin(''); setPinConfirm('');
                       } catch (err: any) {
                         toast.error(err.message || 'Error al guardar PIN');
-                      } finally {
-                        setSavingPin(false);
-                      }
+                      } finally { setSavingPin(false); }
                     }}
                     className="bg-primary text-primary-foreground text-sm px-4 py-2 rounded-lg hover:opacity-90 disabled:opacity-40 flex items-center gap-2"
                   >
                     {savingPin && <Loader2 size={14} className="animate-spin" />}
-                    Guardar PIN
+                    <Save size={14} /> Guardar PIN
                   </button>
                 </div>
               </div>
@@ -136,21 +213,98 @@ const SettingsPage = () => {
             <div className="space-y-4">
               <div className="bg-card border border-border rounded-xl p-4">
                 <label className="text-sm font-medium text-foreground block mb-1">Nombre de la organización</label>
-                <input className="w-full bg-secondary rounded-lg px-3 py-2 text-sm outline-none border border-border focus:border-primary" defaultValue="Mi Empresa" />
-              </div>
-              <div className="bg-card border border-border rounded-xl p-4">
-                <label className="text-sm font-medium text-foreground block mb-1">Dominio</label>
-                <input className="w-full bg-secondary rounded-lg px-3 py-2 text-sm outline-none border border-border focus:border-primary" defaultValue="miempresa.officehub.app" />
+                <input className={inputClass} value={orgName} onChange={e => setOrgName(e.target.value)} placeholder="Mi Empresa" />
               </div>
               <div className="bg-card border border-border rounded-xl p-4">
                 <label className="text-sm font-medium text-foreground block mb-1">Zona horaria</label>
-                <select className="w-full bg-secondary rounded-lg px-3 py-2 text-sm outline-none border border-border">
-                  <option>América/México_City (UTC-6)</option>
-                  <option>América/Bogotá (UTC-5)</option>
-                  <option>América/Buenos_Aires (UTC-3)</option>
-                  <option>Europa/Madrid (UTC+1)</option>
+                <select className={inputClass} value={timezone} onChange={e => setTimezone(e.target.value)}>
+                  <option value="America/Mexico_City">América/México_City (UTC-6)</option>
+                  <option value="America/Bogota">América/Bogotá (UTC-5)</option>
+                  <option value="America/Argentina/Buenos_Aires">América/Buenos_Aires (UTC-3)</option>
+                  <option value="Europe/Madrid">Europa/Madrid (UTC+1)</option>
                 </select>
               </div>
+              <button
+                disabled={savingGeneral}
+                onClick={handleSaveGeneral}
+                className="bg-primary text-primary-foreground text-sm px-5 py-2.5 rounded-lg hover:opacity-90 disabled:opacity-40 flex items-center gap-2 font-medium"
+              >
+                {savingGeneral ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                Guardar cambios
+              </button>
+            </div>
+          </div>
+        )}
+
+        {activeSection === 'branding' && (
+          <div className="max-w-2xl">
+            <h3 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
+              <Palette size={20} className="text-primary" /> Branding de la empresa
+            </h3>
+            <div className="space-y-4">
+              <div className="bg-card border border-border rounded-xl p-5">
+                <h4 className="text-sm font-semibold text-foreground mb-3">Colores corporativos</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground mb-1 block">Color primario</label>
+                    <div className="flex items-center gap-2">
+                      <input type="color" value={primaryColor} onChange={e => setPrimaryColor(e.target.value)} className="w-10 h-10 rounded-lg border border-border cursor-pointer" />
+                      <input className={inputClass} value={primaryColor} onChange={e => setPrimaryColor(e.target.value)} />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground mb-1 block">Color secundario</label>
+                    <div className="flex items-center gap-2">
+                      <input type="color" value={secondaryColor} onChange={e => setSecondaryColor(e.target.value)} className="w-10 h-10 rounded-lg border border-border cursor-pointer" />
+                      <input className={inputClass} value={secondaryColor} onChange={e => setSecondaryColor(e.target.value)} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-card border border-border rounded-xl p-5">
+                <h4 className="text-sm font-semibold text-foreground mb-3">Información de la empresa</h4>
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground mb-1 block">Slogan</label>
+                    <input className={inputClass} value={companySlogan} onChange={e => setCompanySlogan(e.target.value)} placeholder="Tu slogan corporativo" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground mb-1 block">Sitio web</label>
+                    <input className={inputClass} value={companyWebsite} onChange={e => setCompanyWebsite(e.target.value)} placeholder="https://tuempresa.com" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground mb-1 block">Teléfono</label>
+                    <input className={inputClass} value={companyPhone} onChange={e => setCompanyPhone(e.target.value)} placeholder="+52 55 1234 5678" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground mb-1 block">Dirección</label>
+                    <input className={inputClass} value={companyAddress} onChange={e => setCompanyAddress(e.target.value)} placeholder="Calle, Ciudad, País" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-card border border-border rounded-xl p-5">
+                <h4 className="text-sm font-semibold text-foreground mb-3">Vista previa</h4>
+                <div className="flex items-center gap-4 p-4 rounded-lg border border-border" style={{ background: `linear-gradient(135deg, ${primaryColor}15, ${secondaryColor}15)` }}>
+                  <div className="w-12 h-12 rounded-xl flex items-center justify-center text-white font-bold text-lg" style={{ backgroundColor: primaryColor }}>
+                    {orgName ? orgName.charAt(0).toUpperCase() : 'E'}
+                  </div>
+                  <div>
+                    <p className="font-bold text-foreground">{orgName || 'Mi Empresa'}</p>
+                    <p className="text-xs text-muted-foreground">{companySlogan || 'Tu slogan aquí'}</p>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                disabled={savingBranding}
+                onClick={handleSaveBranding}
+                className="bg-primary text-primary-foreground text-sm px-5 py-2.5 rounded-lg hover:opacity-90 disabled:opacity-40 flex items-center gap-2 font-medium"
+              >
+                {savingBranding ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                Guardar branding
+              </button>
             </div>
           </div>
         )}
