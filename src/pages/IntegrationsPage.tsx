@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { Plug, MessageSquare, CalendarDays, Brain, Shield, ExternalLink, CheckCircle2, Circle, X, Save } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import TwilioWizard from '@/components/TwilioWizard';
 
 const integrationsMeta = [
   {
@@ -27,6 +29,7 @@ type WaProvider = 'meta' | 'twilio';
 
 const IntegrationsPage = () => {
   const [waDialogOpen, setWaDialogOpen] = useState(false);
+  const [twilioWizardOpen, setTwilioWizardOpen] = useState(false);
   const [waProvider, setWaProvider] = useState<WaProvider>('meta');
   const [waConfig, setWaConfig] = useState({
     phoneNumberId: '',
@@ -245,59 +248,17 @@ const IntegrationsPage = () => {
                 </div>
               </>
             ) : (
-              <>
-                <div>
-                  <label className="text-xs font-medium text-foreground block mb-1">Account SID *</label>
-                  <input
-                    value={twilioConfig.accountSid}
-                    onChange={e => setTwilioConfig(p => ({ ...p, accountSid: e.target.value }))}
-                    placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                    className="w-full bg-secondary rounded-lg px-3 py-2 text-sm outline-none border border-border focus:border-primary"
-                  />
-                  <p className="text-[10px] text-muted-foreground mt-1">Lo encuentras en tu consola de Twilio → Account Info</p>
+              <div className="space-y-4">
+                <div className="bg-muted/50 rounded-lg p-3 text-xs text-muted-foreground">
+                  Para configurar Twilio usa el asistente de configuración automática.
                 </div>
-
-                <div>
-                  <label className="text-xs font-medium text-foreground block mb-1">Auth Token *</label>
-                  <input
-                    type="password"
-                    value={twilioConfig.authToken}
-                    onChange={e => setTwilioConfig(p => ({ ...p, authToken: e.target.value }))}
-                    placeholder="Tu Auth Token de Twilio"
-                    className="w-full bg-secondary rounded-lg px-3 py-2 text-sm outline-none border border-border focus:border-primary"
-                  />
-                  <p className="text-[10px] text-muted-foreground mt-1">Se encuentra junto al Account SID en la consola de Twilio</p>
-                </div>
-
-                <div>
-                  <label className="text-xs font-medium text-foreground block mb-1">Número de WhatsApp *</label>
-                  <input
-                    value={twilioConfig.phoneNumber}
-                    onChange={e => setTwilioConfig(p => ({ ...p, phoneNumber: e.target.value }))}
-                    placeholder="whatsapp:+14155238886"
-                    className="w-full bg-secondary rounded-lg px-3 py-2 text-sm outline-none border border-border focus:border-primary"
-                  />
-                  <p className="text-[10px] text-muted-foreground mt-1">Formato: whatsapp:+[código país][número]. Actívalo en Twilio → Messaging → WhatsApp Sandbox o número propio</p>
-                </div>
-
-                <div>
-                  <label className="text-xs font-medium text-foreground block mb-1">URL del Webhook (Status Callback)</label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      value={webhookUrl}
-                      readOnly
-                      className="flex-1 bg-muted rounded-lg px-3 py-2 text-sm outline-none border border-border text-muted-foreground"
-                    />
-                    <button
-                      onClick={() => { navigator.clipboard.writeText(webhookUrl); toast.success('URL copiada'); }}
-                      className="text-xs bg-secondary text-secondary-foreground px-3 py-2 rounded-lg hover:bg-secondary/80 shrink-0"
-                    >
-                      Copiar
-                    </button>
-                  </div>
-                  <p className="text-[10px] text-muted-foreground mt-1">Pega esta URL en Twilio → WhatsApp Sandbox → When a message comes in</p>
-                </div>
-              </>
+                <Button
+                  onClick={() => { setWaDialogOpen(false); setTwilioWizardOpen(true); }}
+                  className="w-full gap-2"
+                >
+                  Abrir asistente de configuración Twilio <ExternalLink size={14} />
+                </Button>
+              </div>
             )}
 
             <button
@@ -309,6 +270,24 @@ const IntegrationsPage = () => {
               {saving ? 'Guardando...' : 'Guardar configuración'}
             </button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Twilio Wizard Dialog */}
+      <Dialog open={twilioWizardOpen} onOpenChange={setTwilioWizardOpen}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MessageSquare size={18} className="text-success" /> Configurar Twilio para WhatsApp
+            </DialogTitle>
+            <DialogDescription>
+              Sigue los pasos para conectar tu cuenta de Twilio automáticamente.
+            </DialogDescription>
+          </DialogHeader>
+          <TwilioWizard
+            onComplete={() => { setTwilioWizardOpen(false); setWaConnected(true); toast.success('Twilio configurado correctamente'); }}
+            onCancel={() => setTwilioWizardOpen(false)}
+          />
         </DialogContent>
       </Dialog>
     </div>
