@@ -1,10 +1,11 @@
-import { useState } from 'react';
-import { MessageSquare, Search, Tag, User, Clock, Send, Paperclip, StickyNote, Phone, CalendarPlus, ChevronDown, Circle, CheckCircle2, AlertCircle, Plus } from 'lucide-react';
-import { mockWAConversations, mockWAMessages, type WhatsAppConversation, type WhatsAppMessage } from '@/data/mockCallsData';
+import { useState, useEffect, useRef } from 'react';
+import { MessageSquare, Search, Send, Paperclip, StickyNote, Phone, CalendarPlus, Circle, CheckCircle2, AlertCircle, Plus, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
-import { es } from 'date-fns/locale';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
+import { useWhatsAppData, type DBConversation, type DBMessage } from '@/hooks/useWhatsAppData';
 
 const statusColors: Record<string, string> = {
   open: 'bg-success/10 text-success',
@@ -12,8 +13,15 @@ const statusColors: Record<string, string> = {
   closed: 'bg-muted text-muted-foreground',
 };
 
+const statusLabels: Record<string, string> = {
+  open: 'Abierto',
+  pending: 'Pendiente',
+  closed: 'Cerrado',
+};
+
 const WhatsAppInboxPage = () => {
-  const [selectedConvId, setSelectedConvId] = useState<string | null>('wa-conv-1');
+  const { conversations, messages, loading, fetchMessages, DEMO_TENANT } = useWhatsAppData();
+  const [selectedConvId, setSelectedConvId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [messageInput, setMessageInput] = useState('');
@@ -22,66 +30,113 @@ const WhatsAppInboxPage = () => {
   const [newConvName, setNewConvName] = useState('');
   const [newConvPhone, setNewConvPhone] = useState('');
   const [newConvMessage, setNewConvMessage] = useState('');
-  const [conversations, setConversations] = useState<WhatsAppConversation[]>(mockWAConversations);
-  const [messages, setMessages] = useState<WhatsAppMessage[]>(mockWAMessages);
+  const [sending, setSending] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const handleSendMessage = () => {
+  // Auto-select first conversation
+  useEffect(() => {
+    if (!selectedConvId && conversations.length > 0) {
+      setSelectedConvId(conversations[0].id);
+    }
+  }, [conversations, selectedConvId]);
+
+  // Fetch messages when conversation changes
+  useEffect(() => {
+    if (selectedConvId) {
+      fetchMessages(selectedConvId);
+    }
+  }, [selectedConvId, fetchMessages]);
+
+  // Auto-scroll to bottom
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  const convMessages = messages.filter(m => m.conversation_id === selectedConvId);
+
+  const handleSendMessage = async () => {
     if (!messageInput.trim() || !selectedConvId) return;
-    const newMsg: WhatsAppMessage = {
-      id: `wa-msg-${Date.now()}`,
-      conversationId: selectedConvId,
-      direction: 'out',
-      body: messageInput.trim(),
-      mediaUrl: null,
-      status: 'sent',
-      createdAt: new Date(),
-    };
-    setMessages(prev => [...prev, newMsg]);
-    setConversations(prev => prev.map(c => c.id === selectedConvId ? { ...c, lastMessageAt: new Date() } : c));
+    const body = messageInput.trim();
     setMessageInput('');
+    setSending(true);
+    try {
+      const selectedConv = conversations.find(c => c.id === selectedConvId);
+      const { error } = await supabase.from('whatsapp_messages').insert({
+        tenant_id: selectedConv?.tenant_id || DEMO_TENANT,
+        conversation_id: selectedConvId,
+        direction: 'out',
+        body,
+        status: 'sent',
+      });
+      if (error) throw error;
+      await supabase.from('whatsapp_conversations')
+        .update({ last_message_at: new Date().toISOString() })
+        .eq('id', selectedConvId);
+      // Realtime will handle the UI update, but also refetch for instant display
+      await fetchMessages(selectedConvId);
+    } catch (err: any) {
+      toast.error('Error al enviar mensaje');
+      setMessageInput(body);
+    } finally {
+      setSending(false);
+    }
   };
 
-  const handleCreateConversation = () => {
+  const handleCreateConversation = async () => {
     if (!newConvName.trim() || !newConvPhone.trim()) return;
-    const newId = `wa-conv-${Date.now()}`;
-    const newConv: WhatsAppConversation = {
-      id: newId,
-      contactPhone: newConvPhone.trim(),
-      contactName: newConvName.trim(),
-      assignedTo: 'Yo',
-      status: 'open',
-      tags: [],
-      notes: '',
-      lastMessageAt: new Date(),
-      unreadCount: 0,
-    };
-    if (newConvMessage.trim()) {
-      const newMsg: WhatsAppMessage = {
-        id: `wa-msg-${Date.now()}`,
-        conversationId: newId,
-        direction: 'out',
-        body: newConvMessage.trim(),
-        mediaUrl: null,
-        status: 'sent',
-        createdAt: new Date(),
-      };
-      setMessages(prev => [...prev, newMsg]);
+    try {
+      const { data: newConv, error } = await supabase.from('whatsapp_conversations').insert({
+        tenant_id: DEMO_TENANT,
+        contact_phone: newConvPhone.trim(),
+        contact_name: newConvName.trim(),
+        status: 'open',
+        last_message_at: new Date().toISOString(),
+      }).select('id').single();
+      if (error) throw error;
+      if (newConv && newConvMessage.trim()) {
+        await supabase.from('whatsapp_messages').insert({
+          tenant_id: DEMO_TENANT,
+          conversation_id: newConv.id,
+          direction: 'out',
+          body: newConvMessage.trim(),
+          status: 'sent',
+        });
+      }
+      if (newConv) setSelectedConvId(newConv.id);
+      setShowNewConv(false);
+      setNewConvName('');
+      setNewConvPhone('');
+      setNewConvMessage('');
+      toast.success('Conversación creada');
+    } catch {
+      toast.error('Error al crear conversación');
     }
-    setConversations(prev => [newConv, ...prev]);
-    setSelectedConvId(newId);
-    setShowNewConv(false);
-    setNewConvName('');
-    setNewConvPhone('');
-    setNewConvMessage('');
+  };
+
+  const handleCloseConversation = async () => {
+    if (!selectedConvId) return;
+    await supabase.from('whatsapp_conversations').update({ status: 'closed' }).eq('id', selectedConvId);
+  };
+
+  const handleReopenConversation = async () => {
+    if (!selectedConvId) return;
+    await supabase.from('whatsapp_conversations').update({ status: 'open' }).eq('id', selectedConvId);
   };
 
   const filtered = conversations.filter(c =>
     (!statusFilter || c.status === statusFilter) &&
-    (!searchQuery || c.contactName.toLowerCase().includes(searchQuery.toLowerCase()) || c.contactPhone.includes(searchQuery))
+    (!searchQuery || (c.contact_name || '').toLowerCase().includes(searchQuery.toLowerCase()) || c.contact_phone.includes(searchQuery))
   );
 
   const selectedConv = conversations.find(c => c.id === selectedConvId);
-  const convMessages = messages.filter(m => m.conversationId === selectedConvId);
+
+  if (loading) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <Loader2 size={24} className="animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full">
@@ -98,44 +153,47 @@ const WhatsAppInboxPage = () => {
             </button>
           </div>
           <div className="flex items-center gap-1 mt-2">
-            <button onClick={() => setStatusFilter(null)} className={`text-[10px] px-2 py-1 rounded-md ${!statusFilter ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-secondary'}`}>Todos</button>
-            <button onClick={() => setStatusFilter('open')} className={`text-[10px] px-2 py-1 rounded-md ${statusFilter === 'open' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-secondary'}`}>Abiertos</button>
-            <button onClick={() => setStatusFilter('pending')} className={`text-[10px] px-2 py-1 rounded-md ${statusFilter === 'pending' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-secondary'}`}>Pendientes</button>
-            <button onClick={() => setStatusFilter('closed')} className={`text-[10px] px-2 py-1 rounded-md ${statusFilter === 'closed' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-secondary'}`}>Cerrados</button>
+            {[null, 'open', 'pending', 'closed'].map(s => (
+              <button key={s || 'all'} onClick={() => setStatusFilter(s)} className={`text-[10px] px-2 py-1 rounded-md ${statusFilter === s ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-secondary'}`}>
+                {s ? statusLabels[s] : 'Todos'}
+              </button>
+            ))}
           </div>
         </div>
 
         <div className="flex-1 overflow-y-auto scrollbar-thin">
+          {filtered.length === 0 && (
+            <div className="p-6 text-center text-xs text-muted-foreground">
+              {conversations.length === 0 ? 'No hay conversaciones aún. Los mensajes entrantes aparecerán aquí.' : 'Sin resultados'}
+            </div>
+          )}
           {filtered.map(conv => (
             <button
               key={conv.id}
               onClick={() => setSelectedConvId(conv.id)}
-              className={`w-full text-left p-3 border-b border-border transition-colors ${
-                selectedConvId === conv.id ? 'bg-primary/5' : 'hover:bg-secondary/50'
-              }`}
+              className={`w-full text-left p-3 border-b border-border transition-colors ${selectedConvId === conv.id ? 'bg-primary/5' : 'hover:bg-secondary/50'}`}
             >
               <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center gap-2">
                   <div className="w-8 h-8 rounded-full bg-success/10 flex items-center justify-center text-xs font-bold text-success">
-                    {conv.contactName.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                    {(conv.contact_name || '?').split(' ').map(n => n[0]).join('').slice(0, 2)}
                   </div>
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">{conv.contactName}</p>
-                    <p className="text-[10px] text-muted-foreground">{conv.contactPhone}</p>
+                    <p className="text-sm font-medium text-foreground truncate">{conv.contact_name || conv.contact_phone}</p>
+                    <p className="text-[10px] text-muted-foreground">{conv.contact_phone}</p>
                   </div>
                 </div>
                 <div className="text-right shrink-0">
-                  <p className="text-[10px] text-muted-foreground">{format(conv.lastMessageAt, 'HH:mm')}</p>
-                  {conv.unreadCount > 0 && (
-                    <span className="inline-flex items-center justify-center w-4 h-4 bg-success text-primary-foreground text-[10px] font-bold rounded-full mt-0.5">
-                      {conv.unreadCount}
-                    </span>
+                  {conv.last_message_at && (
+                    <p className="text-[10px] text-muted-foreground">{format(new Date(conv.last_message_at), 'HH:mm')}</p>
                   )}
                 </div>
               </div>
               <div className="flex items-center gap-1 ml-10">
-                <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${statusColors[conv.status]}`}>{conv.status === 'open' ? 'Abierto' : conv.status === 'pending' ? 'Pendiente' : 'Cerrado'}</span>
-                {conv.tags.slice(0, 2).map(t => (
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${statusColors[conv.status] || ''}`}>
+                  {statusLabels[conv.status] || conv.status}
+                </span>
+                {(conv.tags || []).slice(0, 2).map(t => (
                   <span key={t} className="text-[10px] bg-secondary text-secondary-foreground px-1.5 py-0.5 rounded-full">{t}</span>
                 ))}
               </div>
@@ -147,68 +205,46 @@ const WhatsAppInboxPage = () => {
       {/* Chat area */}
       {selectedConv ? (
         <div className="flex-1 flex flex-col min-w-0">
-          {/* Header */}
           <div className="shrink-0 h-14 border-b border-border flex items-center justify-between px-5 bg-card">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-full bg-success/10 flex items-center justify-center text-xs font-bold text-success">
-                {selectedConv.contactName.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                {(selectedConv.contact_name || '?').split(' ').map(n => n[0]).join('').slice(0, 2)}
               </div>
               <div>
-                <h3 className="text-sm font-semibold text-foreground">{selectedConv.contactName}</h3>
-                <p className="text-[10px] text-muted-foreground">{selectedConv.contactPhone} · {selectedConv.assignedTo}</p>
+                <h3 className="text-sm font-semibold text-foreground">{selectedConv.contact_name || selectedConv.contact_phone}</h3>
+                <p className="text-[10px] text-muted-foreground">{selectedConv.contact_phone}</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              {selectedConv.status !== 'closed' && (
-                <button
-                  onClick={() => setConversations(prev => prev.map(c => c.id === selectedConvId ? { ...c, status: 'closed' as const } : c))}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium text-destructive hover:bg-destructive/10 transition-colors"
-                  title="Cerrar conversación"
-                >
-                  <AlertCircle size={14} />
-                  Cerrar
+              {selectedConv.status !== 'closed' ? (
+                <button onClick={handleCloseConversation} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium text-destructive hover:bg-destructive/10 transition-colors">
+                  <AlertCircle size={14} /> Cerrar
+                </button>
+              ) : (
+                <button onClick={handleReopenConversation} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium text-success hover:bg-success/10 transition-colors">
+                  <Circle size={14} /> Reabrir
                 </button>
               )}
-              {selectedConv.status === 'closed' && (
-                <button
-                  onClick={() => setConversations(prev => prev.map(c => c.id === selectedConvId ? { ...c, status: 'open' as const } : c))}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium text-success hover:bg-success/10 transition-colors"
-                  title="Reabrir conversación"
-                >
-                  <Circle size={14} />
-                  Reabrir
-                </button>
-              )}
-              <button className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors" title="Llamar">
-                <Phone size={16} />
-              </button>
-              <button className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors" title="Agendar">
-                <CalendarPlus size={16} />
-              </button>
-              <button
-                onClick={() => setShowNotes(!showNotes)}
-                className={`p-2 rounded-md transition-colors ${showNotes ? 'text-primary bg-primary/10' : 'text-muted-foreground hover:text-foreground hover:bg-secondary'}`}
-                title="Notas"
-              >
+              <button className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"><Phone size={16} /></button>
+              <button className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"><CalendarPlus size={16} /></button>
+              <button onClick={() => setShowNotes(!showNotes)} className={`p-2 rounded-md transition-colors ${showNotes ? 'text-primary bg-primary/10' : 'text-muted-foreground hover:text-foreground hover:bg-secondary'}`}>
                 <StickyNote size={16} />
               </button>
             </div>
           </div>
 
           <div className="flex-1 flex min-h-0">
-            {/* Messages */}
             <div className="flex-1 flex flex-col min-w-0">
               <div className="flex-1 overflow-y-auto scrollbar-thin px-5 py-4 space-y-3">
+                {convMessages.length === 0 && (
+                  <div className="text-center text-xs text-muted-foreground py-8">No hay mensajes aún</div>
+                )}
                 {convMessages.map(msg => (
                   <div key={msg.id} className={`flex ${msg.direction === 'out' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[70%] rounded-xl px-3 py-2 ${
-                      msg.direction === 'out'
-                        ? 'bg-success/10 text-foreground rounded-br-sm'
-                        : 'bg-muted text-foreground rounded-bl-sm'
-                    }`}>
+                    <div className={`max-w-[70%] rounded-xl px-3 py-2 ${msg.direction === 'out' ? 'bg-success/10 text-foreground rounded-br-sm' : 'bg-muted text-foreground rounded-bl-sm'}`}>
                       <p className="text-sm">{msg.body}</p>
                       <div className="flex items-center justify-end gap-1 mt-1">
-                        <span className="text-[10px] text-muted-foreground">{format(msg.createdAt, 'HH:mm')}</span>
+                        <span className="text-[10px] text-muted-foreground">{format(new Date(msg.created_at), 'HH:mm')}</span>
                         {msg.direction === 'out' && (
                           msg.status === 'read' ? <CheckCircle2 size={10} className="text-primary" /> :
                           msg.status === 'delivered' ? <CheckCircle2 size={10} className="text-muted-foreground" /> :
@@ -218,9 +254,9 @@ const WhatsAppInboxPage = () => {
                     </div>
                   </div>
                 ))}
+                <div ref={messagesEndRef} />
               </div>
 
-              {/* Input */}
               <div className="shrink-0 border-t border-border p-3 bg-card">
                 <div className="flex items-end gap-2 bg-secondary rounded-lg px-3 py-2">
                   <button className="text-muted-foreground hover:text-foreground pb-0.5"><Paperclip size={16} /></button>
@@ -229,22 +265,21 @@ const WhatsAppInboxPage = () => {
                     onChange={e => setMessageInput(e.target.value)}
                     placeholder="Escribir mensaje..."
                     rows={1}
-                    className="flex-1 bg-transparent text-sm outline-none resize-none max-h-24 placeholder:text-muted-foreground"
+                    className="flex-1 bg-transparent text-sm outline-none resize-none max-h-24 placeholder:text-muted-foreground text-foreground"
                     onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }}
                   />
-                  <button onClick={handleSendMessage} className="bg-success text-success-foreground rounded-md p-1.5 hover:opacity-90">
-                    <Send size={14} />
+                  <button onClick={handleSendMessage} disabled={sending || !messageInput.trim()} className="bg-success text-success-foreground rounded-md p-1.5 hover:opacity-90 disabled:opacity-40">
+                    {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
                   </button>
                 </div>
               </div>
             </div>
 
-            {/* Notes panel */}
             {showNotes && (
               <div className="w-64 shrink-0 border-l border-border bg-card p-4 overflow-y-auto">
                 <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Notas internas</h4>
                 <textarea
-                  defaultValue={selectedConv.notes}
+                  defaultValue={selectedConv.notes || ''}
                   className="w-full bg-secondary rounded-lg px-3 py-2 text-sm outline-none border border-border focus:border-primary min-h-[100px] resize-y mb-3"
                   placeholder="Agregar notas..."
                 />
@@ -252,22 +287,18 @@ const WhatsAppInboxPage = () => {
                 <div className="space-y-2 text-xs">
                   <div>
                     <p className="text-muted-foreground">Teléfono</p>
-                    <p className="text-foreground font-medium">{selectedConv.contactPhone}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Asignado a</p>
-                    <p className="text-foreground font-medium">{selectedConv.assignedTo}</p>
+                    <p className="text-foreground font-medium">{selectedConv.contact_phone}</p>
                   </div>
                   <div>
                     <p className="text-muted-foreground">Estado</p>
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${statusColors[selectedConv.status]}`}>
-                      {selectedConv.status}
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${statusColors[selectedConv.status] || ''}`}>
+                      {statusLabels[selectedConv.status] || selectedConv.status}
                     </span>
                   </div>
                   <div>
                     <p className="text-muted-foreground">Etiquetas</p>
                     <div className="flex flex-wrap gap-1 mt-1">
-                      {selectedConv.tags.map(t => (
+                      {(selectedConv.tags || []).map(t => (
                         <span key={t} className="text-[10px] bg-secondary text-secondary-foreground px-1.5 py-0.5 rounded-full">{t}</span>
                       ))}
                     </div>
@@ -281,45 +312,29 @@ const WhatsAppInboxPage = () => {
         <div className="flex-1 flex items-center justify-center text-muted-foreground">
           <div className="text-center">
             <MessageSquare size={40} className="mx-auto mb-3 opacity-40" />
-            <p className="text-sm">Selecciona una conversación</p>
+            <p className="text-sm">{conversations.length === 0 ? 'Envía un mensaje a tu número de WhatsApp para comenzar' : 'Selecciona una conversación'}</p>
           </div>
         </div>
       )}
 
-      {/* New conversation dialog */}
       <Dialog open={showNewConv} onOpenChange={setShowNewConv}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Nueva conversación</DialogTitle>
+            <DialogDescription>Crea una nueva conversación de WhatsApp</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">Nombre del contacto</label>
-              <input
-                value={newConvName}
-                onChange={e => setNewConvName(e.target.value)}
-                placeholder="Ej: Juan Pérez"
-                className="w-full bg-secondary rounded-md px-3 py-2 text-sm outline-none border border-border focus:border-primary text-foreground placeholder:text-muted-foreground"
-              />
+              <input value={newConvName} onChange={e => setNewConvName(e.target.value)} placeholder="Ej: Juan Pérez" className="w-full bg-secondary rounded-md px-3 py-2 text-sm outline-none border border-border focus:border-primary text-foreground placeholder:text-muted-foreground" />
             </div>
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">Número de WhatsApp</label>
-              <input
-                value={newConvPhone}
-                onChange={e => setNewConvPhone(e.target.value)}
-                placeholder="Ej: +52 55 1234 5678"
-                className="w-full bg-secondary rounded-md px-3 py-2 text-sm outline-none border border-border focus:border-primary text-foreground placeholder:text-muted-foreground"
-              />
+              <input value={newConvPhone} onChange={e => setNewConvPhone(e.target.value)} placeholder="Ej: +52 55 1234 5678" className="w-full bg-secondary rounded-md px-3 py-2 text-sm outline-none border border-border focus:border-primary text-foreground placeholder:text-muted-foreground" />
             </div>
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">Primer mensaje (opcional)</label>
-              <textarea
-                value={newConvMessage}
-                onChange={e => setNewConvMessage(e.target.value)}
-                placeholder="Escribe un mensaje..."
-                rows={3}
-                className="w-full bg-secondary rounded-md px-3 py-2 text-sm outline-none border border-border focus:border-primary resize-none text-foreground placeholder:text-muted-foreground"
-              />
+              <textarea value={newConvMessage} onChange={e => setNewConvMessage(e.target.value)} placeholder="Escribe un mensaje..." rows={3} className="w-full bg-secondary rounded-md px-3 py-2 text-sm outline-none border border-border focus:border-primary resize-none text-foreground placeholder:text-muted-foreground" />
             </div>
           </div>
           <DialogFooter>
