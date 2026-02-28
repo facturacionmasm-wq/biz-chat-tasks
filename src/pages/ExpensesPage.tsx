@@ -39,9 +39,9 @@ const ExpensesPage = () => {
       // Fetch user names
       const userIds = [...new Set(data.map(e => e.user_id))];
       const { data: profiles } = await supabase
-        .from('profiles')
+        .from('profiles_safe' as any)
         .select('user_id, name')
-        .in('user_id', userIds);
+        .in('user_id', userIds) as { data: any[] | null };
 
       const nameMap = new Map(profiles?.map(p => [p.user_id, p.name]) || []);
       setExpenses(data.map(e => ({ ...e, user_name: nameMap.get(e.user_id) || 'Desconocido' })));

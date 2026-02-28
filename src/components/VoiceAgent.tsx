@@ -214,11 +214,11 @@ const VoiceAgent = ({ onCallEnd }: VoiceAgentProps) => {
           if (!tenantId) return 'No se encontró tenant';
 
           // Find employee by name
-          const { data: profiles } = await supabase
-            .from('profiles')
+           const { data: profiles } = await supabase
+            .from('profiles_safe' as any)
             .select('user_id, name, phone')
             .eq('tenant_id', tenantId)
-            .eq('status', 'active');
+            .eq('status', 'active') as { data: any[] | null };
 
           const match = (profiles || []).find(p =>
             p.name.toLowerCase().includes(params.employee_name.toLowerCase())
@@ -389,11 +389,11 @@ const VoiceAgent = ({ onCallEnd }: VoiceAgentProps) => {
       const { data: tenantId } = await supabase.rpc('get_user_tenant_id', { _user_id: user.id });
       if (!tenantId) return;
       const { data: profiles } = await supabase
-        .from('profiles')
+        .from('profiles_safe' as any)
         .select('user_id, name, phone, whatsapp_number')
         .eq('tenant_id', tenantId)
         .eq('status', 'active')
-        .neq('user_id', user.id);
+        .neq('user_id', user.id) as { data: any[] | null };
       setEmployees((profiles || []).map(p => ({
         user_id: p.user_id,
         name: p.name,
