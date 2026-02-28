@@ -264,6 +264,7 @@ serve(async (req) => {
               messageBody: body,
               contactPhone: contactPhone,
               tenantId: tenantId,
+              mediaUrl: mediaUrl,
             }),
           }).catch(err => console.error('Bot trigger error:', err));
         } catch (botErr) {
@@ -396,6 +397,7 @@ serve(async (req) => {
                     messageBody: messageBody,
                     contactPhone: contactPhone,
                     tenantId: tenantId,
+                    mediaUrl: mediaUrl,
                   }),
                 }).catch(err => console.error('Bot trigger error:', err));
               } catch (botErr) {
