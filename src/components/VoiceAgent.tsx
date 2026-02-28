@@ -127,6 +127,82 @@ const VoiceAgent = ({ onCallEnd }: VoiceAgentProps) => {
   }, [persistEvent]);
 
   const conversation = useConversation({
+    clientTools: {
+      check_availability: async (params: { date: string; employee_name?: string }) => {
+        try {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (!user) return 'No autenticado';
+          const { data: tenantId } = await supabase.rpc('get_user_tenant_id', { _user_id: user.id });
+          if (!tenantId) return 'No se encontró tenant';
+
+          const { data, error } = await supabase.functions.invoke('voice-scheduling', {
+            body: { action: 'check_availability', data: { tenant_id: tenantId, date: params.date } },
+          });
+          if (error) return `Error: ${error.message}`;
+          addTranscriptLine('Sistema', `[Consulta disponibilidad: ${params.date}]`);
+          return data.message + (data.slots?.length > 0 ? `. Horarios: ${data.slots.slice(0, 5).map((s: any) => new Date(s.start).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })).join(', ')}` : '');
+        } catch (err: any) {
+          return `Error al consultar disponibilidad: ${err.message}`;
+        }
+      },
+      book_appointment: async (params: { contact_name: string; contact_phone?: string; date: string; time: string; service_type?: string }) => {
+        try {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (!user) return 'No autenticado';
+          const { data: tenantId } = await supabase.rpc('get_user_tenant_id', { _user_id: user.id });
+          if (!tenantId) return 'No se encontró tenant';
+
+          const startAt = `${params.date}T${params.time}:00`;
+          const { data, error } = await supabase.functions.invoke('voice-scheduling', {
+            body: {
+              action: 'book_appointment',
+              data: {
+                tenant_id: tenantId,
+                contact_name: params.contact_name,
+                contact_phone: params.contact_phone || null,
+                start_at: startAt,
+                service_type: params.service_type || 'general',
+                source: 'call',
+                call_record_id: callRecordIdRef.current,
+              },
+            },
+          });
+          if (error) return `Error: ${error.message}`;
+          addTranscriptLine('Sistema', `[Cita agendada: ${params.contact_name} - ${params.date} ${params.time}]`);
+          return data.message || 'Cita agendada exitosamente';
+        } catch (err: any) {
+          return `Error al agendar: ${err.message}`;
+        }
+      },
+      cancel_appointment: async (params: { appointment_id: string }) => {
+        try {
+          const { data, error } = await supabase.functions.invoke('voice-scheduling', {
+            body: { action: 'cancel_appointment', data: { appointment_id: params.appointment_id } },
+          });
+          if (error) return `Error: ${error.message}`;
+          addTranscriptLine('Sistema', `[Cita cancelada: ${params.appointment_id}]`);
+          return data.message || 'Cita cancelada';
+        } catch (err: any) {
+          return `Error al cancelar: ${err.message}`;
+        }
+      },
+      reschedule_appointment: async (params: { appointment_id: string; new_date: string; new_time: string }) => {
+        try {
+          const newStartAt = `${params.new_date}T${params.new_time}:00`;
+          const { data, error } = await supabase.functions.invoke('voice-scheduling', {
+            body: {
+              action: 'reschedule_appointment',
+              data: { appointment_id: params.appointment_id, new_start_at: newStartAt },
+            },
+          });
+          if (error) return `Error: ${error.message}`;
+          addTranscriptLine('Sistema', `[Cita reprogramada: ${params.new_date} ${params.new_time}]`);
+          return data.message || 'Cita reprogramada';
+        } catch (err: any) {
+          return `Error al reprogramar: ${err.message}`;
+        }
+      },
+    },
     onConnect: () => {
       setError(null);
       persistEvent('in_progress', { source: 'elevenlabs_webrtc' });
