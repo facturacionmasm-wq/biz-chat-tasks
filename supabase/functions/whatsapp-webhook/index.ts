@@ -47,7 +47,10 @@ serve(async (req) => {
       const from = params.get('From') || '';       // e.g. "whatsapp:+5215512345678"
       const to = params.get('To') || '';           // e.g. "whatsapp:+12135132649"
       const body = params.get('Body') || '';
-      const messageSid = params.get('MessageSid') || '';
+      const messageSid = params.get('MessageSid') || params.get('SmsSid') || '';
+      const messageStatus = params.get('MessageStatus') || params.get('SmsStatus') || '';
+      const errorCode = params.get('ErrorCode') || '';
+      const errorMessage = params.get('ErrorMessage') || '';
       const numMedia = parseInt(params.get('NumMedia') || '0', 10);
       const profileName = params.get('ProfileName') || '';
 
@@ -56,7 +59,14 @@ serve(async (req) => {
       const businessPhone = to.replace('whatsapp:', '');
       const contactName = profileName || contactPhone;
 
-      console.log(`Twilio message from ${contactPhone} to ${businessPhone}: ${body.substring(0, 50)}`);
+      const isDeliveryCallback = Boolean(messageStatus) && !body;
+      console.log(`Twilio webhook from ${contactPhone} to ${businessPhone} status=${messageStatus || 'n/a'} body_len=${body.length}`);
+
+      if (!body) {
+        const payload = Object.fromEntries(params.entries());
+        console.log(`Twilio empty-body callback keys=${Object.keys(payload).join(',')}`);
+        console.log(`Twilio empty-body callback flags: SmsStatus=${params.get('SmsStatus') || ''} MessageStatus=${params.get('MessageStatus') || ''} EventType=${params.get('EventType') || ''} MessageSid=${params.get('MessageSid') || ''} SmsSid=${params.get('SmsSid') || ''}`);
+      }
 
       // Get media URL if present
       let mediaUrl: string | null = null;
@@ -64,8 +74,53 @@ serve(async (req) => {
         mediaUrl = params.get('MediaUrl0') || null;
       }
 
-      // Resolve tenant by matching the business phone number in whatsapp_config
+      // Delivery status callback for outbound messages (do not create inbound conversations)
+      if (isDeliveryCallback && messageSid) {
+        const normalizedStatus = (
+          messageStatus === 'delivered' ? 'delivered' :
+          messageStatus === 'read' ? 'read' :
+          messageStatus === 'sent' ? 'sent' :
+          messageStatus === 'queued' ? 'queued' :
+          (messageStatus === 'failed' || messageStatus === 'undelivered') ? 'failed' :
+          messageStatus || 'sent'
+        );
+
+        const { data: dbMessage } = await supabase
+          .from('whatsapp_messages')
+          .select('id, metadata')
+          .contains('metadata', { message_sid: messageSid })
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (dbMessage) {
+          const currentMeta = (dbMessage.metadata as Record<string, unknown> | null) || {};
+          await supabase
+            .from('whatsapp_messages')
+            .update({
+              status: normalizedStatus,
+              metadata: {
+                ...currentMeta,
+                twilio_status: messageStatus,
+                twilio_error_code: errorCode || null,
+                twilio_error_message: errorMessage || null,
+                twilio_status_updated_at: new Date().toISOString(),
+              },
+            })
+            .eq('id', dbMessage.id);
+        }
+
+        console.log(`Twilio delivery callback sid=${messageSid} status=${messageStatus} errorCode=${errorCode || 'none'}`);
+        return new Response('<Response></Response>', {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'text/xml' },
+        });
+      }
+
+      // Resolve tenant by matching business phone in either direction
       let tenantId: string | null = null;
+      let callbackFromBusinessNumber = false;
+
       const { data: tenants } = await supabase
         .from('tenants')
         .select('id, whatsapp_config')
@@ -74,12 +129,21 @@ serve(async (req) => {
       if (tenants) {
         for (const t of tenants) {
           const config = t.whatsapp_config as any;
-          if (config?.phone_number) {
-            const configPhone = config.phone_number.replace('whatsapp:', '');
-            if (configPhone === businessPhone) {
-              tenantId = t.id;
-              break;
-            }
+          if (!config?.phone_number) continue;
+
+          const configPhone = String(config.phone_number).replace('whatsapp:', '');
+
+          // Normal inbound message: customer -> business
+          if (configPhone === businessPhone) {
+            tenantId = t.id;
+            break;
+          }
+
+          // Outbound callback: business -> customer (empty body usually)
+          if (configPhone === contactPhone) {
+            tenantId = t.id;
+            callbackFromBusinessNumber = true;
+            break;
           }
         }
       }
@@ -97,6 +161,37 @@ serve(async (req) => {
       if (!tenantId) {
         console.error('No tenant found for this WhatsApp number');
         // Still return 200 to Twilio so it doesn't retry
+        return new Response('<Response></Response>', {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'text/xml' },
+        });
+      }
+
+      // Twilio can send callbacks without MessageStatus; prevent false inbound inserts
+      if (callbackFromBusinessNumber && !body && messageSid) {
+        const { data: dbMessage } = await supabase
+          .from('whatsapp_messages')
+          .select('id, metadata')
+          .contains('metadata', { message_sid: messageSid })
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (dbMessage) {
+          const currentMeta = (dbMessage.metadata as Record<string, unknown> | null) || {};
+          await supabase
+            .from('whatsapp_messages')
+            .update({
+              metadata: {
+                ...currentMeta,
+                twilio_callback_detected: true,
+                twilio_callback_at: new Date().toISOString(),
+              },
+            })
+            .eq('id', dbMessage.id);
+        }
+
+        console.log(`Twilio callback without status sid=${messageSid} from business number`);
         return new Response('<Response></Response>', {
           status: 200,
           headers: { ...corsHeaders, 'Content-Type': 'text/xml' },
