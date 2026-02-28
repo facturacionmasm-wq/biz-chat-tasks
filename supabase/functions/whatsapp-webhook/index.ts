@@ -248,6 +248,27 @@ serve(async (req) => {
         });
 
         console.log(`Message saved: conv=${conversation.id}`);
+
+        // Trigger AI bot auto-reply
+        try {
+          const botUrl = `${SUPABASE_URL}/functions/v1/whatsapp-bot`;
+          const anonKey = Deno.env.get('SUPABASE_ANON_KEY') || '';
+          fetch(botUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${anonKey}`,
+            },
+            body: JSON.stringify({
+              conversationId: conversation.id,
+              messageBody: body,
+              contactPhone: contactPhone,
+              tenantId: tenantId,
+            }),
+          }).catch(err => console.error('Bot trigger error:', err));
+        } catch (botErr) {
+          console.error('Failed to trigger bot:', botErr);
+        }
       }
 
       // Return TwiML empty response (Twilio expects XML)
@@ -359,7 +380,27 @@ serve(async (req) => {
                 resource_id: msg.id,
                 payload: { from: contactPhone, provider: 'meta', preview: messageBody.substring(0, 100) },
               });
-            }
+
+              // Trigger AI bot auto-reply
+              try {
+                const botUrl = `${SUPABASE_URL}/functions/v1/whatsapp-bot`;
+                const anonKey = Deno.env.get('SUPABASE_ANON_KEY') || '';
+                fetch(botUrl, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${anonKey}`,
+                  },
+                  body: JSON.stringify({
+                    conversationId: conversation.id,
+                    messageBody: messageBody,
+                    contactPhone: contactPhone,
+                    tenantId: tenantId,
+                  }),
+                }).catch(err => console.error('Bot trigger error:', err));
+              } catch (botErr) {
+                console.error('Failed to trigger bot:', botErr);
+              }
           }
         }
       }

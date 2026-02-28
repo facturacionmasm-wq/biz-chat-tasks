@@ -17,6 +17,7 @@ import WhatsAppInboxPage from "./pages/WhatsAppInboxPage";
 import AppointmentsPage from "./pages/AppointmentsPage";
 import AuditLogPage from "./pages/AuditLogPage";
 import AITrainingPage from "./pages/AITrainingPage";
+import ExpensesPage from "./pages/ExpensesPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -40,6 +41,7 @@ const App = () => (
           <Route path="/integrations" element={<AppLayout><IntegrationsPage /></AppLayout>} />
           <Route path="/audit" element={<AppLayout><AuditLogPage /></AppLayout>} />
           <Route path="/ai-training" element={<AppLayout><AITrainingPage /></AppLayout>} />
+          <Route path="/expenses" element={<AppLayout><ExpensesPage /></AppLayout>} />
           <Route path="/settings" element={<AppLayout><SettingsPage /></AppLayout>} />
           <Route path="*" element={<NotFound />} />
         </Routes>

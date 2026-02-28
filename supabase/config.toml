@@ -5,3 +5,12 @@ verify_jwt = false
 
 [functions.whatsapp-webhook]
 verify_jwt = false
+
+[functions.whatsapp-bot]
+verify_jwt = false
+
+[functions.ai-copilot]
+verify_jwt = false
+
+[functions.twilio-send]
+verify_jwt = false
