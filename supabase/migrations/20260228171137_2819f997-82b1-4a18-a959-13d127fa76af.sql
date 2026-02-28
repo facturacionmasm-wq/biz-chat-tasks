@@ -1,0 +1,1 @@
+UPDATE whatsapp_conversations SET contact_phone = '+5219997493743' WHERE id = 'c064d0af-6a2c-4f10-b64d-010d7285ea0c'
