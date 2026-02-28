@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useBranding } from '@/hooks/useBranding';
 import { useAuth } from '@/contexts/AuthContext';
+import NotificationBell from '@/components/NotificationBell';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 
@@ -224,10 +225,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
             </h2>
           </div>
           <div className="flex items-center gap-1 sm:gap-2">
-            <button className="relative p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
-              <Bell size={18} />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-destructive rounded-full" />
-            </button>
+            <NotificationBell />
             <button className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors hidden sm:block">
               <MessageCircle size={18} />
             </button>

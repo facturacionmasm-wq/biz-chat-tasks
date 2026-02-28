@@ -226,6 +226,23 @@ Solo responde con el resumen, sin formato ni explicaciones adicionales.`,
       });
     }
 
+    // Send notifications (in-app + WhatsApp) - fire and forget
+    fetch(`${supabaseUrl}/functions/v1/notify-transfer`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${serviceRoleKey}`,
+      },
+      body: JSON.stringify({
+        tenant_id: tenantId,
+        target_user_id,
+        target_name: targetProfile.name,
+        caller_phone,
+        summary: whisperText,
+        call_record_id,
+      }),
+    }).catch(err => console.error("notify-transfer fire error:", err));
+
     return new Response(
       JSON.stringify({
         success: true,
