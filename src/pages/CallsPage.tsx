@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Phone, PhoneIncoming, PhoneMissed, PhoneOff, Clock, User, Tag, Play, CalendarPlus, MessageSquare, ChevronRight, Search, Filter, ArrowLeft, CheckCircle2, Edit3, Save } from 'lucide-react';
 import { mockCallRecords, mockAppointments, type CallRecord } from '@/data/mockCallsData';
 import { format } from 'date-fns';
@@ -6,6 +6,26 @@ import { es } from 'date-fns/locale';
 import VoiceAgent from '@/components/VoiceAgent';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+
+// Convert a DB row to our CallRecord interface
+const dbRowToCallRecord = (row: any): CallRecord => ({
+  id: row.id,
+  externalCallId: row.external_call_id || '',
+  fromNumber: row.from_number || '',
+  toNumber: row.to_number || '',
+  startedAt: new Date(row.started_at || row.created_at),
+  endedAt: new Date(row.ended_at || row.created_at),
+  duration: row.duration || 0,
+  status: row.status as CallRecord['status'],
+  channel: row.channel || 'voice_agent',
+  tags: row.tags || [],
+  agentName: 'Voice Agent',
+  transcript: row.transcript || '',
+  summarySystem: row.summary_system || '',
+  summaryHuman: row.summary_human || null,
+  extractedData: (row.extracted_data as CallRecord['extractedData']) || {},
+  audioUrl: row.audio_url || null,
+});
 
 const statusConfig: Record<string, { icon: any; label: string; className: string }> = {
   completed: { icon: Phone, label: 'Completada', className: 'text-success bg-success/10' },
@@ -29,27 +49,104 @@ const CallsPage = () => {
   const [humanSummary, setHumanSummary] = useState('');
   const [lastCallSummary, setLastCallSummary] = useState<string | null>(null);
   const [isSummarizing, setIsSummarizing] = useState(false);
+  const [dbCalls, setDbCalls] = useState<CallRecord[]>([]);
+
+  // Load calls from database
+  const loadDbCalls = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('call_records')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(100);
+      if (!error && data) {
+        setDbCalls(data.map(dbRowToCallRecord));
+      }
+    } catch (err) {
+      console.error('Error loading calls:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadDbCalls();
+  }, [loadDbCalls]);
+
+  // Merge DB calls with mock calls (DB first)
+  const allCalls = [...dbCalls, ...mockCallRecords];
 
   const handleCallEnd = useCallback(async (transcript: string) => {
     if (!transcript.trim()) return;
     setIsSummarizing(true);
-    toast.info('Generando resumen de llamada con IA...');
+    toast.info('Guardando llamada y generando resumen con IA...');
     try {
-      const { data, error } = await supabase.functions.invoke('ai-copilot', {
-        body: { action: 'summarize_call', data: { transcript, extractedData: {} } },
+      // 1. Save call record to database
+      const now = new Date().toISOString();
+      const { data: tenantData } = await supabase.rpc('get_user_tenant_id', {
+        _user_id: (await supabase.auth.getUser()).data.user?.id || '',
       });
-      if (error) throw error;
-      setLastCallSummary(data?.summary || 'No se pudo generar resumen');
+
+      const tenantId = tenantData;
+      if (!tenantId) {
+        // If no tenant, just generate summary without saving
+        console.warn('No tenant found, skipping DB save');
+      } else {
+        const { data: callRow, error: insertError } = await supabase
+          .from('call_records')
+          .insert({
+            tenant_id: tenantId,
+            channel: 'voice_agent',
+            status: 'completed',
+            transcript,
+            started_at: now,
+            ended_at: now,
+            from_number: 'Voice Agent',
+            to_number: 'Usuario',
+          })
+          .select()
+          .single();
+
+        if (insertError) {
+          console.error('Error saving call:', insertError);
+          toast.error('Error al guardar la llamada en la base de datos');
+        } else {
+          toast.success('Llamada guardada en la base de datos');
+
+          // 2. Generate AI summary and update the record
+          const { data: aiData, error: aiError } = await supabase.functions.invoke('ai-copilot', {
+            body: { action: 'summarize_call', data: { transcript, extractedData: {} } },
+          });
+
+          if (!aiError && aiData?.summary && callRow) {
+            await supabase
+              .from('call_records')
+              .update({ summary_system: aiData.summary })
+              .eq('id', callRow.id);
+            setLastCallSummary(aiData.summary);
+          }
+
+          // Reload calls from DB
+          await loadDbCalls();
+        }
+      }
+
+      // Fallback: generate summary even without DB save
+      if (!lastCallSummary) {
+        const { data, error } = await supabase.functions.invoke('ai-copilot', {
+          body: { action: 'summarize_call', data: { transcript, extractedData: {} } },
+        });
+        if (!error) setLastCallSummary(data?.summary || 'No se pudo generar resumen');
+      }
+
       toast.success('Resumen generado exitosamente');
     } catch (err) {
       console.error('Summary error:', err);
-      toast.error('Error al generar resumen');
+      toast.error('Error al procesar la llamada');
     } finally {
       setIsSummarizing(false);
     }
-  }, []);
+  }, [loadDbCalls, lastCallSummary]);
 
-  const filtered = mockCallRecords.filter(c =>
+  const filtered = allCalls.filter(c =>
     (!statusFilter || c.status === statusFilter) &&
     (!searchQuery || c.agentName.toLowerCase().includes(searchQuery.toLowerCase()) ||
      c.fromNumber.includes(searchQuery) || c.toNumber.includes(searchQuery) ||
@@ -57,10 +154,12 @@ const CallsPage = () => {
   );
 
   const stats = {
-    total: mockCallRecords.length,
-    completed: mockCallRecords.filter(c => c.status === 'completed').length,
-    missed: mockCallRecords.filter(c => c.status === 'missed').length,
-    avgDuration: Math.round(mockCallRecords.filter(c => c.duration > 0).reduce((s, c) => s + c.duration, 0) / mockCallRecords.filter(c => c.duration > 0).length),
+    total: allCalls.length,
+    completed: allCalls.filter(c => c.status === 'completed').length,
+    missed: allCalls.filter(c => c.status === 'missed').length,
+    avgDuration: allCalls.filter(c => c.duration > 0).length > 0
+      ? Math.round(allCalls.filter(c => c.duration > 0).reduce((s, c) => s + c.duration, 0) / allCalls.filter(c => c.duration > 0).length)
+      : 0,
   };
 
   if (selectedCall) {
