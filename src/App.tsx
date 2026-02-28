@@ -20,6 +20,7 @@ import AuditLogPage from "./pages/AuditLogPage";
 import AITrainingPage from "./pages/AITrainingPage";
 import ExpensesPage from "./pages/ExpensesPage";
 import AuthPage from "./pages/AuthPage";
+import CredentialsPage from "./pages/CredentialsPage";
 import NotFound from "./pages/NotFound";
 import { Loader2 } from "lucide-react";
 
@@ -64,6 +65,7 @@ const AppRoutes = () => (
     <Route path="/ai-training" element={<ProtectedRoute><AppLayout><AITrainingPage /></AppLayout></ProtectedRoute>} />
     <Route path="/expenses" element={<ProtectedRoute><AppLayout><ExpensesPage /></AppLayout></ProtectedRoute>} />
     <Route path="/settings" element={<ProtectedRoute><AppLayout><SettingsPage /></AppLayout></ProtectedRoute>} />
+    <Route path="/credentials" element={<ProtectedRoute><AppLayout><CredentialsPage /></AppLayout></ProtectedRoute>} />
     <Route path="*" element={<NotFound />} />
   </Routes>
 );

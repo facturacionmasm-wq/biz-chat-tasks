@@ -237,6 +237,10 @@ serve(async (req) => {
       if (mediaUrl) {
         reply = await processReceiptOCR(mediaUrl, TWILIO_ACCOUNT_SID!, TWILIO_AUTH_TOKEN!, LOVABLE_API_KEY!, tenantId, newContext, supabase);
         
+      } else if (msg.includes('credencial') || msg.includes('contraseña') || msg.includes('password') || msg.includes('usuario y contraseña') || msg.includes('acceso')) {
+        reply = '🔐 Vamos a guardar una credencial compartida.\n\n¿De qué *plataforma o servicio* es? (Ej: Gmail, Hosting, CPanel, Facebook Ads...)';
+        newState = 'credential_collect_platform';
+        
       } else if (msg.includes('gasto') || msg.includes('comprobante') || msg.includes('ticket') || msg.includes('factura') || msg.includes('recibo')) {
         reply = '📸 Envíame la *foto del comprobante* y extraeré los datos automáticamente con OCR.\n\nTambién puedes escribir el gasto manualmente:\n_Ej: "Gasto $350 comida con cliente"_';
         newState = 'employee_expense';
@@ -254,7 +258,7 @@ serve(async (req) => {
           .order('start_at');
 
         if (appointments && appointments.length > 0) {
-          reply = `📅 *Tu agenda de hoy:*\n\n${appointments.map((a, i) => {
+          reply = `📅 *Tu agenda de hoy:*\n\n${appointments.map((a: any, i: number) => {
             const time = new Date(a.start_at).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
             return `${i + 1}. ${time} - ${a.contact_name} (${a.service_type || 'General'})`;
           }).join('\n')}`;
@@ -266,6 +270,43 @@ serve(async (req) => {
         // AI-powered employee assistant
         reply = await getAIResponse(LOVABLE_API_KEY!, tenantId, supabase, 'employee', messageBody, conv);
       }
+
+    // ==================== CREDENTIAL CAPTURE FLOW ====================
+    } else if (botState === 'credential_collect_platform') {
+      const platformName = messageBody.trim();
+      newContext = { ...newContext, cred_platform: platformName };
+      reply = `📌 Plataforma: *${platformName}*\n\nAhora escríbeme el *usuario o email* de acceso:`;
+      newState = 'credential_collect_username';
+
+    } else if (botState === 'credential_collect_username') {
+      const username = messageBody.trim();
+      newContext = { ...newContext, cred_username: username };
+      reply = `👤 Usuario: *${username}*\n\nAhora escríbeme la *contraseña*:`;
+      newState = 'credential_collect_password';
+
+    } else if (botState === 'credential_collect_password') {
+      const password = messageBody.trim();
+      const platform = newContext.cred_platform as string;
+      const username = newContext.cred_username as string;
+
+      // Save to shared_credentials table
+      if (!isSandbox) {
+        await supabase.from('shared_credentials').insert({
+          tenant_id: tenantId,
+          platform_name: platform,
+          username: username,
+          password_encrypted: password,
+          notes: 'Agregada vía WhatsApp bot',
+          created_by: newContext.user_id as string || null,
+        });
+      }
+
+      // Clean up credential context
+      delete newContext.cred_platform;
+      delete newContext.cred_username;
+
+      reply = `✅ ¡Credencial guardada exitosamente!\n\n🔐 *${platform}*\n👤 ${username}\n🔑 ••••••••\n\nTodos los miembros del equipo pueden verla en la sección *Credenciales* de la app.\n\n¿Te ayudo con algo más?`;
+      newState = 'employee_mode';
 
     } else if (botState === 'employee_expense') {
       // Check for media/receipt - OCR processing
