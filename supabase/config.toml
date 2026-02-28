@@ -17,3 +17,9 @@ verify_jwt = false
 
 [functions.daily-reminders]
 verify_jwt = false
+
+[functions.call-status-webhook]
+verify_jwt = false
+
+[functions.call-webhook]
+verify_jwt = false
