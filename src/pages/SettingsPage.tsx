@@ -576,7 +576,38 @@ const SettingsPage = () => {
                           {m.name || 'Sin nombre'}
                         </td>
                         <td className="px-4 py-3 text-muted-foreground">{m.email}</td>
-                        <td className="px-4 py-3"><span className="text-xs bg-secondary px-2 py-0.5 rounded-full">{m.role}</span></td>
+                        <td className="px-4 py-3">
+                          {isSuperAdmin && m.user_id !== user?.id ? (
+                            <select
+                              value={m.role}
+                              onChange={async (e) => {
+                                const newRole = e.target.value;
+                                try {
+                                  const tenantId = await getTenantId();
+                                  const { error } = await supabase
+                                    .from('user_roles')
+                                    .update({ role: newRole } as any)
+                                    .eq('user_id', m.user_id)
+                                    .eq('tenant_id', tenantId);
+                                  if (error) throw error;
+                                  setTeamData(prev => prev.map(t => t.user_id === m.user_id ? { ...t, role: newRole } : t));
+                                  toast.success('Rol actualizado');
+                                } catch (err: any) {
+                                  toast.error(err.message || 'Error al cambiar rol');
+                                }
+                              }}
+                              className="text-xs bg-secondary px-2 py-1 rounded-full border border-border outline-none cursor-pointer"
+                            >
+                              <option value="staff">staff</option>
+                              <option value="admin">admin</option>
+                              <option value="owner">owner</option>
+                              <option value="partner">partner</option>
+                              <option value="guest">guest</option>
+                            </select>
+                          ) : (
+                            <span className="text-xs bg-secondary px-2 py-0.5 rounded-full">{m.role}</span>
+                          )}
+                        </td>
                         <td className="px-4 py-3">
                           <span className={`inline-block w-2 h-2 rounded-full ${m.status === 'active' ? 'bg-green-500' : 'bg-muted-foreground/40'}`} />
                         </td>
