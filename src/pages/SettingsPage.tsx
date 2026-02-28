@@ -87,6 +87,9 @@ const SettingsPage = () => {
   const [invitePassword, setInvitePassword] = useState('');
   const [inviteAvailability, setInviteAvailability] = useState<AvailabilityRule[]>(DEFAULT_RULES);
   const [inviting, setInviting] = useState(false);
+  const [editingAvailabilityUserId, setEditingAvailabilityUserId] = useState<string | null>(null);
+  const [editAvailabilityRules, setEditAvailabilityRules] = useState<AvailabilityRule[]>([]);
+  const [savingAvailability, setSavingAvailability] = useState(false);
 
   // Load tenant data
   useEffect(() => {
@@ -257,6 +260,68 @@ const SettingsPage = () => {
       setInviting(false);
     }
   };
+
+  const handleLoadAvailability = async (targetUserId: string) => {
+    if (editingAvailabilityUserId === targetUserId) {
+      setEditingAvailabilityUserId(null);
+      return;
+    }
+    try {
+      const tenantId = await getTenantId();
+      const { data } = await supabase
+        .from('availability_rules')
+        .select('day_of_week, start_time, end_time, active, buffer_before, buffer_after, max_appointments')
+        .eq('tenant_id', tenantId)
+        .eq('user_id', targetUserId)
+        .order('day_of_week');
+      if (data && data.length > 0) {
+        setEditAvailabilityRules(data.map(r => ({
+          day_of_week: r.day_of_week,
+          start_time: r.start_time.slice(0, 5),
+          end_time: r.end_time.slice(0, 5),
+          active: r.active ?? true,
+          buffer_before: r.buffer_before ?? 10,
+          buffer_after: r.buffer_after ?? 10,
+          max_appointments: r.max_appointments ?? 8,
+        })));
+      } else {
+        setEditAvailabilityRules(DEFAULT_RULES);
+      }
+      setEditingAvailabilityUserId(targetUserId);
+    } catch (err: any) {
+      toast.error('Error al cargar disponibilidad');
+    }
+  };
+
+  const handleSaveAvailability = async (targetUserId: string) => {
+    setSavingAvailability(true);
+    try {
+      const tenantId = await getTenantId();
+      // Delete existing rules
+      await supabase.from('availability_rules').delete().eq('user_id', targetUserId).eq('tenant_id', tenantId);
+      // Insert new rules
+      const rules = editAvailabilityRules.map(r => ({
+        tenant_id: tenantId,
+        user_id: targetUserId,
+        day_of_week: r.day_of_week,
+        start_time: r.start_time,
+        end_time: r.end_time,
+        active: r.active,
+        buffer_before: r.buffer_before,
+        buffer_after: r.buffer_after,
+        max_appointments: r.max_appointments,
+      }));
+      const { error } = await supabase.from('availability_rules').insert(rules);
+      if (error) throw error;
+      toast.success('Disponibilidad actualizada');
+      setEditingAvailabilityUserId(null);
+    } catch (err: any) {
+      toast.error(err.message || 'Error al guardar disponibilidad');
+    } finally {
+      setSavingAvailability(false);
+    }
+  };
+
 
   const [resendingUserId, setResendingUserId] = useState<string | null>(null);
 
@@ -834,25 +899,52 @@ const SettingsPage = () => {
                         </div>
                       </div>
 
-                      {/* Permissions panel */}
+                      {/* Permissions & Availability panel */}
                       {isExpanded && isSuperAdmin && !isSelf && (
-                        <div className="border-t border-border bg-secondary/30 px-4 py-3">
-                          <p className="text-xs font-semibold text-muted-foreground uppercase mb-3">Permisos de acceso a módulos</p>
-                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                            {MODULE_PERMISSIONS.map(mod => {
-                              const enabled = m.permissions[mod.key] !== false;
-                              return (
-                                <label key={mod.key} className="flex items-center gap-2 cursor-pointer group">
-                                  <button
-                                    onClick={() => handleTogglePermission(m.user_id, mod.key, enabled)}
-                                    className={`w-8 h-5 rounded-full flex items-center transition-colors shrink-0 ${enabled ? 'bg-primary justify-end' : 'bg-muted justify-start'}`}
-                                  >
-                                    <div className="w-3.5 h-3.5 bg-card rounded-full mx-0.5 shadow-sm" />
-                                  </button>
-                                  <span className={`text-xs ${enabled ? 'text-foreground' : 'text-muted-foreground'}`}>{mod.label}</span>
-                                </label>
-                              );
-                            })}
+                        <div className="border-t border-border bg-secondary/30 px-4 py-3 space-y-4">
+                          <div>
+                            <p className="text-xs font-semibold text-muted-foreground uppercase mb-3">Permisos de acceso a módulos</p>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                              {MODULE_PERMISSIONS.map(mod => {
+                                const enabled = m.permissions[mod.key] !== false;
+                                return (
+                                  <label key={mod.key} className="flex items-center gap-2 cursor-pointer group">
+                                    <button
+                                      onClick={() => handleTogglePermission(m.user_id, mod.key, enabled)}
+                                      className={`w-8 h-5 rounded-full flex items-center transition-colors shrink-0 ${enabled ? 'bg-primary justify-end' : 'bg-muted justify-start'}`}
+                                    >
+                                      <div className="w-3.5 h-3.5 bg-card rounded-full mx-0.5 shadow-sm" />
+                                    </button>
+                                    <span className={`text-xs ${enabled ? 'text-foreground' : 'text-muted-foreground'}`}>{mod.label}</span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          <div className="border-t border-border pt-3">
+                            <div className="flex items-center justify-between mb-2">
+                              <p className="text-xs font-semibold text-muted-foreground uppercase">Disponibilidad para citas</p>
+                              <button
+                                onClick={() => handleLoadAvailability(m.user_id)}
+                                className="text-xs text-primary hover:underline"
+                              >
+                                {editingAvailabilityUserId === m.user_id ? 'Cerrar' : 'Editar horario'}
+                              </button>
+                            </div>
+                            {editingAvailabilityUserId === m.user_id && (
+                              <div className="space-y-3 animate-fade-in">
+                                <AvailabilityWizard value={editAvailabilityRules} onChange={setEditAvailabilityRules} />
+                                <button
+                                  onClick={() => handleSaveAvailability(m.user_id)}
+                                  disabled={savingAvailability}
+                                  className="bg-primary text-primary-foreground text-xs px-4 py-2 rounded-lg hover:opacity-90 disabled:opacity-40 flex items-center gap-1.5"
+                                >
+                                  {savingAvailability ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                                  Guardar disponibilidad
+                                </button>
+                              </div>
+                            )}
                           </div>
                         </div>
                       )}
