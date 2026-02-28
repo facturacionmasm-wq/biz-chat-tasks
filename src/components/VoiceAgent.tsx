@@ -15,32 +15,54 @@ const VoiceAgent = ({ onCallEnd }: VoiceAgentProps) => {
   const [callDuration, setCallDuration] = useState(0);
   const [callStartTime, setCallStartTime] = useState<number | null>(null);
 
-  // Refs to avoid stale closures in callbacks
   const transcriptLinesRef = useRef<Array<{ role: string; text: string }>>([]);
   const callRecordIdRef = useRef<string | null>(null);
   const callStartTimeRef = useRef<number | null>(null);
   const onCallEndRef = useRef(onCallEnd);
-  
+  const updateDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => { onCallEndRef.current = onCallEnd; }, [onCallEnd]);
+
+  const persistEvent = useCallback(async (eventType: string, eventData: Record<string, any> = {}) => {
+    const recordId = callRecordIdRef.current;
+    if (!recordId) return;
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data: tenantId } = await supabase.rpc('get_user_tenant_id', { _user_id: user.id });
+      if (!tenantId) return;
+      await supabase.from('call_events').insert({
+        call_record_id: recordId,
+        tenant_id: tenantId,
+        event_type: eventType,
+        event_data: { ...eventData, timestamp: new Date().toISOString() },
+      });
+    } catch (err) {
+      console.error('Error persisting event:', err);
+    }
+  }, []);
 
   const addTranscriptLine = useCallback((role: string, text: string) => {
     const newLine = { role, text };
     transcriptLinesRef.current = [...transcriptLinesRef.current, newLine];
     setTranscriptLines(prev => [...prev, newLine]);
 
-    // Update transcript in DB in real-time (debounced via the append)
-    if (callRecordIdRef.current) {
-      const fullTranscript = transcriptLinesRef.current
-        .map(l => `${l.role}: ${l.text}`)
-        .join('\n');
-      supabase
-        .from('call_records')
-        .update({ transcript: fullTranscript })
-        .eq('id', callRecordIdRef.current)
-        .then(({ error }) => {
-          if (error) console.error('Error updating transcript:', error);
-        });
-    }
+    // Debounced transcript update to DB (every 2 seconds max)
+    if (updateDebounceRef.current) clearTimeout(updateDebounceRef.current);
+    updateDebounceRef.current = setTimeout(() => {
+      if (callRecordIdRef.current) {
+        const fullTranscript = transcriptLinesRef.current
+          .map(l => `${l.role}: ${l.text}`)
+          .join('\n');
+        supabase
+          .from('call_records')
+          .update({ transcript: fullTranscript })
+          .eq('id', callRecordIdRef.current)
+          .then(({ error }) => {
+            if (error) console.error('Error updating transcript:', error);
+          });
+      }
+    }, 2000);
   }, []);
 
   const finalizeCall = useCallback(async () => {
@@ -64,7 +86,10 @@ const VoiceAgent = ({ onCallEnd }: VoiceAgentProps) => {
         })
         .eq('id', recordId);
 
-      // 2. Generate AI summary if there's a transcript
+      // 2. Persist completed event
+      await persistEvent('completed', { duration, transcript_length: fullTranscript.length });
+
+      // 3. Generate AI summary if there's a transcript
       if (fullTranscript.trim()) {
         toast.info('Generando resumen con IA...');
         const { data: aiData, error: aiError } = await supabase.functions.invoke('ai-copilot', {
@@ -72,18 +97,20 @@ const VoiceAgent = ({ onCallEnd }: VoiceAgentProps) => {
         });
 
         if (!aiError && aiData?.summary) {
-          // Extract JSON data from summary
-          let extractedData = {};
+          let extractedData: Record<string, any> = {};
           const jsonMatch = aiData.summary.match(/```json\n?([\s\S]*?)\n?```/);
           if (jsonMatch) {
             try { extractedData = JSON.parse(jsonMatch[1]); } catch {}
           }
+
+          const tags = extractedData.suggestedTags || [];
 
           await supabase
             .from('call_records')
             .update({
               summary_system: aiData.summary.replace(/```json[\s\S]*?```/, '').trim(),
               extracted_data: extractedData,
+              tags,
             })
             .eq('id', recordId);
 
@@ -96,11 +123,12 @@ const VoiceAgent = ({ onCallEnd }: VoiceAgentProps) => {
       console.error('Error finalizing call:', err);
       toast.error('Error al finalizar la llamada');
     }
-  }, []);
+  }, [persistEvent]);
 
   const conversation = useConversation({
     onConnect: () => {
       setError(null);
+      persistEvent('in_progress', { source: 'elevenlabs_webrtc' });
     },
     onDisconnect: () => {
       finalizeCall();
@@ -120,6 +148,7 @@ const VoiceAgent = ({ onCallEnd }: VoiceAgentProps) => {
     onError: (err) => {
       console.error('Voice agent error:', err);
       setError('Error de conexión con el agente de voz');
+      persistEvent('failed', { error: String(err) });
     },
   });
 
@@ -148,32 +177,21 @@ const VoiceAgent = ({ onCallEnd }: VoiceAgentProps) => {
     try {
       await navigator.mediaDevices.getUserMedia({ audio: true });
 
-      const { data, error: fnError } = await supabase.functions.invoke(
-        'elevenlabs-conversation-token'
-      );
-
-      if (fnError || !data?.token) {
-        throw new Error(fnError?.message || 'No se recibió token');
-      }
-
-      // Get tenant ID
+      // Get user + tenant first
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('No autenticado');
 
-      const { data: tenantId } = await supabase.rpc('get_user_tenant_id', {
-        _user_id: user.id,
-      });
-
+      const { data: tenantId } = await supabase.rpc('get_user_tenant_id', { _user_id: user.id });
       if (!tenantId) throw new Error('No se encontró tenant');
 
-      // Create call record in DB immediately
+      // Create call record BEFORE getting token to ensure it exists
       const now = new Date().toISOString();
       const { data: callRow, error: insertError } = await supabase
         .from('call_records')
         .insert({
           tenant_id: tenantId,
           channel: 'voice_agent',
-          status: 'in_progress',
+          status: 'initiated',
           started_at: now,
           from_number: 'Voice Agent',
           to_number: user.email || 'Usuario',
@@ -192,27 +210,42 @@ const VoiceAgent = ({ onCallEnd }: VoiceAgentProps) => {
       callStartTimeRef.current = startTime;
       setCallStartTime(startTime);
 
-      toast.success('Llamada registrada en base de datos');
+      // Persist initiated event
+      await persistEvent('initiated', { user_email: user.email });
 
+      // Get ElevenLabs token
+      const { data, error: fnError } = await supabase.functions.invoke('elevenlabs-conversation-token');
+
+      if (fnError || !data?.token) {
+        throw new Error(fnError?.message || 'No se recibió token de ElevenLabs');
+      }
+
+      // Update status to ringing
+      await supabase.from('call_records').update({ status: 'ringing' }).eq('id', callRow.id);
+      await persistEvent('ringing');
+
+      // Start the session
       await conversation.startSession({
         conversationToken: data.token,
         connectionType: 'webrtc',
       });
+
+      toast.success('Llamada conectada');
     } catch (err: any) {
       console.error('Failed to start call:', err);
       setError(err.message || 'No se pudo iniciar la llamada');
 
-      // Mark as failed if record was created
       if (callRecordIdRef.current) {
         await supabase
           .from('call_records')
           .update({ status: 'failed', ended_at: new Date().toISOString() })
           .eq('id', callRecordIdRef.current);
+        await persistEvent('failed', { error: err.message });
       }
     } finally {
       setIsConnecting(false);
     }
-  }, [conversation]);
+  }, [conversation, persistEvent]);
 
   const endCall = useCallback(async () => {
     await conversation.endSession();
@@ -222,7 +255,6 @@ const VoiceAgent = ({ onCallEnd }: VoiceAgentProps) => {
 
   return (
     <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
-      {/* Header */}
       <div className={`px-5 py-4 flex items-center justify-between ${isActive ? 'bg-primary/10 border-b border-primary/20' : 'border-b border-border'}`}>
         <div className="flex items-center gap-3">
           <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isActive ? 'bg-primary text-primary-foreground animate-pulse' : 'bg-muted text-muted-foreground'}`}>
@@ -276,13 +308,10 @@ const VoiceAgent = ({ onCallEnd }: VoiceAgentProps) => {
         </div>
       </div>
 
-      {/* Transcript */}
       {(isActive || transcriptLines.length > 0) && (
         <div className="p-4 max-h-80 overflow-y-auto scrollbar-thin space-y-2">
           {transcriptLines.length === 0 && isActive && (
-            <p className="text-sm text-muted-foreground text-center py-4">
-              Esperando conversación...
-            </p>
+            <p className="text-sm text-muted-foreground text-center py-4">Esperando conversación...</p>
           )}
           {transcriptLines.map((line, i) => (
             <div
@@ -300,7 +329,6 @@ const VoiceAgent = ({ onCallEnd }: VoiceAgentProps) => {
         </div>
       )}
 
-      {/* Error */}
       {error && (
         <div className="px-5 py-3 bg-destructive/10 border-t border-destructive/20">
           <p className="text-xs text-destructive">{error}</p>

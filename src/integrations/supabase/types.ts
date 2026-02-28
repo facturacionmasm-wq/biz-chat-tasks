@@ -183,6 +183,51 @@ export type Database = {
           },
         ]
       }
+      call_events: {
+        Row: {
+          call_record_id: string
+          created_at: string
+          event_data: Json | null
+          event_type: string
+          id: string
+          tenant_id: string
+          twilio_call_sid: string | null
+        }
+        Insert: {
+          call_record_id: string
+          created_at?: string
+          event_data?: Json | null
+          event_type: string
+          id?: string
+          tenant_id: string
+          twilio_call_sid?: string | null
+        }
+        Update: {
+          call_record_id?: string
+          created_at?: string
+          event_data?: Json | null
+          event_type?: string
+          id?: string
+          tenant_id?: string
+          twilio_call_sid?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "call_events_call_record_id_fkey"
+            columns: ["call_record_id"]
+            isOneToOne: false
+            referencedRelation: "call_records"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "call_events_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       call_records: {
         Row: {
           agent_user_id: string | null
