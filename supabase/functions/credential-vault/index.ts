@@ -76,7 +76,6 @@ serve(async (req) => {
   const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
   const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
-  // Require authenticated user
   const authHeader = req.headers.get('Authorization');
   if (!authHeader?.startsWith('Bearer ')) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
@@ -84,18 +83,39 @@ serve(async (req) => {
     });
   }
 
+  const token = authHeader.replace('Bearer ', '');
+  const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  let tenantId: string;
+  let userId: string | null = null;
+
+  // Check if this is a service-role call (from whatsapp-bot)
+  if (token === SUPABASE_SERVICE_ROLE_KEY) {
+    // Service-role call: tenant_id must be in the body
+    const body = await req.json();
+    if (!body.tenant_id) {
+      return new Response(JSON.stringify({ error: 'tenant_id required for service calls' }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    tenantId = body.tenant_id;
+    userId = body.user_id || null;
+
+    // Process the action from parsed body
+    return await processAction(body, tenantId, userId, adminClient, corsHeaders);
+  }
+
+  // Regular user call: validate JWT
   const anonClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     global: { headers: { Authorization: authHeader } },
   });
-  const { data: claimsData, error: claimsError } = await anonClient.auth.getClaims(authHeader.replace('Bearer ', ''));
+  const { data: claimsData, error: claimsError } = await anonClient.auth.getClaims(token);
   if (claimsError || !claimsData?.claims) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
 
-  const userId = claimsData.claims.sub as string;
-  const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  userId = claimsData.claims.sub as string;
 
   // Get user's tenant
   const { data: profile } = await adminClient
@@ -109,75 +129,11 @@ serve(async (req) => {
       status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
+  tenantId = profile.tenant_id;
 
   try {
-    const { action, id, platform_name, username, password, notes } = await req.json();
-
-    if (action === 'encrypt_save') {
-      const encryptedPassword = await encrypt(password);
-      
-      if (id) {
-        // Update
-        const { error } = await adminClient
-          .from('shared_credentials')
-          .update({
-            platform_name,
-            username,
-            password_encrypted: encryptedPassword,
-            notes: notes || null,
-          })
-          .eq('id', id)
-          .eq('tenant_id', profile.tenant_id);
-        if (error) throw error;
-      } else {
-        // Insert
-        const { error } = await adminClient
-          .from('shared_credentials')
-          .insert({
-            tenant_id: profile.tenant_id,
-            platform_name,
-            username,
-            password_encrypted: encryptedPassword,
-            notes: notes || null,
-            created_by: userId,
-          });
-        if (error) throw error;
-      }
-
-      return new Response(JSON.stringify({ success: true }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    if (action === 'decrypt') {
-      if (!id) {
-        return new Response(JSON.stringify({ error: 'Missing credential id' }), {
-          status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-
-      const { data: cred } = await adminClient
-        .from('shared_credentials')
-        .select('password_encrypted')
-        .eq('id', id)
-        .eq('tenant_id', profile.tenant_id)
-        .maybeSingle();
-
-      if (!cred) {
-        return new Response(JSON.stringify({ error: 'Credential not found' }), {
-          status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-
-      const decrypted = await decrypt(cred.password_encrypted);
-      return new Response(JSON.stringify({ password: decrypted }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    return new Response(JSON.stringify({ error: 'Unknown action' }), {
-      status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    const body = await req.json();
+    return await processAction(body, tenantId, userId, adminClient, corsHeaders);
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Unknown error';
     console.error('Credential vault error:', msg);
@@ -186,3 +142,77 @@ serve(async (req) => {
     });
   }
 });
+
+async function processAction(
+  body: any,
+  tenantId: string,
+  userId: string | null,
+  adminClient: any,
+  corsHeaders: Record<string, string>
+): Promise<Response> {
+  const { action, id, platform_name, username, password, notes } = body;
+
+  if (action === 'encrypt_save') {
+    const encryptedPassword = await encrypt(password);
+    
+    if (id) {
+      const { error } = await adminClient
+        .from('shared_credentials')
+        .update({
+          platform_name,
+          username,
+          password_encrypted: encryptedPassword,
+          notes: notes || null,
+        })
+        .eq('id', id)
+        .eq('tenant_id', tenantId);
+      if (error) throw error;
+    } else {
+      const { error } = await adminClient
+        .from('shared_credentials')
+        .insert({
+          tenant_id: tenantId,
+          platform_name,
+          username,
+          password_encrypted: encryptedPassword,
+          notes: notes || null,
+          created_by: userId,
+        });
+      if (error) throw error;
+    }
+
+    return new Response(JSON.stringify({ success: true }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  if (action === 'decrypt') {
+    if (!id) {
+      return new Response(JSON.stringify({ error: 'Missing credential id' }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const { data: cred } = await adminClient
+      .from('shared_credentials')
+      .select('password_encrypted')
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
+
+    if (!cred) {
+      return new Response(JSON.stringify({ error: 'Credential not found' }), {
+        status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const decrypted = await decrypt(cred.password_encrypted);
+    return new Response(JSON.stringify({ password: decrypted }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  return new Response(JSON.stringify({ error: 'Unknown action' }), {
+    status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
