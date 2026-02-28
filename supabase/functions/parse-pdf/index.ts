@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { getDocument } from "https://esm.sh/pdfjs-serverless@0.6.0";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -29,51 +30,15 @@ serve(async (req) => {
     const arrayBuffer = await file.arrayBuffer();
     const uint8 = new Uint8Array(arrayBuffer);
 
-    // Extract text from PDF by finding text strings between parentheses in PDF streams
-    // and BT/ET text blocks
+    const doc = await getDocument(uint8).promise;
     let extractedText = '';
-
-    // Decode the buffer as latin1 to preserve bytes
-    const raw = new TextDecoder('latin-1').decode(uint8);
-
-    // Method 1: Extract text from Tj and TJ operators
-    const tjMatches = raw.matchAll(/\(([^)]*)\)\s*Tj/g);
-    for (const m of tjMatches) {
-      extractedText += m[1] + ' ';
+    for (let i = 1; i <= Math.min(doc.numPages, 50); i++) {
+      const page = await doc.getPage(i);
+      const content = await page.getTextContent();
+      extractedText += content.items.map((item: any) => item.str).join(' ') + '\n';
     }
 
-    // Method 2: Extract from TJ arrays
-    const tjArrayMatches = raw.matchAll(/\[(.*?)\]\s*TJ/g);
-    for (const m of tjArrayMatches) {
-      const inner = m[1];
-      const parts = inner.matchAll(/\(([^)]*)\)/g);
-      for (const p of parts) {
-        extractedText += p[1];
-      }
-      extractedText += ' ';
-    }
-
-    // Clean up the text
-    extractedText = extractedText
-      .replace(/\\n/g, '\n')
-      .replace(/\\r/g, '')
-      .replace(/\\t/g, ' ')
-      .replace(/\\\(/g, '(')
-      .replace(/\\\)/g, ')')
-      .replace(/\\\\/g, '\\')
-      .replace(/\s+/g, ' ')
-      .trim();
-
-    // If basic extraction got very little, try to get any readable strings
-    if (extractedText.length < 50) {
-      const readable = raw.match(/[\x20-\x7E]{10,}/g);
-      if (readable) {
-        extractedText = readable
-          .filter(s => !s.includes('/') && !s.includes('<<') && !s.includes('stream'))
-          .join(' ')
-          .substring(0, 10000);
-      }
-    }
+    extractedText = extractedText.trim();
 
     if (!extractedText || extractedText.length < 20) {
       return new Response(JSON.stringify({
@@ -83,7 +48,7 @@ serve(async (req) => {
       });
     }
 
-    // Use AI to clean and structure the extracted text
+    // Use AI to clean and structure
     const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -95,7 +60,7 @@ serve(async (req) => {
         messages: [
           {
             role: 'system',
-            content: 'Recibes texto extraído de un PDF que puede tener errores de formato. Limpia el texto, estructura el contenido en secciones con markdown, y devuelve un resultado legible. Mantén todo el contenido original, solo mejora el formato. Responde SOLO con el texto limpio en markdown, sin explicaciones.',
+            content: 'Recibes texto extraído de un PDF. Limpia el texto, estructura el contenido en secciones con markdown y devuelve un resultado legible. Mantén todo el contenido original, solo mejora el formato. Responde SOLO con el texto limpio en markdown.',
           },
           { role: 'user', content: extractedText.substring(0, 15000) },
         ],
@@ -109,7 +74,6 @@ serve(async (req) => {
       success: true,
       content: cleanedText,
       title: file.name.replace(/\.pdf$/i, ''),
-      rawLength: extractedText.length,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
