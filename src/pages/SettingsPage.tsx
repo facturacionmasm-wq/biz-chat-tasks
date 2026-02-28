@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Building2, Users, Shield, CreditCard, Bell, Database, Brain, Globe, ChevronRight, User, KeyRound, Loader2, Palette, Save, Upload } from 'lucide-react';
+import { Building2, Users, Shield, CreditCard, Bell, Database, Brain, Globe, ChevronRight, User, KeyRound, Loader2, Palette, Save, Upload, Image, X } from 'lucide-react';
 import { teamMembers } from '@/data/mockData';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -42,6 +42,10 @@ const SettingsPage = () => {
   const [companyWebsite, setCompanyWebsite] = useState('');
   const [companyPhone, setCompanyPhone] = useState('');
   const [companyAddress, setCompanyAddress] = useState('');
+  const [logoUrl, setLogoUrl] = useState('');
+  const [faviconUrl, setFaviconUrl] = useState('');
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [uploadingFavicon, setUploadingFavicon] = useState(false);
   const [savingBranding, setSavingBranding] = useState(false);
 
   // Load tenant data
@@ -70,10 +74,46 @@ const SettingsPage = () => {
         setCompanyWebsite(settings.website || '');
         setCompanyPhone(settings.phone || '');
         setCompanyAddress(settings.address || '');
+        setLogoUrl(settings.logo_url || '');
+        setFaviconUrl(settings.favicon_url || '');
       }
     };
     load();
   }, [user]);
+
+  const handleUploadFile = async (file: File, type: 'logo' | 'favicon') => {
+    const setUploading = type === 'logo' ? setUploadingLogo : setUploadingFavicon;
+    setUploading(true);
+    try {
+      const tenantId = await getTenantId();
+      const ext = file.name.split('.').pop();
+      const path = `${tenantId}/${type}.${ext}`;
+
+      // Remove old file first
+      await supabase.storage.from('branding').remove([path]);
+
+      const { error } = await supabase.storage.from('branding').upload(path, file, { upsert: true });
+      if (error) throw error;
+
+      const { data: urlData } = supabase.storage.from('branding').getPublicUrl(path);
+      const publicUrl = urlData.publicUrl + '?t=' + Date.now();
+
+      if (type === 'logo') setLogoUrl(publicUrl);
+      else setFaviconUrl(publicUrl);
+
+      // Save URL to settings_json
+      const { data: tenant } = await supabase.from('tenants').select('settings_json').eq('id', tenantId).maybeSingle();
+      const current = ((tenant?.settings_json || {}) as Record<string, any>);
+      const updated = { ...current, [`${type}_url`]: publicUrl };
+      await supabase.from('tenants').update({ settings_json: updated } as any).eq('id', tenantId);
+
+      toast.success(`${type === 'logo' ? 'Logo' : 'Favicon'} subido correctamente`);
+    } catch (err: any) {
+      toast.error(err.message || `Error al subir ${type}`);
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const getTenantId = async () => {
     if (!user) throw new Error('No autenticado');
@@ -113,6 +153,8 @@ const SettingsPage = () => {
         website: companyWebsite,
         phone: companyPhone,
         address: companyAddress,
+        logo_url: logoUrl,
+        favicon_url: faviconUrl,
       };
       const { error } = await supabase
         .from('tenants')
@@ -242,6 +284,53 @@ const SettingsPage = () => {
               <Palette size={20} className="text-primary" /> Branding de la empresa
             </h3>
             <div className="space-y-4">
+              {/* Logo & Favicon */}
+              <div className="bg-card border border-border rounded-xl p-5">
+                <h4 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2"><Image size={16} /> Logo y Favicon</h4>
+                <div className="grid grid-cols-2 gap-6">
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground mb-2 block">Logo de la empresa</label>
+                    <div className="border-2 border-dashed border-border rounded-xl p-4 flex flex-col items-center justify-center gap-2 min-h-[120px] relative">
+                      {logoUrl ? (
+                        <>
+                          <img src={logoUrl} alt="Logo" className="max-h-20 max-w-full object-contain rounded" />
+                          <button onClick={() => { setLogoUrl(''); }} className="absolute top-2 right-2 p-1 rounded-full bg-destructive/10 text-destructive hover:bg-destructive/20"><X size={12} /></button>
+                        </>
+                      ) : (
+                        <>
+                          <Upload size={24} className="text-muted-foreground" />
+                          <p className="text-xs text-muted-foreground">PNG, JPG o SVG</p>
+                        </>
+                      )}
+                      <label className="text-xs text-primary cursor-pointer hover:underline font-medium">
+                        {uploadingLogo ? <Loader2 size={14} className="animate-spin inline" /> : (logoUrl ? 'Cambiar' : 'Subir logo')}
+                        <input type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) handleUploadFile(f, 'logo'); }} />
+                      </label>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground mb-2 block">Favicon</label>
+                    <div className="border-2 border-dashed border-border rounded-xl p-4 flex flex-col items-center justify-center gap-2 min-h-[120px] relative">
+                      {faviconUrl ? (
+                        <>
+                          <img src={faviconUrl} alt="Favicon" className="max-h-16 max-w-full object-contain rounded" />
+                          <button onClick={() => { setFaviconUrl(''); }} className="absolute top-2 right-2 p-1 rounded-full bg-destructive/10 text-destructive hover:bg-destructive/20"><X size={12} /></button>
+                        </>
+                      ) : (
+                        <>
+                          <Upload size={24} className="text-muted-foreground" />
+                          <p className="text-xs text-muted-foreground">ICO, PNG (32x32)</p>
+                        </>
+                      )}
+                      <label className="text-xs text-primary cursor-pointer hover:underline font-medium">
+                        {uploadingFavicon ? <Loader2 size={14} className="animate-spin inline" /> : (faviconUrl ? 'Cambiar' : 'Subir favicon')}
+                        <input type="file" accept="image/*,.ico" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) handleUploadFile(f, 'favicon'); }} />
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div className="bg-card border border-border rounded-xl p-5">
                 <h4 className="text-sm font-semibold text-foreground mb-3">Colores corporativos</h4>
                 <div className="grid grid-cols-2 gap-4">
@@ -287,13 +376,23 @@ const SettingsPage = () => {
               <div className="bg-card border border-border rounded-xl p-5">
                 <h4 className="text-sm font-semibold text-foreground mb-3">Vista previa</h4>
                 <div className="flex items-center gap-4 p-4 rounded-lg border border-border" style={{ background: `linear-gradient(135deg, ${primaryColor}15, ${secondaryColor}15)` }}>
-                  <div className="w-12 h-12 rounded-xl flex items-center justify-center text-white font-bold text-lg" style={{ backgroundColor: primaryColor }}>
-                    {orgName ? orgName.charAt(0).toUpperCase() : 'E'}
-                  </div>
-                  <div>
+                  {logoUrl ? (
+                    <img src={logoUrl} alt="Logo" className="w-12 h-12 rounded-xl object-contain" />
+                  ) : (
+                    <div className="w-12 h-12 rounded-xl flex items-center justify-center text-white font-bold text-lg" style={{ backgroundColor: primaryColor }}>
+                      {orgName ? orgName.charAt(0).toUpperCase() : 'E'}
+                    </div>
+                  )}
+                  <div className="flex-1">
                     <p className="font-bold text-foreground">{orgName || 'Mi Empresa'}</p>
                     <p className="text-xs text-muted-foreground">{companySlogan || 'Tu slogan aquí'}</p>
                   </div>
+                  {faviconUrl && (
+                    <div className="flex flex-col items-center gap-1">
+                      <img src={faviconUrl} alt="Favicon" className="w-6 h-6 object-contain" />
+                      <span className="text-[10px] text-muted-foreground">Favicon</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
