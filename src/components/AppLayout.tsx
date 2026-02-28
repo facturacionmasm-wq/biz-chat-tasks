@@ -3,8 +3,10 @@ import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, MessageSquare, FolderKanban, CalendarDays,
   Target, BookOpen, Plug, Settings, ChevronLeft, ChevronRight,
-  Building2, Bell, Search, Sparkles, MessageCircle, Phone, CalendarPlus, Shield, GraduationCap, Receipt
+  Building2, Bell, Search, Sparkles, MessageCircle, Phone, CalendarPlus, Shield, GraduationCap, Receipt, LogOut
 } from 'lucide-react';
+import { useBranding } from '@/hooks/useBranding';
+import { useAuth } from '@/contexts/AuthContext';
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
@@ -33,6 +35,8 @@ interface AppLayoutProps {
 const AppLayout = ({ children }: AppLayoutProps) => {
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
+  const branding = useBranding();
+  const { user, userRole, signOut } = useAuth();
 
   return (
     <div className="flex h-screen bg-background overflow-hidden">
@@ -40,13 +44,17 @@ const AppLayout = ({ children }: AppLayoutProps) => {
       <aside className={`${collapsed ? 'w-16' : 'w-60'} shrink-0 bg-sidebar-custom-bg flex flex-col h-full transition-all duration-200`}>
         {/* Logo */}
         <div className={`h-14 flex items-center border-b border-sidebar-custom-border ${collapsed ? 'justify-center px-2' : 'px-4 gap-3'}`}>
-          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
-            <Building2 size={18} className="text-primary-foreground" />
-          </div>
+          {branding.logoUrl ? (
+            <img src={branding.logoUrl} alt={branding.orgName} className="h-8 w-8 rounded-lg object-contain shrink-0" />
+          ) : (
+            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
+              <Building2 size={18} className="text-primary-foreground" />
+            </div>
+          )}
           {!collapsed && (
             <div className="min-w-0">
-              <h1 className="text-sidebar-custom-fg-bright font-bold text-sm leading-tight truncate">OfficeHub</h1>
-              <p className="text-[10px] text-sidebar-custom-muted truncate">Mi Empresa</p>
+              <h1 className="text-sidebar-custom-fg-bright font-bold text-sm leading-tight truncate">{branding.orgName}</h1>
+              {branding.slogan && <p className="text-[10px] text-sidebar-custom-muted truncate">{branding.slogan}</p>}
             </div>
           )}
         </div>
@@ -119,8 +127,21 @@ const AppLayout = ({ children }: AppLayoutProps) => {
           </div>
         </nav>
 
-        {/* Collapse toggle */}
-        <div className="p-2 border-t border-sidebar-custom-border">
+        {/* User & Logout */}
+        <div className="p-2 border-t border-sidebar-custom-border space-y-1">
+          {!collapsed && user && (
+            <div className="px-2 py-1.5">
+              <p className="text-xs font-medium text-sidebar-custom-fg-bright truncate">{user.email}</p>
+              <p className="text-[10px] text-sidebar-custom-muted capitalize">{userRole || 'staff'}</p>
+            </div>
+          )}
+          <button
+            onClick={signOut}
+            className={`w-full flex items-center gap-2.5 rounded-md text-sm font-medium text-sidebar-custom-fg hover:bg-sidebar-custom-hover hover:text-destructive transition-colors ${collapsed ? 'justify-center px-2 py-2' : 'px-3 py-2'}`}
+          >
+            <LogOut size={16} className="shrink-0" />
+            {!collapsed && <span>Cerrar sesión</span>}
+          </button>
           <button
             onClick={() => setCollapsed(!collapsed)}
             className="w-full flex items-center justify-center py-1.5 rounded-md text-sidebar-custom-muted hover:text-sidebar-custom-fg-bright hover:bg-sidebar-custom-hover transition-colors"
@@ -137,7 +158,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
           <div className="flex items-center gap-2">
             <h2 className="text-sm font-semibold text-foreground">
               {navItems.find(n => n.to === '/' ? location.pathname === '/' : location.pathname.startsWith(n.to))?.label ||
-               adminItems.find(n => location.pathname.startsWith(n.to))?.label || 'OfficeHub'}
+               adminItems.find(n => location.pathname.startsWith(n.to))?.label || branding.orgName}
             </h2>
           </div>
           <div className="flex items-center gap-2">
@@ -149,7 +170,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
               <MessageCircle size={18} />
             </button>
             <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-xs font-bold ml-1 cursor-pointer">
-              TU
+              {user?.email?.charAt(0).toUpperCase() || 'U'}
             </div>
           </div>
         </header>

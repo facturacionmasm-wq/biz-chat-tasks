@@ -2,17 +2,18 @@ import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Loader2, Building2 } from 'lucide-react';
+import { useBranding } from '@/hooks/useBranding';
 
 const AuthPage = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const branding = useBranding();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-
     try {
       if (isLogin) {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -34,10 +35,15 @@ const AuthPage = () => {
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <div className="w-14 h-14 bg-primary rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <Building2 size={28} className="text-primary-foreground" />
-          </div>
-          <h1 className="text-2xl font-bold text-foreground">OfficeHub</h1>
+          {branding.logoUrl ? (
+            <img src={branding.logoUrl} alt={branding.orgName} className="h-16 mx-auto mb-4 object-contain" />
+          ) : (
+            <div className="w-14 h-14 bg-primary rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <Building2 size={28} className="text-primary-foreground" />
+            </div>
+          )}
+          <h1 className="text-2xl font-bold text-foreground">{branding.orgName}</h1>
+          {branding.slogan && <p className="text-xs text-muted-foreground mt-0.5">{branding.slogan}</p>}
           <p className="text-sm text-muted-foreground mt-1">
             {isLogin ? 'Inicia sesión en tu cuenta' : 'Crea tu cuenta'}
           </p>
