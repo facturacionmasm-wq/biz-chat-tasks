@@ -35,26 +35,26 @@ const Dashboard = () => {
   ];
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 max-w-7xl mx-auto">
       {/* Welcome */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-3 sm:gap-4">
           {branding.logoUrl && (
-            <img src={branding.logoUrl} alt={branding.orgName} className="h-10 object-contain" />
+            <img src={branding.logoUrl} alt={branding.orgName} className="h-8 sm:h-10 object-contain" />
           )}
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Buenos días, {user?.email?.split('@')[0] || ''} 👋</h1>
-            <p className="text-muted-foreground text-sm mt-1">Resumen de comunicación, atención y agenda.</p>
+            <h1 className="text-xl sm:text-2xl font-bold text-foreground">Buenos días, {user?.email?.split('@')[0] || ''} 👋</h1>
+            <p className="text-muted-foreground text-xs sm:text-sm mt-1">Resumen de comunicación, atención y agenda.</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 bg-primary/10 text-primary border border-primary/20 rounded-lg px-4 py-2 text-sm font-medium">
+        <div className="flex items-center gap-2 bg-primary/10 text-primary border border-primary/20 rounded-lg px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium w-fit">
           <Sparkles size={16} />
-          <span>Resumen IA semanal disponible</span>
+          <span>Resumen IA semanal</span>
         </div>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         {stats.map(s => (
           <Link to={s.link} key={s.label} className="bg-card border border-border rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
             <div className="flex items-center justify-between mb-2">
@@ -66,7 +66,7 @@ const Dashboard = () => {
         ))}
       </div>
 
-      <div className="grid grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
         {/* Recent calls */}
         <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
           <div className="flex items-center justify-between mb-4">
@@ -147,7 +147,7 @@ const Dashboard = () => {
       </div>
 
       {/* Projects & AI Summary */}
-      <div className="grid grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
         <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
           <h3 className="font-semibold text-foreground flex items-center gap-2 mb-4">
             <FolderKanban size={16} className="text-primary" /> Proyectos activos

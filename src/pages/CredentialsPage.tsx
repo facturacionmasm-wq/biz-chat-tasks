@@ -134,8 +134,8 @@ const CredentialsPage = () => {
   );
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="p-4 sm:p-6 max-w-5xl mx-auto space-y-4 sm:space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
             <KeyRound className="text-primary" size={24} />
@@ -180,7 +180,7 @@ const CredentialsPage = () => {
       </div>
 
       {/* Search */}
-      <div className="relative max-w-sm">
+      <div className="relative w-full sm:max-w-sm">
         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
         <Input placeholder="Buscar plataforma..." className="pl-9" value={search} onChange={e => setSearch(e.target.value)} />
       </div>
@@ -197,7 +197,7 @@ const CredentialsPage = () => {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map(cred => {
             const revealed = revealedIds.has(cred.id);
             return (
@@ -208,7 +208,7 @@ const CredentialsPage = () => {
                       <Globe size={16} className="text-primary shrink-0" />
                       <CardTitle className="text-sm font-semibold">{cred.platform_name}</CardTitle>
                     </div>
-                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                       <button onClick={() => handleEdit(cred)} className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground">
                         <Edit2 size={14} />
                       </button>
