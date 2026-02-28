@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { BookOpen, Search, Plus, Tag, User, Calendar, Lock, Globe, FileText, X, Upload, Loader2, Trash2, Edit3 } from 'lucide-react';
+import { BookOpen, Search, Plus, Tag, User, Calendar, Lock, Globe, FileText, X, Upload, Loader2, Trash2, Edit3, Link, FileUp } from 'lucide-react';
 import { knowledgeArticles as mockArticles } from '@/data/mockData';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -42,6 +42,9 @@ const KnowledgePage = () => {
   const [formTags, setFormTags] = useState('');
   const [formVisibility, setFormVisibility] = useState<'internal' | 'external'>('internal');
   const [syncToElevenLabs, setSyncToElevenLabs] = useState(true);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importUrl, setImportUrl] = useState('');
+  const [showImportOptions, setShowImportOptions] = useState(false);
 
   // Use mock data as initial articles
   const [articles, setArticles] = useState<LocalArticle[]>(
@@ -77,6 +80,50 @@ const KnowledgePage = () => {
     setSyncToElevenLabs(true);
     setShowEditor(true);
   };
+
+  const handleImportUrl = useCallback(async () => {
+    if (!importUrl.trim()) return;
+    setIsImporting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('firecrawl-scrape', {
+        body: { url: importUrl },
+      });
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Error al extraer contenido');
+
+      if (data.title && !formTitle.trim()) setFormTitle(data.title);
+      setFormContent(prev => prev ? `${prev}\n\n---\n\n${data.markdown}` : data.markdown);
+      setImportUrl('');
+      setShowImportOptions(false);
+      toast.success('Contenido extraído de la URL');
+    } catch (err: any) {
+      console.error('URL import error:', err);
+      toast.error('Error al importar URL: ' + (err.message || ''));
+    } finally {
+      setIsImporting(false);
+    }
+  }, [importUrl, formTitle]);
+
+  const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsImporting(true);
+    try {
+      const text = await file.text();
+      if (!formTitle.trim()) {
+        setFormTitle(file.name.replace(/\.[^/.]+$/, ''));
+      }
+      setFormContent(prev => prev ? `${prev}\n\n---\n\n${text}` : text);
+      setShowImportOptions(false);
+      toast.success(`Archivo "${file.name}" importado`);
+    } catch (err: any) {
+      toast.error('Error al leer archivo: ' + (err.message || ''));
+    } finally {
+      setIsImporting(false);
+      e.target.value = '';
+    }
+  }, [formTitle]);
 
   const saveArticle = useCallback(async () => {
     if (!formTitle.trim() || !formContent.trim()) {
@@ -252,6 +299,74 @@ const KnowledgePage = () => {
             </div>
 
             <div className="p-6 space-y-4">
+              {/* Import section */}
+              <div className="border border-dashed border-border rounded-lg p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-medium text-muted-foreground">Importar contenido</p>
+                  <button
+                    type="button"
+                    onClick={() => setShowImportOptions(!showImportOptions)}
+                    className="text-xs text-primary hover:underline"
+                  >
+                    {showImportOptions ? 'Ocultar' : 'Mostrar opciones'}
+                  </button>
+                </div>
+
+                {!showImportOptions ? (
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowImportOptions(true)}
+                      className="flex-1 flex items-center justify-center gap-2 bg-secondary hover:bg-secondary/80 text-secondary-foreground text-sm py-2.5 rounded-lg transition-colors"
+                    >
+                      <Link size={14} /> Importar desde URL
+                    </button>
+                    <label className="flex-1 flex items-center justify-center gap-2 bg-secondary hover:bg-secondary/80 text-secondary-foreground text-sm py-2.5 rounded-lg transition-colors cursor-pointer">
+                      <FileUp size={14} /> Subir archivo
+                      <input type="file" accept=".txt,.md,.csv,.json,.xml,.html" onChange={handleFileUpload} className="hidden" />
+                    </label>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {/* URL import */}
+                    <div>
+                      <label className="text-xs text-muted-foreground mb-1 block">URL de página web</label>
+                      <div className="flex gap-2">
+                        <div className="flex-1 flex items-center gap-2 bg-secondary rounded-lg px-3 py-2 border border-border focus-within:border-primary">
+                          <Link size={14} className="text-muted-foreground shrink-0" />
+                          <input
+                            value={importUrl}
+                            onChange={e => setImportUrl(e.target.value)}
+                            placeholder="https://ejemplo.com/articulo"
+                            className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleImportUrl}
+                          disabled={!importUrl.trim() || isImporting}
+                          className="flex items-center gap-1.5 bg-primary text-primary-foreground text-sm px-3 py-2 rounded-lg hover:opacity-90 disabled:opacity-50"
+                        >
+                          {isImporting ? <Loader2 size={14} className="animate-spin" /> : <Globe size={14} />}
+                          Extraer
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground mt-1">Extrae automáticamente el contenido principal de la página</p>
+                    </div>
+
+                    {/* File upload */}
+                    <div>
+                      <label className="text-xs text-muted-foreground mb-1 block">Archivo de texto</label>
+                      <label className="flex items-center justify-center gap-2 bg-secondary hover:bg-secondary/80 text-secondary-foreground text-sm py-3 rounded-lg border border-dashed border-border cursor-pointer transition-colors">
+                        <FileUp size={14} />
+                        {isImporting ? 'Procesando...' : 'Arrastra o haz clic para subir (.txt, .md, .csv, .json, .html)'}
+                        <input type="file" accept=".txt,.md,.csv,.json,.xml,.html" onChange={handleFileUpload} className="hidden" disabled={isImporting} />
+                      </label>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <div>
                 <label className="text-xs font-medium text-muted-foreground mb-1 block">Título</label>
                 <input
