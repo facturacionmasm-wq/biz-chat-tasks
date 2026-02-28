@@ -23,29 +23,46 @@ serve(async (req) => {
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
   try {
-    const { conversationId, messageBody, contactPhone, tenantId, mediaUrl } = await req.json();
+    const { conversationId, messageBody, contactPhone, tenantId, mediaUrl, sandboxMode, sandboxState, sandboxContext } = await req.json();
 
-    if (!conversationId || !messageBody) {
-      return new Response(JSON.stringify({ error: 'Missing conversationId or messageBody' }), {
+    if (!messageBody) {
+      return new Response(JSON.stringify({ error: 'Missing messageBody' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    // Get conversation with bot state
-    const { data: conv } = await supabase
-      .from('whatsapp_conversations')
-      .select('*')
-      .eq('id', conversationId)
-      .single();
+    // === SANDBOX MODE: skip DB lookups, use passed state ===
+    const isSandbox = sandboxMode === true;
 
-    if (!conv) {
-      return new Response(JSON.stringify({ error: 'Conversation not found' }), {
-        status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    let botState: string;
+    let botContext: Record<string, unknown>;
+    let conv: any = null;
+
+    if (isSandbox) {
+      botState = sandboxState || 'welcome';
+      botContext = sandboxContext || {};
+      conv = { id: '__sandbox__', bot_state: botState, bot_context: botContext };
+    } else {
+      if (!conversationId) {
+        return new Response(JSON.stringify({ error: 'Missing conversationId' }), {
+          status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      const { data } = await supabase
+        .from('whatsapp_conversations')
+        .select('*')
+        .eq('id', conversationId)
+        .single();
+      conv = data;
+      if (!conv) {
+        return new Response(JSON.stringify({ error: 'Conversation not found' }), {
+          status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      botState = conv.bot_state || 'welcome';
+      botContext = (conv.bot_context as Record<string, unknown>) || {};
     }
 
-    const botState = conv.bot_state || 'welcome';
-    const botContext = (conv.bot_context as Record<string, unknown>) || {};
     const msg = messageBody.trim().toLowerCase();
     let reply = '';
     let newState = botState;
@@ -54,30 +71,31 @@ serve(async (req) => {
     // ==================== STATE MACHINE ====================
 
     if (botState === 'welcome') {
-      // First interaction: welcome message
-      const { data: tenant } = await supabase
-        .from('tenants')
-        .select('name')
-        .eq('id', tenantId)
-        .single();
-
-      const companyName = tenant?.name || 'nuestra empresa';
-      reply = `¡Hola! 👋 Soy el asistente virtual de *${companyName}*. Mi nombre es *Aria*.\n\n¿Eres *cliente* o *empleado*?\n\n1️⃣ Cliente\n2️⃣ Empleado`;
+      let companyName = 'nuestra empresa';
+      if (!isSandbox) {
+        const { data: tenant } = await supabase
+          .from('tenants')
+          .select('name')
+          .eq('id', tenantId)
+          .single();
+        companyName = tenant?.name || companyName;
+      }
+      reply = `¡Hola! 👋 ¡Qué gusto saludarte! Soy *Aria*, tu asistente virtual de *${companyName}*.\n\nEstoy aquí para lo que necesites. Dime, ¿vienes como *cliente* o eres parte del equipo (*empleado*)?\n\n1️⃣ Soy cliente\n2️⃣ Soy empleado`;
       newState = 'awaiting_role';
 
     } else if (botState === 'awaiting_role') {
       if (msg.includes('cliente') || msg === '1') {
-        reply = '¡Perfecto! 🙂 Estoy aquí para ayudarte.\n\nPuedo:\n• 📋 Informarte sobre nuestros servicios\n• 📅 Agendar una cita con alguno de nuestros colaboradores\n• 👤 Comunicarte con un empleado específico\n\n¿En qué puedo ayudarte?';
+        reply = '¡Excelente! 😊 Me da mucho gusto atenderte.\n\nCuéntame, ¿en qué te puedo ayudar hoy?\n\n• 📋 Conocer nuestros servicios\n• 📅 Agendar una cita con alguno de nuestros colaboradores\n• 👤 Comunicarte directamente con alguien del equipo\n\nEstoy para servirte, pregunta lo que necesites 💬';
         newState = 'client_mode';
         newContext = { role: 'client' };
 
       } else if (msg.includes('empleado') || msg === '2') {
-        reply = '🔐 Para verificar tu identidad, por favor ingresa tu *PIN de autenticación* (el que seleccionaste al crear tu cuenta).';
+        reply = '¡Hola, compañero! 👋 Para reconocerte necesito que me compartas tu *PIN de autenticación* (el que elegiste al crear tu cuenta).\n\nEscríbelo aquí y te doy la bienvenida 🔐';
         newState = 'employee_auth';
         newContext = { role: 'employee', auth_attempts: 0 };
 
       } else {
-        reply = 'No entendí tu respuesta. Por favor escribe *cliente* o *empleado*, o responde con *1* o *2*.';
+        reply = 'Perdona, no logré entenderte 😅 ¿Podrías decirme si vienes como *cliente* o como *empleado*?\n\nTambién puedes responder con *1* o *2* 👆';
       }
 
     } else if (botState === 'employee_auth') {
@@ -85,9 +103,14 @@ serve(async (req) => {
       const attempts = ((newContext.auth_attempts as number) || 0) + 1;
 
       if (attempts > 3) {
-        reply = '❌ Demasiados intentos fallidos. Por favor intenta más tarde o contacta al administrador.';
+        reply = '😔 Entiendo la frustración, pero por seguridad no puedo seguir intentando. Te recomiendo contactar al administrador para restablecer tu PIN.\n\n¡No te preocupes, todo tiene solución! 💪';
         newState = 'welcome';
         newContext = {};
+      } else if (isSandbox) {
+        // In sandbox mode, simulate successful auth
+        reply = `✅ ¡Bienvenido al modo empleado! 🎉 (Modo sandbox — autenticación simulada)\n\nSoy Aria, tu asistente personal. Estoy aquí para hacerte la vida más fácil:\n\n• 📋 Recordarte tus pendientes y compromisos\n• 📅 Revisar tu agenda del día\n• 📸 Registrar gastos — solo mándame la foto del ticket\n• 💬 Resolver dudas de la base de conocimientos\n• 📊 Darte un resumen de cómo va tu día\n\n¿Por dónde empezamos? 😊`;
+        newState = 'employee_mode';
+        newContext = { role: 'employee', user_id: 'sandbox_user', user_name: 'Usuario Sandbox', profile_id: 'sandbox' };
       } else {
         // Look up employee by PIN - simple hash comparison
         const pinHash = await hashPin(msg.trim());
@@ -99,7 +122,7 @@ serve(async (req) => {
           .maybeSingle();
 
         if (profile) {
-          reply = `✅ ¡Bienvenido, *${profile.name}*! Soy tu asistente personal.\n\nPuedo ayudarte con:\n• 📋 Ver tus tareas y recordatorios\n• 📅 Consultar tu agenda del día\n• 📎 Registrar gastos (envía foto de comprobante)\n• 💬 Consultar la base de conocimientos\n• 📊 Ver resumen de actividad\n\n¿Qué necesitas?`;
+          reply = `✅ ¡Qué tal, *${profile.name}*! 🎉 Me da gusto verte por aquí.\n\nSoy Aria, tu asistente personal. Estoy para lo que necesites:\n\n• 📋 Recordarte tus pendientes y compromisos\n• 📅 Revisar tu agenda del día\n• 📸 Registrar gastos — solo mándame la foto del ticket\n• 💬 Resolver dudas de la base de conocimientos\n• 📊 Darte un resumen de cómo va tu día\n\n¿En qué te ayudo? 😊`;
           newState = 'employee_mode';
           newContext = { 
             role: 'employee', 
@@ -108,14 +131,13 @@ serve(async (req) => {
             profile_id: profile.id,
           };
 
-          // Update verified user
           await supabase
             .from('whatsapp_conversations')
             .update({ verified_user_id: profile.user_id })
             .eq('id', conversationId);
         } else {
           newContext.auth_attempts = attempts;
-          reply = `❌ PIN incorrecto. Intento ${attempts}/3. Por favor intenta de nuevo.`;
+          reply = `Mmm, ese PIN no coincide 🤔 (Intento ${attempts}/3).\n\nRevísalo e intenta de nuevo. Si no lo recuerdas, el administrador puede ayudarte a restablecerlo.`;
         }
       }
 
@@ -187,37 +209,40 @@ serve(async (req) => {
       }
     }
 
-    // Update conversation bot state
-    await supabase
-      .from('whatsapp_conversations')
-      .update({
-        bot_state: newState,
-        bot_context: newContext,
-      })
-      .eq('id', conversationId);
+    // In sandbox mode, skip DB updates and Twilio sending
+    if (!isSandbox) {
+      // Update conversation bot state
+      await supabase
+        .from('whatsapp_conversations')
+        .update({
+          bot_state: newState,
+          bot_context: newContext,
+        })
+        .eq('id', conversationId);
 
-    // Send reply via Twilio
-    if (reply && TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && TWILIO_PHONE_NUMBER) {
-      await sendTwilioMessage(
-        TWILIO_ACCOUNT_SID,
-        TWILIO_AUTH_TOKEN,
-        TWILIO_PHONE_NUMBER,
-        contactPhone,
-        reply
-      );
+      // Send reply via Twilio
+      if (reply && TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && TWILIO_PHONE_NUMBER) {
+        await sendTwilioMessage(
+          TWILIO_ACCOUNT_SID,
+          TWILIO_AUTH_TOKEN,
+          TWILIO_PHONE_NUMBER,
+          contactPhone,
+          reply
+        );
 
-      // Save bot reply to DB
-      await supabase.from('whatsapp_messages').insert({
-        tenant_id: tenantId,
-        conversation_id: conversationId,
-        direction: 'out',
-        body: reply,
-        status: 'sent',
-        metadata: { provider: 'bot', bot_state: newState },
-      });
+        // Save bot reply to DB
+        await supabase.from('whatsapp_messages').insert({
+          tenant_id: tenantId,
+          conversation_id: conversationId,
+          direction: 'out',
+          body: reply,
+          status: 'sent',
+          metadata: { provider: 'bot', bot_state: newState },
+        });
+      }
     }
 
-    return new Response(JSON.stringify({ ok: true, reply, state: newState }), {
+    return new Response(JSON.stringify({ ok: true, reply, state: newState, context: newContext }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (error) {
@@ -314,26 +339,47 @@ async function getAIResponse(
   const employeeList = employees?.map((e: any) => `- ${e.name} (${e.email || 'sin email'})`).join('\n') || 'No hay empleados registrados';
 
   const systemPrompt = mode === 'client'
-    ? `Eres Aria, la recepcionista virtual inteligente de la empresa. Tu trabajo es:
-1. Informar sobre los servicios de la empresa basándote en la base de conocimientos.
-2. Agendar citas con los colaboradores de la empresa.
-3. Si el cliente quiere hablar con un empleado específico, ofrécele sus datos de contacto.
-4. Sé amable, profesional y concisa. Responde siempre en español.
-5. Si el cliente pide agendar cita, pregunta: fecha preferida, hora, con qué empleado, y motivo.
-6. Si detectas palabras como "queja", "urgente", "problema grave", indica que escalarás al equipo humano.
+    ? `Eres Aria, una asistente virtual cálida, empática y genuinamente interesada en ayudar. No eres un robot — eres como esa persona amable de recepción que siempre tiene una sonrisa y hace sentir bienvenido a todos.
+
+PERSONALIDAD:
+- Hablas de forma natural, cercana y con calidez humana. Usa expresiones coloquiales mexicanas cuando sea apropiado.
+- Muestra interés genuino: "¡Qué bueno que nos contactas!", "Entiendo perfectamente tu situación", "Con mucho gusto te ayudo".
+- Si alguien está frustrado o tiene un problema, primero valida sus emociones antes de ofrecer soluciones: "Lamento que estés pasando por eso, vamos a resolverlo juntos".
+- Usa emojis con moderación y de forma natural (no en cada oración).
+- NUNCA uses frases robóticas como "procesando su solicitud" o "su consulta ha sido registrada".
+
+TU TRABAJO:
+1. Informar sobre los servicios de la empresa con entusiasmo genuino, basándote en la base de conocimientos.
+2. Agendar citas con los colaboradores — pregunta con naturalidad: "¿Cuándo te acomodaría mejor?", "¿Hay algún colaborador en particular con quien te gustaría la cita?"
+3. Si quieren hablar con alguien específico, facilita el contacto con amabilidad.
+4. Si detectas frustración, urgencia o quejas, muestra empatía primero y luego ofrece escalar: "Entiendo que es importante para ti, déjame conectarte con alguien que pueda ayudarte de inmediato".
+
+Responde siempre en español. Sé concisa pero nunca fría.
 
 Empleados disponibles:
 ${employeeList}
 
 Base de conocimientos:
 ${knowledgeContext}`
-    : `Eres Aria, la asistente personal del empleado ${conversation.bot_context?.user_name || 'colaborador'}. Tu trabajo es:
-1. Recordar tareas pendientes y compromisos.
-2. Informar sobre la agenda del día.
-3. Ayudar a registrar gastos (pide monto, descripción y categoría).
-4. Responder consultas sobre la base de conocimientos interna.
-5. Dar resúmenes de actividad.
-6. Sé eficiente, directa y profesional. Responde en español.
+    : `Eres Aria, la asistente personal de ${conversation.bot_context?.user_name || 'tu compañero'}. Eres como esa colega confiable que siempre está al pendiente y te hace la vida más fácil en el trabajo.
+
+PERSONALIDAD:
+- Hablas con confianza y cercanía, como alguien del equipo. Usa "tú", no "usted".
+- Muestra interés real: "¿Cómo va tu día?", "¡Ánimo con eso!", "Excelente trabajo registrando tus gastos".
+- Si el empleado parece estresado o abrumado, ofrece apoyo emocional: "Entiendo que ha sido un día pesado, vamos paso a paso".
+- Celebra los logros pequeños: "¡Listo! Un pendiente menos 🎉"
+- NUNCA uses lenguaje corporativo frío. Sé directa pero con calidez.
+- Usa emojis con naturalidad y moderación.
+
+TU TRABAJO:
+1. Recordar pendientes y compromisos con gentileza, no como alarma.
+2. Informar sobre la agenda del día de forma clara y útil.
+3. Ayudar a registrar gastos — si mandan foto, procesarla con OCR; si es texto, extraer los datos.
+4. Responder consultas de la base de conocimientos interna.
+5. Dar resúmenes de actividad cuando los pida.
+6. Si el empleado necesita algo que no puedes hacer, sé honesta y sugiere alternativas.
+
+Responde en español, de forma eficiente pero siempre amable.
 
 Base de conocimientos:
 ${knowledgeContext}`;

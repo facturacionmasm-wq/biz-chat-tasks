@@ -1,20 +1,29 @@
-import { useState, useCallback } from 'react';
-import { Bot, Send, Loader2, Phone, MessageSquare, Trash2, Volume2, Mic } from 'lucide-react';
+import { useState, useCallback, useRef, useEffect } from 'react';
+import { Bot, Send, Loader2, Phone, MessageSquare, Trash2, Volume2, Mic, ThumbsUp, ThumbsDown, BookOpen, Sparkles } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useConversation } from '@elevenlabs/react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { toast } from 'sonner';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
+  approved?: boolean | null;
+  saved?: boolean;
 }
 
 const AITrainingPage = () => {
+  // --- State for simulated bot conversation ---
+  const [botState, setBotState] = useState<string>('welcome');
+  const [botContext, setBotContext] = useState<Record<string, unknown>>({});
+  const [simulatedRole, setSimulatedRole] = useState<'client' | 'employee' | null>(null);
+
   // --- WhatsApp AI Agent state ---
   const [waMessages, setWaMessages] = useState<ChatMessage[]>([]);
   const [waInput, setWaInput] = useState('');
   const [waLoading, setWaLoading] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
 
   // --- ElevenLabs Voice Agent state ---
   const [isConnecting, setIsConnecting] = useState(false);
@@ -40,6 +49,10 @@ const AITrainingPage = () => {
     },
   });
 
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [waMessages, waLoading]);
+
   const startVoiceCall = useCallback(async () => {
     setIsConnecting(true);
     setVoiceError(null);
@@ -62,7 +75,7 @@ const AITrainingPage = () => {
 
   const isVoiceActive = conversation.status === 'connected';
 
-  // --- WhatsApp AI Agent ---
+  // --- Send message to real whatsapp-bot function ---
   const sendWaMessage = async () => {
     if (!waInput.trim() || waLoading) return;
     const userMsg: ChatMessage = { role: 'user', content: waInput.trim(), timestamp: new Date() };
@@ -71,22 +84,37 @@ const AITrainingPage = () => {
     setWaLoading(true);
 
     try {
-      const messagesToSend = [...waMessages, userMsg].map(m => ({
-        direction: m.role === 'user' ? 'in' : 'out',
-        body: m.content,
-      }));
-
-      const { data, error } = await supabase.functions.invoke('ai-copilot', {
+      const { data, error } = await supabase.functions.invoke('whatsapp-bot', {
         body: {
-          action: 'extract_whatsapp_intent',
-          data: { messages: messagesToSend, knowledgeContext: '' },
+          conversationId: '__training_sandbox__',
+          messageBody: userMsg.content,
+          contactPhone: '+0000000000',
+          tenantId: '__sandbox__',
+          // Pass simulated state so the bot continues the conversation
+          sandboxMode: true,
+          sandboxState: botState,
+          sandboxContext: botContext,
         },
       });
 
       if (error) throw error;
 
-      const reply = data?.response || 'Sin respuesta del agente.';
-      setWaMessages(prev => [...prev, { role: 'assistant', content: reply, timestamp: new Date() }]);
+      const reply = data?.reply || 'Sin respuesta del agente.';
+      const newState = data?.state || botState;
+      const newContext = data?.context || botContext;
+
+      setBotState(newState);
+      setBotContext(newContext);
+
+      if (newState === 'awaiting_role') {
+        // Don't set role yet
+      } else if (newContext?.role === 'client') {
+        setSimulatedRole('client');
+      } else if (newContext?.role === 'employee') {
+        setSimulatedRole('employee');
+      }
+
+      setWaMessages(prev => [...prev, { role: 'assistant', content: reply, timestamp: new Date(), approved: null }]);
     } catch (err: any) {
       setWaMessages(prev => [
         ...prev,
@@ -97,6 +125,70 @@ const AITrainingPage = () => {
     }
   };
 
+  // --- Approve/reject response for learning ---
+  const handleFeedback = async (index: number, approved: boolean) => {
+    setWaMessages(prev => prev.map((m, i) => i === index ? { ...m, approved } : m));
+
+    if (approved) {
+      // Find the user question that preceded this answer
+      const question = waMessages.slice(0, index).reverse().find(m => m.role === 'user');
+      if (question) {
+        toast.success('Respuesta aprobada — se guardará como conocimiento');
+      }
+    } else {
+      toast.info('Respuesta marcada como incorrecta. Ajusta el Knowledge Hub para mejorarla.');
+    }
+  };
+
+  // --- Save approved Q&A as knowledge ---
+  const saveAsKnowledge = async (index: number) => {
+    const answer = waMessages[index];
+    const question = waMessages.slice(0, index).reverse().find(m => m.role === 'user');
+    if (!question || !answer) return;
+
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      const userId = userData?.user?.id;
+      
+      // Get tenant_id
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('tenant_id')
+        .eq('user_id', userId!)
+        .maybeSingle();
+
+      if (!profile?.tenant_id) {
+        toast.error('No se encontró el tenant');
+        return;
+      }
+
+      await supabase.from('knowledge_items').insert({
+        tenant_id: profile.tenant_id,
+        title: `Pregunta: ${question.content.substring(0, 100)}`,
+        content: `**Pregunta del ${simulatedRole === 'employee' ? 'empleado' : 'cliente'}:**\n${question.content}\n\n**Respuesta aprobada:**\n${answer.content}`,
+        category: 'Entrenamiento IA',
+        tags: ['bot-training', simulatedRole || 'general'],
+        author_id: userId,
+        visibility: 'internal',
+        active: true,
+      });
+
+      setWaMessages(prev => prev.map((m, i) => i === index ? { ...m, saved: true } : m));
+      toast.success('✅ Guardado en Knowledge Hub — el bot usará esta respuesta en el futuro');
+    } catch (err: any) {
+      toast.error('Error al guardar: ' + (err.message || 'desconocido'));
+    }
+  };
+
+  // --- Reset sandbox ---
+  const resetSandbox = () => {
+    setWaMessages([]);
+    setWaInput('');
+    setBotState('welcome');
+    setBotContext({});
+    setSimulatedRole(null);
+  };
+
   return (
     <div className="h-full flex flex-col p-6">
       <div className="mb-6">
@@ -105,63 +197,116 @@ const AITrainingPage = () => {
           Entrenamiento IA
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Prueba y entrena a tus agentes de IA haciendo preguntas de práctica. Verifica que las respuestas sean correctas y ajusta el Knowledge Hub según sea necesario.
+          Prueba al bot Aria con el mismo motor que usa en WhatsApp. Aprueba respuestas para que aprenda y mejore.
         </p>
       </div>
 
       <Tabs defaultValue="whatsapp" className="flex-1 flex flex-col min-h-0">
         <TabsList className="w-fit">
           <TabsTrigger value="whatsapp" className="gap-2">
-            <MessageSquare size={14} /> Agente WhatsApp
+            <MessageSquare size={14} /> Agente WhatsApp (Aria)
           </TabsTrigger>
           <TabsTrigger value="voice" className="gap-2">
-            <Phone size={14} /> Agente de Voz (ElevenLabs)
+            <Phone size={14} /> Agente de Voz
           </TabsTrigger>
         </TabsList>
 
         {/* WhatsApp AI Tab */}
         <TabsContent value="whatsapp" className="flex-1 flex flex-col min-h-0 mt-4">
+          {/* Status bar */}
+          <div className="flex items-center justify-between mb-2 px-1">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                Bot conectado al motor real
+              </div>
+              {simulatedRole && (
+                <span className={`text-xs px-2 py-0.5 rounded-full ${simulatedRole === 'employee' ? 'bg-primary/10 text-primary' : 'bg-accent text-accent-foreground'}`}>
+                  Modo: {simulatedRole === 'employee' ? '👨‍💼 Empleado' : '👤 Cliente'}
+                </span>
+              )}
+              <span className="text-xs text-muted-foreground">
+                Estado: <code className="bg-muted px-1 rounded">{botState}</code>
+              </span>
+            </div>
+          </div>
+
           <div className="flex-1 flex flex-col bg-card border border-border rounded-xl overflow-hidden">
             {/* Chat messages */}
             <div className="flex-1 overflow-y-auto p-4 space-y-3 scrollbar-thin">
               {waMessages.length === 0 && (
                 <div className="flex flex-col items-center justify-center h-full text-center py-12">
-                  <MessageSquare size={40} className="text-muted-foreground/30 mb-3" />
-                  <p className="text-sm text-muted-foreground">Escribe una pregunta como si fueras un cliente por WhatsApp</p>
-                  <p className="text-xs text-muted-foreground mt-1">El agente responderá usando tu Knowledge Hub</p>
+                  <Sparkles size={40} className="text-muted-foreground/30 mb-3" />
+                  <p className="text-sm text-muted-foreground font-medium">Sandbox conectado al bot real de Aria</p>
+                  <p className="text-xs text-muted-foreground mt-1">Escribe "hola" para iniciar. Aprueba las buenas respuestas para que Aria aprenda.</p>
                 </div>
               )}
               {waMessages.map((msg, i) => (
                 <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div
-                    className={`max-w-[75%] px-3.5 py-2.5 rounded-2xl text-sm ${
-                      msg.role === 'user'
-                        ? 'bg-primary text-primary-foreground rounded-br-md'
-                        : 'bg-muted text-foreground rounded-bl-md'
-                    }`}
-                  >
-                    <p className="whitespace-pre-wrap">{msg.content}</p>
-                    <p className={`text-[10px] mt-1 ${msg.role === 'user' ? 'text-primary-foreground/60' : 'text-muted-foreground'}`}>
-                      {msg.timestamp.toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })}
-                    </p>
+                  <div className="max-w-[75%]">
+                    <div
+                      className={`px-3.5 py-2.5 rounded-2xl text-sm ${
+                        msg.role === 'user'
+                          ? 'bg-primary text-primary-foreground rounded-br-md'
+                          : 'bg-muted text-foreground rounded-bl-md'
+                      }`}
+                    >
+                      <p className="whitespace-pre-wrap">{msg.content}</p>
+                      <p className={`text-[10px] mt-1 ${msg.role === 'user' ? 'text-primary-foreground/60' : 'text-muted-foreground'}`}>
+                        {msg.timestamp.toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    </div>
+
+                    {/* Feedback controls for assistant messages */}
+                    {msg.role === 'assistant' && !msg.content.startsWith('Error:') && (
+                      <div className="flex items-center gap-1 mt-1 ml-1">
+                        <button
+                          onClick={() => handleFeedback(i, true)}
+                          className={`p-1 rounded transition-colors ${msg.approved === true ? 'text-emerald-500 bg-emerald-500/10' : 'text-muted-foreground hover:text-emerald-500 hover:bg-emerald-500/10'}`}
+                          title="Buena respuesta"
+                        >
+                          <ThumbsUp size={13} />
+                        </button>
+                        <button
+                          onClick={() => handleFeedback(i, false)}
+                          className={`p-1 rounded transition-colors ${msg.approved === false ? 'text-destructive bg-destructive/10' : 'text-muted-foreground hover:text-destructive hover:bg-destructive/10'}`}
+                          title="Respuesta incorrecta"
+                        >
+                          <ThumbsDown size={13} />
+                        </button>
+                        {msg.approved === true && !msg.saved && (
+                          <button
+                            onClick={() => saveAsKnowledge(i)}
+                            className="flex items-center gap-1 text-xs text-primary hover:bg-primary/10 px-2 py-0.5 rounded ml-1 transition-colors"
+                          >
+                            <BookOpen size={12} /> Guardar en Knowledge Hub
+                          </button>
+                        )}
+                        {msg.saved && (
+                          <span className="text-xs text-emerald-500 ml-1">✓ Guardado</span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
               {waLoading && (
                 <div className="flex justify-start">
-                  <div className="bg-muted px-4 py-3 rounded-2xl rounded-bl-md">
+                  <div className="bg-muted px-4 py-3 rounded-2xl rounded-bl-md flex items-center gap-2">
                     <Loader2 size={16} className="animate-spin text-muted-foreground" />
+                    <span className="text-xs text-muted-foreground">Aria está pensando...</span>
                   </div>
                 </div>
               )}
+              <div ref={chatEndRef} />
             </div>
 
             {/* Input */}
             <div className="border-t border-border p-3 flex items-center gap-2">
               <button
-                onClick={() => { setWaMessages([]); setWaInput(''); }}
+                onClick={resetSandbox}
                 className="p-2 text-muted-foreground hover:text-destructive transition-colors rounded-md hover:bg-destructive/10"
-                title="Limpiar conversación"
+                title="Reiniciar conversación"
               >
                 <Trash2 size={16} />
               </button>
@@ -169,7 +314,7 @@ const AITrainingPage = () => {
                 value={waInput}
                 onChange={e => setWaInput(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendWaMessage()}
-                placeholder="Escribe una pregunta de prueba..."
+                placeholder="Escribe como si fueras un cliente o empleado..."
                 className="flex-1 bg-secondary rounded-lg px-3 py-2 text-sm outline-none border border-border focus:border-primary"
                 disabled={waLoading}
               />
