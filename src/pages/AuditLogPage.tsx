@@ -33,7 +33,7 @@ const AuditLogPage = () => {
   );
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-5xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
@@ -50,7 +50,8 @@ const AuditLogPage = () => {
         </div>
       </div>
 
-      <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
+      {/* Desktop table */}
+      <div className="hidden md:block bg-card border border-border rounded-xl overflow-hidden shadow-sm">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border bg-muted/30">
@@ -78,6 +79,23 @@ const AuditLogPage = () => {
             })}
           </tbody>
         </table>
+      </div>
+
+      {/* Mobile cards */}
+      <div className="md:hidden space-y-3">
+        {filtered.map(event => {
+          const cfg = eventTypeLabels[event.eventType] || { label: event.eventType, color: 'bg-muted text-muted-foreground' };
+          return (
+            <div key={event.id} className="bg-card border border-border rounded-xl p-4 shadow-sm space-y-2">
+              <div className="flex items-center justify-between">
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${cfg.color}`}>{cfg.label}</span>
+                <span className="text-[10px] text-muted-foreground">{format(event.createdAt, "d MMM HH:mm", { locale: es })}</span>
+              </div>
+              <p className="text-sm font-medium text-foreground">{event.actor}</p>
+              <p className="text-xs text-muted-foreground font-mono">{event.resourceType}/{event.resourceId}</p>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

@@ -262,8 +262,8 @@ const KnowledgePage = () => {
   }
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
+    <div className="p-4 sm:p-6 max-w-5xl mx-auto">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
         <div>
           <h1 className="text-xl font-bold text-foreground flex items-center gap-2"><BookOpen size={20} className="text-primary" /> Base de Conocimiento</h1>
           <p className="text-sm text-muted-foreground mt-1">{articles.length} artículos · Sincronizados con ElevenLabs Voice Agent</p>
@@ -274,12 +274,12 @@ const KnowledgePage = () => {
       </div>
 
       {/* Search & filters */}
-      <div className="flex items-center gap-3 mb-6">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 mb-6">
         <div className="flex-1 flex items-center gap-2 bg-card border border-border rounded-lg px-3 py-2">
           <Search size={16} className="text-muted-foreground" />
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar artículos, etiquetas..." className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground" />
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 overflow-x-auto">
           <button onClick={() => setSelectedCategory(null)} className={`text-xs px-3 py-1.5 rounded-md ${!selectedCategory ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-secondary'}`}>Todos</button>
           {categories.map(cat => (
             <button key={cat} onClick={() => setSelectedCategory(cat)} className={`text-xs px-3 py-1.5 rounded-md ${selectedCategory === cat ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-secondary'}`}>{cat}</button>
@@ -296,7 +296,7 @@ const KnowledgePage = () => {
       )}
 
       {/* Articles grid */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {filtered.map(a => (
           <button key={a.id} onClick={() => setSelectedArticle(a.id)} className="bg-card border border-border rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow text-left">
             <div className="flex items-center gap-2 mb-2">

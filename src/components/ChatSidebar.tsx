@@ -19,7 +19,7 @@ const ChatSidebar = ({ channels, activeChannelId, onSelectChannel, teamMembers }
   const directList = channels.filter(c => c.type === 'direct');
 
   return (
-    <aside className="w-56 shrink-0 bg-card border-r border-border flex flex-col h-full">
+    <aside className="w-full sm:w-56 shrink-0 bg-card border-r border-border flex flex-col h-full">
       <div className="px-3 py-3">
         <div className="flex items-center gap-2 bg-secondary rounded-md px-3 py-1.5 text-muted-foreground text-sm">
           <Search size={14} />

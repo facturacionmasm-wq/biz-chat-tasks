@@ -77,8 +77,8 @@ const ExpensesPage = () => {
   }
 
   return (
-    <div className="p-6 space-y-6 max-w-6xl mx-auto">
-      <div className="flex items-center justify-between">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 max-w-6xl mx-auto">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
             <Receipt size={24} className="text-primary" /> Control de Gastos
@@ -99,7 +99,7 @@ const ExpensesPage = () => {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm text-muted-foreground">Total gastos</span>

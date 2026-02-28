@@ -82,7 +82,7 @@ const IntegrationsPage = () => {
   const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-webhook`;
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-5xl mx-auto">
       <div className="mb-6">
         <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
           <Plug size={20} className="text-primary" /> Integraciones
@@ -90,7 +90,7 @@ const IntegrationsPage = () => {
         <p className="text-sm text-muted-foreground mt-1">Conecta herramientas externas para potenciar tu espacio de trabajo.</p>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {integrations.map(int => (
           <div key={int.id} className="bg-card border border-border rounded-xl p-5 shadow-sm">
             <div className="flex items-start justify-between mb-3">
@@ -131,7 +131,7 @@ const IntegrationsPage = () => {
           Conecta un número de WhatsApp Business para capturar automáticamente mensajes, detectar compromisos,
           crear tareas y alimentar la base de conocimiento con información extraída por IA.
         </p>
-        <div className="grid grid-cols-3 gap-3 text-xs">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
           <div className="bg-muted/50 rounded-lg p-3">
             <p className="font-semibold text-foreground mb-1">📩 Captura automática</p>
             <p className="text-muted-foreground">Mensajes entrantes se guardan con contacto, fecha y adjuntos</p>

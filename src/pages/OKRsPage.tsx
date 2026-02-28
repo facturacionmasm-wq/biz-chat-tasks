@@ -13,8 +13,8 @@ const OKRsPage = () => {
   const avgProgress = Math.round(okrs.reduce((s, o) => s + o.progress, 0) / okrs.length);
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
+    <div className="p-4 sm:p-6 max-w-5xl mx-auto">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
         <div>
           <h1 className="text-xl font-bold text-foreground">Objetivos y Resultados Clave</h1>
           <p className="text-sm text-muted-foreground mt-1">Q1 2026 · Progreso general: {avgProgress}%</p>
@@ -25,7 +25,7 @@ const OKRsPage = () => {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <div className="bg-card border border-border rounded-xl p-4 shadow-sm text-center">
           <div className="relative w-16 h-16 mx-auto mb-2">
             <svg className="w-16 h-16 -rotate-90" viewBox="0 0 36 36">
