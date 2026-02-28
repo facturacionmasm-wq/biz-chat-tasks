@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Building2, Users, CreditCard, Bell, Database, Brain, Globe, ChevronRight, User, KeyRound, Loader2, Palette, Save, Upload, Image, X, Mail, Phone as PhoneIcon, MessageSquare, Trash2, Settings2, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
+import { Building2, Users, CreditCard, Bell, Database, Brain, Globe, ChevronRight, User, KeyRound, Loader2, Palette, Save, Upload, Image, X, Mail, Phone as PhoneIcon, MessageSquare, Trash2, Settings2, ChevronDown, ChevronUp, RefreshCw, ArrowLeft, ArrowRight } from 'lucide-react';
+import AvailabilityWizard, { type AvailabilityRule, DEFAULT_RULES } from '@/components/AvailabilityWizard';
 import { teamMembers } from '@/data/mockData';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -80,9 +81,11 @@ const SettingsPage = () => {
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
   const [showInviteModal, setShowInviteModal] = useState(false);
+  const [inviteStep, setInviteStep] = useState(0);
   const [inviteName, setInviteName] = useState('');
   const [inviteEmail, setInviteEmail] = useState('');
   const [invitePassword, setInvitePassword] = useState('');
+  const [inviteAvailability, setInviteAvailability] = useState<AvailabilityRule[]>(DEFAULT_RULES);
   const [inviting, setInviting] = useState(false);
 
   // Load tenant data
@@ -221,7 +224,7 @@ const SettingsPage = () => {
     }
     setInviting(true);
     try {
-      const body: any = { email: inviteEmail.trim(), name: inviteName.trim() };
+      const body: any = { email: inviteEmail.trim(), name: inviteName.trim(), availability: inviteAvailability.filter(r => r.active) };
       if (invitePassword.length >= 6) body.password = invitePassword;
       const { data, error } = await supabase.functions.invoke('invite-member', {
         body,
@@ -230,9 +233,11 @@ const SettingsPage = () => {
       if (data?.error) throw new Error(data.error);
       toast.success(data?.message || 'Miembro invitado exitosamente');
       setShowInviteModal(false);
+      setInviteStep(0);
       setInviteName('');
       setInviteEmail('');
       setInvitePassword('');
+      setInviteAvailability(DEFAULT_RULES);
       // Reload team
       const { data: myProfile } = await supabase.from('profiles').select('tenant_id').eq('user_id', user!.id).maybeSingle();
       if (myProfile) {
@@ -862,44 +867,76 @@ const SettingsPage = () => {
 
             {/* Invite Modal */}
             {showInviteModal && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowInviteModal(false)}>
-                <div className="bg-card border border-border rounded-xl p-6 w-full max-w-md shadow-xl" onClick={e => e.stopPropagation()}>
-                  <h4 className="text-lg font-bold text-foreground mb-4">Invitar nuevo miembro</h4>
-                  <div className="space-y-3">
-                    <div>
-                      <label className="text-xs font-medium text-muted-foreground mb-1 block">Nombre completo</label>
-                      <input className={inputClass} value={inviteName} onChange={e => setInviteName(e.target.value)} placeholder="Nombre del miembro" />
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => { setShowInviteModal(false); setInviteStep(0); }}>
+                <div className="bg-card border border-border rounded-xl p-6 w-full max-w-md shadow-xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                  {/* Step indicators */}
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className={`flex items-center gap-1.5 ${inviteStep >= 0 ? 'text-primary' : 'text-muted-foreground'}`}>
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${inviteStep > 0 ? 'bg-primary text-primary-foreground' : inviteStep === 0 ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>1</div>
+                      <span className="text-xs font-medium">Datos</span>
                     </div>
-                    <div>
-                      <label className="text-xs font-medium text-muted-foreground mb-1 block">Email</label>
-                      <input className={inputClass} type="email" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} placeholder="email@ejemplo.com" />
-                    </div>
-                    <div>
-                      <label className="text-xs font-medium text-muted-foreground mb-1 block">Contraseña temporal <span className="text-muted-foreground font-normal">(opcional)</span></label>
-                      <input className={inputClass} type="password" value={invitePassword} onChange={e => setInvitePassword(e.target.value)} placeholder="Dejar vacío para enviar invitación por email" />
-                    </div>
-                    <p className="text-xs text-muted-foreground bg-secondary/50 rounded-lg px-3 py-2">
-                      {invitePassword.length >= 6
-                        ? '🔑 Se creará con contraseña temporal. Compártela manualmente al miembro.'
-                        : '📧 Se enviará un email de invitación para que el miembro configure su contraseña.'}
-                    </p>
-                    <div className="flex gap-2 pt-2">
-                      <button
-                        onClick={() => setShowInviteModal(false)}
-                        className="flex-1 bg-secondary text-secondary-foreground text-sm px-4 py-2.5 rounded-lg hover:opacity-90"
-                      >
-                        Cancelar
-                      </button>
-                      <button
-                        onClick={handleInviteMember}
-                        disabled={inviting || !inviteName.trim() || !inviteEmail.trim()}
-                        className="flex-1 bg-primary text-primary-foreground text-sm px-4 py-2.5 rounded-lg hover:opacity-90 disabled:opacity-40 flex items-center justify-center gap-2"
-                      >
-                        {inviting && <Loader2 size={14} className="animate-spin" />}
-                        {invitePassword.length >= 6 ? 'Crear miembro' : 'Enviar invitación'}
-                      </button>
+                    <div className={`flex-1 h-px ${inviteStep > 0 ? 'bg-primary' : 'bg-border'}`} />
+                    <div className={`flex items-center gap-1.5 ${inviteStep >= 1 ? 'text-primary' : 'text-muted-foreground'}`}>
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${inviteStep >= 1 ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>2</div>
+                      <span className="text-xs font-medium">Horario</span>
                     </div>
                   </div>
+
+                  {inviteStep === 0 && (
+                    <div className="space-y-3 animate-fade-in">
+                      <h4 className="text-lg font-bold text-foreground">Datos del miembro</h4>
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground mb-1 block">Nombre completo</label>
+                        <input className={inputClass} value={inviteName} onChange={e => setInviteName(e.target.value)} placeholder="Nombre del miembro" />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground mb-1 block">Email</label>
+                        <input className={inputClass} type="email" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} placeholder="email@ejemplo.com" />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground mb-1 block">Contraseña temporal <span className="text-muted-foreground font-normal">(opcional)</span></label>
+                        <input className={inputClass} type="password" value={invitePassword} onChange={e => setInvitePassword(e.target.value)} placeholder="Dejar vacío para enviar invitación por email" />
+                      </div>
+                      <p className="text-xs text-muted-foreground bg-secondary/50 rounded-lg px-3 py-2">
+                        {invitePassword.length >= 6
+                          ? '🔑 Se creará con contraseña temporal.'
+                          : '📧 Se enviará un email de invitación.'}
+                      </p>
+                      <div className="flex gap-2 pt-2">
+                        <button onClick={() => { setShowInviteModal(false); setInviteStep(0); }} className="flex-1 bg-secondary text-secondary-foreground text-sm px-4 py-2.5 rounded-lg hover:opacity-90">
+                          Cancelar
+                        </button>
+                        <button
+                          onClick={() => setInviteStep(1)}
+                          disabled={!inviteName.trim() || !inviteEmail.trim()}
+                          className="flex-1 bg-primary text-primary-foreground text-sm px-4 py-2.5 rounded-lg hover:opacity-90 disabled:opacity-40 flex items-center justify-center gap-1"
+                        >
+                          Siguiente <ArrowRight size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {inviteStep === 1 && (
+                    <div className="space-y-3 animate-fade-in">
+                      <h4 className="text-lg font-bold text-foreground">Horario de {inviteName.split(' ')[0]}</h4>
+                      <p className="text-xs text-muted-foreground">Configura los días y horarios en que estará disponible para citas.</p>
+                      <AvailabilityWizard value={inviteAvailability} onChange={setInviteAvailability} />
+                      <div className="flex gap-2 pt-2">
+                        <button onClick={() => setInviteStep(0)} className="flex-1 bg-secondary text-secondary-foreground text-sm px-4 py-2.5 rounded-lg hover:opacity-90 flex items-center justify-center gap-1">
+                          <ArrowLeft size={14} /> Atrás
+                        </button>
+                        <button
+                          onClick={handleInviteMember}
+                          disabled={inviting}
+                          className="flex-1 bg-primary text-primary-foreground text-sm px-4 py-2.5 rounded-lg hover:opacity-90 disabled:opacity-40 flex items-center justify-center gap-2"
+                        >
+                          {inviting && <Loader2 size={14} className="animate-spin" />}
+                          {invitePassword.length >= 6 ? 'Crear miembro' : 'Enviar invitación'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

@@ -6,6 +6,16 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+interface AvailabilityRule {
+  day_of_week: number;
+  start_time: string;
+  end_time: string;
+  active: boolean;
+  buffer_before?: number;
+  buffer_after?: number;
+  max_appointments?: number;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -51,7 +61,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { email, name, password } = await req.json();
+    const { email, name, password, availability } = await req.json();
     if (!email || !name) {
       return new Response(
         JSON.stringify({ error: "Email y nombre son requeridos" }),
@@ -62,7 +72,6 @@ Deno.serve(async (req) => {
     let newUserId: string;
 
     if (password && password.length >= 6) {
-      // Create user with password directly (no invite email)
       const { data: newUser, error: createError } = await adminClient.auth.admin.createUser({
         email,
         password,
@@ -77,7 +86,6 @@ Deno.serve(async (req) => {
       }
       newUserId = newUser.user.id;
     } else {
-      // Invite user by email - sends invitation email automatically
       const { data: newUser, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(email, {
         data: { name },
       });
@@ -95,6 +103,30 @@ Deno.serve(async (req) => {
       .from("profiles")
       .update({ name })
       .eq("user_id", newUserId);
+
+    // Create availability rules if provided
+    if (availability && Array.isArray(availability) && availability.length > 0) {
+      const rules = availability.map((rule: AvailabilityRule) => ({
+        tenant_id: callerRole.tenant_id,
+        user_id: newUserId,
+        day_of_week: rule.day_of_week,
+        start_time: rule.start_time,
+        end_time: rule.end_time,
+        active: rule.active ?? true,
+        buffer_before: rule.buffer_before ?? 10,
+        buffer_after: rule.buffer_after ?? 10,
+        max_appointments: rule.max_appointments ?? 8,
+      }));
+
+      const { error: rulesError } = await adminClient
+        .from("availability_rules")
+        .insert(rules);
+
+      if (rulesError) {
+        console.error("Error creating availability rules:", rulesError);
+        // Don't fail the invite, just log
+      }
+    }
 
     const method = password && password.length >= 6 ? "contraseña temporal" : "email de invitación";
 
