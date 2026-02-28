@@ -33,5 +33,11 @@ verify_jwt = false
 [functions.call-transfer-twiml]
 verify_jwt = false
 
+[functions.pin-service]
+verify_jwt = false
+
+[functions.credential-vault]
+verify_jwt = false
+
 [functions.notify-transfer]
 verify_jwt = false

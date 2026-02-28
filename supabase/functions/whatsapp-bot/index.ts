@@ -275,14 +275,17 @@ serve(async (req) => {
         newState = 'employee_mode';
         newContext = { role: 'employee', user_id: 'sandbox_user', user_name: 'Usuario Sandbox', profile_id: 'sandbox' };
       } else {
-        // Look up employee by PIN - simple hash comparison
-        const pinHash = await hashPin(msg.trim());
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('id, user_id, name, tenant_id')
-          .eq('pin_hash', pinHash)
-          .eq('tenant_id', tenantId)
-          .maybeSingle();
+        // Verify PIN via pin-service (server-side PBKDF2 hashing)
+        const pinResponse = await fetch(
+          `${SUPABASE_URL}/functions/v1/pin-service`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+            body: JSON.stringify({ action: 'verify_pin', pin: msg.trim(), tenant_id: tenantId }),
+          }
+        );
+        const pinResult = await pinResponse.json();
+        const profile = pinResult.match ? { id: pinResult.profile_id, user_id: pinResult.user_id, name: pinResult.name } : null;
 
         if (profile) {
           // Save whatsapp_number to profile so next time we auto-recognize
@@ -371,16 +374,46 @@ serve(async (req) => {
       const platform = newContext.cred_platform as string;
       const username = newContext.cred_username as string;
 
-      // Save to shared_credentials table
+      // Save to shared_credentials table via credential-vault (encrypted)
       if (!isSandbox) {
-        await supabase.from('shared_credentials').insert({
-          tenant_id: tenantId,
-          platform_name: platform,
-          username: username,
-          password_encrypted: password,
-          notes: 'Agregada vía WhatsApp bot',
-          created_by: newContext.user_id as string || null,
-        });
+        try {
+          const vaultResponse = await fetch(
+            `${SUPABASE_URL}/functions/v1/credential-vault`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+              body: JSON.stringify({
+                action: 'encrypt_save',
+                platform_name: platform,
+                username: username,
+                password: password,
+                notes: 'Agregada vía WhatsApp bot',
+              }),
+            }
+          );
+          // Fallback: if vault fails, save plaintext
+          if (!vaultResponse.ok) {
+            console.error('Credential vault failed, saving directly');
+            await supabase.from('shared_credentials').insert({
+              tenant_id: tenantId,
+              platform_name: platform,
+              username: username,
+              password_encrypted: password,
+              notes: 'Agregada vía WhatsApp bot',
+              created_by: newContext.user_id as string || null,
+            });
+          }
+        } catch (vaultErr) {
+          console.error('Credential vault error:', vaultErr);
+          await supabase.from('shared_credentials').insert({
+            tenant_id: tenantId,
+            platform_name: platform,
+            username: username,
+            password_encrypted: password,
+            notes: 'Agregada vía WhatsApp bot',
+            created_by: newContext.user_id as string || null,
+          });
+        }
       }
 
       // Clean up credential context
