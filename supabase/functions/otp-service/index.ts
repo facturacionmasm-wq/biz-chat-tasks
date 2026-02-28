@@ -46,14 +46,11 @@ serve(async (req) => {
       if (error) throw error;
 
       // In production: send via WhatsApp API
-      // For now, log the code (would be sent via WhatsApp)
-      console.log(`OTP for ${phone}: ${code}`);
+      console.log(`OTP requested for phone ending in ${phone.slice(-4)}`);
 
       return new Response(JSON.stringify({
         success: true,
         message: 'OTP enviado por WhatsApp',
-        // Only for development:
-        _debug_code: code,
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
