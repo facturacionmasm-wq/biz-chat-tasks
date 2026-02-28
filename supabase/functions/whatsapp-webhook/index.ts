@@ -16,10 +16,33 @@ serve(async (req) => {
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
   try {
-    const body = await req.json();
-    
     // WhatsApp Cloud API webhook verification (GET with hub.verify_token)
-    // For POST: incoming message
+    if (req.method === 'GET') {
+      const url = new URL(req.url);
+      const mode = url.searchParams.get('hub.mode');
+      const token = url.searchParams.get('hub.verify_token');
+      const challenge = url.searchParams.get('hub.challenge');
+
+      // Retrieve verify token from tenant config or use env
+      const VERIFY_TOKEN = Deno.env.get('WHATSAPP_VERIFY_TOKEN') || 'lovable_wa_verify';
+
+      if (mode === 'subscribe' && token === VERIFY_TOKEN) {
+        console.log('Webhook verified successfully');
+        return new Response(challenge, {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'text/plain' },
+        });
+      } else {
+        console.error('Webhook verification failed', { mode, token });
+        return new Response('Forbidden', {
+          status: 403,
+          headers: corsHeaders,
+        });
+      }
+    }
+
+    // POST: incoming message
+    const body = await req.json();
     const { entry } = body;
 
     if (!entry || !Array.isArray(entry)) {
