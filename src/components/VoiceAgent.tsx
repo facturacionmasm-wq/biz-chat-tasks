@@ -11,11 +11,11 @@ interface VoiceAgentProps {
 const VoiceAgent = ({ onCallEnd }: VoiceAgentProps) => {
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [transcriptLines, setTranscriptLines] = useState<Array<{ role: string; text: string }>>([]);
+  const [transcriptLines, setTranscriptLines] = useState<Array<{ role: string; text: string; timestamp: number }>>([]);
   const [callDuration, setCallDuration] = useState(0);
   const [callStartTime, setCallStartTime] = useState<number | null>(null);
 
-  const transcriptLinesRef = useRef<Array<{ role: string; text: string }>>([]);
+  const transcriptLinesRef = useRef<Array<{ role: string; text: string; timestamp: number }>>([]);
   const callRecordIdRef = useRef<string | null>(null);
   const callStartTimeRef = useRef<number | null>(null);
   const onCallEndRef = useRef(onCallEnd);
@@ -43,7 +43,8 @@ const VoiceAgent = ({ onCallEnd }: VoiceAgentProps) => {
   }, []);
 
   const addTranscriptLine = useCallback((role: string, text: string) => {
-    const newLine = { role, text };
+    const timestamp = callStartTimeRef.current ? Math.floor((Date.now() - callStartTimeRef.current) / 1000) : 0;
+    const newLine = { role, text, timestamp };
     transcriptLinesRef.current = [...transcriptLinesRef.current, newLine];
     setTranscriptLines(prev => [...prev, newLine]);
 
@@ -52,7 +53,7 @@ const VoiceAgent = ({ onCallEnd }: VoiceAgentProps) => {
     updateDebounceRef.current = setTimeout(() => {
       if (callRecordIdRef.current) {
         const fullTranscript = transcriptLinesRef.current
-          .map(l => `${l.role}: ${l.text}`)
+          .map(l => `[${formatTimestamp(l.timestamp)}] ${l.role}: ${l.text}`)
           .join('\n');
         supabase
           .from('call_records')
@@ -72,7 +73,7 @@ const VoiceAgent = ({ onCallEnd }: VoiceAgentProps) => {
     const lines = transcriptLinesRef.current;
     const startTime = callStartTimeRef.current;
     const duration = startTime ? Math.floor((Date.now() - startTime) / 1000) : 0;
-    const fullTranscript = lines.map(l => `${l.role}: ${l.text}`).join('\n');
+    const fullTranscript = lines.map(l => `[${formatTimestamp(l.timestamp)}] ${l.role}: ${l.text}`).join('\n');
 
     try {
       // 1. Update call record with final data
@@ -165,6 +166,12 @@ const VoiceAgent = ({ onCallEnd }: VoiceAgentProps) => {
     const m = Math.floor(s / 60);
     const sec = s % 60;
     return `${m}:${sec.toString().padStart(2, '0')}`;
+  };
+
+  const formatTimestamp = (s: number) => {
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
   };
 
   const startCall = useCallback(async () => {

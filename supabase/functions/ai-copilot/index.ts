@@ -35,9 +35,12 @@ serve(async (req) => {
           messages: [
             {
               role: 'system',
-              content: `Eres un asistente de análisis de llamadas para un sistema CRM. Genera un resumen estructurado en español con el siguiente formato:
+              content: `Eres un asistente experto de análisis de llamadas para un sistema CRM empresarial. Genera un resumen estructurado en español con el siguiente formato exacto:
 
-**Resumen:** (2-3 líneas)
+**Resumen:** (2-3 líneas concisas)
+
+**Sentimiento general:** (positivo/neutro/negativo) — Puntuación: X/10
+Breve justificación del sentimiento detectado.
 
 **Puntos clave:**
 - punto 1
@@ -47,9 +50,33 @@ serve(async (req) => {
 - acción 1
 - acción 2
 
+**⚠️ Riesgos y alertas:**
+- riesgo o alerta detectada (si no hay, indica "Sin riesgos detectados")
+
+**Temas principales:** tema1, tema2, tema3
+
 **Seguimiento recomendado:** (fecha y contexto)
 
-También extrae datos estructurados como JSON: contactName, reason, intent, budget, location, urgency, objections[], agreements[], followUp (fecha ISO).`
+Después del resumen, extrae datos estructurados como JSON entre \`\`\`json y \`\`\`:
+{
+  "contactName": "",
+  "reason": "",
+  "intent": "",
+  "budget": "",
+  "location": "",
+  "urgency": "alta|media|baja",
+  "sentiment": "positivo|neutro|negativo",
+  "sentimentScore": 7,
+  "keyTopics": ["tema1", "tema2"],
+  "suggestedTags": ["etiqueta1", "etiqueta2"],
+  "objections": [],
+  "agreements": [],
+  "risks": ["riesgo detectado"],
+  "alerts": ["alerta importante"],
+  "followUp": "ISO date or empty"
+}
+
+Sé preciso, analítico y conciso. Detecta proactivamente riesgos como: insatisfacción del cliente, promesas incumplidas, urgencias no atendidas, solicitudes de cancelación, menciones de competidores, o escalamientos potenciales.`
             },
             {
               role: 'user',
@@ -58,6 +85,25 @@ También extrae datos estructurados como JSON: contactName, reason, intent, budg
           ],
         }),
       });
+
+      if (!response.ok) {
+        const status = response.status;
+        const errText = await response.text();
+        console.error(`AI gateway error: ${status} ${errText}`);
+        if (status === 429) {
+          return new Response(JSON.stringify({ error: 'Rate limit exceeded, please try again later.' }), {
+            status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+        if (status === 402) {
+          return new Response(JSON.stringify({ error: 'Payment required, please add credits.' }), {
+            status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+        return new Response(JSON.stringify({ error: 'AI gateway error' }), {
+          status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
 
       const result = await response.json();
       return new Response(JSON.stringify({ summary: result.choices?.[0]?.message?.content }), {
