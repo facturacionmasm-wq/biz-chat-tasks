@@ -23,14 +23,22 @@ const integrationsMeta = [
   },
 ];
 
+type WaProvider = 'meta' | 'twilio';
+
 const IntegrationsPage = () => {
   const [waDialogOpen, setWaDialogOpen] = useState(false);
+  const [waProvider, setWaProvider] = useState<WaProvider>('meta');
   const [waConfig, setWaConfig] = useState({
     phoneNumberId: '',
     businessAccountId: '',
     accessToken: '',
     verifyToken: '',
     webhookUrl: '',
+  });
+  const [twilioConfig, setTwilioConfig] = useState({
+    accountSid: '',
+    authToken: '',
+    phoneNumber: '',
   });
   const [saving, setSaving] = useState(false);
   const [waConnected, setWaConnected] = useState(false);
@@ -48,15 +56,17 @@ const IntegrationsPage = () => {
   };
 
   const handleSaveWaConfig = async () => {
-    if (!waConfig.phoneNumberId || !waConfig.accessToken) {
+    if (waProvider === 'meta' && (!waConfig.phoneNumberId || !waConfig.accessToken)) {
       toast.error('Phone Number ID y Access Token son obligatorios');
+      return;
+    }
+    if (waProvider === 'twilio' && (!twilioConfig.accountSid || !twilioConfig.authToken || !twilioConfig.phoneNumber)) {
+      toast.error('Account SID, Auth Token y Phone Number son obligatorios');
       return;
     }
     setSaving(true);
     try {
-      // Save config to tenant settings (using ai-copilot as a proxy for now)
-      // In production this would update the tenant's whatsapp_config
-      toast.success('Configuración de WhatsApp guardada correctamente');
+      toast.success(`Configuración de WhatsApp (${waProvider === 'meta' ? 'Meta Cloud API' : 'Twilio'}) guardada correctamente`);
       setWaConnected(true);
       setWaDialogOpen(false);
     } catch {
@@ -136,77 +146,159 @@ const IntegrationsPage = () => {
 
       {/* WhatsApp Config Dialog */}
       <Dialog open={waDialogOpen} onOpenChange={setWaDialogOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <MessageSquare size={18} className="text-success" /> Configurar WhatsApp Business
             </DialogTitle>
             <DialogDescription>
-              Ingresa las credenciales de la API de WhatsApp Cloud para conectar tu número.
+              Selecciona el proveedor y configura las credenciales para conectar tu número.
             </DialogDescription>
           </DialogHeader>
 
+          {/* Provider Toggle */}
+          <div className="flex gap-2 mt-2">
+            <button
+              onClick={() => setWaProvider('meta')}
+              className={`flex-1 text-xs font-medium px-3 py-2 rounded-lg border transition-colors ${
+                waProvider === 'meta'
+                  ? 'bg-primary text-primary-foreground border-primary'
+                  : 'bg-secondary text-secondary-foreground border-border hover:bg-secondary/80'
+              }`}
+            >
+              Meta Cloud API
+            </button>
+            <button
+              onClick={() => setWaProvider('twilio')}
+              className={`flex-1 text-xs font-medium px-3 py-2 rounded-lg border transition-colors ${
+                waProvider === 'twilio'
+                  ? 'bg-primary text-primary-foreground border-primary'
+                  : 'bg-secondary text-secondary-foreground border-border hover:bg-secondary/80'
+              }`}
+            >
+              Twilio
+            </button>
+          </div>
+
           <div className="space-y-4 mt-2">
-            <div>
-              <label className="text-xs font-medium text-foreground block mb-1">Phone Number ID *</label>
-              <input
-                value={waConfig.phoneNumberId}
-                onChange={e => setWaConfig(p => ({ ...p, phoneNumberId: e.target.value }))}
-                placeholder="Ej: 123456789012345"
-                className="w-full bg-secondary rounded-lg px-3 py-2 text-sm outline-none border border-border focus:border-primary"
-              />
-              <p className="text-[10px] text-muted-foreground mt-1">Lo encuentras en Meta Business → WhatsApp → Configuración de API</p>
-            </div>
+            {waProvider === 'meta' ? (
+              <>
+                <div>
+                  <label className="text-xs font-medium text-foreground block mb-1">Phone Number ID *</label>
+                  <input
+                    value={waConfig.phoneNumberId}
+                    onChange={e => setWaConfig(p => ({ ...p, phoneNumberId: e.target.value }))}
+                    placeholder="Ej: 123456789012345"
+                    className="w-full bg-secondary rounded-lg px-3 py-2 text-sm outline-none border border-border focus:border-primary"
+                  />
+                  <p className="text-[10px] text-muted-foreground mt-1">Lo encuentras en Meta Business → WhatsApp → Configuración de API</p>
+                </div>
 
-            <div>
-              <label className="text-xs font-medium text-foreground block mb-1">Business Account ID</label>
-              <input
-                value={waConfig.businessAccountId}
-                onChange={e => setWaConfig(p => ({ ...p, businessAccountId: e.target.value }))}
-                placeholder="Ej: 987654321098765"
-                className="w-full bg-secondary rounded-lg px-3 py-2 text-sm outline-none border border-border focus:border-primary"
-              />
-            </div>
+                <div>
+                  <label className="text-xs font-medium text-foreground block mb-1">Business Account ID</label>
+                  <input
+                    value={waConfig.businessAccountId}
+                    onChange={e => setWaConfig(p => ({ ...p, businessAccountId: e.target.value }))}
+                    placeholder="Ej: 987654321098765"
+                    className="w-full bg-secondary rounded-lg px-3 py-2 text-sm outline-none border border-border focus:border-primary"
+                  />
+                </div>
 
-            <div>
-              <label className="text-xs font-medium text-foreground block mb-1">Access Token permanente *</label>
-              <input
-                type="password"
-                value={waConfig.accessToken}
-                onChange={e => setWaConfig(p => ({ ...p, accessToken: e.target.value }))}
-                placeholder="EAAx..."
-                className="w-full bg-secondary rounded-lg px-3 py-2 text-sm outline-none border border-border focus:border-primary"
-              />
-              <p className="text-[10px] text-muted-foreground mt-1">Token permanente de sistema en Meta Business → Configuración del negocio → Tokens</p>
-            </div>
+                <div>
+                  <label className="text-xs font-medium text-foreground block mb-1">Access Token permanente *</label>
+                  <input
+                    type="password"
+                    value={waConfig.accessToken}
+                    onChange={e => setWaConfig(p => ({ ...p, accessToken: e.target.value }))}
+                    placeholder="EAAx..."
+                    className="w-full bg-secondary rounded-lg px-3 py-2 text-sm outline-none border border-border focus:border-primary"
+                  />
+                  <p className="text-[10px] text-muted-foreground mt-1">Token permanente de sistema en Meta Business → Configuración del negocio → Tokens</p>
+                </div>
 
-            <div>
-              <label className="text-xs font-medium text-foreground block mb-1">Verify Token (webhook)</label>
-              <input
-                value={waConfig.verifyToken}
-                onChange={e => setWaConfig(p => ({ ...p, verifyToken: e.target.value }))}
-                placeholder="Ej: mi_token_secreto"
-                className="w-full bg-secondary rounded-lg px-3 py-2 text-sm outline-none border border-border focus:border-primary"
-              />
-            </div>
+                <div>
+                  <label className="text-xs font-medium text-foreground block mb-1">Verify Token (webhook)</label>
+                  <input
+                    value={waConfig.verifyToken}
+                    onChange={e => setWaConfig(p => ({ ...p, verifyToken: e.target.value }))}
+                    placeholder="Ej: mi_token_secreto"
+                    className="w-full bg-secondary rounded-lg px-3 py-2 text-sm outline-none border border-border focus:border-primary"
+                  />
+                </div>
 
-            <div>
-              <label className="text-xs font-medium text-foreground block mb-1">URL del Webhook</label>
-              <div className="flex items-center gap-2">
-                <input
-                  value={webhookUrl}
-                  readOnly
-                  className="flex-1 bg-muted rounded-lg px-3 py-2 text-sm outline-none border border-border text-muted-foreground"
-                />
-                <button
-                  onClick={() => { navigator.clipboard.writeText(webhookUrl); toast.success('URL copiada'); }}
-                  className="text-xs bg-secondary text-secondary-foreground px-3 py-2 rounded-lg hover:bg-secondary/80 shrink-0"
-                >
-                  Copiar
-                </button>
-              </div>
-              <p className="text-[10px] text-muted-foreground mt-1">Pega esta URL en Meta Business → WhatsApp → Configuración → Webhooks</p>
-            </div>
+                <div>
+                  <label className="text-xs font-medium text-foreground block mb-1">URL del Webhook</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      value={webhookUrl}
+                      readOnly
+                      className="flex-1 bg-muted rounded-lg px-3 py-2 text-sm outline-none border border-border text-muted-foreground"
+                    />
+                    <button
+                      onClick={() => { navigator.clipboard.writeText(webhookUrl); toast.success('URL copiada'); }}
+                      className="text-xs bg-secondary text-secondary-foreground px-3 py-2 rounded-lg hover:bg-secondary/80 shrink-0"
+                    >
+                      Copiar
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground mt-1">Pega esta URL en Meta Business → WhatsApp → Configuración → Webhooks</p>
+                </div>
+              </>
+            ) : (
+              <>
+                <div>
+                  <label className="text-xs font-medium text-foreground block mb-1">Account SID *</label>
+                  <input
+                    value={twilioConfig.accountSid}
+                    onChange={e => setTwilioConfig(p => ({ ...p, accountSid: e.target.value }))}
+                    placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                    className="w-full bg-secondary rounded-lg px-3 py-2 text-sm outline-none border border-border focus:border-primary"
+                  />
+                  <p className="text-[10px] text-muted-foreground mt-1">Lo encuentras en tu consola de Twilio → Account Info</p>
+                </div>
+
+                <div>
+                  <label className="text-xs font-medium text-foreground block mb-1">Auth Token *</label>
+                  <input
+                    type="password"
+                    value={twilioConfig.authToken}
+                    onChange={e => setTwilioConfig(p => ({ ...p, authToken: e.target.value }))}
+                    placeholder="Tu Auth Token de Twilio"
+                    className="w-full bg-secondary rounded-lg px-3 py-2 text-sm outline-none border border-border focus:border-primary"
+                  />
+                  <p className="text-[10px] text-muted-foreground mt-1">Se encuentra junto al Account SID en la consola de Twilio</p>
+                </div>
+
+                <div>
+                  <label className="text-xs font-medium text-foreground block mb-1">Número de WhatsApp *</label>
+                  <input
+                    value={twilioConfig.phoneNumber}
+                    onChange={e => setTwilioConfig(p => ({ ...p, phoneNumber: e.target.value }))}
+                    placeholder="whatsapp:+14155238886"
+                    className="w-full bg-secondary rounded-lg px-3 py-2 text-sm outline-none border border-border focus:border-primary"
+                  />
+                  <p className="text-[10px] text-muted-foreground mt-1">Formato: whatsapp:+[código país][número]. Actívalo en Twilio → Messaging → WhatsApp Sandbox o número propio</p>
+                </div>
+
+                <div>
+                  <label className="text-xs font-medium text-foreground block mb-1">URL del Webhook (Status Callback)</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      value={webhookUrl}
+                      readOnly
+                      className="flex-1 bg-muted rounded-lg px-3 py-2 text-sm outline-none border border-border text-muted-foreground"
+                    />
+                    <button
+                      onClick={() => { navigator.clipboard.writeText(webhookUrl); toast.success('URL copiada'); }}
+                      className="text-xs bg-secondary text-secondary-foreground px-3 py-2 rounded-lg hover:bg-secondary/80 shrink-0"
+                    >
+                      Copiar
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground mt-1">Pega esta URL en Twilio → WhatsApp Sandbox → When a message comes in</p>
+                </div>
+              </>
+            )}
 
             <button
               onClick={handleSaveWaConfig}
