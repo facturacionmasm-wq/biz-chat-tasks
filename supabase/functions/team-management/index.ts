@@ -95,25 +95,36 @@ Deno.serve(async (req) => {
         });
       }
 
-      // Re-invite: use inviteUserByEmail which handles existing unconfirmed users
-      const { error } = await adminClient.auth.admin.inviteUserByEmail(email);
+      // Use generateLink to create a magic link for existing users
+      const { data: linkData, error: linkError } = await adminClient.auth.admin.generateLink({
+        type: "magiclink",
+        email,
+      });
 
-      if (error) {
-        // If user already registered and confirmed, just inform
-        if (error.message.includes("already been registered")) {
-          return new Response(
-            JSON.stringify({ success: true, message: "El usuario ya se registró y confirmó su cuenta" }),
-            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-        return new Response(JSON.stringify({ error: error.message }), {
+      if (linkError) {
+        return new Response(JSON.stringify({ error: linkError.message }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Send the magic link email via Supabase's built-in email
+      const { error: otpError } = await adminClient.auth.signInWithOtp({
+        email,
+        options: {
+          shouldCreateUser: false,
+        },
+      });
+
+      if (otpError) {
+        return new Response(JSON.stringify({ error: otpError.message }), {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
       return new Response(
-        JSON.stringify({ success: true, message: "Invitación reenviada exitosamente" }),
+        JSON.stringify({ success: true, message: "Se envió un enlace de acceso al correo del miembro" }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
