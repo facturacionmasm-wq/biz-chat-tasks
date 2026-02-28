@@ -79,6 +79,11 @@ const SettingsPage = () => {
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [inviteName, setInviteName] = useState('');
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [invitePassword, setInvitePassword] = useState('');
+  const [inviting, setInviting] = useState(false);
 
   // Load tenant data
   useEffect(() => {
@@ -187,6 +192,47 @@ const SettingsPage = () => {
       toast.error(err.message || 'Error al eliminar miembro');
     } finally {
       setDeletingUserId(null);
+    }
+  };
+
+  const handleInviteMember = async () => {
+    if (!inviteName.trim() || !inviteEmail.trim() || !invitePassword.trim()) {
+      toast.error('Todos los campos son requeridos');
+      return;
+    }
+    if (invitePassword.length < 6) {
+      toast.error('La contraseña debe tener al menos 6 caracteres');
+      return;
+    }
+    setInviting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('invite-member', {
+        body: { email: inviteEmail.trim(), password: invitePassword, name: inviteName.trim() },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      toast.success(data?.message || 'Miembro invitado exitosamente');
+      setShowInviteModal(false);
+      setInviteName('');
+      setInviteEmail('');
+      setInvitePassword('');
+      // Reload team
+      const { data: myProfile } = await supabase.from('profiles').select('tenant_id').eq('user_id', user!.id).maybeSingle();
+      if (myProfile) {
+        const tenantId = myProfile.tenant_id;
+        const { data: profiles } = await supabase.from('profiles').select('user_id, name, email, status').eq('tenant_id', tenantId);
+        const { data: roles } = await supabase.from('user_roles').select('user_id, role, permissions_json').eq('tenant_id', tenantId);
+        const roleMap = new Map((roles || []).map(r => [r.user_id, { role: r.role, permissions: r.permissions_json }]));
+        setTeamData((profiles || []).map(p => {
+          const roleData = roleMap.get(p.user_id);
+          const perms = (roleData?.permissions as Record<string, boolean>) || {};
+          return { user_id: p.user_id, name: p.name || '', email: p.email || '', role: roleData?.role || 'staff', status: p.status || 'active', permissions: perms };
+        }));
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Error al invitar miembro');
+    } finally {
+      setInviting(false);
     }
   };
 
@@ -590,7 +636,9 @@ const SettingsPage = () => {
           <div className="max-w-3xl">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold text-foreground">Equipo</h3>
-              <button className="bg-primary text-primary-foreground text-sm px-4 py-2 rounded-lg hover:opacity-90">+ Invitar</button>
+              {isSuperAdmin && (
+                <button onClick={() => setShowInviteModal(true)} className="bg-primary text-primary-foreground text-sm px-4 py-2 rounded-lg hover:opacity-90">+ Invitar</button>
+              )}
             </div>
             {teamLoading ? (
               <div className="flex items-center justify-center py-12"><Loader2 size={24} className="animate-spin text-muted-foreground" /></div>
@@ -693,6 +741,45 @@ const SettingsPage = () => {
                 {teamData.length === 0 && (
                   <div className="bg-card border border-border rounded-xl p-6 text-center text-muted-foreground text-sm">No hay miembros en el equipo</div>
                 )}
+              </div>
+            )}
+
+            {/* Invite Modal */}
+            {showInviteModal && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowInviteModal(false)}>
+                <div className="bg-card border border-border rounded-xl p-6 w-full max-w-md shadow-xl" onClick={e => e.stopPropagation()}>
+                  <h4 className="text-lg font-bold text-foreground mb-4">Invitar nuevo miembro</h4>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs font-medium text-muted-foreground mb-1 block">Nombre completo</label>
+                      <input className={inputClass} value={inviteName} onChange={e => setInviteName(e.target.value)} placeholder="Nombre del miembro" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-muted-foreground mb-1 block">Email</label>
+                      <input className={inputClass} type="email" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} placeholder="email@ejemplo.com" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-muted-foreground mb-1 block">Contraseña temporal</label>
+                      <input className={inputClass} type="password" value={invitePassword} onChange={e => setInvitePassword(e.target.value)} placeholder="Mínimo 6 caracteres" />
+                    </div>
+                    <div className="flex gap-2 pt-2">
+                      <button
+                        onClick={() => setShowInviteModal(false)}
+                        className="flex-1 bg-secondary text-secondary-foreground text-sm px-4 py-2.5 rounded-lg hover:opacity-90"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        onClick={handleInviteMember}
+                        disabled={inviting || !inviteName.trim() || !inviteEmail.trim() || invitePassword.length < 6}
+                        className="flex-1 bg-primary text-primary-foreground text-sm px-4 py-2.5 rounded-lg hover:opacity-90 disabled:opacity-40 flex items-center justify-center gap-2"
+                      >
+                        {inviting && <Loader2 size={14} className="animate-spin" />}
+                        Crear miembro
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </div>
