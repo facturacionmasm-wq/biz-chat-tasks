@@ -32,3 +32,6 @@ verify_jwt = false
 
 [functions.call-transfer-twiml]
 verify_jwt = false
+
+[functions.notify-transfer]
+verify_jwt = false
