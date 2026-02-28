@@ -1,4 +1,5 @@
-import { CalendarDays, CheckCircle2, AlertTriangle, TrendingUp, Clock, Target, FolderKanban, Sparkles, ArrowRight, Phone, PhoneMissed, MessageSquare, CalendarPlus } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { CalendarDays, CheckCircle2, AlertTriangle, TrendingUp, Clock, Target, FolderKanban, Sparkles, ArrowRight, Phone, PhoneMissed, MessageSquare, CalendarPlus, Download, X } from 'lucide-react';
 import { tasks, projects, okrs, calendarEvents } from '@/data/mockData';
 import { mockCallRecords, mockAppointments, mockWAConversations } from '@/data/mockCallsData';
 import { format } from 'date-fns';
@@ -10,6 +11,21 @@ import { useAuth } from '@/contexts/AuthContext';
 const Dashboard = () => {
   const branding = useBranding();
   const { user } = useAuth();
+  const [showInstallBanner, setShowInstallBanner] = useState(false);
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+
+  useEffect(() => {
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+    const dismissed = sessionStorage.getItem('pwa-banner-dismissed');
+    if (!isStandalone && !dismissed) setShowInstallBanner(true);
+    const handler = (e: Event) => { e.preventDefault(); setDeferredPrompt(e); };
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
+
+  const handleInstall = async () => { if (deferredPrompt) { deferredPrompt.prompt(); setShowInstallBanner(false); } else { window.location.href = '/install'; } };
+  const dismissBanner = () => { setShowInstallBanner(false); sessionStorage.setItem('pwa-banner-dismissed', '1'); };
+
   const urgentTasks = tasks.filter(t => t.priority === 'high' && t.status !== 'done');
   const todayEvents = calendarEvents.filter(e => {
     const today = new Date();
@@ -36,6 +52,25 @@ const Dashboard = () => {
 
   return (
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 max-w-7xl mx-auto">
+      {/* PWA Install Banner */}
+      {showInstallBanner && (
+        <div className="flex items-center gap-3 bg-primary/10 border border-primary/20 rounded-xl p-3 sm:p-4">
+          <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center shrink-0">
+            <Download size={20} className="text-primary-foreground" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-foreground">Instala RYBIX en tu dispositivo</p>
+            <p className="text-xs text-muted-foreground">Acceso rápido desde tu pantalla de inicio, sin tiendas de apps.</p>
+          </div>
+          <button onClick={handleInstall} className="shrink-0 bg-primary text-primary-foreground text-xs sm:text-sm font-medium px-3 sm:px-4 py-2 rounded-lg hover:opacity-90">
+            Instalar
+          </button>
+          <button onClick={dismissBanner} className="shrink-0 p-1 text-muted-foreground hover:text-foreground">
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
       {/* Welcome */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3 sm:gap-4">

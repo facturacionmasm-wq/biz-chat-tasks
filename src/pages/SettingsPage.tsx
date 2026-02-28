@@ -452,16 +452,16 @@ const SettingsPage = () => {
   const inputClass = "w-full bg-secondary rounded-lg px-3 py-2 text-sm outline-none border border-border focus:border-primary text-foreground placeholder:text-muted-foreground";
 
   return (
-    <div className="flex h-full">
-      {/* Settings sidebar */}
-      <div className="w-56 shrink-0 border-r border-border bg-card p-3">
-        <h2 className="text-sm font-semibold text-foreground px-3 mb-3">Configuración</h2>
-        <div className="space-y-0.5">
+    <div className="flex flex-col sm:flex-row h-full">
+      {/* Settings sidebar - horizontal on mobile */}
+      <div className="sm:w-56 shrink-0 border-b sm:border-b-0 sm:border-r border-border bg-card p-2 sm:p-3 overflow-x-auto sm:overflow-x-visible">
+        <h2 className="text-sm font-semibold text-foreground px-3 mb-2 hidden sm:block">Configuración</h2>
+        <div className="flex sm:flex-col gap-1 sm:space-y-0.5">
           {settingsSections.map(s => (
             <button
               key={s.id}
               onClick={() => setActiveSection(s.id)}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors ${
+              className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors whitespace-nowrap shrink-0 ${
                 activeSection === s.id ? 'bg-primary/10 text-primary font-medium' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
               }`}
             >
@@ -473,7 +473,7 @@ const SettingsPage = () => {
       </div>
 
       {/* Content */}
-      <div className="flex-1 p-6 overflow-auto">
+      <div className="flex-1 p-4 sm:p-6 overflow-auto">
         {activeSection === 'profile' && (
           <div className="max-w-2xl">
             <h3 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
