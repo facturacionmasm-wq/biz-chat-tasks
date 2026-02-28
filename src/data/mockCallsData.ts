@@ -1,3 +1,9 @@
+export interface TranscriptEntry {
+  role: string;
+  text: string;
+  timestamp: number; // seconds from call start
+}
+
 export interface CallRecord {
   id: string;
   externalCallId: string;
@@ -11,6 +17,7 @@ export interface CallRecord {
   tags: string[];
   agentName: string;
   transcript: string;
+  transcriptStructured: TranscriptEntry[];
   summarySystem: string;
   summaryHuman: string | null;
   extractedData: {
@@ -21,10 +28,14 @@ export interface CallRecord {
     location?: string;
     urgency?: string;
     sentiment?: string;
+    sentimentScore?: number;
     suggestedTags?: string[];
     objections?: string[];
     agreements?: string[];
+    risks?: string[];
+    alerts?: string[];
     followUp?: string;
+    keyTopics?: string[];
   };
   audioUrl: string | null;
 }

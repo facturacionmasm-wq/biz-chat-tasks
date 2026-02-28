@@ -172,7 +172,7 @@ serve(async (req) => {
                 'Authorization': `Bearer ${LOVABLE_API_KEY}`,
                 'Content-Type': 'application/json',
               },
-              body: JSON.stringify({
+               body: JSON.stringify({
                 model: 'google/gemini-3-flash-preview',
                 messages: [
                   {
@@ -183,13 +183,17 @@ serve(async (req) => {
 
 Formato del resumen:
 **Resumen:** (2-3 líneas)
+**Sentimiento general:** (positivo/neutro/negativo) — Puntuación: X/10
 **Puntos clave:** (bullet list)
 **Acciones sugeridas:** (bullet list)
-**Sentimiento:** (positivo/neutro/negativo)
-**Etiquetas sugeridas:** (lista separada por comas)
+**⚠️ Riesgos y alertas:** (bullet list, o "Sin riesgos detectados")
+**Temas principales:** tema1, tema2, tema3
+**Seguimiento recomendado:** (fecha y contexto)
 
 Formato del JSON (devuelve al final entre \`\`\`json y \`\`\`):
-{"contactName":"","reason":"","intent":"","budget":"","urgency":"","sentiment":"","suggestedTags":[],"agreements":[],"followUp":"ISO date or empty"}`,
+{"contactName":"","reason":"","intent":"","budget":"","urgency":"alta|media|baja","sentiment":"positivo|neutro|negativo","sentimentScore":7,"keyTopics":[],"suggestedTags":[],"objections":[],"agreements":[],"risks":[],"alerts":[],"followUp":"ISO date or empty"}
+
+Detecta riesgos: insatisfacción, promesas incumplidas, urgencias, cancelaciones, menciones de competidores, escalamientos.`,
                   },
                   { role: 'user', content: fullRecord.transcript },
                 ],

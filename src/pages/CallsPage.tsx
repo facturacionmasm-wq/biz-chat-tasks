@@ -1,12 +1,29 @@
 import { useState, useCallback, useEffect } from 'react';
-import { Phone, PhoneIncoming, PhoneMissed, PhoneOff, Clock, User, Tag, Play, Pause, CalendarPlus, MessageSquare, ChevronRight, Search, ArrowLeft, CheckCircle2, Edit3, Save, RefreshCw, Activity, Download, Volume2 } from 'lucide-react';
-import { type CallRecord, type CallEvent } from '@/data/mockCallsData';
+import { Phone, PhoneIncoming, PhoneMissed, PhoneOff, Clock, User, Tag, Play, Pause, CalendarPlus, MessageSquare, ChevronRight, Search, ArrowLeft, CheckCircle2, Edit3, Save, RefreshCw, Activity, Download, Volume2, AlertTriangle, TrendingUp, Hash } from 'lucide-react';
+import { type CallRecord, type CallEvent, type TranscriptEntry } from '@/data/mockCallsData';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import VoiceAgent from '@/components/VoiceAgent';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useIsMobile } from '@/hooks/use-mobile';
+
+const parseTranscriptStructured = (transcript: string): TranscriptEntry[] => {
+  if (!transcript) return [];
+  return transcript.split('\n').filter(Boolean).map(line => {
+    const tsMatch = line.match(/^\[(\d{2}):(\d{2})\]\s*/);
+    let timestamp = 0;
+    let rest = line;
+    if (tsMatch) {
+      timestamp = parseInt(tsMatch[1]) * 60 + parseInt(tsMatch[2]);
+      rest = line.slice(tsMatch[0].length);
+    }
+    const roleMatch = rest.match(/^([\w\s]+?):\s*/);
+    const role = roleMatch ? roleMatch[1] : 'Sistema';
+    const text = roleMatch ? rest.slice(roleMatch[0].length) : rest;
+    return { role, text, timestamp };
+  });
+};
 
 const dbRowToCallRecord = (row: any): CallRecord => ({
   id: row.id,
@@ -21,6 +38,7 @@ const dbRowToCallRecord = (row: any): CallRecord => ({
   tags: row.tags || [],
   agentName: 'Voice Agent',
   transcript: row.transcript || '',
+  transcriptStructured: parseTranscriptStructured(row.transcript || ''),
   summarySystem: row.summary_system || '',
   summaryHuman: row.summary_human || null,
   extractedData: (row.extracted_data as CallRecord['extractedData']) || {},
@@ -136,6 +154,7 @@ const EventTimeline = ({ events }: { events: CallEvent[] }) => {
 const CallsPage = () => {
   const [selectedCall, setSelectedCall] = useState<CallRecord | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [transcriptSearch, setTranscriptSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [editingSummary, setEditingSummary] = useState(false);
   const [humanSummary, setHumanSummary] = useState('');
@@ -254,17 +273,19 @@ const CallsPage = () => {
       body: { action: 'summarize_call', data: { transcript: selectedCall.transcript, extractedData: selectedCall.extractedData } },
     });
     if (!error && data?.summary) {
-      let extractedData = {};
+      let extractedData: Record<string, any> = {};
       const jsonMatch = data.summary.match(/```json\n?([\s\S]*?)\n?```/);
       if (jsonMatch) {
         try { extractedData = JSON.parse(jsonMatch[1]); } catch {}
       }
       const cleanSummary = data.summary.replace(/```json[\s\S]*?```/, '').trim();
+      const tags = extractedData.suggestedTags || [];
       await supabase.from('call_records').update({
         summary_system: cleanSummary,
         extracted_data: extractedData,
+        tags,
       }).eq('id', selectedCall.id);
-      setSelectedCall({ ...selectedCall, summarySystem: cleanSummary, extractedData: extractedData as any });
+      setSelectedCall({ ...selectedCall, summarySystem: cleanSummary, extractedData: extractedData as any, tags });
       toast.success('Resumen regenerado');
       loadDbCalls();
     } else {
@@ -370,21 +391,60 @@ const CallsPage = () => {
                 )}
               </div>
 
-              {/* Transcript */}
+              {/* Transcript with search */}
               {selectedCall.transcript && (
                 <div className="bg-card border border-border rounded-xl p-4 sm:p-5 shadow-sm">
-                  <h3 className="font-semibold text-foreground mb-3">💬 Transcripción</h3>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-semibold text-foreground">💬 Transcripción</h3>
+                    <div className="flex items-center gap-2 bg-muted rounded-lg px-2 py-1">
+                      <Search size={12} className="text-muted-foreground" />
+                      <input
+                        type="text"
+                        placeholder="Buscar en transcripción..."
+                        value={transcriptSearch}
+                        onChange={e => setTranscriptSearch(e.target.value)}
+                        className="bg-transparent text-xs outline-none w-40 text-foreground placeholder:text-muted-foreground"
+                      />
+                      {transcriptSearch && (
+                        <span className="text-[10px] text-muted-foreground">
+                          {selectedCall.transcriptStructured.filter(e => e.text.toLowerCase().includes(transcriptSearch.toLowerCase())).length} resultados
+                        </span>
+                      )}
+                    </div>
+                  </div>
                   <div className="space-y-2 text-sm max-h-96 overflow-y-auto scrollbar-thin">
-                    {selectedCall.transcript.split('\n').map((line, i) => {
-                      const isAgent = line.startsWith('Agente:') || line.startsWith('Agent:');
-                      const isUser = line.startsWith('Usuario:') || line.startsWith('User:') || line.startsWith('Cliente:');
+                    {selectedCall.transcriptStructured.map((entry, i) => {
+                      const isAgent = entry.role === 'Agente' || entry.role === 'Agent';
+                      const isUser = entry.role === 'Usuario' || entry.role === 'User' || entry.role === 'Cliente';
+                      const matchesSearch = transcriptSearch && entry.text.toLowerCase().includes(transcriptSearch.toLowerCase());
+                      const isHidden = transcriptSearch && !matchesSearch;
+
+                      if (isHidden) return null;
+
+                      const highlightText = (text: string) => {
+                        if (!transcriptSearch) return text;
+                        const regex = new RegExp(`(${transcriptSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+                        const parts = text.split(regex);
+                        return parts.map((part, j) =>
+                          regex.test(part) ? <mark key={j} className="bg-warning/30 text-foreground rounded px-0.5">{part}</mark> : part
+                        );
+                      };
+
+                      const formatTs = (s: number) => `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
+
                       return (
-                        <div key={i} className={`px-3 py-2 rounded-lg ${
+                        <div key={i} className={`px-3 py-2 rounded-lg flex gap-2 ${
+                          matchesSearch ? 'ring-1 ring-warning/50' : ''
+                        } ${
                           isAgent ? 'bg-primary/5 border-l-2 border-primary' :
                           isUser ? 'bg-muted/50 border-l-2 border-muted-foreground/30' :
                           'bg-muted/30'
                         }`}>
-                          <p className="text-foreground">{line}</p>
+                          <span className="text-[10px] text-muted-foreground font-mono shrink-0 pt-0.5">{formatTs(entry.timestamp)}</span>
+                          <div className="min-w-0">
+                            <span className="text-xs font-semibold text-muted-foreground">{entry.role}:</span>
+                            <p className="text-foreground mt-0.5">{highlightText(entry.text)}</p>
+                          </div>
                         </div>
                       );
                     })}
@@ -393,8 +453,71 @@ const CallsPage = () => {
               )}
             </div>
 
-            {/* Right column: Extracted Data + Event Timeline */}
+            {/* Right column: Extracted Data + Risks + Event Timeline */}
             <div className="space-y-4">
+              {/* Sentiment Indicator */}
+              {selectedCall.extractedData.sentiment && (
+                <div className={`rounded-xl p-4 shadow-sm border ${
+                  selectedCall.extractedData.sentiment === 'positivo' ? 'bg-success/10 border-success/20' :
+                  selectedCall.extractedData.sentiment === 'negativo' ? 'bg-destructive/10 border-destructive/20' :
+                  'bg-muted border-border'
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <TrendingUp size={16} className={
+                        selectedCall.extractedData.sentiment === 'positivo' ? 'text-success' :
+                        selectedCall.extractedData.sentiment === 'negativo' ? 'text-destructive' :
+                        'text-muted-foreground'
+                      } />
+                      <span className="text-sm font-semibold text-foreground capitalize">{selectedCall.extractedData.sentiment}</span>
+                    </div>
+                    {selectedCall.extractedData.sentimentScore !== undefined && (
+                      <span className={`text-lg font-bold ${
+                        selectedCall.extractedData.sentimentScore >= 7 ? 'text-success' :
+                        selectedCall.extractedData.sentimentScore <= 3 ? 'text-destructive' :
+                        'text-foreground'
+                      }`}>{selectedCall.extractedData.sentimentScore}/10</span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Risks & Alerts */}
+              {((selectedCall.extractedData.risks && selectedCall.extractedData.risks.length > 0) ||
+                (selectedCall.extractedData.alerts && selectedCall.extractedData.alerts.length > 0)) && (
+                <div className="bg-destructive/5 border border-destructive/20 rounded-xl p-4 sm:p-5 shadow-sm">
+                  <h3 className="font-semibold text-destructive mb-3 flex items-center gap-2">
+                    <AlertTriangle size={16} /> Riesgos y alertas
+                  </h3>
+                  <ul className="space-y-2">
+                    {(selectedCall.extractedData.risks || []).map((r, i) => (
+                      <li key={`risk-${i}`} className="text-sm text-foreground flex items-start gap-2">
+                        <AlertTriangle size={12} className="text-destructive shrink-0 mt-0.5" />{r}
+                      </li>
+                    ))}
+                    {(selectedCall.extractedData.alerts || []).map((a, i) => (
+                      <li key={`alert-${i}`} className="text-sm text-foreground flex items-start gap-2">
+                        <AlertTriangle size={12} className="text-warning shrink-0 mt-0.5" />{a}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Key Topics */}
+              {selectedCall.extractedData.keyTopics && selectedCall.extractedData.keyTopics.length > 0 && (
+                <div className="bg-card border border-border rounded-xl p-4 sm:p-5 shadow-sm">
+                  <h3 className="font-semibold text-foreground mb-3 flex items-center gap-2">
+                    <Hash size={16} /> Temas principales
+                  </h3>
+                  <div className="flex flex-wrap gap-1.5">
+                    {selectedCall.extractedData.keyTopics.map((topic, i) => (
+                      <span key={i} className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full">{topic}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Extracted Data */}
               <div className="bg-card border border-border rounded-xl p-4 sm:p-5 shadow-sm">
                 <h3 className="font-semibold text-foreground mb-3">📊 Datos extraídos</h3>
@@ -402,11 +525,10 @@ const CallsPage = () => {
                   {selectedCall.extractedData.contactName && (<div><p className="text-xs text-muted-foreground">Contacto</p><p className="font-medium text-foreground">{selectedCall.extractedData.contactName}</p></div>)}
                   {selectedCall.extractedData.reason && (<div><p className="text-xs text-muted-foreground">Motivo</p><p className="font-medium text-foreground">{selectedCall.extractedData.reason}</p></div>)}
                   {selectedCall.extractedData.intent && (<div><p className="text-xs text-muted-foreground">Intención</p><p className="font-medium text-foreground capitalize">{selectedCall.extractedData.intent}</p></div>)}
-                  {selectedCall.extractedData.sentiment && (<div><p className="text-xs text-muted-foreground">Sentimiento</p><p className="font-medium text-foreground capitalize">{selectedCall.extractedData.sentiment}</p></div>)}
                   {selectedCall.extractedData.budget && (<div><p className="text-xs text-muted-foreground">Presupuesto</p><p className="font-medium text-foreground">{selectedCall.extractedData.budget}</p></div>)}
                   {selectedCall.extractedData.urgency && (<div><p className="text-xs text-muted-foreground">Urgencia</p><p className="font-medium text-foreground capitalize">{selectedCall.extractedData.urgency}</p></div>)}
                   {selectedCall.extractedData.followUp && (<div><p className="text-xs text-muted-foreground">Seguimiento</p><p className="font-medium text-primary">{format(new Date(selectedCall.extractedData.followUp), "d MMM yyyy", { locale: es })}</p></div>)}
-                  {Object.keys(selectedCall.extractedData).filter(k => !['suggestedTags'].includes(k)).length === 0 && (<p className="text-muted-foreground text-xs">Sin datos extraídos</p>)}
+                  {Object.keys(selectedCall.extractedData).filter(k => !['suggestedTags', 'sentiment', 'sentimentScore', 'keyTopics', 'risks', 'alerts'].includes(k)).length === 0 && (<p className="text-muted-foreground text-xs">Sin datos extraídos</p>)}
                 </div>
               </div>
 
