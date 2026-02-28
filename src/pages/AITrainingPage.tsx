@@ -11,6 +11,8 @@ interface ChatMessage {
   timestamp: Date;
   approved?: boolean | null;
   saved?: boolean;
+  correcting?: boolean;
+  correction?: string;
 }
 
 const AITrainingPage = () => {
@@ -127,16 +129,54 @@ const AITrainingPage = () => {
 
   // --- Approve/reject response for learning ---
   const handleFeedback = async (index: number, approved: boolean) => {
-    setWaMessages(prev => prev.map((m, i) => i === index ? { ...m, approved } : m));
+    setWaMessages(prev => prev.map((m, i) => i === index ? { ...m, approved, correcting: !approved, correction: '' } : m));
 
     if (approved) {
-      // Find the user question that preceded this answer
       const question = waMessages.slice(0, index).reverse().find(m => m.role === 'user');
       if (question) {
-        toast.success('Respuesta aprobada — se guardará como conocimiento');
+        toast.success('Respuesta aprobada — puedes guardarla como conocimiento');
       }
-    } else {
-      toast.info('Respuesta marcada como incorrecta. Ajusta el Knowledge Hub para mejorarla.');
+    }
+  };
+
+  const handleCorrectionChange = (index: number, value: string) => {
+    setWaMessages(prev => prev.map((m, i) => i === index ? { ...m, correction: value } : m));
+  };
+
+  const saveCorrection = async (index: number) => {
+    const msg = waMessages[index];
+    const question = waMessages.slice(0, index).reverse().find(m => m.role === 'user');
+    if (!question || !msg?.correction?.trim()) return;
+
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      const userId = userData?.user?.id;
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('tenant_id')
+        .eq('user_id', userId!)
+        .maybeSingle();
+
+      if (!profile?.tenant_id) {
+        toast.error('No se encontró el tenant');
+        return;
+      }
+
+      await supabase.from('knowledge_items').insert({
+        tenant_id: profile.tenant_id,
+        title: `Corrección: ${question.content.substring(0, 100)}`,
+        content: `**Pregunta del ${simulatedRole === 'employee' ? 'empleado' : 'cliente'}:**\n${question.content}\n\n**Respuesta correcta (corregida):**\n${msg.correction}`,
+        category: 'Entrenamiento IA',
+        tags: ['bot-training', 'correction', simulatedRole || 'general'],
+        author_id: userId,
+        visibility: 'internal',
+        active: true,
+      });
+
+      setWaMessages(prev => prev.map((m, i) => i === index ? { ...m, correcting: false, saved: true } : m));
+      toast.success('✅ Corrección guardada en Knowledge Hub — el bot usará esta respuesta en el futuro');
+    } catch (err: any) {
+      toast.error('Error al guardar: ' + (err.message || 'desconocido'));
     }
   };
 
@@ -259,33 +299,62 @@ const AITrainingPage = () => {
 
                     {/* Feedback controls for assistant messages */}
                     {msg.role === 'assistant' && !msg.content.startsWith('Error:') && (
-                      <div className="flex items-center gap-1 mt-1 ml-1">
-                        <button
-                          onClick={() => handleFeedback(i, true)}
-                          className={`p-1 rounded transition-colors ${msg.approved === true ? 'text-emerald-500 bg-emerald-500/10' : 'text-muted-foreground hover:text-emerald-500 hover:bg-emerald-500/10'}`}
-                          title="Buena respuesta"
-                        >
-                          <ThumbsUp size={13} />
-                        </button>
-                        <button
-                          onClick={() => handleFeedback(i, false)}
-                          className={`p-1 rounded transition-colors ${msg.approved === false ? 'text-destructive bg-destructive/10' : 'text-muted-foreground hover:text-destructive hover:bg-destructive/10'}`}
-                          title="Respuesta incorrecta"
-                        >
-                          <ThumbsDown size={13} />
-                        </button>
-                        {msg.approved === true && !msg.saved && (
+                      <>
+                        <div className="flex items-center gap-1 mt-1 ml-1">
                           <button
-                            onClick={() => saveAsKnowledge(i)}
-                            className="flex items-center gap-1 text-xs text-primary hover:bg-primary/10 px-2 py-0.5 rounded ml-1 transition-colors"
+                            onClick={() => handleFeedback(i, true)}
+                            className={`p-1 rounded transition-colors ${msg.approved === true ? 'text-emerald-500 bg-emerald-500/10' : 'text-muted-foreground hover:text-emerald-500 hover:bg-emerald-500/10'}`}
+                            title="Buena respuesta"
                           >
-                            <BookOpen size={12} /> Guardar en Knowledge Hub
+                            <ThumbsUp size={13} />
                           </button>
+                          <button
+                            onClick={() => handleFeedback(i, false)}
+                            className={`p-1 rounded transition-colors ${msg.approved === false ? 'text-destructive bg-destructive/10' : 'text-muted-foreground hover:text-destructive hover:bg-destructive/10'}`}
+                            title="Respuesta incorrecta"
+                          >
+                            <ThumbsDown size={13} />
+                          </button>
+                          {msg.approved === true && !msg.saved && (
+                            <button
+                              onClick={() => saveAsKnowledge(i)}
+                              className="flex items-center gap-1 text-xs text-primary hover:bg-primary/10 px-2 py-0.5 rounded ml-1 transition-colors"
+                            >
+                              <BookOpen size={12} /> Guardar en Knowledge Hub
+                            </button>
+                          )}
+                          {msg.saved && (
+                            <span className="text-xs text-emerald-500 ml-1">✓ Guardado</span>
+                          )}
+                        </div>
+
+                        {msg.correcting && (
+                          <div className="mt-2 ml-1 space-y-2">
+                            <p className="text-xs text-muted-foreground">Escribe la respuesta correcta para que Aria aprenda:</p>
+                            <textarea
+                              value={msg.correction || ''}
+                              onChange={e => handleCorrectionChange(i, e.target.value)}
+                              placeholder="Escribe aquí la respuesta correcta..."
+                              className="w-full bg-secondary rounded-lg px-3 py-2 text-sm outline-none border border-border focus:border-primary min-h-[60px] resize-y"
+                            />
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => saveCorrection(i)}
+                                disabled={!msg.correction?.trim()}
+                                className="flex items-center gap-1 text-xs bg-primary text-primary-foreground px-3 py-1.5 rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity"
+                              >
+                                <BookOpen size={12} /> Guardar corrección
+                              </button>
+                              <button
+                                onClick={() => setWaMessages(prev => prev.map((m, idx) => idx === i ? { ...m, correcting: false } : m))}
+                                className="text-xs text-muted-foreground hover:text-foreground px-2 py-1.5 transition-colors"
+                              >
+                                Cancelar
+                              </button>
+                            </div>
+                          </div>
                         )}
-                        {msg.saved && (
-                          <span className="text-xs text-emerald-500 ml-1">✓ Guardado</span>
-                        )}
-                      </div>
+                      </>
                     )}
                   </div>
                 </div>
