@@ -294,33 +294,100 @@ const SettingsPage = () => {
     }
   };
 
+  const optimizeImage = (file: File, size: number): Promise<Blob> => {
+    return new Promise((resolve, reject) => {
+      const img = new window.Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d')!;
+        
+        // Draw with smooth scaling centered/cropped to square
+        const minDim = Math.min(img.width, img.height);
+        const sx = (img.width - minDim) / 2;
+        const sy = (img.height - minDim) / 2;
+        ctx.drawImage(img, sx, sy, minDim, minDim, 0, 0, size, size);
+        
+        canvas.toBlob(
+          (blob) => blob ? resolve(blob) : reject(new Error('Error al procesar imagen')),
+          'image/png',
+          1
+        );
+      };
+      img.onerror = () => reject(new Error('Error al cargar imagen'));
+      img.src = URL.createObjectURL(file);
+    });
+  };
+
   const handleUploadFile = async (file: File, type: 'logo' | 'favicon') => {
     const setUploading = type === 'logo' ? setUploadingLogo : setUploadingFavicon;
     setUploading(true);
     try {
       const tenantId = await getTenantId();
-      const ext = file.name.split('.').pop();
-      const path = `${tenantId}/${type}.${ext}`;
 
-      // Remove old file first
-      await supabase.storage.from('branding').remove([path]);
+      if (type === 'favicon') {
+        // Generate optimized sizes for PWA and browser
+        const sizes = [
+          { size: 32, name: 'favicon-32.png' },
+          { size: 192, name: 'favicon-192.png' },
+          { size: 512, name: 'favicon-512.png' },
+        ];
 
-      const { error } = await supabase.storage.from('branding').upload(path, file, { upsert: true });
-      if (error) throw error;
+        let mainUrl = '';
+        for (const { size, name } of sizes) {
+          const optimized = await optimizeImage(file, size);
+          const path = `${tenantId}/${name}`;
+          await supabase.storage.from('branding').remove([path]);
+          const { error } = await supabase.storage.from('branding').upload(path, optimized, {
+            upsert: true,
+            contentType: 'image/png',
+          });
+          if (error) throw error;
+          if (size === 192) {
+            const { data: urlData } = supabase.storage.from('branding').getPublicUrl(path);
+            mainUrl = urlData.publicUrl + '?t=' + Date.now();
+          }
+        }
 
-      const { data: urlData } = supabase.storage.from('branding').getPublicUrl(path);
-      const publicUrl = urlData.publicUrl + '?t=' + Date.now();
+        setFaviconUrl(mainUrl);
 
-      if (type === 'logo') setLogoUrl(publicUrl);
-      else setFaviconUrl(publicUrl);
+        // Save URL to settings_json
+        const { data: tenant } = await supabase.from('tenants').select('settings_json').eq('id', tenantId).maybeSingle();
+        const current = ((tenant?.settings_json || {}) as Record<string, any>);
+        const { data: url32 } = supabase.storage.from('branding').getPublicUrl(`${tenantId}/favicon-32.png`);
+        const { data: url512 } = supabase.storage.from('branding').getPublicUrl(`${tenantId}/favicon-512.png`);
+        const updated = {
+          ...current,
+          favicon_url: mainUrl,
+          favicon_32_url: url32.publicUrl + '?t=' + Date.now(),
+          favicon_512_url: url512.publicUrl + '?t=' + Date.now(),
+        };
+        await supabase.from('tenants').update({ settings_json: updated } as any).eq('id', tenantId);
 
-      // Save URL to settings_json
-      const { data: tenant } = await supabase.from('tenants').select('settings_json').eq('id', tenantId).maybeSingle();
-      const current = ((tenant?.settings_json || {}) as Record<string, any>);
-      const updated = { ...current, [`${type}_url`]: publicUrl };
-      await supabase.from('tenants').update({ settings_json: updated } as any).eq('id', tenantId);
+        toast.success('Favicon optimizado y subido en 3 tamaños (32px, 192px, 512px)');
+      } else {
+        // Logo: resize to max 512px keeping quality
+        const optimized = await optimizeImage(file, 512);
+        const path = `${tenantId}/logo.png`;
+        await supabase.storage.from('branding').remove([path]);
+        const { error } = await supabase.storage.from('branding').upload(path, optimized, {
+          upsert: true,
+          contentType: 'image/png',
+        });
+        if (error) throw error;
 
-      toast.success(`${type === 'logo' ? 'Logo' : 'Favicon'} subido correctamente`);
+        const { data: urlData } = supabase.storage.from('branding').getPublicUrl(path);
+        const publicUrl = urlData.publicUrl + '?t=' + Date.now();
+        setLogoUrl(publicUrl);
+
+        const { data: tenant } = await supabase.from('tenants').select('settings_json').eq('id', tenantId).maybeSingle();
+        const current = ((tenant?.settings_json || {}) as Record<string, any>);
+        const updated = { ...current, logo_url: publicUrl };
+        await supabase.from('tenants').update({ settings_json: updated } as any).eq('id', tenantId);
+
+        toast.success('Logo subido correctamente');
+      }
     } catch (err: any) {
       toast.error(err.message || `Error al subir ${type}`);
     } finally {

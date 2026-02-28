@@ -45,13 +45,23 @@ export const useBranding = () => {
         };
         setBranding(newBranding);
 
-        // Update favicon dynamically
-        if (s.favicon_url) {
+        // Update favicon dynamically (use 32px version for browser tab)
+        const faviconSrc = s.favicon_32_url || s.favicon_url;
+        if (faviconSrc) {
           const link = document.querySelector("link[rel~='icon']") as HTMLLinkElement
             || document.createElement('link');
           link.rel = 'icon';
-          link.href = s.favicon_url;
+          link.href = faviconSrc;
           document.head.appendChild(link);
+
+          // Update apple-touch-icon with 192px version
+          if (s.favicon_url) {
+            const appleLink = document.querySelector("link[rel='apple-touch-icon']") as HTMLLinkElement
+              || document.createElement('link');
+            appleLink.rel = 'apple-touch-icon';
+            appleLink.href = s.favicon_url;
+            document.head.appendChild(appleLink);
+          }
         }
 
         // Update page title
