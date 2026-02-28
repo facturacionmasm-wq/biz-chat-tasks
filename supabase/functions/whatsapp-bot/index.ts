@@ -23,9 +23,76 @@ serve(async (req) => {
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
   try {
-    const { conversationId, messageBody, contactPhone, tenantId, mediaUrl, sandboxMode, sandboxState, sandboxContext } = await req.json();
+    const { conversationId, messageBody, contactPhone, tenantId, mediaUrl, mediaContentType, sandboxMode, sandboxState, sandboxContext } = await req.json();
 
-    if (!messageBody) {
+    // Detect if this is a voice message
+    const isVoiceMessage = mediaUrl && (
+      (mediaContentType && mediaContentType.startsWith('audio/')) ||
+      (mediaUrl && /\.(ogg|opus|mp3|m4a|amr|wav)(\?|$)/i.test(mediaUrl))
+    );
+
+    let effectiveMessageBody = messageBody;
+
+    // Transcribe voice messages using ElevenLabs STT
+    if (isVoiceMessage) {
+      console.log(`Voice message detected: ${mediaContentType || 'unknown type'}`);
+      const ELEVENLABS_API_KEY = Deno.env.get('ELEVENLABS_API_KEY');
+      
+      if (ELEVENLABS_API_KEY && TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN) {
+        try {
+          // Download audio from Twilio
+          const basicAuth = btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`);
+          const audioRes = await fetch(mediaUrl, {
+            headers: { Authorization: `Basic ${basicAuth}` },
+          });
+
+          if (audioRes.ok) {
+            const audioBuffer = await audioRes.arrayBuffer();
+            const audioBlob = new Blob([audioBuffer], { type: mediaContentType || 'audio/ogg' });
+
+            // Send to ElevenLabs STT
+            const formData = new FormData();
+            formData.append('file', audioBlob, 'voice.ogg');
+            formData.append('model_id', 'scribe_v2');
+            formData.append('language_code', 'spa');
+            formData.append('tag_audio_events', 'false');
+            formData.append('diarize', 'false');
+
+            const sttRes = await fetch('https://api.elevenlabs.io/v1/speech-to-text', {
+              method: 'POST',
+              headers: { 'xi-api-key': ELEVENLABS_API_KEY },
+              body: formData,
+            });
+
+            if (sttRes.ok) {
+              const sttData = await sttRes.json();
+              const transcribedText = sttData.text?.trim();
+              if (transcribedText) {
+                console.log(`Voice transcribed: "${transcribedText.substring(0, 100)}"`);
+                effectiveMessageBody = transcribedText;
+              } else {
+                console.log('STT returned empty text');
+                effectiveMessageBody = '[Mensaje de voz no reconocido]';
+              }
+            } else {
+              console.error('ElevenLabs STT error:', sttRes.status, await sttRes.text());
+              effectiveMessageBody = '[Error al transcribir mensaje de voz]';
+            }
+          } else {
+            console.error('Failed to download audio:', audioRes.status);
+            effectiveMessageBody = '[No se pudo descargar el audio]';
+          }
+        } catch (err) {
+          console.error('Voice transcription error:', err);
+          effectiveMessageBody = '[Error procesando mensaje de voz]';
+        }
+      } else {
+        console.log('Missing ElevenLabs or Twilio credentials for STT');
+        effectiveMessageBody = '[Mensaje de voz - transcripción no disponible]';
+      }
+    }
+
+    if (!effectiveMessageBody) {
       return new Response(JSON.stringify({ error: 'Missing messageBody' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -63,7 +130,7 @@ serve(async (req) => {
       botContext = (conv.bot_context as Record<string, unknown>) || {};
     }
 
-    const msg = messageBody.trim().toLowerCase();
+    const msg = effectiveMessageBody.trim().toLowerCase();
     let reply = '';
     let newState = botState;
     let newContext = { ...botContext };
@@ -146,7 +213,7 @@ serve(async (req) => {
       }
 
     } else if (botState === 'client_collect_name') {
-      const clientName = messageBody.trim();
+      const clientName = effectiveMessageBody.trim();
       newContext = { ...newContext, contact_name: clientName };
       reply = `¡Mucho gusto, *${clientName}*! 🙂\n\n¿Me podrías compartir también tu *correo electrónico*? Así podré enviarte confirmaciones y mantenerte informado(a).\n\n_Si prefieres no compartirlo, escribe "no"_`;
       newState = 'client_collect_email';
@@ -157,7 +224,7 @@ serve(async (req) => {
 
       if (msg !== 'no' && msg !== 'omitir' && msg !== 'saltar') {
         // Basic email validation
-        const emailMatch = messageBody.trim().match(/[^\s@]+@[^\s@]+\.[^\s@]+/);
+        const emailMatch = effectiveMessageBody.trim().match(/[^\s@]+@[^\s@]+\.[^\s@]+/);
         if (emailMatch) {
           clientEmail = emailMatch[0];
         }
@@ -230,7 +297,7 @@ serve(async (req) => {
 
     } else if (botState === 'client_mode') {
       // AI-powered client assistant
-      reply = await getAIResponse(LOVABLE_API_KEY!, tenantId, supabase, 'client', messageBody, conv);
+      reply = await getAIResponse(LOVABLE_API_KEY!, tenantId, supabase, 'client', effectiveMessageBody, conv);
 
     } else if (botState === 'employee_mode') {
       // Check for media/receipt - OCR processing
@@ -268,24 +335,24 @@ serve(async (req) => {
 
       } else {
         // AI-powered employee assistant
-        reply = await getAIResponse(LOVABLE_API_KEY!, tenantId, supabase, 'employee', messageBody, conv);
+        reply = await getAIResponse(LOVABLE_API_KEY!, tenantId, supabase, 'employee', effectiveMessageBody, conv);
       }
 
     // ==================== CREDENTIAL CAPTURE FLOW ====================
     } else if (botState === 'credential_collect_platform') {
-      const platformName = messageBody.trim();
+      const platformName = effectiveMessageBody.trim();
       newContext = { ...newContext, cred_platform: platformName };
       reply = `📌 Plataforma: *${platformName}*\n\nAhora escríbeme el *usuario o email* de acceso:`;
       newState = 'credential_collect_username';
 
     } else if (botState === 'credential_collect_username') {
-      const username = messageBody.trim();
+      const username = effectiveMessageBody.trim();
       newContext = { ...newContext, cred_username: username };
       reply = `👤 Usuario: *${username}*\n\nAhora escríbeme la *contraseña*:`;
       newState = 'credential_collect_password';
 
     } else if (botState === 'credential_collect_password') {
-      const password = messageBody.trim();
+      const password = effectiveMessageBody.trim();
       const platform = newContext.cred_platform as string;
       const username = newContext.cred_username as string;
 
@@ -315,10 +382,10 @@ serve(async (req) => {
         newState = 'employee_mode';
       } else {
         // Parse manual expense entry
-        const amountMatch = messageBody.match(/\$?([\d,]+\.?\d*)/);
+        const amountMatch = effectiveMessageBody.match(/\$?([\d,]+\.?\d*)/);
         if (amountMatch) {
           const amount = parseFloat(amountMatch[1].replace(',', ''));
-          const description = messageBody.replace(/\$?[\d,]+\.?\d*/, '').replace(/gasto/i, '').trim() || 'Gasto sin descripción';
+          const description = effectiveMessageBody.replace(/\$?[\d,]+\.?\d*/, '').replace(/gasto/i, '').trim() || 'Gasto sin descripción';
           
           await supabase.from('expenses').insert({
             tenant_id: tenantId,

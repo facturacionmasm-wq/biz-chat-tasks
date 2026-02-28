@@ -53,16 +53,18 @@ serve(async (req) => {
       const errorMessage = params.get('ErrorMessage') || '';
       const numMedia = parseInt(params.get('NumMedia') || '0', 10);
       const profileName = params.get('ProfileName') || '';
+      const mediaContentType = params.get('MediaContentType0') || '';
 
       // Clean phone numbers (remove "whatsapp:" prefix)
       const contactPhone = from.replace('whatsapp:', '');
       const businessPhone = to.replace('whatsapp:', '');
       const contactName = profileName || contactPhone;
 
-      const isDeliveryCallback = Boolean(messageStatus) && !body;
-      console.log(`Twilio webhook from ${contactPhone} to ${businessPhone} status=${messageStatus || 'n/a'} body_len=${body.length}`);
+      const isDeliveryCallback = Boolean(messageStatus) && !body && numMedia === 0;
+      const isVoiceMessage = numMedia > 0 && mediaContentType.startsWith('audio/');
+      console.log(`Twilio webhook from ${contactPhone} to ${businessPhone} status=${messageStatus || 'n/a'} body_len=${body.length} media=${numMedia} type=${mediaContentType}`);
 
-      if (!body) {
+      if (!body && numMedia === 0) {
         const payload = Object.fromEntries(params.entries());
         console.log(`Twilio empty-body callback keys=${Object.keys(payload).join(',')}`);
         console.log(`Twilio empty-body callback flags: SmsStatus=${params.get('SmsStatus') || ''} MessageStatus=${params.get('MessageStatus') || ''} EventType=${params.get('EventType') || ''} MessageSid=${params.get('MessageSid') || ''} SmsSid=${params.get('SmsSid') || ''}`);
@@ -233,10 +235,10 @@ serve(async (req) => {
           tenant_id: tenantId,
           conversation_id: conversation.id,
           direction: 'in',
-          body: body,
+          body: body || (isVoiceMessage ? '🎤 [Mensaje de voz]' : ''),
           media_url: mediaUrl,
           status: 'received',
-          metadata: { message_sid: messageSid, provider: 'twilio', profile_name: profileName },
+          metadata: { message_sid: messageSid, provider: 'twilio', profile_name: profileName, is_voice: isVoiceMessage || undefined, media_content_type: mediaContentType || undefined },
         });
 
         await supabase.from('audit_events').insert({
@@ -244,7 +246,7 @@ serve(async (req) => {
           event_type: 'whatsapp.message_received',
           resource_type: 'whatsapp_message',
           resource_id: messageSid,
-          payload: { from: contactPhone, provider: 'twilio', preview: body.substring(0, 100) },
+          payload: { from: contactPhone, provider: 'twilio', preview: body ? body.substring(0, 100) : (isVoiceMessage ? '[Mensaje de voz]' : ''), is_voice: isVoiceMessage },
         });
 
         console.log(`Message saved: conv=${conversation.id}`);
@@ -261,10 +263,11 @@ serve(async (req) => {
             },
             body: JSON.stringify({
               conversationId: conversation.id,
-              messageBody: body,
+              messageBody: body || (isVoiceMessage ? '' : body),
               contactPhone: contactPhone,
               tenantId: tenantId,
               mediaUrl: mediaUrl,
+              mediaContentType: mediaContentType || undefined,
             }),
           }).catch(err => console.error('Bot trigger error:', err));
         } catch (botErr) {
