@@ -643,6 +643,44 @@ export type Database = {
           },
         ]
       }
+      push_subscriptions: {
+        Row: {
+          auth: string
+          created_at: string
+          endpoint: string
+          id: string
+          p256dh: string
+          tenant_id: string
+          user_id: string
+        }
+        Insert: {
+          auth: string
+          created_at?: string
+          endpoint: string
+          id?: string
+          p256dh: string
+          tenant_id: string
+          user_id: string
+        }
+        Update: {
+          auth?: string
+          created_at?: string
+          endpoint?: string
+          id?: string
+          p256dh?: string
+          tenant_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "push_subscriptions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       shared_credentials: {
         Row: {
           created_at: string
@@ -725,6 +763,60 @@ export type Database = {
           whatsapp_config?: Json | null
         }
         Relationships: []
+      }
+      transfer_notifications: {
+        Row: {
+          call_record_id: string | null
+          caller_phone: string | null
+          created_at: string
+          id: string
+          read_at: string | null
+          summary: string | null
+          target_name: string | null
+          tenant_id: string
+          title: string
+          user_id: string
+        }
+        Insert: {
+          call_record_id?: string | null
+          caller_phone?: string | null
+          created_at?: string
+          id?: string
+          read_at?: string | null
+          summary?: string | null
+          target_name?: string | null
+          tenant_id: string
+          title: string
+          user_id: string
+        }
+        Update: {
+          call_record_id?: string | null
+          caller_phone?: string | null
+          created_at?: string
+          id?: string
+          read_at?: string | null
+          summary?: string | null
+          target_name?: string | null
+          tenant_id?: string
+          title?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "transfer_notifications_call_record_id_fkey"
+            columns: ["call_record_id"]
+            isOneToOne: false
+            referencedRelation: "call_records"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transfer_notifications_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_roles: {
         Row: {
