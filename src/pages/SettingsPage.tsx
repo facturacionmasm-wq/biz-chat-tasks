@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Building2, Users, CreditCard, Bell, Database, Brain, Globe, ChevronRight, User, KeyRound, Loader2, Palette, Save, Upload, Image, X, Mail, Phone as PhoneIcon, MessageSquare, Trash2, Settings2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Building2, Users, CreditCard, Bell, Database, Brain, Globe, ChevronRight, User, KeyRound, Loader2, Palette, Save, Upload, Image, X, Mail, Phone as PhoneIcon, MessageSquare, Trash2, Settings2, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
 import { teamMembers } from '@/data/mockData';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -74,7 +74,7 @@ const SettingsPage = () => {
   const [savingBranding, setSavingBranding] = useState(false);
 
   // Team state
-  const [teamData, setTeamData] = useState<Array<{ user_id: string; name: string; email: string; role: string; status: string; permissions: Record<string, boolean> }>>([]);
+  const [teamData, setTeamData] = useState<Array<{ user_id: string; name: string; email: string; role: string; status: string; permissions: Record<string, boolean>; confirmed: boolean }>>([]);
   const [teamLoading, setTeamLoading] = useState(false);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
@@ -140,6 +140,20 @@ const SettingsPage = () => {
         const { data: profiles } = await supabase.from('profiles').select('user_id, name, email, status').eq('tenant_id', tenantId);
         const { data: roles } = await supabase.from('user_roles').select('user_id, role, permissions_json').eq('tenant_id', tenantId);
         const roleMap = new Map((roles || []).map(r => [r.user_id, { role: r.role, permissions: r.permissions_json }]));
+
+        // Get confirmation statuses
+        let confirmMap: Record<string, boolean> = {};
+        try {
+          const { data: statusData } = await supabase.functions.invoke('team-management', {
+            body: { action: 'list_status' },
+          });
+          if (statusData?.statuses) {
+            for (const [uid, info] of Object.entries(statusData.statuses)) {
+              confirmMap[uid] = (info as any).confirmed;
+            }
+          }
+        } catch {}
+
         setTeamData((profiles || []).map(p => {
           const roleData = roleMap.get(p.user_id);
           const perms = (roleData?.permissions as Record<string, boolean>) || {};
@@ -150,6 +164,7 @@ const SettingsPage = () => {
             role: roleData?.role || 'staff',
             status: p.status || 'active',
             permissions: perms,
+            confirmed: confirmMap[p.user_id] ?? true,
           };
         }));
       } finally {
@@ -228,13 +243,31 @@ const SettingsPage = () => {
         setTeamData((profiles || []).map(p => {
           const roleData = roleMap.get(p.user_id);
           const perms = (roleData?.permissions as Record<string, boolean>) || {};
-          return { user_id: p.user_id, name: p.name || '', email: p.email || '', role: roleData?.role || 'staff', status: p.status || 'active', permissions: perms };
+          return { user_id: p.user_id, name: p.name || '', email: p.email || '', role: roleData?.role || 'staff', status: p.status || 'active', permissions: perms, confirmed: false };
         }));
       }
     } catch (err: any) {
       toast.error(err.message || 'Error al invitar miembro');
     } finally {
       setInviting(false);
+    }
+  };
+
+  const [resendingUserId, setResendingUserId] = useState<string | null>(null);
+
+  const handleResendInvite = async (targetUserId: string, targetEmail: string) => {
+    setResendingUserId(targetUserId);
+    try {
+      const { data, error } = await supabase.functions.invoke('team-management', {
+        body: { action: 'resend_invite', user_id: targetUserId, email: targetEmail },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      toast.success('Invitación reenviada');
+    } catch (err: any) {
+      toast.error(err.message || 'Error al reenviar invitación');
+    } finally {
+      setResendingUserId(null);
     }
   };
 
@@ -692,6 +725,20 @@ const SettingsPage = () => {
                             <span className="text-xs bg-secondary px-2 py-0.5 rounded-full">{m.role}</span>
                           )}
                           <span className={`inline-block w-2 h-2 rounded-full ${m.status === 'active' ? 'bg-green-500' : 'bg-muted-foreground/40'}`} />
+                          {isSuperAdmin && !isSelf && !m.confirmed && (
+                            <button
+                              onClick={() => handleResendInvite(m.user_id, m.email)}
+                              disabled={resendingUserId === m.user_id}
+                              className="text-xs bg-amber-500/10 text-amber-600 px-2 py-1 rounded-full hover:bg-amber-500/20 transition-colors flex items-center gap-1 disabled:opacity-40"
+                              title="Reenviar invitación"
+                            >
+                              {resendingUserId === m.user_id ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                              Reenviar
+                            </button>
+                          )}
+                          {!m.confirmed && !isSelf && (
+                            <span className="text-[10px] text-amber-600 bg-amber-500/10 px-2 py-0.5 rounded-full">Pendiente</span>
+                          )}
                           {isSuperAdmin && !isSelf && (
                             <>
                               <button
