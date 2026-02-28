@@ -95,13 +95,17 @@ Deno.serve(async (req) => {
         });
       }
 
-      // Use generateLink to create a new invite link and send email
-      const { data, error } = await adminClient.auth.admin.generateLink({
-        type: "invite",
-        email,
-      });
+      // Re-invite: use inviteUserByEmail which handles existing unconfirmed users
+      const { error } = await adminClient.auth.admin.inviteUserByEmail(email);
 
       if (error) {
+        // If user already registered and confirmed, just inform
+        if (error.message.includes("already been registered")) {
+          return new Response(
+            JSON.stringify({ success: true, message: "El usuario ya se registró y confirmó su cuenta" }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
         return new Response(JSON.stringify({ error: error.message }), {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
