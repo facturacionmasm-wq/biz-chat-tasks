@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Building2, Users, Shield, CreditCard, Bell, Database, Brain, Globe, ChevronRight, User, KeyRound, Loader2, Palette, Save, Upload, Image, X, Mail, Phone as PhoneIcon, MessageSquare } from 'lucide-react';
+import { Building2, Users, Shield, CreditCard, Bell, Database, Brain, Globe, ChevronRight, User, KeyRound, Loader2, Palette, Save, Upload, Image, X, Mail, Phone as PhoneIcon, MessageSquare, Trash2 } from 'lucide-react';
 import { teamMembers } from '@/data/mockData';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -57,6 +57,12 @@ const SettingsPage = () => {
   const [uploadingFavicon, setUploadingFavicon] = useState(false);
   const [savingBranding, setSavingBranding] = useState(false);
 
+  // Team state
+  const [teamData, setTeamData] = useState<Array<{ user_id: string; name: string; email: string; role: string; status: string }>>([]);
+  const [teamLoading, setTeamLoading] = useState(false);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
+
   // Load tenant data
   useEffect(() => {
     if (!user) return;
@@ -97,6 +103,52 @@ const SettingsPage = () => {
     };
     load();
   }, [user]);
+
+  // Load team members from DB
+  useEffect(() => {
+    if (!user || activeSection !== 'team') return;
+    const loadTeam = async () => {
+      setTeamLoading(true);
+      try {
+        const { data: myProfile } = await supabase.from('profiles').select('tenant_id').eq('user_id', user.id).maybeSingle();
+        if (!myProfile) return;
+        const tenantId = myProfile.tenant_id;
+        const { data: myRole } = await supabase.from('user_roles').select('role').eq('user_id', user.id).eq('tenant_id', tenantId).maybeSingle();
+        setIsSuperAdmin(myRole?.role === 'super_admin');
+        const { data: profiles } = await supabase.from('profiles').select('user_id, name, email, status').eq('tenant_id', tenantId);
+        const { data: roles } = await supabase.from('user_roles').select('user_id, role').eq('tenant_id', tenantId);
+        const roleMap = new Map((roles || []).map(r => [r.user_id, r.role]));
+        setTeamData((profiles || []).map(p => ({
+          user_id: p.user_id,
+          name: p.name || '',
+          email: p.email || '',
+          role: roleMap.get(p.user_id) || 'staff',
+          status: p.status || 'active',
+        })));
+      } finally {
+        setTeamLoading(false);
+      }
+    };
+    loadTeam();
+  }, [user, activeSection]);
+
+  const handleDeleteMember = async (targetUserId: string) => {
+    if (!user || targetUserId === user.id) return;
+    if (!confirm('¿Estás seguro de eliminar este miembro del equipo?')) return;
+    setDeletingUserId(targetUserId);
+    try {
+      const { data: myProfile } = await supabase.from('profiles').select('tenant_id').eq('user_id', user.id).maybeSingle();
+      if (!myProfile) throw new Error('Perfil no encontrado');
+      await supabase.from('user_roles').delete().eq('user_id', targetUserId).eq('tenant_id', myProfile.tenant_id);
+      await supabase.from('profiles').delete().eq('user_id', targetUserId);
+      setTeamData(prev => prev.filter(m => m.user_id !== targetUserId));
+      toast.success('Miembro eliminado');
+    } catch (err: any) {
+      toast.error(err.message || 'Error al eliminar miembro');
+    } finally {
+      setDeletingUserId(null);
+    }
+  };
 
   const handleSaveProfile = async () => {
     if (!profileName.trim()) { toast.error('El nombre es obligatorio'); return; }
@@ -500,35 +552,59 @@ const SettingsPage = () => {
               <h3 className="text-lg font-bold text-foreground">Equipo</h3>
               <button className="bg-primary text-primary-foreground text-sm px-4 py-2 rounded-lg hover:opacity-90">+ Invitar</button>
             </div>
-            <div className="bg-card border border-border rounded-xl overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border">
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">Nombre</th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">Email</th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">Rol</th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">Estado</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {teamMembers.map(m => (
-                    <tr key={m.id} className="border-b border-border last:border-b-0 hover:bg-secondary/30">
-                      <td className="px-4 py-3 flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary">
-                          {m.name.split(' ').map(n => n[0]).join('')}
-                        </div>
-                        {m.name}
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">{m.email}</td>
-                      <td className="px-4 py-3"><span className="text-xs bg-secondary px-2 py-0.5 rounded-full">{m.role}</span></td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-block w-2 h-2 rounded-full ${m.status === 'online' ? 'bg-success' : m.status === 'away' ? 'bg-warning' : 'bg-muted-foreground/40'}`} />
-                      </td>
+            {teamLoading ? (
+              <div className="flex items-center justify-center py-12"><Loader2 size={24} className="animate-spin text-muted-foreground" /></div>
+            ) : (
+              <div className="bg-card border border-border rounded-xl overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border">
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">Nombre</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">Email</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">Rol</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">Estado</th>
+                      {isSuperAdmin && <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">Acciones</th>}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {teamData.map(m => (
+                      <tr key={m.user_id} className="border-b border-border last:border-b-0 hover:bg-secondary/30">
+                        <td className="px-4 py-3 flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary">
+                            {m.name ? m.name.split(' ').map(n => n[0]).join('').slice(0, 2) : '?'}
+                          </div>
+                          {m.name || 'Sin nombre'}
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground">{m.email}</td>
+                        <td className="px-4 py-3"><span className="text-xs bg-secondary px-2 py-0.5 rounded-full">{m.role}</span></td>
+                        <td className="px-4 py-3">
+                          <span className={`inline-block w-2 h-2 rounded-full ${m.status === 'active' ? 'bg-green-500' : 'bg-muted-foreground/40'}`} />
+                        </td>
+                        {isSuperAdmin && (
+                          <td className="px-4 py-3">
+                            {m.user_id !== user?.id ? (
+                              <button
+                                onClick={() => handleDeleteMember(m.user_id)}
+                                disabled={deletingUserId === m.user_id}
+                                className="text-destructive hover:text-destructive/80 disabled:opacity-40 p-1 rounded hover:bg-destructive/10 transition-colors"
+                                title="Eliminar miembro"
+                              >
+                                {deletingUserId === m.user_id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                              </button>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">Tú</span>
+                            )}
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                    {teamData.length === 0 && (
+                      <tr><td colSpan={isSuperAdmin ? 5 : 4} className="px-4 py-6 text-center text-muted-foreground text-sm">No hay miembros en el equipo</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 
