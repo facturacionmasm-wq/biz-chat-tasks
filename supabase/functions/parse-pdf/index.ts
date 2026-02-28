@@ -1,5 +1,4 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { getDocument } from "https://esm.sh/pdfjs-serverless@0.6.0";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -30,15 +29,49 @@ serve(async (req) => {
     const arrayBuffer = await file.arrayBuffer();
     const uint8 = new Uint8Array(arrayBuffer);
 
-    const doc = await getDocument(uint8).promise;
+    // Extract text from PDF manually by scanning for text operators
+    // Use iso-8859-1 (the standard name) instead of latin-1
+    const raw = new TextDecoder('iso-8859-1').decode(uint8);
+
     let extractedText = '';
-    for (let i = 1; i <= Math.min(doc.numPages, 50); i++) {
-      const page = await doc.getPage(i);
-      const content = await page.getTextContent();
-      extractedText += content.items.map((item: any) => item.str).join(' ') + '\n';
+
+    // Method 1: Tj operator
+    const tjMatches = raw.matchAll(/\(([^)]*)\)\s*Tj/g);
+    for (const m of tjMatches) {
+      extractedText += m[1] + ' ';
     }
 
-    extractedText = extractedText.trim();
+    // Method 2: TJ arrays
+    const tjArrayMatches = raw.matchAll(/\[(.*?)\]\s*TJ/g);
+    for (const m of tjArrayMatches) {
+      const parts = m[1].matchAll(/\(([^)]*)\)/g);
+      for (const p of parts) {
+        extractedText += p[1];
+      }
+      extractedText += ' ';
+    }
+
+    // Clean up
+    extractedText = extractedText
+      .replace(/\\n/g, '\n')
+      .replace(/\\r/g, '')
+      .replace(/\\t/g, ' ')
+      .replace(/\\\(/g, '(')
+      .replace(/\\\)/g, ')')
+      .replace(/\\\\/g, '\\')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    // Fallback: grab readable ASCII strings
+    if (extractedText.length < 50) {
+      const readable = raw.match(/[\x20-\x7E]{15,}/g);
+      if (readable) {
+        extractedText = readable
+          .filter(s => !/^[%\/\[\]<>{}&]/.test(s) && !s.includes('stream') && !s.includes('endobj') && !s.includes('xref'))
+          .join('\n')
+          .substring(0, 10000);
+      }
+    }
 
     if (!extractedText || extractedText.length < 20) {
       return new Response(JSON.stringify({
