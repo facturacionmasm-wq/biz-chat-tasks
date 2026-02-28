@@ -75,7 +75,7 @@ const SettingsPage = () => {
   const [savingBranding, setSavingBranding] = useState(false);
 
   // Team state
-  const [teamData, setTeamData] = useState<Array<{ user_id: string; name: string; email: string; role: string; status: string; permissions: Record<string, boolean>; confirmed: boolean }>>([]);
+  const [teamData, setTeamData] = useState<Array<{ user_id: string; name: string; email: string; role: string; status: string; permissions: Record<string, boolean>; confirmed: boolean; phone: string; whatsapp_number: string }>>([]);
   const [teamLoading, setTeamLoading] = useState(false);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
@@ -143,7 +143,7 @@ const SettingsPage = () => {
         const tenantId = myProfile.tenant_id;
         const { data: myRole } = await supabase.from('user_roles').select('role').eq('user_id', user.id).eq('tenant_id', tenantId).maybeSingle();
         setIsSuperAdmin(myRole?.role === 'super_admin' || myRole?.role === 'owner');
-        const { data: profiles } = await supabase.from('profiles').select('user_id, name, email, status').eq('tenant_id', tenantId);
+        const { data: profiles } = await supabase.from('profiles').select('user_id, name, email, status, phone, whatsapp_number').eq('tenant_id', tenantId);
         const { data: roles } = await supabase.from('user_roles').select('user_id, role, permissions_json').eq('tenant_id', tenantId);
         const roleMap = new Map((roles || []).map(r => [r.user_id, { role: r.role, permissions: r.permissions_json }]));
 
@@ -171,6 +171,8 @@ const SettingsPage = () => {
             status: p.status || 'active',
             permissions: perms,
             confirmed: confirmMap[p.user_id] ?? true,
+            phone: p.phone || '',
+            whatsapp_number: p.whatsapp_number || '',
           };
         }));
       } finally {
@@ -245,13 +247,13 @@ const SettingsPage = () => {
       const { data: myProfile } = await supabase.from('profiles').select('tenant_id').eq('user_id', user!.id).maybeSingle();
       if (myProfile) {
         const tenantId = myProfile.tenant_id;
-        const { data: profiles } = await supabase.from('profiles').select('user_id, name, email, status').eq('tenant_id', tenantId);
+        const { data: profiles } = await supabase.from('profiles').select('user_id, name, email, status, phone, whatsapp_number').eq('tenant_id', tenantId);
         const { data: roles } = await supabase.from('user_roles').select('user_id, role, permissions_json').eq('tenant_id', tenantId);
         const roleMap = new Map((roles || []).map(r => [r.user_id, { role: r.role, permissions: r.permissions_json }]));
         setTeamData((profiles || []).map(p => {
           const roleData = roleMap.get(p.user_id);
           const perms = (roleData?.permissions as Record<string, boolean>) || {};
-          return { user_id: p.user_id, name: p.name || '', email: p.email || '', role: roleData?.role || 'staff', status: p.status || 'active', permissions: perms, confirmed: false };
+          return { user_id: p.user_id, name: p.name || '', email: p.email || '', role: roleData?.role || 'staff', status: p.status || 'active', permissions: perms, confirmed: false, phone: p.phone || '', whatsapp_number: p.whatsapp_number || '' };
         }));
       }
     } catch (err: any) {
@@ -902,6 +904,51 @@ const SettingsPage = () => {
                       {/* Permissions & Availability panel */}
                       {isExpanded && isSuperAdmin && !isSelf && (
                         <div className="border-t border-border bg-secondary/30 px-4 py-3 space-y-4">
+                          {/* Phone numbers for transfers */}
+                          <div>
+                            <p className="text-xs font-semibold text-muted-foreground uppercase mb-3">Teléfonos (para transferencias de llamada)</p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <div>
+                                <label className="text-xs font-medium text-muted-foreground mb-1 block flex items-center gap-1"><PhoneIcon size={12} /> Teléfono</label>
+                                <input
+                                  className={inputClass}
+                                  value={m.phone}
+                                  onChange={e => setTeamData(prev => prev.map(t => t.user_id === m.user_id ? { ...t, phone: e.target.value } : t))}
+                                  placeholder="+52 55 1234 5678"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-xs font-medium text-muted-foreground mb-1 block flex items-center gap-1"><MessageSquare size={12} /> WhatsApp</label>
+                                <input
+                                  className={inputClass}
+                                  value={m.whatsapp_number}
+                                  onChange={e => setTeamData(prev => prev.map(t => t.user_id === m.user_id ? { ...t, whatsapp_number: e.target.value } : t))}
+                                  placeholder="+52 55 1234 5678"
+                                />
+                              </div>
+                            </div>
+                            <button
+                              onClick={async () => {
+                                try {
+                                  const tenantId = await getTenantId();
+                                  const { error } = await supabase
+                                    .from('profiles')
+                                    .update({ phone: m.phone.trim() || null, whatsapp_number: m.whatsapp_number.trim() || null } as any)
+                                    .eq('user_id', m.user_id)
+                                    .eq('tenant_id', tenantId);
+                                  if (error) throw error;
+                                  toast.success('Teléfonos actualizados');
+                                } catch (err: any) {
+                                  toast.error(err.message || 'Error al guardar teléfonos');
+                                }
+                              }}
+                              className="mt-2 bg-primary text-primary-foreground text-xs px-3 py-1.5 rounded-lg hover:opacity-90 flex items-center gap-1.5"
+                            >
+                              <Save size={12} />
+                              Guardar teléfonos
+                            </button>
+                          </div>
+
                           <div>
                             <p className="text-xs font-semibold text-muted-foreground uppercase mb-3">Permisos de acceso a módulos</p>
                             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
