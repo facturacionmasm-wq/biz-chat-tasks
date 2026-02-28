@@ -143,6 +143,26 @@ const WhatsAppInboxPage = () => {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              {selectedConv.status !== 'closed' && (
+                <button
+                  onClick={() => setConversations(prev => prev.map(c => c.id === selectedConvId ? { ...c, status: 'closed' as const } : c))}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium text-destructive hover:bg-destructive/10 transition-colors"
+                  title="Cerrar conversación"
+                >
+                  <AlertCircle size={14} />
+                  Cerrar
+                </button>
+              )}
+              {selectedConv.status === 'closed' && (
+                <button
+                  onClick={() => setConversations(prev => prev.map(c => c.id === selectedConvId ? { ...c, status: 'open' as const } : c))}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium text-success hover:bg-success/10 transition-colors"
+                  title="Reabrir conversación"
+                >
+                  <Circle size={14} />
+                  Reabrir
+                </button>
+              )}
               <button className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors" title="Llamar">
                 <Phone size={16} />
               </button>
