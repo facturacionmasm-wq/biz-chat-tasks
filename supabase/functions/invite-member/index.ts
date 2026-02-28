@@ -12,7 +12,6 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Verify caller is authenticated
     const authHeader = req.headers.get("authorization");
     if (!authHeader) {
       return new Response(JSON.stringify({ error: "No autorizado" }), {
@@ -23,15 +22,13 @@ Deno.serve(async (req) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
-    // Verify the caller with anon client
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+
+    // Verify caller
     const anonClient = createClient(supabaseUrl, anonKey, {
       global: { headers: { Authorization: authHeader } },
     });
-    const {
-      data: { user: caller },
-    } = await anonClient.auth.getUser();
+    const { data: { user: caller } } = await anonClient.auth.getUser();
     if (!caller) {
       return new Response(JSON.stringify({ error: "No autorizado" }), {
         status: 401,
@@ -47,63 +44,68 @@ Deno.serve(async (req) => {
       .eq("user_id", caller.id)
       .maybeSingle();
 
-    if (
-      !callerRole ||
-      !["super_admin", "owner"].includes(callerRole.role)
-    ) {
+    if (!callerRole || !["super_admin", "owner"].includes(callerRole.role)) {
       return new Response(
         JSON.stringify({ error: "Solo el super admin u owner puede invitar miembros" }),
-        {
-          status: 403,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const { email, password, name } = await req.json();
-    if (!email || !password || !name) {
+    const { email, name, password } = await req.json();
+    if (!email || !name) {
       return new Response(
-        JSON.stringify({ error: "Email, nombre y contraseña son requeridos" }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
+        JSON.stringify({ error: "Email y nombre son requeridos" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Create user via admin API
-    const { data: newUser, error: createError } =
-      await adminClient.auth.admin.createUser({
+    let newUserId: string;
+
+    if (password && password.length >= 6) {
+      // Create user with password directly (no invite email)
+      const { data: newUser, error: createError } = await adminClient.auth.admin.createUser({
         email,
         password,
         email_confirm: true,
         user_metadata: { name },
       });
-
-    if (createError) {
-      return new Response(JSON.stringify({ error: createError.message }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      if (createError) {
+        return new Response(JSON.stringify({ error: createError.message }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      newUserId = newUser.user.id;
+    } else {
+      // Invite user by email - sends invitation email automatically
+      const { data: newUser, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(email, {
+        data: { name },
       });
+      if (inviteError) {
+        return new Response(JSON.stringify({ error: inviteError.message }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      newUserId = newUser.user.id;
     }
 
-    // The handle_new_user trigger should create profile and role automatically
-    // But let's ensure the profile has the correct name
+    // Ensure profile has the correct name
     await adminClient
       .from("profiles")
       .update({ name })
-      .eq("user_id", newUser.user.id);
+      .eq("user_id", newUserId);
+
+    const method = password && password.length >= 6 ? "contraseña temporal" : "email de invitación";
 
     return new Response(
       JSON.stringify({
         success: true,
-        user_id: newUser.user.id,
-        message: `Miembro ${name} creado exitosamente`,
+        user_id: newUserId,
+        method,
+        message: `Miembro ${name} creado exitosamente vía ${method}`,
       }),
-      {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
     return new Response(JSON.stringify({ error: err.message }), {

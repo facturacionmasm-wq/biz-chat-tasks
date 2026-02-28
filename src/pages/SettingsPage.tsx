@@ -196,18 +196,20 @@ const SettingsPage = () => {
   };
 
   const handleInviteMember = async () => {
-    if (!inviteName.trim() || !inviteEmail.trim() || !invitePassword.trim()) {
-      toast.error('Todos los campos son requeridos');
+    if (!inviteName.trim() || !inviteEmail.trim()) {
+      toast.error('Nombre y email son requeridos');
       return;
     }
-    if (invitePassword.length < 6) {
+    if (invitePassword && invitePassword.length > 0 && invitePassword.length < 6) {
       toast.error('La contraseña debe tener al menos 6 caracteres');
       return;
     }
     setInviting(true);
     try {
+      const body: any = { email: inviteEmail.trim(), name: inviteName.trim() };
+      if (invitePassword.length >= 6) body.password = invitePassword;
       const { data, error } = await supabase.functions.invoke('invite-member', {
-        body: { email: inviteEmail.trim(), password: invitePassword, name: inviteName.trim() },
+        body,
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
@@ -759,9 +761,14 @@ const SettingsPage = () => {
                       <input className={inputClass} type="email" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} placeholder="email@ejemplo.com" />
                     </div>
                     <div>
-                      <label className="text-xs font-medium text-muted-foreground mb-1 block">Contraseña temporal</label>
-                      <input className={inputClass} type="password" value={invitePassword} onChange={e => setInvitePassword(e.target.value)} placeholder="Mínimo 6 caracteres" />
+                      <label className="text-xs font-medium text-muted-foreground mb-1 block">Contraseña temporal <span className="text-muted-foreground font-normal">(opcional)</span></label>
+                      <input className={inputClass} type="password" value={invitePassword} onChange={e => setInvitePassword(e.target.value)} placeholder="Dejar vacío para enviar invitación por email" />
                     </div>
+                    <p className="text-xs text-muted-foreground bg-secondary/50 rounded-lg px-3 py-2">
+                      {invitePassword.length >= 6
+                        ? '🔑 Se creará con contraseña temporal. Compártela manualmente al miembro.'
+                        : '📧 Se enviará un email de invitación para que el miembro configure su contraseña.'}
+                    </p>
                     <div className="flex gap-2 pt-2">
                       <button
                         onClick={() => setShowInviteModal(false)}
@@ -771,11 +778,11 @@ const SettingsPage = () => {
                       </button>
                       <button
                         onClick={handleInviteMember}
-                        disabled={inviting || !inviteName.trim() || !inviteEmail.trim() || invitePassword.length < 6}
+                        disabled={inviting || !inviteName.trim() || !inviteEmail.trim()}
                         className="flex-1 bg-primary text-primary-foreground text-sm px-4 py-2.5 rounded-lg hover:opacity-90 disabled:opacity-40 flex items-center justify-center gap-2"
                       >
                         {inviting && <Loader2 size={14} className="animate-spin" />}
-                        Crear miembro
+                        {invitePassword.length >= 6 ? 'Crear miembro' : 'Enviar invitación'}
                       </button>
                     </div>
                   </div>
