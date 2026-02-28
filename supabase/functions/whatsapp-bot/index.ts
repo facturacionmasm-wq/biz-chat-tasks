@@ -384,6 +384,8 @@ serve(async (req) => {
               headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
               body: JSON.stringify({
                 action: 'encrypt_save',
+                tenant_id: tenantId,
+                user_id: newContext.user_id as string || null,
                 platform_name: platform,
                 username: username,
                 password: password,
