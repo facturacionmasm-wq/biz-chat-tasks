@@ -151,10 +151,14 @@ const AITrainingPage = () => {
     try {
       const { data: userData } = await supabase.auth.getUser();
       const userId = userData?.user?.id;
+      if (!userId) {
+        toast.error('Debes iniciar sesión para guardar correcciones');
+        return;
+      }
       const { data: profile } = await supabase
         .from('profiles')
         .select('tenant_id')
-        .eq('user_id', userId!)
+        .eq('user_id', userId)
         .maybeSingle();
 
       if (!profile?.tenant_id) {
@@ -189,12 +193,16 @@ const AITrainingPage = () => {
     try {
       const { data: userData } = await supabase.auth.getUser();
       const userId = userData?.user?.id;
+      if (!userId) {
+        toast.error('Debes iniciar sesión para guardar en Knowledge Hub');
+        return;
+      }
       
       // Get tenant_id
       const { data: profile } = await supabase
         .from('profiles')
         .select('tenant_id')
-        .eq('user_id', userId!)
+        .eq('user_id', userId)
         .maybeSingle();
 
       if (!profile?.tenant_id) {
