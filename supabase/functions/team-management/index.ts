@@ -117,8 +117,13 @@ Deno.serve(async (req) => {
       });
 
       if (otpError) {
-        return new Response(JSON.stringify({ error: otpError.message }), {
-          status: 400,
+        const isRateLimit = otpError.message.includes("security purposes") || otpError.message.includes("after");
+        return new Response(JSON.stringify({ 
+          error: isRateLimit 
+            ? "Debes esperar 60 segundos antes de reenviar otro correo" 
+            : otpError.message 
+        }), {
+          status: isRateLimit ? 429 : 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
