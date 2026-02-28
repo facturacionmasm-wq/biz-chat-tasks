@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Building2, Users, Shield, CreditCard, Bell, Database, Brain, Globe, ChevronRight, User, KeyRound, Loader2, Palette, Save, Upload, Image, X } from 'lucide-react';
+import { Building2, Users, Shield, CreditCard, Bell, Database, Brain, Globe, ChevronRight, User, KeyRound, Loader2, Palette, Save, Upload, Image, X, Mail, Phone as PhoneIcon, MessageSquare } from 'lucide-react';
 import { teamMembers } from '@/data/mockData';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -30,6 +30,15 @@ const SettingsPage = () => {
   const [pinConfirm, setPinConfirm] = useState('');
   const [savingPin, setSavingPin] = useState(false);
 
+  // Profile state
+  const [profileName, setProfileName] = useState('');
+  const [profileEmail, setProfileEmail] = useState('');
+  const [profilePhone, setProfilePhone] = useState('');
+  const [profileWhatsapp, setProfileWhatsapp] = useState('');
+  const [profileAvatarUrl, setProfileAvatarUrl] = useState('');
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileLoaded, setProfileLoaded] = useState(false);
+
   // General settings state
   const [orgName, setOrgName] = useState('');
   const [timezone, setTimezone] = useState('America/Mexico_City');
@@ -52,12 +61,20 @@ const SettingsPage = () => {
   useEffect(() => {
     if (!user) return;
     const load = async () => {
+      // Load profile data
       const { data: profile } = await supabase
         .from('profiles')
-        .select('tenant_id')
+        .select('tenant_id, name, email, phone, whatsapp_number, avatar_url')
         .eq('user_id', user.id)
         .maybeSingle();
       if (!profile) return;
+
+      setProfileName(profile.name || '');
+      setProfileEmail(profile.email || user.email || '');
+      setProfilePhone(profile.phone || '');
+      setProfileWhatsapp(profile.whatsapp_number || '');
+      setProfileAvatarUrl(profile.avatar_url || '');
+      setProfileLoaded(true);
 
       const { data: tenant } = await supabase
         .from('tenants')
@@ -80,6 +97,29 @@ const SettingsPage = () => {
     };
     load();
   }, [user]);
+
+  const handleSaveProfile = async () => {
+    if (!profileName.trim()) { toast.error('El nombre es obligatorio'); return; }
+    setSavingProfile(true);
+    try {
+      if (!user) throw new Error('No autenticado');
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          name: profileName.trim(),
+          email: profileEmail.trim(),
+          phone: profilePhone.trim(),
+          whatsapp_number: profileWhatsapp.trim(),
+        } as any)
+        .eq('user_id', user.id);
+      if (error) throw error;
+      toast.success('Perfil actualizado correctamente');
+    } catch (err: any) {
+      toast.error(err.message || 'Error al guardar perfil');
+    } finally {
+      setSavingProfile(false);
+    }
+  };
 
   const handleUploadFile = async (file: File, type: 'logo' | 'favicon') => {
     const setUploading = type === 'logo' ? setUploadingLogo : setUploadingFavicon;
@@ -200,6 +240,52 @@ const SettingsPage = () => {
               <User size={20} className="text-primary" /> Mi Perfil
             </h3>
             <div className="space-y-4">
+              {/* Personal data */}
+              <div className="bg-card border border-border rounded-xl p-5">
+                <h4 className="text-sm font-semibold text-foreground flex items-center gap-2 mb-4">
+                  <User size={16} className="text-primary" /> Datos personales
+                </h4>
+                {!profileLoaded ? (
+                  <div className="flex items-center justify-center py-6"><Loader2 size={20} className="animate-spin text-muted-foreground" /></div>
+                ) : (
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs font-medium text-muted-foreground mb-1 block">Nombre completo</label>
+                      <input className={inputClass} value={profileName} onChange={e => setProfileName(e.target.value)} placeholder="Tu nombre" maxLength={100} />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-muted-foreground mb-1 block">Email</label>
+                      <div className="flex items-center gap-2">
+                        <Mail size={14} className="text-muted-foreground shrink-0" />
+                        <input className={inputClass} value={profileEmail} onChange={e => setProfileEmail(e.target.value)} placeholder="tu@email.com" type="email" maxLength={255} />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-muted-foreground mb-1 block">Teléfono</label>
+                      <div className="flex items-center gap-2">
+                        <PhoneIcon size={14} className="text-muted-foreground shrink-0" />
+                        <input className={inputClass} value={profilePhone} onChange={e => setProfilePhone(e.target.value)} placeholder="+52 55 1234 5678" maxLength={20} />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-muted-foreground mb-1 block">Número de WhatsApp</label>
+                      <div className="flex items-center gap-2">
+                        <MessageSquare size={14} className="text-muted-foreground shrink-0" />
+                        <input className={inputClass} value={profileWhatsapp} onChange={e => setProfileWhatsapp(e.target.value)} placeholder="+52 55 1234 5678" maxLength={20} />
+                      </div>
+                    </div>
+                    <button
+                      disabled={savingProfile || !profileName.trim()}
+                      onClick={handleSaveProfile}
+                      className="bg-primary text-primary-foreground text-sm px-5 py-2.5 rounded-lg hover:opacity-90 disabled:opacity-40 flex items-center gap-2 font-medium mt-1"
+                    >
+                      {savingProfile ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                      Guardar datos
+                    </button>
+                  </div>
+                )}
+              </div>
+
               <div className="bg-card border border-border rounded-xl p-5">
                 <h4 className="text-sm font-semibold text-foreground flex items-center gap-2 mb-3">
                   <KeyRound size={16} className="text-warning" /> PIN de autenticación WhatsApp
