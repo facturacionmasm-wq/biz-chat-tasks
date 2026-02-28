@@ -110,15 +110,47 @@ const KnowledgePage = () => {
 
     setIsImporting(true);
     try {
-      const text = await file.text();
-      if (!formTitle.trim()) {
-        setFormTitle(file.name.replace(/\.[^/.]+$/, ''));
+      const isPdf = file.name.toLowerCase().endsWith('.pdf');
+
+      if (isPdf) {
+        // Send PDF to edge function for parsing
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const res = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/parse-pdf`,
+          {
+            method: 'POST',
+            headers: {
+              apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+              Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+            },
+            body: formData,
+          }
+        );
+
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || 'Error al procesar PDF');
+        }
+
+        if (!formTitle.trim()) setFormTitle(data.title || file.name.replace(/\.pdf$/i, ''));
+        setFormContent(prev => prev ? `${prev}\n\n---\n\n${data.content}` : data.content);
+        toast.success(`PDF "${file.name}" importado y procesado con IA`);
+      } else {
+        // Text-based files
+        const text = await file.text();
+        if (!formTitle.trim()) {
+          setFormTitle(file.name.replace(/\.[^/.]+$/, ''));
+        }
+        setFormContent(prev => prev ? `${prev}\n\n---\n\n${text}` : text);
+        toast.success(`Archivo "${file.name}" importado`);
       }
-      setFormContent(prev => prev ? `${prev}\n\n---\n\n${text}` : text);
+
       setShowImportOptions(false);
-      toast.success(`Archivo "${file.name}" importado`);
     } catch (err: any) {
-      toast.error('Error al leer archivo: ' + (err.message || ''));
+      console.error('File import error:', err);
+      toast.error('Error al importar: ' + (err.message || ''));
     } finally {
       setIsImporting(false);
       e.target.value = '';
@@ -323,7 +355,7 @@ const KnowledgePage = () => {
                     </button>
                     <label className="flex-1 flex items-center justify-center gap-2 bg-secondary hover:bg-secondary/80 text-secondary-foreground text-sm py-2.5 rounded-lg transition-colors cursor-pointer">
                       <FileUp size={14} /> Subir archivo
-                      <input type="file" accept=".txt,.md,.csv,.json,.xml,.html" onChange={handleFileUpload} className="hidden" />
+                      <input type="file" accept=".txt,.md,.csv,.json,.xml,.html,.pdf" onChange={handleFileUpload} className="hidden" />
                     </label>
                   </div>
                 ) : (
@@ -359,8 +391,8 @@ const KnowledgePage = () => {
                       <label className="text-xs text-muted-foreground mb-1 block">Archivo de texto</label>
                       <label className="flex items-center justify-center gap-2 bg-secondary hover:bg-secondary/80 text-secondary-foreground text-sm py-3 rounded-lg border border-dashed border-border cursor-pointer transition-colors">
                         <FileUp size={14} />
-                        {isImporting ? 'Procesando...' : 'Arrastra o haz clic para subir (.txt, .md, .csv, .json, .html)'}
-                        <input type="file" accept=".txt,.md,.csv,.json,.xml,.html" onChange={handleFileUpload} className="hidden" disabled={isImporting} />
+                        {isImporting ? 'Procesando...' : 'Arrastra o haz clic para subir (.txt, .md, .csv, .json, .html, .pdf)'}
+                        <input type="file" accept=".txt,.md,.csv,.json,.xml,.html,.pdf" onChange={handleFileUpload} className="hidden" disabled={isImporting} />
                       </label>
                     </div>
                   </div>
