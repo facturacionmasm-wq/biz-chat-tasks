@@ -25,6 +25,22 @@ const WhatsAppInboxPage = () => {
   const [conversations, setConversations] = useState<WhatsAppConversation[]>(mockWAConversations);
   const [messages, setMessages] = useState<WhatsAppMessage[]>(mockWAMessages);
 
+  const handleSendMessage = () => {
+    if (!messageInput.trim() || !selectedConvId) return;
+    const newMsg: WhatsAppMessage = {
+      id: `wa-msg-${Date.now()}`,
+      conversationId: selectedConvId,
+      direction: 'out',
+      body: messageInput.trim(),
+      mediaUrl: null,
+      status: 'sent',
+      createdAt: new Date(),
+    };
+    setMessages(prev => [...prev, newMsg]);
+    setConversations(prev => prev.map(c => c.id === selectedConvId ? { ...c, lastMessageAt: new Date() } : c));
+    setMessageInput('');
+  };
+
   const handleCreateConversation = () => {
     if (!newConvName.trim() || !newConvPhone.trim()) return;
     const newId = `wa-conv-${Date.now()}`;
@@ -214,9 +230,9 @@ const WhatsAppInboxPage = () => {
                     placeholder="Escribir mensaje..."
                     rows={1}
                     className="flex-1 bg-transparent text-sm outline-none resize-none max-h-24 placeholder:text-muted-foreground"
-                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); setMessageInput(''); } }}
+                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }}
                   />
-                  <button className="bg-success text-success-foreground rounded-md p-1.5 hover:opacity-90">
+                  <button onClick={handleSendMessage} className="bg-success text-success-foreground rounded-md p-1.5 hover:opacity-90">
                     <Send size={14} />
                   </button>
                 </div>
