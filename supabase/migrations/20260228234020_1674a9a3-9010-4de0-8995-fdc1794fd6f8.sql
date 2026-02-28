@@ -1,0 +1,1 @@
+DELETE FROM shared_credentials WHERE id = '2b486a07-f0ed-48e3-b50e-e400a87f9d2c';
