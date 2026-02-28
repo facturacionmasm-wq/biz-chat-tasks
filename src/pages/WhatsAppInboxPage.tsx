@@ -61,21 +61,23 @@ const WhatsAppInboxPage = () => {
     setSending(true);
     try {
       const selectedConv = conversations.find(c => c.id === selectedConvId);
-      const { error } = await supabase.from('whatsapp_messages').insert({
-        tenant_id: selectedConv?.tenant_id || DEMO_TENANT,
-        conversation_id: selectedConvId,
-        direction: 'out',
-        body,
-        status: 'sent',
+      // Send via Twilio edge function
+      const { data, error } = await supabase.functions.invoke('twilio-send', {
+        body: {
+          to: selectedConv?.contact_phone,
+          body,
+          conversationId: selectedConvId,
+          tenantId: selectedConv?.tenant_id || DEMO_TENANT,
+        },
       });
       if (error) throw error;
-      await supabase.from('whatsapp_conversations')
-        .update({ last_message_at: new Date().toISOString() })
-        .eq('id', selectedConvId);
-      // Realtime will handle the UI update, but also refetch for instant display
+      if (data && !data.ok) {
+        throw new Error(data.error || 'Error al enviar');
+      }
+      // Edge function saves the message to DB, realtime will update UI
       await fetchMessages(selectedConvId);
     } catch (err: any) {
-      toast.error('Error al enviar mensaje');
+      toast.error(err.message || 'Error al enviar mensaje');
       setMessageInput(body);
     } finally {
       setSending(false);
