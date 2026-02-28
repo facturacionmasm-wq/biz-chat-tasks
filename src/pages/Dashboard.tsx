@@ -4,8 +4,12 @@ import { mockCallRecords, mockAppointments, mockWAConversations } from '@/data/m
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Link } from 'react-router-dom';
+import { useBranding } from '@/hooks/useBranding';
+import { useAuth } from '@/contexts/AuthContext';
 
 const Dashboard = () => {
+  const branding = useBranding();
+  const { user } = useAuth();
   const urgentTasks = tasks.filter(t => t.priority === 'high' && t.status !== 'done');
   const todayEvents = calendarEvents.filter(e => {
     const today = new Date();
@@ -34,9 +38,14 @@ const Dashboard = () => {
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
       {/* Welcome */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Buenos días 👋</h1>
-          <p className="text-muted-foreground text-sm mt-1">Resumen de comunicación, atención y agenda.</p>
+        <div className="flex items-center gap-4">
+          {branding.logoUrl && (
+            <img src={branding.logoUrl} alt={branding.orgName} className="h-10 object-contain" />
+          )}
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Buenos días, {user?.email?.split('@')[0] || ''} 👋</h1>
+            <p className="text-muted-foreground text-sm mt-1">Resumen de comunicación, atención y agenda.</p>
+          </div>
         </div>
         <div className="flex items-center gap-2 bg-primary/10 text-primary border border-primary/20 rounded-lg px-4 py-2 text-sm font-medium">
           <Sparkles size={16} />
