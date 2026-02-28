@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useConversation } from '@elevenlabs/react';
 import { supabase } from '@/integrations/supabase/client';
-import { Phone, PhoneOff, Mic, Loader2, Volume2 } from 'lucide-react';
+import { Phone, PhoneOff, Mic, Loader2, Volume2, PhoneForwarded, Users } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface VoiceAgentProps {
@@ -14,6 +14,10 @@ const VoiceAgent = ({ onCallEnd }: VoiceAgentProps) => {
   const [transcriptLines, setTranscriptLines] = useState<Array<{ role: string; text: string; timestamp: number }>>([]);
   const [callDuration, setCallDuration] = useState(0);
   const [callStartTime, setCallStartTime] = useState<number | null>(null);
+  const [showTransferPanel, setShowTransferPanel] = useState(false);
+  const [employees, setEmployees] = useState<Array<{ user_id: string; name: string; phone: string | null }>>([]);
+  const [transferring, setTransferring] = useState(false);
+  const [transferStatus, setTransferStatus] = useState<string | null>(null);
 
   const transcriptLinesRef = useRef<Array<{ role: string; text: string; timestamp: number }>>([]);
   const callRecordIdRef = useRef<string | null>(null);
@@ -202,6 +206,50 @@ const VoiceAgent = ({ onCallEnd }: VoiceAgentProps) => {
           return `Error al reprogramar: ${err.message}`;
         }
       },
+      transfer_call: async (params: { employee_name: string; caller_phone: string }) => {
+        try {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (!user) return 'No autenticado';
+          const { data: tenantId } = await supabase.rpc('get_user_tenant_id', { _user_id: user.id });
+          if (!tenantId) return 'No se encontró tenant';
+
+          // Find employee by name
+          const { data: profiles } = await supabase
+            .from('profiles')
+            .select('user_id, name, phone')
+            .eq('tenant_id', tenantId)
+            .eq('status', 'active');
+
+          const match = (profiles || []).find(p =>
+            p.name.toLowerCase().includes(params.employee_name.toLowerCase())
+          );
+          if (!match) return `No se encontró empleado con nombre "${params.employee_name}"`;
+          if (!match.phone) return `${match.name} no tiene teléfono configurado`;
+
+          addTranscriptLine('Sistema', `[Transfiriendo a ${match.name}...]`);
+
+          const fullTranscript = transcriptLinesRef.current
+            .map(l => `[${formatTimestamp(l.timestamp)}] ${l.role}: ${l.text}`)
+            .join('\n');
+
+          const { data, error } = await supabase.functions.invoke('call-transfer', {
+            body: {
+              target_user_id: match.user_id,
+              caller_phone: params.caller_phone,
+              transcript: fullTranscript,
+              call_record_id: callRecordIdRef.current,
+            },
+          });
+
+          if (error) return `Error: ${error.message}`;
+          if (data?.error) return `Error: ${data.error}`;
+
+          addTranscriptLine('Sistema', `[Llamada transferida a ${match.name}]`);
+          return `Llamada transferida exitosamente a ${match.name}. El empleado recibirá un resumen de la conversación antes de conectarse.`;
+        } catch (err: any) {
+          return `Error al transferir: ${err.message}`;
+        }
+      },
     },
     onConnect: () => {
       setError(null);
@@ -334,6 +382,67 @@ const VoiceAgent = ({ onCallEnd }: VoiceAgentProps) => {
     await conversation.endSession();
   }, [conversation]);
 
+  const loadEmployees = useCallback(async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data: tenantId } = await supabase.rpc('get_user_tenant_id', { _user_id: user.id });
+      if (!tenantId) return;
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('user_id, name, phone, whatsapp_number')
+        .eq('tenant_id', tenantId)
+        .eq('status', 'active')
+        .neq('user_id', user.id);
+      setEmployees((profiles || []).map(p => ({
+        user_id: p.user_id,
+        name: p.name,
+        phone: p.phone || p.whatsapp_number,
+      })));
+    } catch (err) {
+      console.error('Error loading employees:', err);
+    }
+  }, []);
+
+  const handleTransfer = useCallback(async (targetUserId: string, callerPhone: string) => {
+    setTransferring(true);
+    setTransferStatus('Generando resumen con IA...');
+    try {
+      const fullTranscript = transcriptLinesRef.current
+        .map(l => `[${formatTimestamp(l.timestamp)}] ${l.role}: ${l.text}`)
+        .join('\n');
+
+      setTransferStatus('Iniciando transferencia...');
+      const { data, error } = await supabase.functions.invoke('call-transfer', {
+        body: {
+          target_user_id: targetUserId,
+          caller_phone: callerPhone,
+          transcript: fullTranscript,
+          call_record_id: callRecordIdRef.current,
+        },
+      });
+
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      setTransferStatus(`✓ Transferido a ${data.target_name}`);
+      addTranscriptLine('Sistema', `[Llamada transferida a ${data.target_name}]`);
+      toast.success(`Transferencia iniciada a ${data.target_name}`);
+
+      // End the ElevenLabs session after transfer
+      setTimeout(() => {
+        conversation.endSession();
+        setShowTransferPanel(false);
+        setTransferStatus(null);
+      }, 2000);
+    } catch (err: any) {
+      setTransferStatus(null);
+      toast.error(err.message || 'Error al transferir llamada');
+    } finally {
+      setTransferring(false);
+    }
+  }, [conversation, addTranscriptLine]);
+
   const isActive = conversation.status === 'connected';
 
   return (
@@ -381,15 +490,70 @@ const VoiceAgent = ({ onCallEnd }: VoiceAgentProps) => {
               )}
             </button>
           ) : (
-            <button
-              onClick={endCall}
-              className="flex items-center gap-2 bg-destructive text-destructive-foreground text-sm px-4 py-2 rounded-lg hover:opacity-90 transition-opacity"
-            >
-              <PhoneOff size={14} /> Finalizar
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => { setShowTransferPanel(!showTransferPanel); if (!showTransferPanel) loadEmployees(); }}
+                disabled={transferring}
+                className="flex items-center gap-1.5 bg-accent text-accent-foreground text-sm px-3 py-2 rounded-lg hover:opacity-90 transition-opacity"
+                title="Transferir llamada"
+              >
+                <PhoneForwarded size={14} /> Transferir
+              </button>
+              <button
+                onClick={endCall}
+                className="flex items-center gap-2 bg-destructive text-destructive-foreground text-sm px-4 py-2 rounded-lg hover:opacity-90 transition-opacity"
+              >
+                <PhoneOff size={14} /> Finalizar
+              </button>
+            </div>
           )}
         </div>
       </div>
+
+      {/* Transfer Panel */}
+      {showTransferPanel && isActive && (
+        <div className="border-b border-border bg-accent/10 px-5 py-3 space-y-2 animate-fade-in">
+          <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
+            <Users size={14} className="text-primary" />
+            Transferir a empleado
+          </div>
+          {transferStatus && (
+            <p className="text-xs text-primary font-medium">{transferStatus}</p>
+          )}
+          <div className="space-y-1.5 max-h-40 overflow-y-auto">
+            {employees.length === 0 && (
+              <p className="text-xs text-muted-foreground">No hay empleados disponibles</p>
+            )}
+            {employees.map(emp => (
+              <div
+                key={emp.user_id}
+                className="flex items-center justify-between bg-card border border-border rounded-lg px-3 py-2"
+              >
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary">
+                    {emp.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-foreground">{emp.name}</p>
+                    <p className="text-[10px] text-muted-foreground">{emp.phone || 'Sin teléfono'}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    const callerPhone = prompt('Número del cliente para conectar (ej: +525512345678):');
+                    if (callerPhone) handleTransfer(emp.user_id, callerPhone);
+                  }}
+                  disabled={!emp.phone || transferring}
+                  className="text-xs bg-primary text-primary-foreground px-3 py-1.5 rounded-md hover:opacity-90 disabled:opacity-40 flex items-center gap-1"
+                >
+                  {transferring ? <Loader2 size={12} className="animate-spin" /> : <PhoneForwarded size={12} />}
+                  Transferir
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {(isActive || transcriptLines.length > 0) && (
         <div className="p-4 max-h-80 overflow-y-auto scrollbar-thin space-y-2">

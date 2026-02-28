@@ -26,3 +26,9 @@ verify_jwt = false
 
 [functions.voice-scheduling]
 verify_jwt = false
+
+[functions.call-transfer]
+verify_jwt = false
+
+[functions.call-transfer-twiml]
+verify_jwt = false
