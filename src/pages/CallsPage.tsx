@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
-import { Phone, PhoneIncoming, PhoneMissed, PhoneOff, Clock, User, Tag, Play, CalendarPlus, MessageSquare, ChevronRight, Search, Filter, ArrowLeft, CheckCircle2, Edit3, Save } from 'lucide-react';
-import { mockCallRecords, mockAppointments, type CallRecord } from '@/data/mockCallsData';
+import { Phone, PhoneIncoming, PhoneMissed, PhoneOff, Clock, User, Tag, Play, CalendarPlus, MessageSquare, ChevronRight, Search, Filter, ArrowLeft, CheckCircle2, Edit3, Save, RefreshCw } from 'lucide-react';
+import { type CallRecord } from '@/data/mockCallsData';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import VoiceAgent from '@/components/VoiceAgent';
@@ -29,9 +29,12 @@ const dbRowToCallRecord = (row: any): CallRecord => ({
 
 const statusConfig: Record<string, { icon: any; label: string; className: string }> = {
   completed: { icon: Phone, label: 'Completada', className: 'text-success bg-success/10' },
+  in_progress: { icon: Phone, label: 'En curso', className: 'text-primary bg-primary/10' },
   missed: { icon: PhoneMissed, label: 'Perdida', className: 'text-destructive bg-destructive/10' },
   busy: { icon: PhoneOff, label: 'Ocupado', className: 'text-warning bg-warning/10' },
+  failed: { icon: PhoneOff, label: 'Fallida', className: 'text-destructive bg-destructive/10' },
   voicemail: { icon: Phone, label: 'Buzón', className: 'text-muted-foreground bg-muted' },
+  pending: { icon: Clock, label: 'Pendiente', className: 'text-muted-foreground bg-muted' },
 };
 
 const formatDuration = (seconds: number) => {
@@ -47,8 +50,6 @@ const CallsPage = () => {
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [editingSummary, setEditingSummary] = useState(false);
   const [humanSummary, setHumanSummary] = useState('');
-  const [lastCallSummary, setLastCallSummary] = useState<string | null>(null);
-  const [isSummarizing, setIsSummarizing] = useState(false);
   const [dbCalls, setDbCalls] = useState<CallRecord[]>([]);
 
   // Load calls from database
@@ -71,80 +72,29 @@ const CallsPage = () => {
     loadDbCalls();
   }, [loadDbCalls]);
 
-  // Merge DB calls with mock calls (DB first)
-  const allCalls = [...dbCalls, ...mockCallRecords];
-
-  const handleCallEnd = useCallback(async (transcript: string) => {
-    if (!transcript.trim()) return;
-    setIsSummarizing(true);
-    toast.info('Guardando llamada y generando resumen con IA...');
-    try {
-      // 1. Save call record to database
-      const now = new Date().toISOString();
-      const { data: tenantData } = await supabase.rpc('get_user_tenant_id', {
-        _user_id: (await supabase.auth.getUser()).data.user?.id || '',
-      });
-
-      const tenantId = tenantData;
-      if (!tenantId) {
-        // If no tenant, just generate summary without saving
-        console.warn('No tenant found, skipping DB save');
-      } else {
-        const { data: callRow, error: insertError } = await supabase
-          .from('call_records')
-          .insert({
-            tenant_id: tenantId,
-            channel: 'voice_agent',
-            status: 'completed',
-            transcript,
-            started_at: now,
-            ended_at: now,
-            from_number: 'Voice Agent',
-            to_number: 'Usuario',
-          })
-          .select()
-          .single();
-
-        if (insertError) {
-          console.error('Error saving call:', insertError);
-          toast.error('Error al guardar la llamada en la base de datos');
-        } else {
-          toast.success('Llamada guardada en la base de datos');
-
-          // 2. Generate AI summary and update the record
-          const { data: aiData, error: aiError } = await supabase.functions.invoke('ai-copilot', {
-            body: { action: 'summarize_call', data: { transcript, extractedData: {} } },
-          });
-
-          if (!aiError && aiData?.summary && callRow) {
-            await supabase
-              .from('call_records')
-              .update({ summary_system: aiData.summary })
-              .eq('id', callRow.id);
-            setLastCallSummary(aiData.summary);
-          }
-
-          // Reload calls from DB
-          await loadDbCalls();
+  // Subscribe to realtime updates on call_records
+  useEffect(() => {
+    const channel = supabase
+      .channel('call_records_changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'call_records' },
+        () => {
+          loadDbCalls();
         }
-      }
+      )
+      .subscribe();
 
-      // Fallback: generate summary even without DB save
-      if (!lastCallSummary) {
-        const { data, error } = await supabase.functions.invoke('ai-copilot', {
-          body: { action: 'summarize_call', data: { transcript, extractedData: {} } },
-        });
-        if (!error) setLastCallSummary(data?.summary || 'No se pudo generar resumen');
-      }
+    return () => { supabase.removeChannel(channel); };
+  }, [loadDbCalls]);
 
-      toast.success('Resumen generado exitosamente');
-    } catch (err) {
-      console.error('Summary error:', err);
-      toast.error('Error al procesar la llamada');
-    } finally {
-      setIsSummarizing(false);
-    }
-  }, [loadDbCalls, lastCallSummary]);
+  const handleCallEnd = useCallback(async (callRecordId: string) => {
+    // Just reload - the VoiceAgent already saved everything
+    await loadDbCalls();
+    toast.success('Llamada finalizada y guardada');
+  }, [loadDbCalls]);
+
+  const allCalls = dbCalls;
 
   const filtered = allCalls.filter(c =>
     (!statusFilter || c.status === statusFilter) &&
@@ -162,8 +112,24 @@ const CallsPage = () => {
       : 0,
   };
 
+  const handleSaveSummary = async () => {
+    if (!selectedCall) return;
+    const { error } = await supabase
+      .from('call_records')
+      .update({ summary_human: humanSummary })
+      .eq('id', selectedCall.id);
+    if (error) {
+      toast.error('Error al guardar resumen');
+    } else {
+      toast.success('Resumen guardado');
+      setSelectedCall({ ...selectedCall, summaryHuman: humanSummary });
+      setEditingSummary(false);
+      loadDbCalls();
+    }
+  };
+
   if (selectedCall) {
-    const sc = statusConfig[selectedCall.status];
+    const sc = statusConfig[selectedCall.status] || statusConfig.pending;
     return (
       <div className="flex flex-col h-full">
         <div className="shrink-0 border-b border-border p-5 bg-card">
@@ -173,7 +139,7 @@ const CallsPage = () => {
           <div className="flex items-center justify-between">
             <div>
               <div className="flex items-center gap-3 mb-1">
-                <h2 className="text-xl font-bold text-foreground">{selectedCall.extractedData.contactName || selectedCall.fromNumber}</h2>
+                <h2 className="text-xl font-bold text-foreground">{selectedCall.extractedData.contactName || selectedCall.fromNumber || 'Llamada'}</h2>
                 <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${sc.className}`}>{sc.label}</span>
               </div>
               <div className="flex items-center gap-4 text-xs text-muted-foreground">
@@ -235,7 +201,7 @@ const CallsPage = () => {
                       className="w-full bg-secondary rounded-lg px-3 py-2 text-sm outline-none border border-border focus:border-primary min-h-[200px] resize-y"
                     />
                     <button
-                      onClick={() => setEditingSummary(false)}
+                      onClick={handleSaveSummary}
                       className="mt-2 flex items-center gap-1 bg-primary text-primary-foreground text-sm px-3 py-1.5 rounded-lg"
                     >
                       <Save size={12} /> Aprobar resumen
@@ -243,7 +209,7 @@ const CallsPage = () => {
                   </div>
                 ) : (
                   <div className="prose prose-sm text-foreground whitespace-pre-line text-sm leading-relaxed">
-                    {selectedCall.summaryHuman || selectedCall.summarySystem}
+                    {selectedCall.summaryHuman || selectedCall.summarySystem || 'Sin resumen disponible'}
                   </div>
                 )}
               </div>
@@ -261,7 +227,7 @@ const CallsPage = () => {
                   </h3>
                   <div className="space-y-2 text-sm max-h-80 overflow-y-auto scrollbar-thin">
                     {selectedCall.transcript.split('\n').map((line, i) => {
-                      const isAgent = line.startsWith('Ana:') || line.startsWith('Carlos:') || line.startsWith('Laura:');
+                      const isAgent = line.startsWith('Agente:');
                       return (
                         <div key={i} className={`px-3 py-2 rounded-lg ${isAgent ? 'bg-primary/5 border-l-2 border-primary' : 'bg-muted/50'}`}>
                           <p className="text-foreground">{line}</p>
@@ -295,6 +261,9 @@ const CallsPage = () => {
                   )}
                   {selectedCall.extractedData.followUp && (
                     <div><p className="text-xs text-muted-foreground">Seguimiento</p><p className="font-medium text-primary">{format(new Date(selectedCall.extractedData.followUp), "d MMM yyyy", { locale: es })}</p></div>
+                  )}
+                  {Object.keys(selectedCall.extractedData).length === 0 && (
+                    <p className="text-muted-foreground text-xs">Sin datos extraídos</p>
                   )}
                 </div>
               </div>
@@ -335,20 +304,6 @@ const CallsPage = () => {
       {/* Voice Agent */}
       <VoiceAgent onCallEnd={handleCallEnd} />
 
-      {/* AI Summary from last call */}
-      {(isSummarizing || lastCallSummary) && (
-        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
-          <h3 className="font-semibold text-foreground mb-3">🤖 Resumen automático de última llamada</h3>
-          {isSummarizing ? (
-            <p className="text-sm text-muted-foreground animate-pulse">Analizando transcripción...</p>
-          ) : (
-            <div className="prose prose-sm text-foreground whitespace-pre-line text-sm leading-relaxed">
-              {lastCallSummary}
-            </div>
-          )}
-        </div>
-      )}
-
       {/* Stats */}
       <div className="grid grid-cols-4 gap-4 mb-6">
         <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
@@ -373,89 +328,77 @@ const CallsPage = () => {
       <div className="flex items-center gap-3 mb-4">
         <div className="flex-1 flex items-center gap-2 bg-card border border-border rounded-lg px-3 py-2">
           <Search size={16} className="text-muted-foreground" />
-          <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Buscar por nombre, número, agente..." className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground" />
+          <input
+            type="text"
+            placeholder="Buscar llamadas..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            className="bg-transparent text-sm outline-none flex-1 text-foreground placeholder:text-muted-foreground"
+          />
         </div>
         <div className="flex items-center gap-1">
-          <button onClick={() => setStatusFilter(null)} className={`text-xs px-3 py-1.5 rounded-md ${!statusFilter ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-secondary'}`}>Todas</button>
-          {Object.entries(statusConfig).map(([key, val]) => (
-            <button key={key} onClick={() => setStatusFilter(key)} className={`text-xs px-3 py-1.5 rounded-md ${statusFilter === key ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-secondary'}`}>{val.label}</button>
+          <button
+            onClick={() => setStatusFilter(null)}
+            className={`text-xs px-3 py-1.5 rounded-full transition-colors ${!statusFilter ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}
+          >
+            Todas
+          </button>
+          {Object.entries(statusConfig).filter(([k]) => ['completed', 'in_progress', 'missed'].includes(k)).map(([key, cfg]) => (
+            <button
+              key={key}
+              onClick={() => setStatusFilter(statusFilter === key ? null : key)}
+              className={`text-xs px-3 py-1.5 rounded-full transition-colors ${statusFilter === key ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}
+            >
+              {cfg.label}
+            </button>
           ))}
         </div>
+        <button onClick={loadDbCalls} className="p-2 rounded-lg bg-muted hover:bg-muted/80 text-muted-foreground">
+          <RefreshCw size={16} />
+        </button>
       </div>
 
-      {/* List */}
-      <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border bg-muted/30">
-              <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">Estado</th>
-              <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">Contacto</th>
-              <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">Número</th>
-              <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">Agente</th>
-              <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">Duración</th>
-              <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">Fecha</th>
-              <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">Etiquetas</th>
-              <th className="px-4 py-3"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map(call => {
-              const sc = statusConfig[call.status];
-              const SIcon = sc.icon;
-              return (
-                <tr key={call.id} onClick={() => setSelectedCall(call)} className="border-b border-border last:border-b-0 hover:bg-secondary/30 cursor-pointer transition-colors">
-                  <td className="px-4 py-3">
-                    <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium ${sc.className}`}>
-                      <SIcon size={12} /> {sc.label}
+      {/* Call list */}
+      <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
+        {filtered.length === 0 ? (
+          <div className="p-8 text-center text-muted-foreground">
+            <Phone size={32} className="mx-auto mb-2 opacity-50" />
+            <p className="text-sm">No hay llamadas registradas</p>
+            <p className="text-xs mt-1">Inicia una llamada con el Voice Agent para comenzar</p>
+          </div>
+        ) : (
+          filtered.map(call => {
+            const cfg = statusConfig[call.status] || statusConfig.pending;
+            const StatusIcon = cfg.icon;
+            return (
+              <button
+                key={call.id}
+                onClick={() => setSelectedCall(call)}
+                className="w-full flex items-center gap-4 px-5 py-4 hover:bg-muted/50 transition-colors border-b border-border last:border-b-0 text-left"
+              >
+                <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${cfg.className}`}>
+                  <StatusIcon size={16} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-sm text-foreground truncate">
+                      {call.extractedData.contactName || call.fromNumber || 'Voice Agent'}
                     </span>
-                  </td>
-                  <td className="px-4 py-3 font-medium text-foreground">{call.extractedData.contactName || '—'}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{call.fromNumber}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{call.agentName}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{formatDuration(call.duration)}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{format(call.startedAt, 'd MMM HH:mm', { locale: es })}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex gap-1">
-                      {call.tags.slice(0, 2).map(t => (
-                        <span key={t} className="text-[10px] bg-secondary text-secondary-foreground px-1.5 py-0.5 rounded-full">{t}</span>
-                      ))}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3"><ChevronRight size={14} className="text-muted-foreground" /></td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Appointments section */}
-      <div className="mt-8">
-        <h2 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
-          📅 Próximas citas
-        </h2>
-        <div className="grid grid-cols-3 gap-4">
-          {mockAppointments.filter(a => a.status !== 'cancelled').map(apt => (
-            <div key={apt.id} className="bg-card border border-border rounded-xl p-4 shadow-sm">
-              <div className="flex items-center justify-between mb-2">
-                <h4 className="text-sm font-semibold text-foreground">{apt.contactName}</h4>
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                  apt.status === 'confirmed' ? 'bg-success/10 text-success' :
-                  apt.status === 'completed' ? 'bg-muted text-muted-foreground' :
-                  'bg-primary/10 text-primary'
-                }`}>{apt.status === 'scheduled' ? 'Agendada' : apt.status === 'confirmed' ? 'Confirmada' : 'Completada'}</span>
-              </div>
-              <p className="text-xs text-muted-foreground mb-1">{apt.serviceType}</p>
-              <p className="text-xs text-foreground font-medium">
-                {format(apt.startAt, "EEE d MMM, HH:mm", { locale: es })} - {format(apt.endAt, 'HH:mm')}
-              </p>
-              <div className="flex items-center justify-between mt-2 text-xs text-muted-foreground">
-                <span className="flex items-center gap-1"><User size={10} /> {apt.agentName}</span>
-                <span className="capitalize">{apt.source === 'call' ? '📞' : apt.source === 'whatsapp' ? '💬' : '🖥️'} {apt.source}</span>
-              </div>
-            </div>
-          ))}
-        </div>
+                    <span className={`text-xs px-1.5 py-0.5 rounded-full ${cfg.className}`}>{cfg.label}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground truncate mt-0.5">
+                    {call.summarySystem ? call.summarySystem.slice(0, 80) + '...' : call.transcript ? call.transcript.slice(0, 80) + '...' : 'Sin transcripción'}
+                  </p>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className="text-xs text-muted-foreground">{format(call.startedAt, "d MMM HH:mm", { locale: es })}</p>
+                  <p className="text-xs text-muted-foreground">{formatDuration(call.duration)}</p>
+                </div>
+                <ChevronRight size={16} className="text-muted-foreground shrink-0" />
+              </button>
+            );
+          })
+        )}
       </div>
     </div>
   );
