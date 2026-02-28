@@ -79,14 +79,61 @@ serve(async (req) => {
           .eq('id', tenantId)
           .single();
         companyName = tenant?.name || companyName;
+
+        // Check if this phone belongs to a known employee
+        const { data: knownEmployee } = await supabase
+          .from('profiles')
+          .select('id, user_id, name, tenant_id')
+          .eq('whatsapp_number', contactPhone)
+          .eq('tenant_id', tenantId)
+          .eq('status', 'active')
+          .maybeSingle();
+
+        if (knownEmployee) {
+          // Auto-login employee — skip PIN
+          reply = `¡Hola, *${knownEmployee.name}*! 👋 ¡Qué gusto verte de vuelta!\n\nSoy Aria, tu asistente personal. ¿En qué te ayudo hoy?\n\n• 📋 Pendientes y compromisos\n• 📅 Tu agenda del día\n• 📸 Registrar un gasto\n• 💬 Consultar información\n\nCuéntame 😊`;
+          newState = 'employee_mode';
+          newContext = {
+            role: 'employee',
+            user_id: knownEmployee.user_id,
+            user_name: knownEmployee.name,
+            profile_id: knownEmployee.id,
+          };
+
+          await supabase
+            .from('whatsapp_conversations')
+            .update({ verified_user_id: knownEmployee.user_id })
+            .eq('id', conversationId);
+
+          // Update state and return early — skip the rest of state machine
+        } else {
+          // Check if this is a known client contact
+          const { data: knownContact } = await supabase
+            .from('contacts')
+            .select('name')
+            .eq('phone', contactPhone)
+            .eq('tenant_id', tenantId)
+            .maybeSingle();
+
+          if (knownContact?.name) {
+            reply = `¡Hola de nuevo, *${knownContact.name}*! 👋 Qué gusto que nos contactes otra vez.\n\nSoy *Aria*, tu asistente virtual de *${companyName}*. ¿En qué puedo ayudarte hoy?\n\n• 📋 Conocer nuestros servicios\n• 📅 Agendar una cita\n• 👤 Hablar con alguien del equipo\n\nEstoy para servirte 💬`;
+            newState = 'client_mode';
+            newContext = { role: 'client', contact_name: knownContact.name };
+          } else {
+            reply = `¡Hola! 👋 ¡Qué gusto saludarte! Soy *Aria*, tu asistente virtual de *${companyName}*.\n\nEstoy aquí para lo que necesites. Dime, ¿vienes como *cliente* o eres parte del equipo (*empleado*)?\n\n1️⃣ Soy cliente\n2️⃣ Soy empleado`;
+            newState = 'awaiting_role';
+          }
+        }
+      } else {
+        // Sandbox mode
+        reply = `¡Hola! 👋 ¡Qué gusto saludarte! Soy *Aria*, tu asistente virtual de *${companyName}*.\n\nEstoy aquí para lo que necesites. Dime, ¿vienes como *cliente* o eres parte del equipo (*empleado*)?\n\n1️⃣ Soy cliente\n2️⃣ Soy empleado`;
+        newState = 'awaiting_role';
       }
-      reply = `¡Hola! 👋 ¡Qué gusto saludarte! Soy *Aria*, tu asistente virtual de *${companyName}*.\n\nEstoy aquí para lo que necesites. Dime, ¿vienes como *cliente* o eres parte del equipo (*empleado*)?\n\n1️⃣ Soy cliente\n2️⃣ Soy empleado`;
-      newState = 'awaiting_role';
 
     } else if (botState === 'awaiting_role') {
       if (msg.includes('cliente') || msg === '1') {
-        reply = '¡Excelente! 😊 Me da mucho gusto atenderte.\n\nCuéntame, ¿en qué te puedo ayudar hoy?\n\n• 📋 Conocer nuestros servicios\n• 📅 Agendar una cita con alguno de nuestros colaboradores\n• 👤 Comunicarte directamente con alguien del equipo\n\nEstoy para servirte, pregunta lo que necesites 💬';
-        newState = 'client_mode';
+        reply = '¡Excelente! 😊 Antes de ayudarte, me encantaría conocerte un poco.\n\n¿Me podrías compartir tu *nombre completo*?';
+        newState = 'client_collect_name';
         newContext = { role: 'client' };
 
       } else if (msg.includes('empleado') || msg === '2') {
@@ -97,6 +144,40 @@ serve(async (req) => {
       } else {
         reply = 'Perdona, no logré entenderte 😅 ¿Podrías decirme si vienes como *cliente* o como *empleado*?\n\nTambién puedes responder con *1* o *2* 👆';
       }
+
+    } else if (botState === 'client_collect_name') {
+      const clientName = messageBody.trim();
+      newContext = { ...newContext, contact_name: clientName };
+      reply = `¡Mucho gusto, *${clientName}*! 🙂\n\n¿Me podrías compartir también tu *correo electrónico*? Así podré enviarte confirmaciones y mantenerte informado(a).\n\n_Si prefieres no compartirlo, escribe "no"_`;
+      newState = 'client_collect_email';
+
+    } else if (botState === 'client_collect_email') {
+      const clientName = (newContext.contact_name as string) || 'Cliente';
+      let clientEmail: string | null = null;
+
+      if (msg !== 'no' && msg !== 'omitir' && msg !== 'saltar') {
+        // Basic email validation
+        const emailMatch = messageBody.trim().match(/[^\s@]+@[^\s@]+\.[^\s@]+/);
+        if (emailMatch) {
+          clientEmail = emailMatch[0];
+        }
+      }
+
+      // Save contact to phonebook
+      if (!isSandbox) {
+        await supabase.from('contacts').upsert({
+          tenant_id: tenantId,
+          phone: contactPhone,
+          name: clientName,
+          email: clientEmail,
+          source: 'whatsapp',
+        }, { onConflict: 'tenant_id,phone' });
+      }
+
+      newContext = { ...newContext, contact_email: clientEmail };
+
+      reply = `¡Perfecto, *${clientName}*! Ya te tengo registrado(a) 📝\n\nAhora sí, cuéntame ¿en qué te puedo ayudar?\n\n• 📋 Conocer nuestros servicios\n• 📅 Agendar una cita con alguno de nuestros colaboradores\n• 👤 Comunicarte directamente con alguien del equipo\n\nEstoy para servirte 💬`;
+      newState = 'client_mode';
 
     } else if (botState === 'employee_auth') {
       // Verify PIN
@@ -122,7 +203,13 @@ serve(async (req) => {
           .maybeSingle();
 
         if (profile) {
-          reply = `✅ ¡Qué tal, *${profile.name}*! 🎉 Me da gusto verte por aquí.\n\nSoy Aria, tu asistente personal. Estoy para lo que necesites:\n\n• 📋 Recordarte tus pendientes y compromisos\n• 📅 Revisar tu agenda del día\n• 📸 Registrar gastos — solo mándame la foto del ticket\n• 💬 Resolver dudas de la base de conocimientos\n• 📊 Darte un resumen de cómo va tu día\n\n¿En qué te ayudo? 😊`;
+          // Save whatsapp_number to profile so next time we auto-recognize
+          await supabase
+            .from('profiles')
+            .update({ whatsapp_number: contactPhone })
+            .eq('id', profile.id);
+
+          reply = `✅ ¡Qué tal, *${profile.name}*! 🎉 Me da gusto verte por aquí.\n\nTe he registrado con este número para que la próxima vez te reconozca automáticamente, sin necesidad de PIN 🔓\n\nSoy Aria, tu asistente personal. Estoy para lo que necesites:\n\n• 📋 Recordarte tus pendientes y compromisos\n• 📅 Revisar tu agenda del día\n• 📸 Registrar gastos — solo mándame la foto del ticket\n• 💬 Resolver dudas de la base de conocimientos\n• 📊 Darte un resumen de cómo va tu día\n\n¿En qué te ayudo? 😊`;
           newState = 'employee_mode';
           newContext = { 
             role: 'employee', 
