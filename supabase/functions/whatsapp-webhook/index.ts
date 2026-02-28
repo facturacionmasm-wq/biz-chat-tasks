@@ -401,6 +401,7 @@ serve(async (req) => {
               } catch (botErr) {
                 console.error('Failed to trigger bot:', botErr);
               }
+            }
           }
         }
       }
