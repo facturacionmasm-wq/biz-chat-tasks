@@ -1,16 +1,32 @@
 import { useState, useEffect } from 'react';
-import { Building2, Users, Shield, CreditCard, Bell, Database, Brain, Globe, ChevronRight, User, KeyRound, Loader2, Palette, Save, Upload, Image, X, Mail, Phone as PhoneIcon, MessageSquare, Trash2 } from 'lucide-react';
+import { Building2, Users, CreditCard, Bell, Database, Brain, Globe, ChevronRight, User, KeyRound, Loader2, Palette, Save, Upload, Image, X, Mail, Phone as PhoneIcon, MessageSquare, Trash2, Settings2, ChevronDown, ChevronUp } from 'lucide-react';
 import { teamMembers } from '@/data/mockData';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
+
+const MODULE_PERMISSIONS = [
+  { key: 'dashboard', label: 'Dashboard' },
+  { key: 'calls', label: 'Llamadas' },
+  { key: 'whatsapp', label: 'WhatsApp' },
+  { key: 'appointments', label: 'Agenda' },
+  { key: 'chat', label: 'Chat Interno' },
+  { key: 'calendar', label: 'Calendario' },
+  { key: 'projects', label: 'Proyectos' },
+  { key: 'knowledge', label: 'Knowledge Hub' },
+  { key: 'okrs', label: 'OKRs' },
+  { key: 'ai_training', label: 'Entrenamiento IA' },
+  { key: 'expenses', label: 'Gastos' },
+  { key: 'integrations', label: 'Integraciones' },
+  { key: 'audit', label: 'Auditoría' },
+  { key: 'settings', label: 'Configuración' },
+];
 
 const settingsSections = [
   { id: 'profile', label: 'Mi Perfil', icon: User },
   { id: 'general', label: 'General', icon: Building2 },
   { id: 'branding', label: 'Branding', icon: Palette },
   { id: 'team', label: 'Equipo', icon: Users },
-  { id: 'roles', label: 'Roles y permisos', icon: Shield },
   { id: 'billing', label: 'Suscripción', icon: CreditCard },
   { id: 'notifications', label: 'Notificaciones', icon: Bell },
   { id: 'data', label: 'Datos y privacidad', icon: Database },
@@ -58,10 +74,11 @@ const SettingsPage = () => {
   const [savingBranding, setSavingBranding] = useState(false);
 
   // Team state
-  const [teamData, setTeamData] = useState<Array<{ user_id: string; name: string; email: string; role: string; status: string }>>([]);
+  const [teamData, setTeamData] = useState<Array<{ user_id: string; name: string; email: string; role: string; status: string; permissions: Record<string, boolean> }>>([]);
   const [teamLoading, setTeamLoading] = useState(false);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
+  const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
 
   // Load tenant data
   useEffect(() => {
@@ -116,21 +133,44 @@ const SettingsPage = () => {
         const { data: myRole } = await supabase.from('user_roles').select('role').eq('user_id', user.id).eq('tenant_id', tenantId).maybeSingle();
         setIsSuperAdmin(myRole?.role === 'super_admin');
         const { data: profiles } = await supabase.from('profiles').select('user_id, name, email, status').eq('tenant_id', tenantId);
-        const { data: roles } = await supabase.from('user_roles').select('user_id, role').eq('tenant_id', tenantId);
-        const roleMap = new Map((roles || []).map(r => [r.user_id, r.role]));
-        setTeamData((profiles || []).map(p => ({
-          user_id: p.user_id,
-          name: p.name || '',
-          email: p.email || '',
-          role: roleMap.get(p.user_id) || 'staff',
-          status: p.status || 'active',
-        })));
+        const { data: roles } = await supabase.from('user_roles').select('user_id, role, permissions_json').eq('tenant_id', tenantId);
+        const roleMap = new Map((roles || []).map(r => [r.user_id, { role: r.role, permissions: r.permissions_json }]));
+        setTeamData((profiles || []).map(p => {
+          const roleData = roleMap.get(p.user_id);
+          const perms = (roleData?.permissions as Record<string, boolean>) || {};
+          return {
+            user_id: p.user_id,
+            name: p.name || '',
+            email: p.email || '',
+            role: roleData?.role || 'staff',
+            status: p.status || 'active',
+            permissions: perms,
+          };
+        }));
       } finally {
         setTeamLoading(false);
       }
     };
     loadTeam();
   }, [user, activeSection]);
+
+  const handleTogglePermission = async (targetUserId: string, moduleKey: string, currentValue: boolean) => {
+    try {
+      const tenantId = await getTenantId();
+      const member = teamData.find(m => m.user_id === targetUserId);
+      if (!member) return;
+      const newPerms = { ...member.permissions, [moduleKey]: !currentValue };
+      const { error } = await supabase
+        .from('user_roles')
+        .update({ permissions_json: newPerms } as any)
+        .eq('user_id', targetUserId)
+        .eq('tenant_id', tenantId);
+      if (error) throw error;
+      setTeamData(prev => prev.map(m => m.user_id === targetUserId ? { ...m, permissions: newPerms } : m));
+    } catch (err: any) {
+      toast.error(err.message || 'Error al cambiar permiso');
+    }
+  };
 
   const handleDeleteMember = async (targetUserId: string) => {
     if (!user || targetUserId === user.id) return;
@@ -555,29 +595,23 @@ const SettingsPage = () => {
             {teamLoading ? (
               <div className="flex items-center justify-center py-12"><Loader2 size={24} className="animate-spin text-muted-foreground" /></div>
             ) : (
-              <div className="bg-card border border-border rounded-xl overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border">
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">Nombre</th>
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">Email</th>
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">Rol</th>
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">Estado</th>
-                      {isSuperAdmin && <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">Acciones</th>}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {teamData.map(m => (
-                      <tr key={m.user_id} className="border-b border-border last:border-b-0 hover:bg-secondary/30">
-                        <td className="px-4 py-3 flex items-center gap-2">
-                          <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary">
-                            {m.name ? m.name.split(' ').map(n => n[0]).join('').slice(0, 2) : '?'}
-                          </div>
-                          {m.name || 'Sin nombre'}
-                        </td>
-                        <td className="px-4 py-3 text-muted-foreground">{m.email}</td>
-                        <td className="px-4 py-3">
-                          {isSuperAdmin && m.user_id !== user?.id ? (
+              <div className="space-y-3">
+                {teamData.map(m => {
+                  const isExpanded = expandedUserId === m.user_id;
+                  const isSelf = m.user_id === user?.id;
+                  return (
+                    <div key={m.user_id} className="bg-card border border-border rounded-xl overflow-hidden">
+                      {/* Member row */}
+                      <div className="flex items-center gap-3 px-4 py-3">
+                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary shrink-0">
+                          {m.name ? m.name.split(' ').map(n => n[0]).join('').slice(0, 2) : '?'}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium text-foreground truncate">{m.name || 'Sin nombre'}</p>
+                          <p className="text-xs text-muted-foreground truncate">{m.email}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {isSuperAdmin && !isSelf ? (
                             <select
                               value={m.role}
                               onChange={async (e) => {
@@ -607,58 +641,60 @@ const SettingsPage = () => {
                           ) : (
                             <span className="text-xs bg-secondary px-2 py-0.5 rounded-full">{m.role}</span>
                           )}
-                        </td>
-                        <td className="px-4 py-3">
                           <span className={`inline-block w-2 h-2 rounded-full ${m.status === 'active' ? 'bg-green-500' : 'bg-muted-foreground/40'}`} />
-                        </td>
-                        {isSuperAdmin && (
-                          <td className="px-4 py-3">
-                            {m.user_id !== user?.id ? (
+                          {isSuperAdmin && !isSelf && (
+                            <>
+                              <button
+                                onClick={() => setExpandedUserId(isExpanded ? null : m.user_id)}
+                                className="p-1.5 rounded hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground"
+                                title="Permisos"
+                              >
+                                {isExpanded ? <ChevronUp size={14} /> : <Settings2 size={14} />}
+                              </button>
                               <button
                                 onClick={() => handleDeleteMember(m.user_id)}
                                 disabled={deletingUserId === m.user_id}
-                                className="text-destructive hover:text-destructive/80 disabled:opacity-40 p-1 rounded hover:bg-destructive/10 transition-colors"
+                                className="text-destructive hover:text-destructive/80 disabled:opacity-40 p-1.5 rounded hover:bg-destructive/10 transition-colors"
                                 title="Eliminar miembro"
                               >
                                 {deletingUserId === m.user_id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
                               </button>
-                            ) : (
-                              <span className="text-xs text-muted-foreground">Tú</span>
-                            )}
-                          </td>
-                        )}
-                      </tr>
-                    ))}
-                    {teamData.length === 0 && (
-                      <tr><td colSpan={isSuperAdmin ? 5 : 4} className="px-4 py-6 text-center text-muted-foreground text-sm">No hay miembros en el equipo</td></tr>
-                    )}
-                  </tbody>
-                </table>
+                            </>
+                          )}
+                          {isSelf && <span className="text-[10px] text-muted-foreground bg-secondary px-2 py-0.5 rounded-full">Tú</span>}
+                        </div>
+                      </div>
+
+                      {/* Permissions panel */}
+                      {isExpanded && isSuperAdmin && !isSelf && (
+                        <div className="border-t border-border bg-secondary/30 px-4 py-3">
+                          <p className="text-xs font-semibold text-muted-foreground uppercase mb-3">Permisos de acceso a módulos</p>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                            {MODULE_PERMISSIONS.map(mod => {
+                              const enabled = m.permissions[mod.key] !== false;
+                              return (
+                                <label key={mod.key} className="flex items-center gap-2 cursor-pointer group">
+                                  <button
+                                    onClick={() => handleTogglePermission(m.user_id, mod.key, enabled)}
+                                    className={`w-8 h-5 rounded-full flex items-center transition-colors shrink-0 ${enabled ? 'bg-primary justify-end' : 'bg-muted justify-start'}`}
+                                  >
+                                    <div className="w-3.5 h-3.5 bg-card rounded-full mx-0.5 shadow-sm" />
+                                  </button>
+                                  <span className={`text-xs ${enabled ? 'text-foreground' : 'text-muted-foreground'}`}>{mod.label}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                {teamData.length === 0 && (
+                  <div className="bg-card border border-border rounded-xl p-6 text-center text-muted-foreground text-sm">No hay miembros en el equipo</div>
+                )}
               </div>
             )}
-          </div>
-        )}
-
-        {activeSection === 'roles' && (
-          <div className="max-w-3xl">
-            <h3 className="text-lg font-bold text-foreground mb-4">Roles y Permisos</h3>
-            <div className="space-y-3">
-              {[
-                { role: 'Owner', desc: 'Acceso total. Configuración, facturación, permisos.', permissions: 'Todos los módulos' },
-                { role: 'Admin', desc: 'Gestión operativa. Equipos, proyectos, integraciones.', permissions: 'Chat, Proyectos, OKRs, Calendario, Integraciones' },
-                { role: 'Member', desc: 'Participante estándar. Chat, tareas, notas.', permissions: 'Chat, Proyectos (asignados), Calendario (lectura)' },
-                { role: 'Guest', desc: 'Acceso limitado a un proyecto específico.', permissions: 'Proyecto asignado (solo lectura)' },
-              ].map(r => (
-                <div key={r.role} className="bg-card border border-border rounded-xl p-4 flex items-center justify-between">
-                  <div>
-                    <h4 className="text-sm font-semibold text-foreground">{r.role}</h4>
-                    <p className="text-xs text-muted-foreground mt-0.5">{r.desc}</p>
-                    <p className="text-xs text-primary mt-1">{r.permissions}</p>
-                  </div>
-                  <ChevronRight size={16} className="text-muted-foreground" />
-                </div>
-              ))}
-            </div>
           </div>
         )}
 
