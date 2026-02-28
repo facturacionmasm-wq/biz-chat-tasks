@@ -57,38 +57,23 @@ const CredentialsPage = () => {
       return;
     }
 
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('tenant_id')
-      .eq('user_id', user!.id)
-      .maybeSingle();
-    if (!profile) return;
-
-    if (editingId) {
-      const { error } = await supabase
-        .from('shared_credentials' as any)
-        .update({
+    try {
+      const { data: result, error } = await supabase.functions.invoke('credential-vault', {
+        body: {
+          action: 'encrypt_save',
+          id: editingId || undefined,
           platform_name: form.platform_name,
           username: form.username,
-          password_encrypted: form.password,
+          password: form.password,
           notes: form.notes || null,
-        } as any)
-        .eq('id', editingId);
-      if (error) { toast.error(error.message); return; }
-      toast.success('Credencial actualizada');
-    } else {
-      const { error } = await supabase
-        .from('shared_credentials' as any)
-        .insert({
-          tenant_id: profile.tenant_id,
-          platform_name: form.platform_name,
-          username: form.username,
-          password_encrypted: form.password,
-          notes: form.notes || null,
-          created_by: user!.id,
-        } as any);
-      if (error) { toast.error(error.message); return; }
-      toast.success('Credencial guardada');
+        },
+      });
+      if (error) throw error;
+      if (result?.error) throw new Error(result.error);
+      toast.success(editingId ? 'Credencial actualizada' : 'Credencial guardada');
+    } catch (err: any) {
+      toast.error(err.message || 'Error al guardar credencial');
+      return;
     }
 
     setDialogOpen(false);
@@ -115,12 +100,24 @@ const CredentialsPage = () => {
     setDialogOpen(true);
   };
 
-  const toggleReveal = (id: string) => {
-    setRevealedIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
+  const toggleReveal = async (id: string) => {
+    if (revealedIds.has(id)) {
+      setRevealedIds(prev => { const next = new Set(prev); next.delete(id); return next; });
+      // Remove decrypted password from local state
+      setCredentials(prev => prev.map(c => c.id === id ? { ...c, _decrypted: undefined } as any : c));
+      return;
+    }
+    try {
+      const { data: result, error } = await supabase.functions.invoke('credential-vault', {
+        body: { action: 'decrypt', id },
+      });
+      if (error) throw error;
+      if (result?.error) throw new Error(result.error);
+      setCredentials(prev => prev.map(c => c.id === id ? { ...c, _decrypted: result.password } as any : c));
+      setRevealedIds(prev => { const next = new Set(prev); next.add(id); return next; });
+    } catch (err: any) {
+      toast.error(err.message || 'Error al desencriptar');
+    }
   };
 
   const copyToClipboard = (text: string, label: string) => {
@@ -232,12 +229,12 @@ const CredentialsPage = () => {
                     <span className="text-xs text-muted-foreground">Contraseña</span>
                     <div className="flex items-center gap-1">
                       <span className="text-sm font-mono">
-                        {revealed ? cred.password_encrypted : '••••••••'}
+                        {revealed ? ((cred as any)._decrypted || cred.password_encrypted) : '••••••••'}
                       </span>
                       <button onClick={() => toggleReveal(cred.id)} className="p-0.5 text-muted-foreground hover:text-foreground">
                         {revealed ? <EyeOff size={12} /> : <Eye size={12} />}
                       </button>
-                      <button onClick={() => copyToClipboard(cred.password_encrypted, 'Contraseña')} className="p-0.5 text-muted-foreground hover:text-foreground">
+                      <button onClick={() => copyToClipboard(revealed ? ((cred as any)._decrypted || cred.password_encrypted) : cred.password_encrypted, 'Contraseña')} className="p-0.5 text-muted-foreground hover:text-foreground">
                         <Copy size={12} />
                       </button>
                     </div>

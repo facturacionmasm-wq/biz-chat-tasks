@@ -622,14 +622,12 @@ const SettingsPage = () => {
                       if (pin.length < 4) { toast.error('El PIN debe tener al menos 4 dígitos'); return; }
                       setSavingPin(true);
                       try {
-                        const encoder = new TextEncoder();
-                        const data = encoder.encode(pin);
-                        const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-                        const hashArray = Array.from(new Uint8Array(hashBuffer));
-                        const pinHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
                         if (!user) throw new Error('No autenticado');
-                        const { error } = await supabase.from('profiles').update({ pin_hash: pinHash } as any).eq('user_id', user.id);
+                        const { data: result, error } = await supabase.functions.invoke('pin-service', {
+                          body: { action: 'hash_pin', pin },
+                        });
                         if (error) throw error;
+                        if (result?.error) throw new Error(result.error);
                         toast.success('PIN guardado correctamente');
                         setPin(''); setPinConfirm('');
                       } catch (err: any) {
