@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { MessageSquare, Search, Tag, User, Clock, Send, Paperclip, StickyNote, Phone, CalendarPlus, ChevronDown, Circle, CheckCircle2, AlertCircle } from 'lucide-react';
+import { MessageSquare, Search, Tag, User, Clock, Send, Paperclip, StickyNote, Phone, CalendarPlus, ChevronDown, Circle, CheckCircle2, AlertCircle, Plus } from 'lucide-react';
 import { mockWAConversations, mockWAMessages, type WhatsAppConversation, type WhatsAppMessage } from '@/data/mockCallsData';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 
 const statusColors: Record<string, string> = {
   open: 'bg-success/10 text-success',
@@ -16,23 +18,68 @@ const WhatsAppInboxPage = () => {
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [messageInput, setMessageInput] = useState('');
   const [showNotes, setShowNotes] = useState(false);
+  const [showNewConv, setShowNewConv] = useState(false);
+  const [newConvName, setNewConvName] = useState('');
+  const [newConvPhone, setNewConvPhone] = useState('');
+  const [newConvMessage, setNewConvMessage] = useState('');
+  const [conversations, setConversations] = useState<WhatsAppConversation[]>(mockWAConversations);
+  const [messages, setMessages] = useState<WhatsAppMessage[]>(mockWAMessages);
 
-  const filtered = mockWAConversations.filter(c =>
+  const handleCreateConversation = () => {
+    if (!newConvName.trim() || !newConvPhone.trim()) return;
+    const newId = `wa-conv-${Date.now()}`;
+    const newConv: WhatsAppConversation = {
+      id: newId,
+      contactPhone: newConvPhone.trim(),
+      contactName: newConvName.trim(),
+      assignedTo: 'Yo',
+      status: 'open',
+      tags: [],
+      notes: '',
+      lastMessageAt: new Date(),
+      unreadCount: 0,
+    };
+    if (newConvMessage.trim()) {
+      const newMsg: WhatsAppMessage = {
+        id: `wa-msg-${Date.now()}`,
+        conversationId: newId,
+        direction: 'out',
+        body: newConvMessage.trim(),
+        mediaUrl: null,
+        status: 'sent',
+        createdAt: new Date(),
+      };
+      setMessages(prev => [...prev, newMsg]);
+    }
+    setConversations(prev => [newConv, ...prev]);
+    setSelectedConvId(newId);
+    setShowNewConv(false);
+    setNewConvName('');
+    setNewConvPhone('');
+    setNewConvMessage('');
+  };
+
+  const filtered = conversations.filter(c =>
     (!statusFilter || c.status === statusFilter) &&
     (!searchQuery || c.contactName.toLowerCase().includes(searchQuery.toLowerCase()) || c.contactPhone.includes(searchQuery))
   );
 
-  const selectedConv = mockWAConversations.find(c => c.id === selectedConvId);
-  const convMessages = mockWAMessages.filter(m => m.conversationId === selectedConvId);
+  const selectedConv = conversations.find(c => c.id === selectedConvId);
+  const convMessages = messages.filter(m => m.conversationId === selectedConvId);
 
   return (
     <div className="flex h-full">
       {/* Conversation list */}
       <div className="w-80 shrink-0 border-r border-border bg-card flex flex-col h-full">
-        <div className="p-3 border-b border-border">
-          <div className="flex items-center gap-2 bg-secondary rounded-md px-3 py-1.5 text-sm">
-            <Search size={14} className="text-muted-foreground" />
-            <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Buscar contacto..." className="flex-1 bg-transparent outline-none placeholder:text-muted-foreground text-foreground" />
+        <div className="p-3 border-b border-border space-y-2">
+          <div className="flex items-center gap-2">
+            <div className="flex-1 flex items-center gap-2 bg-secondary rounded-md px-3 py-1.5 text-sm">
+              <Search size={14} className="text-muted-foreground" />
+              <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Buscar contacto..." className="flex-1 bg-transparent outline-none placeholder:text-muted-foreground text-foreground" />
+            </div>
+            <button onClick={() => setShowNewConv(true)} className="shrink-0 p-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors" title="Nueva conversación">
+              <Plus size={16} />
+            </button>
           </div>
           <div className="flex items-center gap-1 mt-2">
             <button onClick={() => setStatusFilter(null)} className={`text-[10px] px-2 py-1 rounded-md ${!statusFilter ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-secondary'}`}>Todos</button>
@@ -202,6 +249,49 @@ const WhatsAppInboxPage = () => {
           </div>
         </div>
       )}
+
+      {/* New conversation dialog */}
+      <Dialog open={showNewConv} onOpenChange={setShowNewConv}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Nueva conversación</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Nombre del contacto</label>
+              <input
+                value={newConvName}
+                onChange={e => setNewConvName(e.target.value)}
+                placeholder="Ej: Juan Pérez"
+                className="w-full bg-secondary rounded-md px-3 py-2 text-sm outline-none border border-border focus:border-primary text-foreground placeholder:text-muted-foreground"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Número de WhatsApp</label>
+              <input
+                value={newConvPhone}
+                onChange={e => setNewConvPhone(e.target.value)}
+                placeholder="Ej: +52 55 1234 5678"
+                className="w-full bg-secondary rounded-md px-3 py-2 text-sm outline-none border border-border focus:border-primary text-foreground placeholder:text-muted-foreground"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Primer mensaje (opcional)</label>
+              <textarea
+                value={newConvMessage}
+                onChange={e => setNewConvMessage(e.target.value)}
+                placeholder="Escribe un mensaje..."
+                rows={3}
+                className="w-full bg-secondary rounded-md px-3 py-2 text-sm outline-none border border-border focus:border-primary resize-none text-foreground placeholder:text-muted-foreground"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowNewConv(false)}>Cancelar</Button>
+            <Button onClick={handleCreateConversation} disabled={!newConvName.trim() || !newConvPhone.trim()}>Iniciar conversación</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
