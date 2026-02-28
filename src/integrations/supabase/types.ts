@@ -272,6 +272,65 @@ export type Database = {
           },
         ]
       }
+      expenses: {
+        Row: {
+          amount: number
+          category: string | null
+          created_at: string
+          currency: string
+          description: string | null
+          expense_date: string
+          id: string
+          notes: string | null
+          ocr_data: Json | null
+          receipt_url: string | null
+          status: string
+          tenant_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          amount?: number
+          category?: string | null
+          created_at?: string
+          currency?: string
+          description?: string | null
+          expense_date?: string
+          id?: string
+          notes?: string | null
+          ocr_data?: Json | null
+          receipt_url?: string | null
+          status?: string
+          tenant_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          category?: string | null
+          created_at?: string
+          currency?: string
+          description?: string | null
+          expense_date?: string
+          id?: string
+          notes?: string | null
+          ocr_data?: Json | null
+          receipt_url?: string | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expenses_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       internal_messages: {
         Row: {
           attachments: Json | null
@@ -447,6 +506,7 @@ export type Database = {
           id: string
           name: string
           phone: string | null
+          pin_hash: string | null
           status: string
           tenant_id: string
           updated_at: string
@@ -460,6 +520,7 @@ export type Database = {
           id?: string
           name: string
           phone?: string | null
+          pin_hash?: string | null
           status?: string
           tenant_id: string
           updated_at?: string
@@ -473,6 +534,7 @@ export type Database = {
           id?: string
           name?: string
           phone?: string | null
+          pin_hash?: string | null
           status?: string
           tenant_id?: string
           updated_at?: string
@@ -566,6 +628,8 @@ export type Database = {
       whatsapp_conversations: {
         Row: {
           assigned_user_id: string | null
+          bot_context: Json | null
+          bot_state: string | null
           contact_name: string | null
           contact_phone: string
           created_at: string
@@ -576,9 +640,12 @@ export type Database = {
           tags: string[] | null
           tenant_id: string
           updated_at: string
+          verified_user_id: string | null
         }
         Insert: {
           assigned_user_id?: string | null
+          bot_context?: Json | null
+          bot_state?: string | null
           contact_name?: string | null
           contact_phone: string
           created_at?: string
@@ -589,9 +656,12 @@ export type Database = {
           tags?: string[] | null
           tenant_id: string
           updated_at?: string
+          verified_user_id?: string | null
         }
         Update: {
           assigned_user_id?: string | null
+          bot_context?: Json | null
+          bot_state?: string | null
           contact_name?: string | null
           contact_phone?: string
           created_at?: string
@@ -602,6 +672,7 @@ export type Database = {
           tags?: string[] | null
           tenant_id?: string
           updated_at?: string
+          verified_user_id?: string | null
         }
         Relationships: [
           {

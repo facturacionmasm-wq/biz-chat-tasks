@@ -1,8 +1,11 @@
 import { useState } from 'react';
-import { Building2, Users, Shield, CreditCard, Bell, Database, Brain, Globe, ChevronRight } from 'lucide-react';
+import { Building2, Users, Shield, CreditCard, Bell, Database, Brain, Globe, ChevronRight, User, KeyRound, Loader2 } from 'lucide-react';
 import { teamMembers } from '@/data/mockData';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
 const settingsSections = [
+  { id: 'profile', label: 'Mi Perfil', icon: User },
   { id: 'general', label: 'General', icon: Building2 },
   { id: 'team', label: 'Equipo', icon: Users },
   { id: 'roles', label: 'Roles y permisos', icon: Shield },
@@ -19,7 +22,10 @@ const plans = [
 ];
 
 const SettingsPage = () => {
-  const [activeSection, setActiveSection] = useState('general');
+  const [activeSection, setActiveSection] = useState('profile');
+  const [pin, setPin] = useState('');
+  const [pinConfirm, setPinConfirm] = useState('');
+  const [savingPin, setSavingPin] = useState(false);
 
   return (
     <div className="flex h-full">
@@ -44,6 +50,86 @@ const SettingsPage = () => {
 
       {/* Content */}
       <div className="flex-1 p-6 overflow-auto">
+        {activeSection === 'profile' && (
+          <div className="max-w-2xl">
+            <h3 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
+              <User size={20} className="text-primary" /> Mi Perfil
+            </h3>
+            <div className="space-y-4">
+              <div className="bg-card border border-border rounded-xl p-5">
+                <h4 className="text-sm font-semibold text-foreground flex items-center gap-2 mb-3">
+                  <KeyRound size={16} className="text-warning" /> PIN de autenticación WhatsApp
+                </h4>
+                <p className="text-xs text-muted-foreground mb-4">
+                  Este PIN te permite autenticarte como empleado a través del asistente de WhatsApp. 
+                  Debe ser un número de 4 a 6 dígitos que recuerdes fácilmente.
+                </p>
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground mb-1 block">Nuevo PIN</label>
+                    <input
+                      type="password"
+                      value={pin}
+                      onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      placeholder="Ej: 1234"
+                      maxLength={6}
+                      className="w-full bg-secondary rounded-lg px-3 py-2 text-sm outline-none border border-border focus:border-primary text-foreground placeholder:text-muted-foreground"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground mb-1 block">Confirmar PIN</label>
+                    <input
+                      type="password"
+                      value={pinConfirm}
+                      onChange={e => setPinConfirm(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      placeholder="Repite tu PIN"
+                      maxLength={6}
+                      className="w-full bg-secondary rounded-lg px-3 py-2 text-sm outline-none border border-border focus:border-primary text-foreground placeholder:text-muted-foreground"
+                    />
+                  </div>
+                  <button
+                    disabled={savingPin || pin.length < 4 || pin !== pinConfirm}
+                    onClick={async () => {
+                      if (pin !== pinConfirm) { toast.error('Los PINs no coinciden'); return; }
+                      if (pin.length < 4) { toast.error('El PIN debe tener al menos 4 dígitos'); return; }
+                      setSavingPin(true);
+                      try {
+                        // Hash the PIN client-side with SHA-256
+                        const encoder = new TextEncoder();
+                        const data = encoder.encode(pin);
+                        const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+                        const hashArray = Array.from(new Uint8Array(hashBuffer));
+                        const pinHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+                        const { data: { user } } = await supabase.auth.getUser();
+                        if (!user) throw new Error('No autenticado');
+
+                        const { error } = await supabase
+                          .from('profiles')
+                          .update({ pin_hash: pinHash } as any)
+                          .eq('user_id', user.id);
+
+                        if (error) throw error;
+                        toast.success('PIN guardado correctamente');
+                        setPin('');
+                        setPinConfirm('');
+                      } catch (err: any) {
+                        toast.error(err.message || 'Error al guardar PIN');
+                      } finally {
+                        setSavingPin(false);
+                      }
+                    }}
+                    className="bg-primary text-primary-foreground text-sm px-4 py-2 rounded-lg hover:opacity-90 disabled:opacity-40 flex items-center gap-2"
+                  >
+                    {savingPin && <Loader2 size={14} className="animate-spin" />}
+                    Guardar PIN
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {activeSection === 'general' && (
           <div className="max-w-2xl">
             <h3 className="text-lg font-bold text-foreground mb-4">Configuración General</h3>
