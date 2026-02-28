@@ -6,6 +6,16 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
+// Constant-time string comparison to prevent timing attacks
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let result = 0;
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return result === 0;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -102,8 +112,9 @@ serve(async (req) => {
       // Increment attempts
       await supabase.from('otp_challenges').update({ attempts: challenge.attempts + 1 }).eq('id', challenge.id);
 
-      // Verify code
-      if (challenge.code_hash !== codeHash) {
+      // Verify code (constant-time comparison to prevent timing attacks)
+      const isValid = timingSafeEqual(challenge.code_hash, codeHash);
+      if (!isValid) {
         return new Response(JSON.stringify({ success: false, error: 'Código incorrecto' }), {
           status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
