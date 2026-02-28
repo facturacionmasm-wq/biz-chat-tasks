@@ -39,6 +39,21 @@ serve(async (req) => {
       const ELEVENLABS_API_KEY = Deno.env.get('ELEVENLABS_API_KEY');
       
       if (ELEVENLABS_API_KEY && TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN) {
+        // Send "processing" confirmation before transcribing
+        if (TWILIO_PHONE_NUMBER && contactPhone) {
+          try {
+            await sendTwilioMessage(
+              TWILIO_ACCOUNT_SID,
+              TWILIO_AUTH_TOKEN,
+              TWILIO_PHONE_NUMBER,
+              contactPhone,
+              '🎤 Procesando tu mensaje de voz...'
+            );
+          } catch (e) {
+            console.error('Failed to send voice processing confirmation:', e);
+          }
+        }
+
         try {
           // Download audio from Twilio
           const basicAuth = btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`);
