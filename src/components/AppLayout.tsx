@@ -3,7 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, MessageSquare, FolderKanban, CalendarDays,
   Target, BookOpen, Plug, Settings, ChevronLeft, ChevronRight,
-  Building2, Bell, Search, Sparkles, MessageCircle, Phone, CalendarPlus, Shield
+  Building2, Bell, Search, Sparkles, MessageCircle, Phone, CalendarPlus, Shield, GraduationCap
 } from 'lucide-react';
 
 const navItems = [
@@ -16,6 +16,7 @@ const navItems = [
   { to: '/projects', icon: FolderKanban, label: 'Proyectos' },
   { to: '/knowledge', icon: BookOpen, label: 'Knowledge Hub' },
   { to: '/okrs', icon: Target, label: 'OKRs' },
+  { to: '/ai-training', icon: GraduationCap, label: 'Entrenamiento IA' },
 ];
 
 const adminItems = [
