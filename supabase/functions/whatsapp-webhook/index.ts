@@ -22,8 +22,6 @@ serve(async (req) => {
       const mode = url.searchParams.get('hub.mode');
       const token = url.searchParams.get('hub.verify_token');
       const challenge = url.searchParams.get('hub.challenge');
-
-      // Retrieve verify token from tenant config or use env
       const VERIFY_TOKEN = Deno.env.get('WHATSAPP_VERIFY_TOKEN') || 'lovable_wa_verify';
 
       if (mode === 'subscribe' && token === VERIFY_TOKEN) {
@@ -34,99 +32,247 @@ serve(async (req) => {
         });
       } else {
         console.error('Webhook verification failed', { mode, token });
-        return new Response('Forbidden', {
-          status: 403,
-          headers: corsHeaders,
-        });
+        return new Response('Forbidden', { status: 403, headers: corsHeaders });
       }
     }
 
-    // POST: incoming message
-    const body = await req.json();
-    const { entry } = body;
+    // POST: Detect provider by content-type
+    const contentType = req.headers.get('content-type') || '';
 
-    if (!entry || !Array.isArray(entry)) {
-      return new Response(JSON.stringify({ error: 'Invalid webhook payload' }), {
-        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
+    if (contentType.includes('application/x-www-form-urlencoded')) {
+      // ========== TWILIO FORMAT ==========
+      const formData = await req.text();
+      const params = new URLSearchParams(formData);
 
-    for (const e of entry) {
-      const changes = e.changes || [];
-      for (const change of changes) {
-        if (change.field !== 'messages') continue;
-        
-        const value = change.value;
-        const messages = value.messages || [];
-        const contacts = value.contacts || [];
+      const from = params.get('From') || '';       // e.g. "whatsapp:+5215512345678"
+      const to = params.get('To') || '';           // e.g. "whatsapp:+12135132649"
+      const body = params.get('Body') || '';
+      const messageSid = params.get('MessageSid') || '';
+      const numMedia = parseInt(params.get('NumMedia') || '0', 10);
+      const profileName = params.get('ProfileName') || '';
 
-        for (const msg of messages) {
-          const contactPhone = msg.from;
-          const contactName = contacts.find((c: any) => c.wa_id === contactPhone)?.profile?.name || 'Desconocido';
-          const messageBody = msg.text?.body || msg.caption || '';
-          const mediaUrl = msg.image?.id || msg.document?.id || null;
+      // Clean phone numbers (remove "whatsapp:" prefix)
+      const contactPhone = from.replace('whatsapp:', '');
+      const businessPhone = to.replace('whatsapp:', '');
+      const contactName = profileName || contactPhone;
 
-          // TODO: resolve tenant_id from the WhatsApp business number
-          // For now, we use a placeholder approach
-          const tenantId = value.metadata?.phone_number_id; // This would be mapped to tenant
+      console.log(`Twilio message from ${contactPhone} to ${businessPhone}: ${body.substring(0, 50)}`);
 
-          // Find or create conversation
-          let { data: conversation } = await supabase
-            .from('whatsapp_conversations')
-            .select('id')
-            .eq('contact_phone', contactPhone)
-            .eq('status', 'open')
-            .limit(1)
-            .single();
+      // Get media URL if present
+      let mediaUrl: string | null = null;
+      if (numMedia > 0) {
+        mediaUrl = params.get('MediaUrl0') || null;
+      }
 
-          if (!conversation) {
-            const { data: newConv } = await supabase
-              .from('whatsapp_conversations')
-              .insert({
-                tenant_id: tenantId,
-                contact_phone: contactPhone,
-                contact_name: contactName,
-                status: 'open',
-                last_message_at: new Date().toISOString(),
-              })
-              .select('id')
-              .single();
-            conversation = newConv;
-          } else {
-            await supabase
-              .from('whatsapp_conversations')
-              .update({ last_message_at: new Date().toISOString() })
-              .eq('id', conversation.id);
-          }
+      // Resolve tenant by matching the business phone number in whatsapp_config
+      let tenantId: string | null = null;
+      const { data: tenants } = await supabase
+        .from('tenants')
+        .select('id, whatsapp_config')
+        .not('whatsapp_config', 'is', null);
 
-          if (conversation) {
-            // Save message
-            await supabase.from('whatsapp_messages').insert({
-              tenant_id: tenantId,
-              conversation_id: conversation.id,
-              direction: 'in',
-              body: messageBody,
-              media_url: mediaUrl,
-              status: 'received',
-              metadata: { wa_message_id: msg.id, type: msg.type },
-            });
-
-            // Log audit
-            await supabase.from('audit_events').insert({
-              tenant_id: tenantId,
-              event_type: 'whatsapp.message_received',
-              resource_type: 'whatsapp_message',
-              resource_id: msg.id,
-              payload: { from: contactPhone, preview: messageBody.substring(0, 100) },
-            });
+      if (tenants) {
+        for (const t of tenants) {
+          const config = t.whatsapp_config as any;
+          if (config?.phone_number) {
+            const configPhone = config.phone_number.replace('whatsapp:', '');
+            if (configPhone === businessPhone) {
+              tenantId = t.id;
+              break;
+            }
           }
         }
       }
-    }
 
-    return new Response(JSON.stringify({ success: true }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+      // Fallback to first tenant if none matched
+      if (!tenantId) {
+        const { data: firstTenant } = await supabase
+          .from('tenants')
+          .select('id')
+          .limit(1)
+          .single();
+        tenantId = firstTenant?.id || null;
+      }
+
+      if (!tenantId) {
+        console.error('No tenant found for this WhatsApp number');
+        // Still return 200 to Twilio so it doesn't retry
+        return new Response('<Response></Response>', {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'text/xml' },
+        });
+      }
+
+      // Find or create conversation
+      let { data: conversation } = await supabase
+        .from('whatsapp_conversations')
+        .select('id')
+        .eq('contact_phone', contactPhone)
+        .eq('tenant_id', tenantId)
+        .neq('status', 'closed')
+        .limit(1)
+        .single();
+
+      if (!conversation) {
+        const { data: newConv } = await supabase
+          .from('whatsapp_conversations')
+          .insert({
+            tenant_id: tenantId,
+            contact_phone: contactPhone,
+            contact_name: contactName,
+            status: 'open',
+            last_message_at: new Date().toISOString(),
+          })
+          .select('id')
+          .single();
+        conversation = newConv;
+      } else {
+        await supabase
+          .from('whatsapp_conversations')
+          .update({ last_message_at: new Date().toISOString() })
+          .eq('id', conversation.id);
+      }
+
+      if (conversation) {
+        await supabase.from('whatsapp_messages').insert({
+          tenant_id: tenantId,
+          conversation_id: conversation.id,
+          direction: 'in',
+          body: body,
+          media_url: mediaUrl,
+          status: 'received',
+          metadata: { message_sid: messageSid, provider: 'twilio', profile_name: profileName },
+        });
+
+        await supabase.from('audit_events').insert({
+          tenant_id: tenantId,
+          event_type: 'whatsapp.message_received',
+          resource_type: 'whatsapp_message',
+          resource_id: messageSid,
+          payload: { from: contactPhone, provider: 'twilio', preview: body.substring(0, 100) },
+        });
+
+        console.log(`Message saved: conv=${conversation.id}`);
+      }
+
+      // Return TwiML empty response (Twilio expects XML)
+      return new Response('<Response></Response>', {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'text/xml' },
+      });
+
+    } else {
+      // ========== META CLOUD API FORMAT ==========
+      const jsonBody = await req.json();
+      const { entry } = jsonBody;
+
+      if (!entry || !Array.isArray(entry)) {
+        return new Response(JSON.stringify({ error: 'Invalid webhook payload' }), {
+          status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      for (const e of entry) {
+        const changes = e.changes || [];
+        for (const change of changes) {
+          if (change.field !== 'messages') continue;
+
+          const value = change.value;
+          const messages = value.messages || [];
+          const contacts = value.contacts || [];
+
+          for (const msg of messages) {
+            const contactPhone = msg.from;
+            const contactName = contacts.find((c: any) => c.wa_id === contactPhone)?.profile?.name || 'Desconocido';
+            const messageBody = msg.text?.body || msg.caption || '';
+            const mediaUrl = msg.image?.id || msg.document?.id || null;
+
+            // Resolve tenant from phone_number_id
+            const phoneNumberId = value.metadata?.phone_number_id;
+            let tenantId: string | null = null;
+
+            const { data: tenants } = await supabase
+              .from('tenants')
+              .select('id, whatsapp_config')
+              .not('whatsapp_config', 'is', null);
+
+            if (tenants) {
+              for (const t of tenants) {
+                const config = t.whatsapp_config as any;
+                if (config?.phone_number_id === phoneNumberId) {
+                  tenantId = t.id;
+                  break;
+                }
+              }
+            }
+
+            if (!tenantId) {
+              const { data: firstTenant } = await supabase
+                .from('tenants')
+                .select('id')
+                .limit(1)
+                .single();
+              tenantId = firstTenant?.id || null;
+            }
+
+            if (!tenantId) continue;
+
+            let { data: conversation } = await supabase
+              .from('whatsapp_conversations')
+              .select('id')
+              .eq('contact_phone', contactPhone)
+              .eq('tenant_id', tenantId)
+              .neq('status', 'closed')
+              .limit(1)
+              .single();
+
+            if (!conversation) {
+              const { data: newConv } = await supabase
+                .from('whatsapp_conversations')
+                .insert({
+                  tenant_id: tenantId,
+                  contact_phone: contactPhone,
+                  contact_name: contactName,
+                  status: 'open',
+                  last_message_at: new Date().toISOString(),
+                })
+                .select('id')
+                .single();
+              conversation = newConv;
+            } else {
+              await supabase
+                .from('whatsapp_conversations')
+                .update({ last_message_at: new Date().toISOString() })
+                .eq('id', conversation.id);
+            }
+
+            if (conversation) {
+              await supabase.from('whatsapp_messages').insert({
+                tenant_id: tenantId,
+                conversation_id: conversation.id,
+                direction: 'in',
+                body: messageBody,
+                media_url: mediaUrl,
+                status: 'received',
+                metadata: { wa_message_id: msg.id, type: msg.type, provider: 'meta' },
+              });
+
+              await supabase.from('audit_events').insert({
+                tenant_id: tenantId,
+                event_type: 'whatsapp.message_received',
+                resource_type: 'whatsapp_message',
+                resource_id: msg.id,
+                payload: { from: contactPhone, provider: 'meta', preview: messageBody.substring(0, 100) },
+              });
+            }
+          }
+        }
+      }
+
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error('WhatsApp webhook error:', errorMessage);
