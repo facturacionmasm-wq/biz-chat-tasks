@@ -27,10 +27,7 @@ export const useBranding = () => {
   useEffect(() => {
     const load = async () => {
       const { data: tenant } = await supabase
-        .from('tenants')
-        .select('name, settings_json')
-        .eq('id', TENANT_ID)
-        .maybeSingle();
+        .rpc('get_tenant_branding', { _tenant_id: TENANT_ID }) as { data: { id: string; name: string; settings_json: any } | null };
 
       if (tenant) {
         const s = (tenant.settings_json || {}) as Record<string, any>;
