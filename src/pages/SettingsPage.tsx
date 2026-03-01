@@ -575,20 +575,30 @@ const SettingsPage = () => {
       const popup = window.open(data.auth_url, 'google-calendar-auth', 'width=600,height=700,scrollbars=yes');
 
       if (popup && !popup.closed) {
-        // Poll for popup close and then refresh connection status
+        toast.info('Completa la autorización en la ventana emergente de Google');
+
+        const startedAt = Date.now();
+        const timeoutMs = 120000;
+
+        // Poll for connection status and popup close
         const pollTimer = setInterval(async () => {
           try {
-            if (popup.closed) {
+            const connected = await checkCalendarStatus();
+            const timedOut = Date.now() - startedAt > timeoutMs;
+
+            if (connected || popup.closed || timedOut) {
               clearInterval(pollTimer);
-              await checkCalendarStatus();
               setSavingCalendar(false);
+
+              if (timedOut && !connected) {
+                toast.error('Se agotó el tiempo de conexión. Intenta de nuevo.');
+              }
             }
           } catch {
             clearInterval(pollTimer);
-            await checkCalendarStatus();
             setSavingCalendar(false);
           }
-        }, 1000);
+        }, 1500);
       } else {
         // Popup was blocked → redirect in same window
         window.location.href = data.auth_url;
@@ -640,7 +650,7 @@ const SettingsPage = () => {
     try {
       const { data: session } = await supabase.auth.getSession();
       const token = session?.session?.access_token;
-      if (!token) return;
+      if (!token) return false;
 
       const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
       const res = await fetch(
@@ -651,11 +661,15 @@ const SettingsPage = () => {
         },
       );
       const data = await res.json();
-      setCalendarOAuthConnected(data.connected);
-      setCalendarConnected(data.connected);
+      const connected = !!data.connected;
+      setCalendarOAuthConnected(connected);
+      setCalendarConnected(connected);
       if (data.email) setCalendarEmail(data.email);
       setCalendarLoaded(true);
-    } catch { /* ignore */ }
+      return connected;
+    } catch {
+      return false;
+    }
   };
 
   const handleCheckHealth = async () => {
