@@ -1,30 +1,67 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import ChatSidebar from '@/components/ChatSidebar';
 import ChatArea from '@/components/ChatArea';
-import { channels as initialChannels, messages as initialMessages, teamMembers } from '@/data/mockData';
-import { Channel, Message } from '@/types/app';
+import { channels as initialChannels, messages as initialMessages } from '@/data/mockData';
+import { Channel, Message, TeamMember } from '@/types/app';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
 
 const ChatPage = () => {
   const [activeChannelId, setActiveChannelId] = useState('general');
   const [allMessages, setAllMessages] = useState<Message[]>(initialMessages);
   const [allChannels, setAllChannels] = useState<Channel[]>(initialChannels);
   const [showChat, setShowChat] = useState(false);
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const isMobile = useIsMobile();
 
-  // Track channel members: channelId -> array of member IDs
-  const [channelMembers, setChannelMembers] = useState<Record<string, string[]>>(() => {
-    const map: Record<string, string[]> = {};
-    initialChannels.forEach(ch => {
-      if (ch.type === 'channel') {
-        // Default: all team members are in every channel
-        map[ch.id] = teamMembers.map(m => m.id);
+  // Fetch real employees from profiles table
+  useEffect(() => {
+    const fetchProfiles = async () => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('user_id, name, avatar_url, status, email')
+        .eq('status', 'active');
+
+      if (error) {
+        console.error('Error fetching profiles:', error);
+        return;
       }
-    });
-    return map;
-  });
+
+      if (data && data.length > 0) {
+        const members: TeamMember[] = data.map(p => ({
+          id: p.user_id,
+          name: p.name,
+          avatar: p.avatar_url || '',
+          role: 'Member',
+          status: 'online' as const,
+          email: p.email || undefined,
+        }));
+        setTeamMembers(members);
+      }
+    };
+
+    fetchProfiles();
+  }, []);
+
+  // Track channel members: channelId -> array of member IDs
+  const [channelMembers, setChannelMembers] = useState<Record<string, string[]>>({});
+
+  // Initialize channel members when teamMembers load
+  useEffect(() => {
+    if (teamMembers.length > 0) {
+      setChannelMembers(prev => {
+        const map: Record<string, string[]> = { ...prev };
+        allChannels.forEach(ch => {
+          if (ch.type === 'channel' && !map[ch.id]) {
+            map[ch.id] = teamMembers.map(m => m.id);
+          }
+        });
+        return map;
+      });
+    }
+  }, [teamMembers]);
 
   const activeChannel = allChannels.find(c => c.id === activeChannelId) || allChannels[0];
   const channelMessages = allMessages.filter(m => m.channelId === activeChannelId);
