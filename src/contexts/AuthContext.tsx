@@ -16,6 +16,7 @@ interface AuthContextType {
   session: Session | null;
   loading: boolean;
   userRole: string | null;
+  profileStatus: string | null;
   onboardingCompleted: boolean | null;
   subscriptionStatus: SubscriptionStatus | null;
   signOut: () => Promise<void>;
@@ -26,6 +27,7 @@ const AuthContext = createContext<AuthContextType>({
   session: null,
   loading: true,
   userRole: null,
+  profileStatus: null,
   onboardingCompleted: null,
   subscriptionStatus: null,
   signOut: async () => {},
@@ -38,6 +40,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState<string | null>(null);
+  const [profileStatus, setProfileStatus] = useState<string | null>(null);
   const [onboardingCompleted, setOnboardingCompleted] = useState<boolean | null>(null);
   const [subscriptionStatus, setSubscriptionStatus] = useState<SubscriptionStatus | null>(null);
 
@@ -49,6 +52,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setTimeout(() => fetchUserData(session.user.id), 0);
       } else {
         setUserRole(null);
+        setProfileStatus(null);
         setOnboardingCompleted(null);
         setSubscriptionStatus(null);
       }
@@ -70,10 +74,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const fetchUserData = async (userId: string) => {
     const [roleResult, profileResult, subResult] = await Promise.all([
       supabase.from('user_roles').select('role').eq('user_id', userId).maybeSingle(),
-      supabase.from('profiles').select('onboarding_completed').eq('user_id', userId).maybeSingle(),
+      supabase.from('profiles').select('onboarding_completed, status').eq('user_id', userId).maybeSingle(),
       supabase.rpc('get_tenant_subscription_status', { _user_id: userId }),
     ]);
     setUserRole(roleResult.data?.role ?? null);
+    setProfileStatus(profileResult.data?.status ?? null);
     setOnboardingCompleted(profileResult.data?.onboarding_completed ?? null);
 
     if (subResult.data) {
@@ -86,7 +91,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, loading, userRole, onboardingCompleted, subscriptionStatus, signOut }}>
+    <AuthContext.Provider value={{ user, session, loading, userRole, profileStatus, onboardingCompleted, subscriptionStatus, signOut }}>
       {children}
     </AuthContext.Provider>
   );
