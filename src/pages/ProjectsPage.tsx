@@ -242,10 +242,17 @@ const ProjectsPage = () => {
           <div className="flex flex-wrap items-center gap-4 sm:gap-6 mt-3 text-xs text-muted-foreground">
             <span className="flex items-center gap-1"><Calendar size={12} /> {format(selectedProject.startDate, 'd MMM', { locale: es })} - {format(selectedProject.endDate, 'd MMM', { locale: es })}</span>
             <span className="flex items-center gap-1"><Users size={12} /> {selectedProject.teamIds.length}</span>
-            <div className="flex items-center gap-2">
-              <div className="w-24 h-1.5 bg-secondary rounded-full overflow-hidden"><div className="h-full bg-primary rounded-full" style={{ width: `${selectedProject.progress}%` }} /></div>
-              <span>{selectedProject.progress}%</span>
-            </div>
+            {(() => {
+              const total = projectTasks.length;
+              const done = projectTasks.filter(t => t.status === 'done').length;
+              const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+              return (
+                <div className="flex items-center gap-2">
+                  <div className="w-24 h-1.5 bg-secondary rounded-full overflow-hidden"><div className="h-full bg-primary rounded-full transition-all" style={{ width: `${pct}%` }} /></div>
+                  <span>{pct}%</span>
+                </div>
+              );
+            })()}
           </div>
 
           {selectedProject.milestones.length > 0 && (
@@ -413,6 +420,7 @@ const ProjectsPage = () => {
         {initialProjects.map(proj => {
           const projTasks = allTasks.filter(t => t.projectId === proj.id);
           const doneTasks = projTasks.filter(t => t.status === 'done').length;
+          const computedProgress = projTasks.length > 0 ? Math.round((doneTasks / projTasks.length) * 100) : 0;
           return (
             <button key={proj.id} onClick={() => setSelectedProjectId(proj.id)} className="bg-card border border-border rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow text-left">
               <div className="flex items-center justify-between mb-2">
@@ -425,8 +433,8 @@ const ProjectsPage = () => {
               <p className="text-sm text-muted-foreground mb-3 line-clamp-2">{proj.description}</p>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <div className="w-24 h-1.5 bg-secondary rounded-full overflow-hidden"><div className="h-full bg-primary rounded-full" style={{ width: `${proj.progress}%` }} /></div>
-                  <span className="text-xs text-muted-foreground">{proj.progress}%</span>
+                  <div className="w-24 h-1.5 bg-secondary rounded-full overflow-hidden"><div className="h-full bg-primary rounded-full transition-all" style={{ width: `${computedProgress}%` }} /></div>
+                  <span className="text-xs text-muted-foreground">{computedProgress}%</span>
                 </div>
                 <div className="flex items-center gap-3 text-xs text-muted-foreground">
                   {projTasks.length > 0 && (
