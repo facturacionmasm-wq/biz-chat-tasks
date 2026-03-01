@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { useIsMobile } from '@/hooks/use-mobile';
 import CallAnalytics from '@/components/calls/CallAnalytics';
 import CallObservability from '@/components/calls/CallObservability';
+import ManualCallDialog from '@/components/calls/ManualCallDialog';
 
 const parseTranscriptStructured = (transcript: string): TranscriptEntry[] => {
   if (!transcript) return [];
@@ -826,6 +827,7 @@ const CallsPage = () => {
           <Search size={16} className="text-muted-foreground" />
           <input type="text" placeholder="Buscar por nombre, teléfono o transcripción..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="bg-transparent text-sm outline-none flex-1 text-foreground placeholder:text-muted-foreground" />
         </div>
+        <ManualCallDialog onCallRegistered={loadDbCalls} />
         <div className="flex items-center gap-1 overflow-x-auto">
           <button onClick={() => setStatusFilter(null)} className={`text-xs px-3 py-1.5 rounded-full transition-colors shrink-0 ${!statusFilter ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}>Todas</button>
           {['completed', 'in_progress', 'missed', 'no_answer', 'failed'].map(key => {
