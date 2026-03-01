@@ -37,7 +37,7 @@ const settingsSections = [
 
 
 const SettingsPage = () => {
-  const { user } = useAuth();
+  const { user, userRole } = useAuth();
   const [activeSection, setActiveSection] = useState('profile');
   const [pin, setPin] = useState('');
   const [pinConfirm, setPinConfirm] = useState('');
@@ -1082,6 +1082,7 @@ const SettingsPage = () => {
             isSuperAdmin={isSuperAdmin}
             getTenantId={getTenantId}
             inputClass={inputClass}
+            userRole={userRole}
           />
         )}
 

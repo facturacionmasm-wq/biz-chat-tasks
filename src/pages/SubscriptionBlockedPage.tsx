@@ -48,10 +48,10 @@ const SubscriptionBlockedPage = () => {
         </div>
 
         <button
-          onClick={() => navigate('/subscribe')}
+          onClick={() => window.location.href = 'mailto:admin@rybixholding.com?subject=Activar suscripción'}
           className="w-full bg-primary text-primary-foreground font-medium text-sm px-4 py-3 rounded-lg hover:opacity-90 mb-3"
         >
-          Activar suscripción
+          Contactar administrador
         </button>
 
         <button
