@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Building2, Users, CreditCard, Bell, Database, Brain, Globe, ChevronRight, User, KeyRound, Loader2, Palette, Save, Upload, Image, X, Mail, Phone as PhoneIcon, MessageSquare, Trash2, Settings2, ChevronDown, ChevronUp, RefreshCw, ArrowLeft, ArrowRight } from 'lucide-react';
+import BillingSection from '@/components/BillingSection';
 import AvailabilityWizard, { type AvailabilityRule, DEFAULT_RULES } from '@/components/AvailabilityWizard';
 import { teamMembers } from '@/data/mockData';
 import { supabase } from '@/integrations/supabase/client';
@@ -34,11 +35,6 @@ const settingsSections = [
   { id: 'ai', label: 'IA y automatización', icon: Brain },
 ];
 
-const plans = [
-  { name: 'Basic', price: '$29/mes', features: ['5 usuarios', '3 proyectos', 'IA limitada', '1 integración'], current: false },
-  { name: 'Pro', price: '$79/mes', features: ['25 usuarios', 'Proyectos ilimitados', 'IA completa', 'WhatsApp', 'Calendario'], current: true },
-  { name: 'Enterprise', price: 'Contactar', features: ['Ilimitado', 'SSO/SAML', 'Auditoría avanzada', 'SLA dedicado'], current: false },
-];
 
 const SettingsPage = () => {
   const { user } = useAuth();
@@ -1081,28 +1077,12 @@ const SettingsPage = () => {
         )}
 
         {activeSection === 'billing' && (
-          <div className="max-w-4xl">
-            <h3 className="text-lg font-bold text-foreground mb-4">Suscripción y planes</h3>
-            <div className="grid grid-cols-3 gap-4">
-              {plans.map(plan => (
-                <div key={plan.name} className={`bg-card border rounded-xl p-5 ${plan.current ? 'border-primary ring-2 ring-primary/20' : 'border-border'}`}>
-                  {plan.current && <span className="text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded-full font-medium mb-3 inline-block">Plan actual</span>}
-                  <h4 className="text-lg font-bold text-foreground">{plan.name}</h4>
-                  <p className="text-2xl font-bold text-foreground mt-1">{plan.price}</p>
-                  <ul className="mt-4 space-y-2">
-                    {plan.features.map(f => (
-                      <li key={f} className="text-sm text-muted-foreground flex items-center gap-2">
-                        <div className="w-1.5 h-1.5 rounded-full bg-primary" /> {f}
-                      </li>
-                    ))}
-                  </ul>
-                  <button className={`w-full mt-4 text-sm font-medium px-4 py-2 rounded-lg ${plan.current ? 'bg-secondary text-secondary-foreground' : 'bg-primary text-primary-foreground hover:opacity-90'}`}>
-                    {plan.current ? 'Gestionar' : 'Cambiar plan'}
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
+          <BillingSection
+            user={user}
+            isSuperAdmin={isSuperAdmin}
+            getTenantId={getTenantId}
+            inputClass={inputClass}
+          />
         )}
 
         {activeSection === 'ai' && (
