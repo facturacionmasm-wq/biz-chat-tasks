@@ -32,6 +32,37 @@ serve(async (req) => {
       tenant_id,
     } = body;
 
+    // ---- Pre-call fraud check: rate limiting ----
+    if (tenant_id) {
+      const { data: rateLimit } = await supabase
+        .from('tenant_rate_limits')
+        .select('is_blocked, blocked_until')
+        .eq('tenant_id', tenant_id)
+        .maybeSingle();
+
+      if (rateLimit?.is_blocked) {
+        const blockedUntil = rateLimit.blocked_until ? new Date(rateLimit.blocked_until) : null;
+        if (!blockedUntil || blockedUntil > new Date()) {
+          console.log(`Tenant ${tenant_id} is temporarily blocked by fraud detection`);
+          return new Response(JSON.stringify({
+            error: 'Tenant temporarily blocked',
+            blocked_until: rateLimit.blocked_until,
+          }), {
+            status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        } else {
+          // Unblock if time has passed
+          await supabase.from('tenant_rate_limits').update({
+            is_blocked: false,
+            blocked_reason: null,
+            blocked_at: null,
+            blocked_until: null,
+            updated_at: new Date().toISOString(),
+          }).eq('tenant_id', tenant_id);
+        }
+      }
+    }
+
     // Save call record
     const { data: callRecord, error } = await supabase
       .from('call_records')
@@ -103,16 +134,13 @@ Formato del JSON (devuelve al final entre \`\`\`json y \`\`\`):
       }
     }
 
-    // Calculate usage cost
+    // Post-call pipeline: cost calculation + fraud detection
     if (callRecord && tenant_id) {
-      const costUrl = `${SUPABASE_URL}/functions/v1/calculate-usage-cost`;
       try {
-        await fetch(costUrl, {
+        // 1. Calculate usage cost
+        const costRes = await fetch(`${SUPABASE_URL}/functions/v1/calculate-usage-cost`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-          },
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
           body: JSON.stringify({
             call_record_id: callRecord.id,
             tenant_id,
@@ -120,8 +148,23 @@ Formato del JSON (devuelve al final entre \`\`\`json y \`\`\`):
             ai_tokens_used: transcript ? Math.ceil((transcript.length / 4)) : 0,
           }),
         });
+        const costData = await costRes.json().catch(() => ({}));
+
+        // 2. Fraud detection
+        await fetch(`${SUPABASE_URL}/functions/v1/fraud-detection`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+          body: JSON.stringify({
+            tenant_id,
+            call_record_id: callRecord.id,
+            duration_seconds: duration || 0,
+            cost_total: costData.cost_total || 0,
+            from_number,
+            started_at: started_at || new Date().toISOString(),
+          }),
+        });
       } catch (e) {
-        console.error('Cost calculation trigger failed:', e);
+        console.error('Post-call pipeline error:', e);
       }
     }
 
