@@ -474,16 +474,27 @@ const CallsPage = () => {
                   </div>
                 ) : (
                   <div className="prose prose-sm text-foreground whitespace-pre-line text-sm leading-relaxed">
-                    {selectedCall.summaryHuman || selectedCall.summarySystem || 'Sin resumen disponible. Finaliza la llamada para generar uno automáticamente.'}
+                    {selectedCall.summaryHuman || selectedCall.summarySystem || (
+                      <div className="text-center py-6 text-muted-foreground">
+                        <MessageSquare size={24} className="mx-auto mb-2 opacity-30" />
+                        <p className="text-sm font-medium">Sin resumen disponible</p>
+                        <p className="text-xs mt-1">El resumen se generará automáticamente al finalizar la llamada y completar la transcripción.</p>
+                        {selectedCall.transcript && (
+                          <button onClick={regenerateSummary} className="mt-3 inline-flex items-center gap-1.5 bg-primary text-primary-foreground text-xs px-3 py-1.5 rounded-lg hover:opacity-90">
+                            <RefreshCw size={12} /> Generar resumen ahora
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
 
               {/* Transcript with search */}
-              {selectedCall.transcript && (
-                <div className="bg-card border border-border rounded-xl p-4 sm:p-5 shadow-sm">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-semibold text-foreground">💬 Transcripción</h3>
+              <div className="bg-card border border-border rounded-xl p-4 sm:p-5 shadow-sm">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-semibold text-foreground">💬 Transcripción</h3>
+                  {selectedCall.transcript && (
                     <div className="flex items-center gap-2 bg-muted rounded-lg px-2 py-1">
                       <Search size={12} className="text-muted-foreground" />
                       <input
@@ -499,7 +510,10 @@ const CallsPage = () => {
                         </span>
                       )}
                     </div>
-                  </div>
+                  )}
+                </div>
+
+                {selectedCall.transcript ? (
                   <div className="space-y-2 text-sm max-h-96 overflow-y-auto scrollbar-thin">
                     {selectedCall.transcriptStructured.map((entry, i) => {
                       const isAgent = entry.role === 'Agente' || entry.role === 'Agent';
@@ -537,8 +551,20 @@ const CallsPage = () => {
                       );
                     })}
                   </div>
-                </div>
-              )}
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Phone size={28} className="mx-auto mb-2 opacity-20" />
+                    <p className="text-sm font-medium">Sin transcripción disponible</p>
+                    <p className="text-xs mt-1">La transcripción aparecerá aquí automáticamente una vez que la llamada finalice y se procese el audio.</p>
+                    {selectedCall.status === 'completed' && (
+                      <div className="mt-3 flex items-center justify-center gap-1.5 text-xs text-warning">
+                        <Loader2 size={12} className="animate-spin" />
+                        <span>Procesando transcripción...</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Right column: Extracted Data + Risks + Event Timeline */}
