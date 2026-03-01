@@ -1286,6 +1286,106 @@ export type Database = {
           },
         ]
       }
+      stripe_customers: {
+        Row: {
+          created_at: string
+          email: string | null
+          id: string
+          metadata: Json | null
+          name: string | null
+          stripe_base_item_id: string | null
+          stripe_customer_id: string
+          stripe_metered_item_id: string | null
+          stripe_subscription_id: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          id?: string
+          metadata?: Json | null
+          name?: string | null
+          stripe_base_item_id?: string | null
+          stripe_customer_id: string
+          stripe_metered_item_id?: string | null
+          stripe_subscription_id?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          id?: string
+          metadata?: Json | null
+          name?: string | null
+          stripe_base_item_id?: string | null
+          stripe_customer_id?: string
+          stripe_metered_item_id?: string | null
+          stripe_subscription_id?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stripe_customers_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stripe_usage_records: {
+        Row: {
+          created_at: string
+          error_message: string | null
+          id: string
+          period_end: string
+          period_start: string
+          quantity: number
+          reported_at: string | null
+          status: string
+          stripe_subscription_item_id: string
+          stripe_usage_record_id: string | null
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          period_end: string
+          period_start: string
+          quantity?: number
+          reported_at?: string | null
+          status?: string
+          stripe_subscription_item_id: string
+          stripe_usage_record_id?: string | null
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          period_end?: string
+          period_start?: string
+          quantity?: number
+          reported_at?: string | null
+          status?: string
+          stripe_subscription_item_id?: string
+          stripe_usage_record_id?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stripe_usage_records_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       subscription_plans: {
         Row: {
           active: boolean | null
