@@ -35,7 +35,7 @@ serve(async (req) => {
     const recordingUrl = params.RecordingUrl || params.recording_url || '';
     const recordingSid = params.RecordingSid || params.recording_sid || '';
     const recordingDuration = parseInt(params.RecordingDuration || '0', 10);
-    const tenantId = params.tenant_id || '';
+    const tenantIdParam = params.tenant_id || '';
 
     console.log(`[call-status-webhook] CallSid=${callSid} Status=${callStatus} From=${from} To=${to}`);
 
@@ -59,9 +59,12 @@ serve(async (req) => {
     };
     const mappedStatus = statusMap[callStatus] || callStatus;
 
-    // Find or create the call record by external_call_id (Twilio CallSid)
-    let callRecord: { id: string; tenant_id: string } | null = null;
+    // ═══════════ RESOLVE TENANT ═══════════
+    // Priority: 1) existing call record, 2) phone number lookup, 3) param, 4) fallback
+    let resolvedTenantId: string | null = null;
 
+    // 1. Try to find existing call record by CallSid
+    let callRecord: { id: string; tenant_id: string } | null = null;
     const { data: existing } = await supabase
       .from('call_records')
       .select('id, tenant_id')
@@ -70,28 +73,33 @@ serve(async (req) => {
 
     if (existing) {
       callRecord = existing;
-    } else if (tenantId) {
-      const { data: newRecord, error: insertError } = await supabase
-        .from('call_records')
-        .insert({
-          tenant_id: tenantId,
-          external_call_id: callSid,
-          from_number: from,
-          to_number: to,
-          status: mappedStatus,
-          channel: 'twilio',
-          started_at: new Date().toISOString(),
-        })
-        .select('id, tenant_id')
-        .single();
+      resolvedTenantId = existing.tenant_id;
+    }
 
-      if (insertError) {
-        console.error('[call-status-webhook] Insert error:', insertError);
-      } else {
-        callRecord = newRecord;
+    // 2. Resolve tenant by phone number (To first, then From)
+    if (!resolvedTenantId) {
+      for (const phone of [to, from].filter(Boolean)) {
+        const { data: phoneMatch } = await supabase
+          .from('tenant_phone_numbers')
+          .select('tenant_id')
+          .eq('phone_e164', phone)
+          .eq('active', true)
+          .maybeSingle();
+        if (phoneMatch) {
+          resolvedTenantId = phoneMatch.tenant_id;
+          console.log(`[call-status-webhook] Resolved tenant ${resolvedTenantId} from phone ${phone}`);
+          break;
+        }
       }
-    } else {
-      // Fallback: match by phone + recent time window
+    }
+
+    // 3. Fallback to param
+    if (!resolvedTenantId && tenantIdParam) {
+      resolvedTenantId = tenantIdParam;
+    }
+
+    // 4. Last resort: match by phone + recent time window
+    if (!callRecord && !resolvedTenantId) {
       const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
       const { data: recentCall } = await supabase
         .from('call_records')
@@ -105,6 +113,7 @@ serve(async (req) => {
 
       if (recentCall) {
         callRecord = recentCall;
+        resolvedTenantId = recentCall.tenant_id;
         await supabase
           .from('call_records')
           .update({ external_call_id: callSid })
@@ -112,10 +121,37 @@ serve(async (req) => {
       }
     }
 
+    // Create new record if none found and we have a tenant
+    if (!callRecord && resolvedTenantId) {
+      const { data: newRecord, error: insertError } = await supabase
+        .from('call_records')
+        .insert({
+          tenant_id: resolvedTenantId,
+          external_call_id: callSid,
+          from_number: from,
+          to_number: to,
+          status: mappedStatus,
+          channel: 'twilio',
+          started_at: new Date().toISOString(),
+          recording_status: 'not_requested',
+          transcript_status: 'pending',
+          summary_status: 'pending',
+          appointment_status: 'not_requested',
+        })
+        .select('id, tenant_id')
+        .single();
+
+      if (insertError) {
+        console.error('[call-status-webhook] Insert error:', insertError);
+      } else {
+        callRecord = newRecord;
+      }
+    }
+
     if (!callRecord) {
-      console.warn(`[call-status-webhook] No call record found for CallSid=${callSid}`);
-      return new Response(JSON.stringify({ warning: 'No matching call record' }), {
-        status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      console.warn(`[call-status-webhook] No call record and no tenant for CallSid=${callSid}`);
+      return new Response('<Response></Response>', {
+        headers: { ...corsHeaders, 'Content-Type': 'text/xml' },
       });
     }
 
@@ -145,6 +181,7 @@ serve(async (req) => {
 
     if (recordingUrl) {
       updateData.audio_url = recordingUrl + '.mp3';
+      updateData.recording_status = 'ready';
     }
 
     await supabase.from('call_records').update(updateData).eq('id', callRecord.id);
@@ -187,7 +224,7 @@ serve(async (req) => {
         console.error('[call-status-webhook] Fraud detection error:', e);
       }
 
-      // 3. Enqueue async jobs
+      // 3. Enqueue async jobs with status tracking
       const jobTypes = ['fetch_recording', 'transcribe_call'];
 
       // Check if transcript already exists
@@ -199,7 +236,16 @@ serve(async (req) => {
 
       if (fullRecord?.transcript?.trim()) {
         jobTypes.push('summarize_call');
+        await supabase.from('call_records').update({
+          transcript_status: 'ready',
+          summary_status: 'pending',
+        }).eq('id', callRecord.id);
       }
+
+      // Update recording status
+      await supabase.from('call_records').update({
+        recording_status: recordingUrl ? 'ready' : 'pending',
+      }).eq('id', callRecord.id);
 
       for (const jobType of jobTypes) {
         await supabase.from('call_jobs').upsert({

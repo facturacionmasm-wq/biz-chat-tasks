@@ -96,6 +96,8 @@ const VoiceAgent = ({ onCallEnd }: VoiceAgentProps) => {
           ended_at: new Date().toISOString(),
           duration,
           transcript: fullTranscript,
+          transcript_status: fullTranscript.trim() ? 'ready' : 'not_requested',
+          summary_status: fullTranscript.trim() ? 'pending' : 'not_requested',
         })
         .eq('id', recordId);
 
@@ -369,6 +371,10 @@ const VoiceAgent = ({ onCallEnd }: VoiceAgentProps) => {
           to_number: user.email || 'Usuario',
           created_by: user.id,
           agent_user_id: user.id,
+          recording_status: 'not_requested',
+          transcript_status: 'pending',
+          summary_status: 'pending',
+          appointment_status: 'not_requested',
         })
         .select('id')
         .single();
