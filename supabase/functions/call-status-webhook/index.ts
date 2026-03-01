@@ -45,6 +45,11 @@ serve(async (req) => {
       });
     }
 
+    // Determine call direction from Twilio parameters
+    const direction = params.Direction || params.direction || '';
+    const isOutbound = direction === 'outbound-api' || direction === 'outbound-dial';
+    console.log(`[call-status-webhook] Direction=${direction} isOutbound=${isOutbound}`);
+
     // Map Twilio status to our internal status
     const statusMap: Record<string, string> = {
       'initiated': 'initiated',
