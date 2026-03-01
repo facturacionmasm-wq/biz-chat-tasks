@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Building2, Users, CreditCard, Bell, Database, Brain, Globe, ChevronRight, User, KeyRound, Loader2, Palette, Save, Upload, Image, X, Mail, Phone as PhoneIcon, MessageSquare, Trash2, Settings2, ChevronDown, ChevronUp, RefreshCw, ArrowLeft, ArrowRight, CheckCircle, XCircle } from 'lucide-react';
+import { Building2, Users, CreditCard, Bell, Database, Brain, Globe, ChevronRight, User, KeyRound, Loader2, Palette, Save, Upload, Image, X, Mail, Phone as PhoneIcon, MessageSquare, Trash2, Settings2, ChevronDown, ChevronUp, RefreshCw, ArrowLeft, ArrowRight, CheckCircle, XCircle, CalendarDays, Link2, Unlink } from 'lucide-react';
 import BillingSection from '@/components/BillingSection';
 import AvailabilityWizard, { type AvailabilityRule, DEFAULT_RULES } from '@/components/AvailabilityWizard';
 import { teamMembers } from '@/data/mockData';
@@ -26,6 +26,7 @@ const MODULE_PERMISSIONS = [
 
 const settingsSections = [
   { id: 'profile', label: 'Mi Perfil', icon: User },
+  { id: 'calendar', label: 'Calendario', icon: CalendarDays },
   { id: 'general', label: 'General', icon: Building2 },
   { id: 'branding', label: 'Branding', icon: Palette },
   { id: 'team', label: 'Equipo', icon: Users },
@@ -87,6 +88,14 @@ const SettingsPage = () => {
   const [editAvailabilityRules, setEditAvailabilityRules] = useState<AvailabilityRule[]>([]);
   const [savingAvailability, setSavingAvailability] = useState(false);
 
+  // Calendar sync state
+  const [calendarEmail, setCalendarEmail] = useState('');
+  const [calendarConnected, setCalendarConnected] = useState(false);
+  const [calendarSyncEnabled, setCalendarSyncEnabled] = useState(true);
+  const [calendarAutoCreate, setCalendarAutoCreate] = useState(true);
+  const [savingCalendar, setSavingCalendar] = useState(false);
+  const [calendarLoaded, setCalendarLoaded] = useState(false);
+
   // Load tenant data
   useEffect(() => {
     if (!user) return;
@@ -108,7 +117,7 @@ const SettingsPage = () => {
 
       const { data: tenant } = await supabase
         .from('tenants')
-        .select('name, timezone, settings_json')
+        .select('name, timezone, settings_json, google_calendar_config')
         .eq('id', profile.tenant_id)
         .maybeSingle();
       if (tenant) {
@@ -123,6 +132,15 @@ const SettingsPage = () => {
         setCompanyAddress(settings.address || '');
         setLogoUrl(settings.logo_url || '');
         setFaviconUrl(settings.favicon_url || '');
+
+        // Load calendar config
+        const calConfig = (tenant.google_calendar_config || {}) as Record<string, any>;
+        const userCalConfig = calConfig?.users?.[user!.id] || {};
+        setCalendarEmail(userCalConfig.email || profile.email || user!.email || '');
+        setCalendarConnected(!!userCalConfig.connected);
+        setCalendarSyncEnabled(userCalConfig.sync_enabled !== false);
+        setCalendarAutoCreate(userCalConfig.auto_create !== false);
+        setCalendarLoaded(true);
       }
     };
     load();
@@ -497,6 +515,93 @@ const SettingsPage = () => {
     return data.tenant_id;
   };
 
+  const handleSaveCalendar = async (connect: boolean) => {
+    if (connect && !calendarEmail.trim()) {
+      toast.error('Ingresa tu correo electrónico');
+      return;
+    }
+    if (connect && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(calendarEmail.trim())) {
+      toast.error('Ingresa un correo válido');
+      return;
+    }
+    setSavingCalendar(true);
+    try {
+      const tenantId = await getTenantId();
+      const { data: tenant } = await supabase
+        .from('tenants')
+        .select('google_calendar_config')
+        .eq('id', tenantId)
+        .maybeSingle();
+      
+      const currentConfig = ((tenant?.google_calendar_config || {}) as Record<string, any>);
+      const users = currentConfig.users || {};
+      
+      if (connect) {
+        users[user!.id] = {
+          email: calendarEmail.trim(),
+          connected: true,
+          sync_enabled: calendarSyncEnabled,
+          auto_create: calendarAutoCreate,
+          connected_at: new Date().toISOString(),
+        };
+      } else {
+        delete users[user!.id];
+      }
+
+      const { error } = await supabase
+        .from('tenants')
+        .update({ google_calendar_config: { ...currentConfig, users } } as any)
+        .eq('id', tenantId);
+      if (error) throw error;
+
+      setCalendarConnected(connect);
+      if (!connect) {
+        setCalendarEmail('');
+        setCalendarSyncEnabled(true);
+        setCalendarAutoCreate(true);
+      }
+      toast.success(connect ? 'Calendario vinculado correctamente' : 'Calendario desvinculado');
+    } catch (err: any) {
+      toast.error(err.message || 'Error al guardar configuración de calendario');
+    } finally {
+      setSavingCalendar(false);
+    }
+  };
+
+  const handleUpdateCalendarSettings = async () => {
+    setSavingCalendar(true);
+    try {
+      const tenantId = await getTenantId();
+      const { data: tenant } = await supabase
+        .from('tenants')
+        .select('google_calendar_config')
+        .eq('id', tenantId)
+        .maybeSingle();
+      
+      const currentConfig = ((tenant?.google_calendar_config || {}) as Record<string, any>);
+      const users = currentConfig.users || {};
+      if (users[user!.id]) {
+        users[user!.id] = {
+          ...users[user!.id],
+          email: calendarEmail.trim(),
+          sync_enabled: calendarSyncEnabled,
+          auto_create: calendarAutoCreate,
+        };
+      }
+
+      const { error } = await supabase
+        .from('tenants')
+        .update({ google_calendar_config: { ...currentConfig, users } } as any)
+        .eq('id', tenantId);
+      if (error) throw error;
+      toast.success('Preferencias de calendario actualizadas');
+    } catch (err: any) {
+      toast.error(err.message || 'Error al actualizar');
+    } finally {
+      setSavingCalendar(false);
+    }
+  };
+
   const handleSaveGeneral = async () => {
     setSavingGeneral(true);
     try {
@@ -663,6 +768,160 @@ const SettingsPage = () => {
                     <Save size={14} /> Guardar PIN
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeSection === 'calendar' && (
+          <div className="max-w-2xl">
+            <h3 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
+              <CalendarDays size={20} className="text-primary" /> Sincronización de Calendario
+            </h3>
+            <p className="text-sm text-muted-foreground mb-6">
+              Vincula tu correo electrónico para que el sistema pueda crear automáticamente citas, eventos y recordatorios en tu calendario cuando se agenden desde WhatsApp, llamadas o la app.
+            </p>
+
+            <div className="space-y-4">
+              {/* Connection status */}
+              <div className={`bg-card border rounded-xl p-5 ${calendarConnected ? 'border-primary/30' : 'border-border'}`}>
+                <div className="flex items-center justify-between mb-4">
+                  <h4 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                    {calendarConnected ? (
+                      <>
+                        <CheckCircle size={16} className="text-primary" />
+                        Calendario vinculado
+                      </>
+                    ) : (
+                      <>
+                        <Link2 size={16} className="text-muted-foreground" />
+                        Vincular calendario
+                      </>
+                    )}
+                  </h4>
+                  {calendarConnected && (
+                    <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">Activo</span>
+                  )}
+                </div>
+
+                {!calendarLoaded ? (
+                  <div className="flex items-center justify-center py-6">
+                    <Loader2 size={20} className="animate-spin text-muted-foreground" />
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                        Correo electrónico del calendario
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <Mail size={14} className="text-muted-foreground shrink-0" />
+                        <input
+                          className={inputClass}
+                          value={calendarEmail}
+                          onChange={e => setCalendarEmail(e.target.value)}
+                          placeholder="tu@gmail.com"
+                          type="email"
+                          maxLength={255}
+                          disabled={calendarConnected}
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Usa tu cuenta de Google para sincronizar con Google Calendar.
+                      </p>
+                    </div>
+
+                    {!calendarConnected ? (
+                      <button
+                        disabled={savingCalendar || !calendarEmail.trim()}
+                        onClick={() => handleSaveCalendar(true)}
+                        className="bg-primary text-primary-foreground text-sm px-5 py-2.5 rounded-lg hover:opacity-90 disabled:opacity-40 flex items-center gap-2 font-medium w-full justify-center"
+                      >
+                        {savingCalendar ? <Loader2 size={14} className="animate-spin" /> : <Link2 size={14} />}
+                        Vincular calendario
+                      </button>
+                    ) : (
+                      <button
+                        disabled={savingCalendar}
+                        onClick={() => handleSaveCalendar(false)}
+                        className="text-sm px-4 py-2 rounded-lg border border-destructive/30 text-destructive hover:bg-destructive/10 flex items-center gap-2 font-medium"
+                      >
+                        {savingCalendar ? <Loader2 size={14} className="animate-spin" /> : <Unlink size={14} />}
+                        Desvincular calendario
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Sync preferences */}
+              {calendarConnected && (
+                <div className="bg-card border border-border rounded-xl p-5">
+                  <h4 className="text-sm font-semibold text-foreground flex items-center gap-2 mb-4">
+                    <Settings2 size={16} className="text-primary" /> Preferencias de sincronización
+                  </h4>
+                  <div className="space-y-4">
+                    <label className="flex items-center justify-between cursor-pointer group">
+                      <div>
+                        <span className="text-sm font-medium text-foreground">Sincronización activa</span>
+                        <p className="text-xs text-muted-foreground mt-0.5">Las citas nuevas se crearán automáticamente en tu calendario</p>
+                      </div>
+                      <div
+                        onClick={() => setCalendarSyncEnabled(!calendarSyncEnabled)}
+                        className={`w-10 h-5 rounded-full transition-colors cursor-pointer flex items-center ${calendarSyncEnabled ? 'bg-primary' : 'bg-muted'}`}
+                      >
+                        <div className={`w-4 h-4 rounded-full bg-white shadow transition-transform ${calendarSyncEnabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                      </div>
+                    </label>
+
+                    <label className="flex items-center justify-between cursor-pointer group">
+                      <div>
+                        <span className="text-sm font-medium text-foreground">Crear eventos automáticamente</span>
+                        <p className="text-xs text-muted-foreground mt-0.5">Citas desde WhatsApp y llamadas se agregan sin confirmación manual</p>
+                      </div>
+                      <div
+                        onClick={() => setCalendarAutoCreate(!calendarAutoCreate)}
+                        className={`w-10 h-5 rounded-full transition-colors cursor-pointer flex items-center ${calendarAutoCreate ? 'bg-primary' : 'bg-muted'}`}
+                      >
+                        <div className={`w-4 h-4 rounded-full bg-white shadow transition-transform ${calendarAutoCreate ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                      </div>
+                    </label>
+
+                    <button
+                      disabled={savingCalendar}
+                      onClick={handleUpdateCalendarSettings}
+                      className="bg-primary text-primary-foreground text-sm px-5 py-2.5 rounded-lg hover:opacity-90 disabled:opacity-40 flex items-center gap-2 font-medium mt-2"
+                    >
+                      {savingCalendar ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                      Guardar preferencias
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Info card */}
+              <div className="bg-muted/50 border border-border rounded-xl p-4">
+                <h4 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
+                  <CalendarDays size={14} className="text-primary" /> ¿Cómo funciona?
+                </h4>
+                <ul className="text-xs text-muted-foreground space-y-1.5">
+                  <li className="flex items-start gap-2">
+                    <span className="text-primary mt-0.5">•</span>
+                    Cuando un cliente agenda una cita por WhatsApp o llamada, se crea automáticamente un evento en tu calendario.
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-primary mt-0.5">•</span>
+                    Los recordatorios programados por el bot de WhatsApp también se agregan como eventos.
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-primary mt-0.5">•</span>
+                    El sistema verifica tu disponibilidad en el calendario antes de agendar nuevas citas.
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-primary mt-0.5">•</span>
+                    Puedes desvincular tu calendario en cualquier momento sin perder tus citas existentes.
+                  </li>
+                </ul>
               </div>
             </div>
           </div>
