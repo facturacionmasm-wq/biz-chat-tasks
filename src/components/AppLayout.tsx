@@ -3,7 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, MessageSquare, FolderKanban, CalendarDays,
   Target, BookOpen, Plug, Settings, ChevronLeft, ChevronRight,
-  Building2, Bell, Search, Sparkles, MessageCircle, Phone, CalendarPlus, Shield, GraduationCap, Receipt, LogOut, KeyRound, Menu, X, Bot
+  Building2, Bell, Search, Sparkles, MessageCircle, Phone, CalendarPlus, Shield, GraduationCap, Receipt, LogOut, KeyRound, Menu, X, Bot, AlarmClock
 } from 'lucide-react';
 import AIAssistantWidget from '@/components/AIAssistantWidget';
 import { useBranding } from '@/hooks/useBranding';
@@ -25,6 +25,7 @@ const navItems = [
   { to: '/ai-training', icon: GraduationCap, label: 'Entrenamiento IA' },
   { to: '/expenses', icon: Receipt, label: 'Gastos' },
   { to: '/credentials', icon: KeyRound, label: 'Credenciales' },
+  { to: '/reminders', icon: AlarmClock, label: 'Recordatorios' },
 ];
 
 const adminItems = [

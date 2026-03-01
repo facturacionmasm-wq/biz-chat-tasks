@@ -798,35 +798,47 @@ export type Database = {
       reminders: {
         Row: {
           created_at: string
+          error_message: string | null
           id: string
+          max_retries: number
           message: string
           remind_at: string
+          retry_count: number
           sent_at: string | null
           source: string | null
           status: string
           tenant_id: string
+          timezone: string
           user_id: string
         }
         Insert: {
           created_at?: string
+          error_message?: string | null
           id?: string
+          max_retries?: number
           message: string
           remind_at: string
+          retry_count?: number
           sent_at?: string | null
           source?: string | null
           status?: string
           tenant_id: string
+          timezone?: string
           user_id: string
         }
         Update: {
           created_at?: string
+          error_message?: string | null
           id?: string
+          max_retries?: number
           message?: string
           remind_at?: string
+          retry_count?: number
           sent_at?: string | null
           source?: string | null
           status?: string
           tenant_id?: string
+          timezone?: string
           user_id?: string
         }
         Relationships: [

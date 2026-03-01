@@ -749,23 +749,71 @@ async function executeTool(
     const targetUserId = userId;
     if (!targetUserId) return JSON.stringify({ error: 'No se pudo identificar al usuario' });
 
-    const { error } = await supabase.from('reminders').insert({
+    // Get tenant timezone for correct conversion
+    const { data: tenantData } = await supabase
+      .from('tenants')
+      .select('timezone')
+      .eq('id', tenantId)
+      .single();
+    const tz = tenantData?.timezone || 'America/Mexico_City';
+
+    // Parse the remind_at — if no timezone offset, treat as tenant local time
+    let remindDate: Date;
+    const raw = remind_at;
+    if (/[+-]\d{2}:\d{2}$/.test(raw) || raw.endsWith('Z')) {
+      // Already has timezone info
+      remindDate = new Date(raw);
+    } else {
+      // No timezone — interpret in tenant timezone by appending offset
+      // Create a date string and use Intl to get the correct UTC equivalent
+      const tempDate = new Date(raw);
+      // Get the timezone offset for the tenant timezone at that date
+      const formatter = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'shortOffset' });
+      const parts = formatter.formatToParts(tempDate);
+      const offsetPart = parts.find(p => p.type === 'timeZoneName')?.value || '';
+      // Parse offset like "GMT-6" or "GMT-5"
+      const offsetMatch = offsetPart.match(/GMT([+-]?\d+)/);
+      if (offsetMatch) {
+        const offsetHours = parseInt(offsetMatch[1]);
+        const sign = offsetHours >= 0 ? '+' : '-';
+        const absHours = Math.abs(offsetHours).toString().padStart(2, '0');
+        remindDate = new Date(`${raw}${sign}${absHours}:00`);
+      } else {
+        remindDate = new Date(raw);
+      }
+    }
+
+    if (isNaN(remindDate.getTime())) {
+      return JSON.stringify({ error: `No pude interpretar la fecha/hora: ${remind_at}. Usa formato YYYY-MM-DDTHH:MM:SS` });
+    }
+
+    // Prevent reminders in the past
+    if (remindDate.getTime() < Date.now() - 60000) {
+      return JSON.stringify({ error: 'La fecha/hora del recordatorio ya pasó. Indica una fecha futura.' });
+    }
+
+    const { data: inserted, error } = await supabase.from('reminders').insert({
       tenant_id: tenantId,
       user_id: targetUserId,
       message,
-      remind_at: new Date(remind_at).toISOString(),
+      remind_at: remindDate.toISOString(),
       status: 'pending',
       source: 'whatsapp',
-    });
+      timezone: tz,
+    }).select('id').single();
 
     if (error) return JSON.stringify({ error: error.message });
+
+    // Format display in tenant timezone
+    const displayTime = remindDate.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', timeZone: tz });
+    const displayDate = remindDate.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', timeZone: tz });
     
-    const remindDate = new Date(remind_at);
     return JSON.stringify({
       success: true,
+      reminder_id: inserted.id,
       message,
-      remind_at: remindDate.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }),
-      date: remindDate.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }),
+      remind_at: displayTime,
+      date: displayDate,
     });
   }
 
