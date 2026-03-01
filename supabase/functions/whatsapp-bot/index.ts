@@ -612,6 +612,44 @@ const AI_TOOLS = [
       parameters: { type: 'object', properties: {}, required: [] },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'save_bot_instruction',
+      description: 'Guardar una corrección, instrucción o regla nueva para modificar el comportamiento del bot. Usa cuando un humano diga cosas como: "cuando te pregunten X responde Y", "no digas X", "aprende esto", "corrige esto", "de ahora en adelante haz X", "tu respuesta sobre X estuvo mal, la correcta es Y". Esta herramienta reprograma el comportamiento futuro del bot.',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: 'Título corto y descriptivo de la instrucción/corrección (ej: "Respuesta correcta sobre precios", "No mencionar competencia")' },
+          instruction: { type: 'string', description: 'La instrucción completa, corrección o nueva regla de comportamiento. Incluye el contexto de qué pregunta/situación aplica y cuál debe ser la respuesta o comportamiento correcto.' },
+          correction_type: { type: 'string', enum: ['correction', 'new_rule', 'knowledge', 'personality'], description: 'Tipo: correction=corregir respuesta incorrecta, new_rule=nueva regla de comportamiento, knowledge=nuevo conocimiento/dato, personality=ajuste de personalidad/tono' },
+        },
+        required: ['title', 'instruction', 'correction_type'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_bot_instructions',
+      description: 'Listar las instrucciones/correcciones activas del bot. Usa cuando pregunten "qué reglas tienes", "qué has aprendido", "muéstrame tus correcciones".',
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'delete_bot_instruction',
+      description: 'Eliminar/desactivar una instrucción o corrección del bot. Usa cuando digan "olvida la regla de X", "elimina la corrección sobre Y", "ya no apliques eso".',
+      parameters: {
+        type: 'object',
+        properties: {
+          search_term: { type: 'string', description: 'Término de búsqueda para encontrar la instrucción a eliminar (busca en título y contenido)' },
+        },
+        required: ['search_term'],
+      },
+    },
+  },
 ];
 
 // Execute a tool call from the AI
@@ -783,6 +821,142 @@ async function executeTool(
     });
   }
 
+  if (toolName === 'save_bot_instruction') {
+    const { title, instruction, correction_type } = args;
+    const userId = conversation.bot_context?.user_id;
+    
+    // Check if user has admin/owner role (only authorized users can reprogram)
+    let isAuthorized = false;
+    if (userId) {
+      const { data: role } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', userId)
+        .eq('tenant_id', tenantId)
+        .in('role', ['super_admin', 'owner', 'admin'])
+        .maybeSingle();
+      isAuthorized = !!role;
+    }
+
+    if (!isAuthorized) {
+      return JSON.stringify({ error: 'No tienes permisos para reprogramar el bot. Solo administradores pueden hacerlo.' });
+    }
+
+    const tagMap: Record<string, string[]> = {
+      correction: ['bot-correction', 'auto-training', 'whatsapp'],
+      new_rule: ['bot-rule', 'auto-training', 'whatsapp'],
+      knowledge: ['bot-knowledge', 'auto-training', 'whatsapp'],
+      personality: ['bot-personality', 'auto-training', 'whatsapp'],
+    };
+
+    const { data: saved, error } = await supabase
+      .from('knowledge_items')
+      .insert({
+        tenant_id: tenantId,
+        title: `[Auto-entrenamiento] ${title}`,
+        content: `TIPO: ${correction_type}\nINSTRUCCIÓN: ${instruction}\n\nRegistrado por: ${conversation.bot_context?.user_name || 'desconocido'}\nFecha: ${new Date().toISOString()}`,
+        category: 'Entrenamiento IA',
+        tags: tagMap[correction_type] || ['auto-training', 'whatsapp'],
+        visibility: 'internal',
+        author_id: userId,
+        active: true,
+      })
+      .select('id, title')
+      .single();
+
+    if (error) return JSON.stringify({ error: error.message });
+
+    // Log to audit
+    await supabase.from('audit_events').insert({
+      tenant_id: tenantId,
+      event_type: 'bot_self_reprogram',
+      actor_id: userId,
+      resource_type: 'knowledge_items',
+      resource_id: saved.id,
+      payload: { title, correction_type, instruction: instruction.substring(0, 200) },
+    });
+
+    return JSON.stringify({
+      success: true,
+      id: saved.id,
+      title: saved.title,
+      type: correction_type,
+      message: 'Instrucción guardada. El cambio se aplicará inmediatamente en futuras conversaciones.',
+    });
+  }
+
+  if (toolName === 'list_bot_instructions') {
+    const { data: instructions } = await supabase
+      .from('knowledge_items')
+      .select('id, title, content, tags, created_at')
+      .eq('tenant_id', tenantId)
+      .eq('category', 'Entrenamiento IA')
+      .eq('active', true)
+      .order('created_at', { ascending: false })
+      .limit(20);
+
+    return JSON.stringify({
+      instructions: (instructions || []).map((i: any) => ({
+        id: i.id,
+        title: i.title,
+        preview: i.content?.substring(0, 150),
+        tags: i.tags,
+        created: i.created_at,
+      })),
+      count: (instructions || []).length,
+    });
+  }
+
+  if (toolName === 'delete_bot_instruction') {
+    const { search_term } = args;
+    const userId = conversation.bot_context?.user_id;
+
+    // Check admin permissions
+    let isAuthorized = false;
+    if (userId) {
+      const { data: role } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', userId)
+        .eq('tenant_id', tenantId)
+        .in('role', ['super_admin', 'owner', 'admin'])
+        .maybeSingle();
+      isAuthorized = !!role;
+    }
+
+    if (!isAuthorized) {
+      return JSON.stringify({ error: 'No tienes permisos para eliminar instrucciones del bot.' });
+    }
+
+    // Find matching instruction
+    const { data: matches } = await supabase
+      .from('knowledge_items')
+      .select('id, title')
+      .eq('tenant_id', tenantId)
+      .eq('category', 'Entrenamiento IA')
+      .eq('active', true)
+      .or(`title.ilike.%${search_term}%,content.ilike.%${search_term}%`)
+      .limit(5);
+
+    if (!matches || matches.length === 0) {
+      return JSON.stringify({ error: `No encontré instrucciones que coincidan con "${search_term}"` });
+    }
+
+    // Deactivate all matches
+    const ids = matches.map((m: any) => m.id);
+    await supabase
+      .from('knowledge_items')
+      .update({ active: false, deleted_at: new Date().toISOString() })
+      .in('id', ids);
+
+    return JSON.stringify({
+      success: true,
+      deleted_count: matches.length,
+      deleted: matches.map((m: any) => m.title),
+      message: `Se eliminaron ${matches.length} instrucción(es) del bot.`,
+    });
+  }
+
   return JSON.stringify({ error: 'Unknown tool' });
 }
 
@@ -883,6 +1057,9 @@ CAPACIDADES (usa las herramientas disponibles):
 - Puedes VERIFICAR DISPONIBILIDAD usando check_availability  
 - Puedes VER LA AGENDA DEL DÍA usando get_today_agenda
 - Puedes VER GASTOS PENDIENTES usando get_pending_expenses
+- Puedes AUTO-REPROGRAMARTE usando save_bot_instruction — cuando un humano te corrija o te enseñe algo nuevo
+- Puedes VER TUS REGLAS APRENDIDAS usando list_bot_instructions
+- Puedes ELIMINAR UNA REGLA usando delete_bot_instruction
 
 INSTRUCCIONES PARA RECORDATORIOS:
 - Cuando pidan un recordatorio, SIEMPRE usa create_reminder con la hora y mensaje apropiados.
@@ -893,8 +1070,16 @@ INSTRUCCIONES PARA AGENDAR:
 - USA la herramienta schedule_appointment para crear citas REALES.
 - Si faltan datos, pregunta antes de agendar.
 
+AUTO-REPROGRAMACIÓN (MUY IMPORTANTE):
+- Si un empleado dice "cuando te pregunten X, responde Y", "no digas X", "aprende esto", "corrige esto", "de ahora en adelante haz X", "eso estuvo mal, lo correcto es Y", o cualquier variante de corrección/enseñanza → USA save_bot_instruction INMEDIATAMENTE.
+- Clasifica correctamente: correction (corregir error), new_rule (nueva regla), knowledge (nuevo dato/info), personality (ajuste de tono).
+- Crea un título descriptivo y guarda la instrucción completa con contexto.
+- Confirma al usuario que aprendiste y que aplicarás el cambio desde ahora.
+- Si piden ver qué has aprendido, usa list_bot_instructions.
+- Si piden olvidar/eliminar algo, usa delete_bot_instruction.
+
 REGLA CRÍTICA DE CONOCIMIENTO:
-- Los artículos [Entrenamiento IA] son correcciones humanas con MÁXIMA prioridad.
+- Los artículos [Entrenamiento IA] son correcciones humanas con MÁXIMA prioridad. Úsalos siempre como referencia principal.
 
 Base de conocimientos:
 ${knowledgeContext}`;
