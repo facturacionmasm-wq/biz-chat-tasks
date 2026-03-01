@@ -22,6 +22,7 @@ type Reminder = {
 
 const statusConfig: Record<string, { label: string; color: string; icon: any }> = {
   pending: { label: 'Pendiente', color: 'bg-amber-500/10 text-amber-600 border-amber-200', icon: Clock },
+  processing: { label: 'Procesando', color: 'bg-blue-500/10 text-blue-600 border-blue-200', icon: RefreshCw },
   sent: { label: 'Enviado', color: 'bg-emerald-500/10 text-emerald-600 border-emerald-200', icon: CheckCircle },
   failed: { label: 'Fallido', color: 'bg-destructive/10 text-destructive border-destructive/20', icon: XCircle },
   no_phone: { label: 'Sin teléfono', color: 'bg-muted text-muted-foreground border-border', icon: Phone },
