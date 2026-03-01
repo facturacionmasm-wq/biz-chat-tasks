@@ -74,3 +74,9 @@ verify_jwt = false
 
 [functions.churn-engine]
 verify_jwt = false
+
+[functions.call-job-worker]
+verify_jwt = false
+
+[functions.financial-projections]
+verify_jwt = false

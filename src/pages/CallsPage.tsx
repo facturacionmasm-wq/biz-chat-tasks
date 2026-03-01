@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { Phone, PhoneIncoming, PhoneMissed, PhoneOff, Clock, User, Tag, Play, Pause, CalendarPlus, MessageSquare, ChevronRight, Search, ArrowLeft, CheckCircle2, Edit3, Save, RefreshCw, Activity, Download, Volume2, AlertTriangle, TrendingUp, Hash } from 'lucide-react';
+import { Phone, PhoneIncoming, PhoneMissed, PhoneOff, Clock, User, Tag, Play, Pause, CalendarPlus, MessageSquare, ChevronRight, Search, ArrowLeft, CheckCircle2, Edit3, Save, RefreshCw, Activity, Download, Volume2, AlertTriangle, TrendingUp, Hash, Briefcase, Loader2 } from 'lucide-react';
 import { type CallRecord, type CallEvent, type TranscriptEntry } from '@/data/mockCallsData';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -160,6 +160,8 @@ const CallsPage = () => {
   const [humanSummary, setHumanSummary] = useState('');
   const [dbCalls, setDbCalls] = useState<CallRecord[]>([]);
   const [callEvents, setCallEvents] = useState<CallEvent[]>([]);
+  const [callAppointments, setCallAppointments] = useState<any[]>([]);
+  const [callJobs, setCallJobs] = useState<any[]>([]);
   const isMobile = useIsMobile();
 
   const loadDbCalls = useCallback(async () => {
@@ -205,10 +207,21 @@ const CallsPage = () => {
     return () => { supabase.removeChannel(channel); };
   }, [loadDbCalls, selectedCall]);
 
-  // Realtime: call_events for selected call
+  // Load appointments and jobs for selected call
   useEffect(() => {
     if (!selectedCall) return;
     loadCallEvents(selectedCall.id);
+
+    // Load associated appointments
+    supabase.from('appointments').select('id, contact_name, start_at, end_at, status, service_type')
+      .eq('call_record_id', selectedCall.id)
+      .then(({ data }) => setCallAppointments(data || []));
+
+    // Load jobs for this call
+    supabase.from('call_jobs').select('id, job_type, status, attempts, last_error, updated_at')
+      .eq('call_id', selectedCall.id)
+      .order('created_at', { ascending: true })
+      .then(({ data }) => setCallJobs(data || []));
 
     const channel = supabase
       .channel(`call_events_${selectedCall.id}`)
@@ -541,6 +554,56 @@ const CallsPage = () => {
                       <li key={i} className="text-sm text-foreground flex items-start gap-2"><CheckCircle2 size={14} className="text-success shrink-0 mt-0.5" />{a}</li>
                     ))}
                   </ul>
+                </div>
+              )}
+
+              {/* Appointments linked to this call */}
+              {callAppointments.length > 0 && (
+                <div className="bg-success/5 border border-success/20 rounded-xl p-4 sm:p-5 shadow-sm">
+                  <h3 className="font-semibold text-foreground mb-3 flex items-center gap-2">
+                    <CalendarPlus size={16} className="text-success" /> Citas asociadas
+                  </h3>
+                  <div className="space-y-2">
+                    {callAppointments.map((apt: any) => (
+                      <div key={apt.id} className="flex items-center justify-between bg-card rounded-lg px-3 py-2 border border-border">
+                        <div>
+                          <p className="text-sm font-medium text-foreground">{apt.contact_name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {format(new Date(apt.start_at), "d MMM yyyy HH:mm", { locale: es })} · {apt.service_type || 'General'}
+                          </p>
+                        </div>
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${apt.status === 'scheduled' ? 'bg-primary/10 text-primary' : apt.status === 'completed' ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground'}`}>
+                          {apt.status}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Pipeline Jobs */}
+              {callJobs.length > 0 && (
+                <div className="bg-card border border-border rounded-xl p-4 sm:p-5 shadow-sm">
+                  <h3 className="font-semibold text-foreground mb-3 flex items-center gap-2">
+                    <Briefcase size={16} /> Pipeline de procesamiento
+                  </h3>
+                  <div className="space-y-1.5">
+                    {callJobs.map((job: any) => (
+                      <div key={job.id} className="flex items-center gap-2 text-xs">
+                        {job.status === 'success' && <CheckCircle2 size={12} className="text-success" />}
+                        {job.status === 'queued' && <Clock size={12} className="text-muted-foreground" />}
+                        {job.status === 'running' && <Loader2 size={12} className="text-primary animate-spin" />}
+                        {job.status === 'error' && <AlertTriangle size={12} className="text-destructive" />}
+                        <span className="text-foreground font-medium">{job.job_type.replace(/_/g, ' ')}</span>
+                        <span className={`ml-auto px-1.5 py-0.5 rounded ${
+                          job.status === 'success' ? 'bg-success/10 text-success' :
+                          job.status === 'error' ? 'bg-destructive/10 text-destructive' :
+                          job.status === 'running' ? 'bg-primary/10 text-primary' :
+                          'bg-muted text-muted-foreground'
+                        }`}>{job.status}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
 

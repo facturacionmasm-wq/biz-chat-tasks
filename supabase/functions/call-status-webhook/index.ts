@@ -60,15 +60,17 @@ serve(async (req) => {
     const mappedStatus = statusMap[callStatus] || callStatus;
 
     // Find or create the call record by external_call_id (Twilio CallSid)
-    let { data: callRecord } = await supabase
+    let callRecord: { id: string; tenant_id: string } | null = null;
+
+    const { data: existing } = await supabase
       .from('call_records')
       .select('id, tenant_id')
       .eq('external_call_id', callSid)
       .maybeSingle();
 
-    // If no record exists yet, try to find by tenant_id + recent unlinked call
-    if (!callRecord && tenantId) {
-      // Create a new record for this Twilio call
+    if (existing) {
+      callRecord = existing;
+    } else if (tenantId) {
       const { data: newRecord, error: insertError } = await supabase
         .from('call_records')
         .insert({
@@ -84,14 +86,12 @@ serve(async (req) => {
         .single();
 
       if (insertError) {
-        console.error('Error creating call record:', insertError);
+        console.error('[call-status-webhook] Insert error:', insertError);
       } else {
         callRecord = newRecord;
       }
-    }
-
-    if (!callRecord) {
-      // Try matching by phone number + recent time window as fallback
+    } else {
+      // Fallback: match by phone + recent time window
       const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
       const { data: recentCall } = await supabase
         .from('call_records')
@@ -105,7 +105,6 @@ serve(async (req) => {
 
       if (recentCall) {
         callRecord = recentCall;
-        // Link the CallSid
         await supabase
           .from('call_records')
           .update({ external_call_id: callSid })
@@ -144,18 +143,54 @@ serve(async (req) => {
       if (duration > 0) updateData.duration = duration;
     }
 
-    // Handle recording
     if (recordingUrl) {
-      updateData.audio_url = recordingUrl + '.mp3'; // Twilio provides MP3 at .mp3 extension
+      updateData.audio_url = recordingUrl + '.mp3';
     }
 
-    await supabase
-      .from('call_records')
-      .update(updateData)
-      .eq('id', callRecord.id);
+    await supabase.from('call_records').update(updateData).eq('id', callRecord.id);
 
-    // If completed with a transcript, trigger AI summary
-    if (mappedStatus === 'completed' && duration > 0) {
+    // ═══════════ POST-COMPLETION PIPELINE ═══════════
+    if (mappedStatus === 'completed') {
+      const effectiveTenantId = callRecord.tenant_id;
+
+      // 1. Cost calculation
+      try {
+        await fetch(`${SUPABASE_URL}/functions/v1/calculate-usage-cost`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+          body: JSON.stringify({
+            call_record_id: callRecord.id,
+            tenant_id: effectiveTenantId,
+            duration_seconds: duration || 0,
+            ai_tokens_used: 0,
+          }),
+        });
+      } catch (e) {
+        console.error('[call-status-webhook] Cost calc error:', e);
+      }
+
+      // 2. Fraud detection
+      try {
+        await fetch(`${SUPABASE_URL}/functions/v1/fraud-detection`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+          body: JSON.stringify({
+            tenant_id: effectiveTenantId,
+            call_record_id: callRecord.id,
+            duration_seconds: duration || 0,
+            cost_total: 0,
+            from_number: from,
+            started_at: new Date().toISOString(),
+          }),
+        });
+      } catch (e) {
+        console.error('[call-status-webhook] Fraud detection error:', e);
+      }
+
+      // 3. Enqueue async jobs
+      const jobTypes = ['fetch_recording', 'transcribe_call'];
+
+      // Check if transcript already exists
       const { data: fullRecord } = await supabase
         .from('call_records')
         .select('transcript')
@@ -163,65 +198,27 @@ serve(async (req) => {
         .single();
 
       if (fullRecord?.transcript?.trim()) {
-        const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-        if (LOVABLE_API_KEY) {
-          try {
-            const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-                'Content-Type': 'application/json',
-              },
-               body: JSON.stringify({
-                model: 'google/gemini-3-flash-preview',
-                messages: [
-                  {
-                    role: 'system',
-                    content: `Analiza esta transcripción de llamada y genera:
-1. Un resumen estructurado en markdown
-2. Un JSON con datos extraídos
-
-Formato del resumen:
-**Resumen:** (2-3 líneas)
-**Sentimiento general:** (positivo/neutro/negativo) — Puntuación: X/10
-**Puntos clave:** (bullet list)
-**Acciones sugeridas:** (bullet list)
-**⚠️ Riesgos y alertas:** (bullet list, o "Sin riesgos detectados")
-**Temas principales:** tema1, tema2, tema3
-**Seguimiento recomendado:** (fecha y contexto)
-
-Formato del JSON (devuelve al final entre \`\`\`json y \`\`\`):
-{"contactName":"","reason":"","intent":"","budget":"","urgency":"alta|media|baja","sentiment":"positivo|neutro|negativo","sentimentScore":7,"keyTopics":[],"suggestedTags":[],"objections":[],"agreements":[],"risks":[],"alerts":[],"followUp":"ISO date or empty"}
-
-Detecta riesgos: insatisfacción, promesas incumplidas, urgencias, cancelaciones, menciones de competidores, escalamientos.`,
-                  },
-                  { role: 'user', content: fullRecord.transcript },
-                ],
-              }),
-            });
-
-            const aiResult = await aiResponse.json();
-            const summary = aiResult.choices?.[0]?.message?.content || '';
-
-            let extractedData = {};
-            const jsonMatch = summary.match(/```json\n?([\s\S]*?)\n?```/);
-            if (jsonMatch) {
-              try { extractedData = JSON.parse(jsonMatch[1]); } catch {}
-            }
-
-            // Extract suggested tags
-            const tagsFromAI = (extractedData as any).suggestedTags || [];
-
-            await supabase.from('call_records').update({
-              summary_system: summary.replace(/```json[\s\S]*?```/, '').trim(),
-              extracted_data: extractedData,
-              tags: tagsFromAI,
-            }).eq('id', callRecord.id);
-          } catch (aiErr) {
-            console.error('AI summary error:', aiErr);
-          }
-        }
+        jobTypes.push('summarize_call');
       }
+
+      for (const jobType of jobTypes) {
+        await supabase.from('call_jobs').upsert({
+          tenant_id: effectiveTenantId,
+          call_id: callRecord.id,
+          job_type: jobType,
+          status: 'queued',
+          run_after: new Date().toISOString(),
+        }, { onConflict: 'call_id,job_type' }).then(({ error }) => {
+          if (error) console.error(`[call-status-webhook] Job enqueue error (${jobType}):`, error.message);
+        });
+      }
+
+      // 4. Trigger job worker (fire and forget)
+      fetch(`${SUPABASE_URL}/functions/v1/call-job-worker`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+        body: JSON.stringify({ trigger: 'call-status-webhook' }),
+      }).catch(() => {});
     }
 
     // Twilio expects TwiML or 200 OK
@@ -230,7 +227,7 @@ Detecta riesgos: insatisfacción, promesas incumplidas, urgencias, cancelaciones
     });
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Unknown error';
-    console.error('Call status webhook error:', msg);
+    console.error('[call-status-webhook] Error:', msg);
     return new Response(JSON.stringify({ error: msg }), {
       status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
