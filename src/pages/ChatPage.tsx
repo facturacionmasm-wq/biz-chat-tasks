@@ -19,23 +19,41 @@ const ChatPage = () => {
   // Fetch real employees from profiles table
   useEffect(() => {
     const fetchProfiles = async () => {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('user_id, name, avatar_url, status, email')
-        .eq('status', 'active');
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      
+      const [profilesRes, rolesRes] = await Promise.all([
+        supabase
+          .from('profiles')
+          .select('user_id, name, avatar_url, status, email')
+          .eq('status', 'active'),
+        supabase
+          .from('user_roles')
+          .select('user_id, role'),
+      ]);
 
-      if (error) {
-        console.error('Error fetching profiles:', error);
+      if (profilesRes.error) {
+        console.error('Error fetching profiles:', profilesRes.error);
         return;
       }
 
-      if (data && data.length > 0) {
-        const members: TeamMember[] = data.map(p => ({
+      const roleMap: Record<string, string> = {};
+      if (rolesRes.data) {
+        rolesRes.data.forEach(r => {
+          const label = r.role === 'super_admin' ? 'Super Admin'
+            : r.role === 'owner' ? 'Owner'
+            : r.role === 'admin' ? 'Admin'
+            : 'Member';
+          roleMap[r.user_id] = label;
+        });
+      }
+
+      if (profilesRes.data && profilesRes.data.length > 0) {
+        const members: TeamMember[] = profilesRes.data.map(p => ({
           id: p.user_id,
           name: p.name,
           avatar: p.avatar_url || '',
-          role: 'Member',
-          status: 'online' as const,
+          role: roleMap[p.user_id] || 'Member',
+          status: (currentUser && p.user_id === currentUser.id ? 'online' : 'offline') as 'online' | 'away' | 'offline',
           email: p.email || undefined,
         }));
         setTeamMembers(members);
