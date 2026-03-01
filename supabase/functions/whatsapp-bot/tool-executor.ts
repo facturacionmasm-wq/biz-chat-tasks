@@ -575,7 +575,7 @@ async function executeCancelAppointment(
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${serviceRoleKey}`,
         },
-        body: JSON.stringify({ action: 'delete_event', appointment_id: apt.id }),
+        body: JSON.stringify({ action: 'cancel_event', appointment_id: apt.id }),
       });
     } catch (syncErr) {
       console.error('Calendar delete sync error:', syncErr);
