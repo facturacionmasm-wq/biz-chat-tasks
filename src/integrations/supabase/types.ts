@@ -309,6 +309,72 @@ export type Database = {
           },
         ]
       }
+      call_costs: {
+        Row: {
+          ai_tokens_used: number
+          call_record_id: string
+          cost_ai: number
+          cost_infra: number
+          cost_total: number
+          cost_twilio: number
+          created_at: string
+          duration_minutes: number
+          id: string
+          margin: number
+          margin_pct: number
+          pricing_rule_id: string | null
+          revenue_charged: number
+          tenant_id: string
+        }
+        Insert: {
+          ai_tokens_used?: number
+          call_record_id: string
+          cost_ai?: number
+          cost_infra?: number
+          cost_total?: number
+          cost_twilio?: number
+          created_at?: string
+          duration_minutes?: number
+          id?: string
+          margin?: number
+          margin_pct?: number
+          pricing_rule_id?: string | null
+          revenue_charged?: number
+          tenant_id: string
+        }
+        Update: {
+          ai_tokens_used?: number
+          call_record_id?: string
+          cost_ai?: number
+          cost_infra?: number
+          cost_total?: number
+          cost_twilio?: number
+          created_at?: string
+          duration_minutes?: number
+          id?: string
+          margin?: number
+          margin_pct?: number
+          pricing_rule_id?: string | null
+          revenue_charged?: number
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "call_costs_call_record_id_fkey"
+            columns: ["call_record_id"]
+            isOneToOne: true
+            referencedRelation: "call_records"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "call_costs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       call_events: {
         Row: {
           call_record_id: string
@@ -549,6 +615,53 @@ export type Database = {
           },
         ]
       }
+      fraud_detection_logs: {
+        Row: {
+          action_taken: string | null
+          created_at: string
+          details: Json
+          detection_type: string
+          id: string
+          resolved: boolean
+          resolved_at: string | null
+          resolved_by: string | null
+          severity: string
+          tenant_id: string
+        }
+        Insert: {
+          action_taken?: string | null
+          created_at?: string
+          details?: Json
+          detection_type: string
+          id?: string
+          resolved?: boolean
+          resolved_at?: string | null
+          resolved_by?: string | null
+          severity?: string
+          tenant_id: string
+        }
+        Update: {
+          action_taken?: string | null
+          created_at?: string
+          details?: Json
+          detection_type?: string
+          id?: string
+          resolved?: boolean
+          resolved_at?: string | null
+          resolved_by?: string | null
+          severity?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fraud_detection_logs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       google_calendar_tokens: {
         Row: {
           access_token: string
@@ -696,6 +809,59 @@ export type Database = {
           },
         ]
       }
+      margin_metrics: {
+        Row: {
+          cost_mtd: number
+          created_at: string
+          id: string
+          margin_mtd: number
+          margin_pct_mtd: number
+          metric_date: string
+          projected_cost_eom: number
+          projected_margin_eom: number
+          projected_revenue_eom: number
+          revenue_mtd: number
+          risk_level: string
+          tenant_id: string
+        }
+        Insert: {
+          cost_mtd?: number
+          created_at?: string
+          id?: string
+          margin_mtd?: number
+          margin_pct_mtd?: number
+          metric_date?: string
+          projected_cost_eom?: number
+          projected_margin_eom?: number
+          projected_revenue_eom?: number
+          revenue_mtd?: number
+          risk_level?: string
+          tenant_id: string
+        }
+        Update: {
+          cost_mtd?: number
+          created_at?: string
+          id?: string
+          margin_mtd?: number
+          margin_pct_mtd?: number
+          metric_date?: string
+          projected_cost_eom?: number
+          projected_margin_eom?: number
+          projected_revenue_eom?: number
+          revenue_mtd?: number
+          risk_level?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "margin_metrics_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       message_read_receipts: {
         Row: {
           id: string
@@ -768,6 +934,54 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      pricing_rules: {
+        Row: {
+          active: boolean
+          base_rate: number
+          conditions: Json | null
+          created_at: string
+          description: string | null
+          id: string
+          markup_pct: number
+          min_charge: number
+          name: string
+          priority: number
+          rule_type: string
+          updated_at: string
+          volume_tiers: Json | null
+        }
+        Insert: {
+          active?: boolean
+          base_rate?: number
+          conditions?: Json | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          markup_pct?: number
+          min_charge?: number
+          name: string
+          priority?: number
+          rule_type?: string
+          updated_at?: string
+          volume_tiers?: Json | null
+        }
+        Update: {
+          active?: boolean
+          base_rate?: number
+          conditions?: Json | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          markup_pct?: number
+          min_charge?: number
+          name?: string
+          priority?: number
+          rule_type?: string
+          updated_at?: string
+          volume_tiers?: Json | null
+        }
+        Relationships: []
       }
       profiles: {
         Row: {
@@ -863,6 +1077,65 @@ export type Database = {
           },
         ]
       }
+      realtime_margin_state: {
+        Row: {
+          avg_cost_per_minute: number
+          avg_revenue_per_minute: number
+          current_month_calls: number
+          current_month_cost: number
+          current_month_margin: number
+          current_month_margin_pct: number
+          current_month_minutes: number
+          current_month_revenue: number
+          dynamic_markup_pct: number
+          id: string
+          last_call_at: string | null
+          margin_alert_active: boolean
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          avg_cost_per_minute?: number
+          avg_revenue_per_minute?: number
+          current_month_calls?: number
+          current_month_cost?: number
+          current_month_margin?: number
+          current_month_margin_pct?: number
+          current_month_minutes?: number
+          current_month_revenue?: number
+          dynamic_markup_pct?: number
+          id?: string
+          last_call_at?: string | null
+          margin_alert_active?: boolean
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          avg_cost_per_minute?: number
+          avg_revenue_per_minute?: number
+          current_month_calls?: number
+          current_month_cost?: number
+          current_month_margin?: number
+          current_month_margin_pct?: number
+          current_month_minutes?: number
+          current_month_revenue?: number
+          dynamic_markup_pct?: number
+          id?: string
+          last_call_at?: string | null
+          margin_alert_active?: boolean
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "realtime_margin_state_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       reminders: {
         Row: {
           created_at: string
@@ -912,6 +1185,56 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "reminders_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      retention_offers: {
+        Row: {
+          accepted_at: string | null
+          created_at: string
+          description: string | null
+          discount_pct: number | null
+          duration_days: number | null
+          estimated_margin_impact: number | null
+          expires_at: string | null
+          id: string
+          offer_type: string
+          status: string
+          tenant_id: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          created_at?: string
+          description?: string | null
+          discount_pct?: number | null
+          duration_days?: number | null
+          estimated_margin_impact?: number | null
+          expires_at?: string | null
+          id?: string
+          offer_type: string
+          status?: string
+          tenant_id: string
+        }
+        Update: {
+          accepted_at?: string | null
+          created_at?: string
+          description?: string | null
+          discount_pct?: number | null
+          duration_days?: number | null
+          estimated_margin_impact?: number | null
+          expires_at?: string | null
+          id?: string
+          offer_type?: string
+          status?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "retention_offers_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -1005,6 +1328,101 @@ export type Database = {
         }
         Relationships: []
       }
+      tenant_churn_scores: {
+        Row: {
+          calculated_at: string
+          churn_probability: number
+          factors: Json
+          id: string
+          model_version: string
+          risk_category: string
+          tenant_id: string
+        }
+        Insert: {
+          calculated_at?: string
+          churn_probability?: number
+          factors?: Json
+          id?: string
+          model_version?: string
+          risk_category?: string
+          tenant_id: string
+        }
+        Update: {
+          calculated_at?: string
+          churn_probability?: number
+          factors?: Json
+          id?: string
+          model_version?: string
+          risk_category?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_churn_scores_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_pricing_adjustments: {
+        Row: {
+          active: boolean
+          adjustment_type: string
+          adjustment_value: number
+          applied_by: string | null
+          created_at: string
+          id: string
+          pricing_rule_id: string | null
+          reason: string | null
+          tenant_id: string
+          valid_from: string
+          valid_until: string | null
+        }
+        Insert: {
+          active?: boolean
+          adjustment_type?: string
+          adjustment_value?: number
+          applied_by?: string | null
+          created_at?: string
+          id?: string
+          pricing_rule_id?: string | null
+          reason?: string | null
+          tenant_id: string
+          valid_from?: string
+          valid_until?: string | null
+        }
+        Update: {
+          active?: boolean
+          adjustment_type?: string
+          adjustment_value?: number
+          applied_by?: string | null
+          created_at?: string
+          id?: string
+          pricing_rule_id?: string | null
+          reason?: string | null
+          tenant_id?: string
+          valid_from?: string
+          valid_until?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_pricing_adjustments_pricing_rule_id_fkey"
+            columns: ["pricing_rule_id"]
+            isOneToOne: false
+            referencedRelation: "pricing_rules"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tenant_pricing_adjustments_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenant_subscriptions: {
         Row: {
           canceled_at: string | null
@@ -1060,6 +1478,71 @@ export type Database = {
             foreignKeyName: "tenant_subscriptions_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_usage_monthly: {
+        Row: {
+          cost_ai: number
+          cost_infra: number
+          cost_total: number
+          cost_twilio: number
+          created_at: string
+          id: string
+          margin: number
+          margin_pct: number
+          period_end: string
+          period_start: string
+          revenue: number
+          tenant_id: string
+          total_ai_tokens: number
+          total_calls: number
+          total_minutes: number
+          updated_at: string
+        }
+        Insert: {
+          cost_ai?: number
+          cost_infra?: number
+          cost_total?: number
+          cost_twilio?: number
+          created_at?: string
+          id?: string
+          margin?: number
+          margin_pct?: number
+          period_end: string
+          period_start: string
+          revenue?: number
+          tenant_id: string
+          total_ai_tokens?: number
+          total_calls?: number
+          total_minutes?: number
+          updated_at?: string
+        }
+        Update: {
+          cost_ai?: number
+          cost_infra?: number
+          cost_total?: number
+          cost_twilio?: number
+          created_at?: string
+          id?: string
+          margin?: number
+          margin_pct?: number
+          period_end?: string
+          period_start?: string
+          revenue?: number
+          tenant_id?: string
+          total_ai_tokens?: number
+          total_calls?: number
+          total_minutes?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_usage_monthly_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
             referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
