@@ -535,7 +535,7 @@ const SettingsPage = () => {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`,
           },
-          body: JSON.stringify({ action: 'initiate' }),
+          body: JSON.stringify({ action: 'initiate', calendar_email: calendarEmail.trim() || null }),
         },
       );
 
