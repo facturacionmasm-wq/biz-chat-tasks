@@ -3,7 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, MessageSquare, FolderKanban, CalendarDays,
   Target, BookOpen, Plug, Settings, ChevronLeft, ChevronRight,
-  Building2, Bell, Search, Sparkles, MessageCircle, Phone, CalendarPlus, Shield, GraduationCap, Receipt, LogOut, KeyRound, Menu, X, Bot, AlarmClock
+  Building2, Bell, Search, Sparkles, MessageCircle, Phone, CalendarPlus, Shield, GraduationCap, Receipt, LogOut, KeyRound, Menu, X, Bot, AlarmClock, Crown
 } from 'lucide-react';
 import AIAssistantWidget from '@/components/AIAssistantWidget';
 import { useBranding } from '@/hooks/useBranding';
@@ -33,6 +33,10 @@ const adminItems = [
   { to: '/audit', icon: Shield, label: 'Auditoría' },
   { to: '/assistant-admin', icon: Bot, label: 'Asistente IA' },
   { to: '/settings', icon: Settings, label: 'Configuración' },
+];
+
+const superAdminItems = [
+  { to: '/super-admin', icon: Crown, label: 'SuperAdmin' },
 ];
 
 interface AppLayoutProps {
@@ -137,7 +141,34 @@ const SidebarContent = ({
         </div>
       </div>
 
-      {/* AI Copilot - removed, now using floating widget */}
+      {/* Super Admin section */}
+      {userRole === 'super_admin' && (
+        <div className="mt-4 pt-4 border-t border-sidebar-custom-border">
+          {!collapsed && (
+            <p className="text-[10px] uppercase tracking-wider text-sidebar-custom-muted font-semibold px-3 mb-2">Super Admin</p>
+          )}
+          <div className="space-y-0.5">
+            {superAdminItems.map(item => {
+              const isActive = location.pathname.startsWith(item.to);
+              return (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  onClick={onNavClick}
+                  className={`flex items-center gap-2.5 rounded-md text-sm font-medium transition-colors ${collapsed ? 'justify-center px-2 py-2' : 'px-3 py-2'} ${
+                    isActive
+                      ? 'bg-sidebar-custom-active/15 text-sidebar-custom-active'
+                      : 'text-sidebar-custom-fg hover:bg-sidebar-custom-hover hover:text-sidebar-custom-fg-bright'
+                  }`}
+                >
+                  <item.icon size={18} className="shrink-0" />
+                  {!collapsed && <span className="truncate">{item.label}</span>}
+                </NavLink>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </nav>
 
     {/* User & Logout */}
@@ -218,7 +249,8 @@ const AppLayout = ({ children }: AppLayoutProps) => {
             )}
             <h2 className="text-sm font-semibold text-foreground truncate">
               {navItems.find(n => n.to === '/' ? location.pathname === '/' : location.pathname.startsWith(n.to))?.label ||
-               adminItems.find(n => location.pathname.startsWith(n.to))?.label || branding.orgName}
+               adminItems.find(n => location.pathname.startsWith(n.to))?.label ||
+               superAdminItems.find(n => location.pathname.startsWith(n.to))?.label || branding.orgName}
             </h2>
           </div>
           <div className="flex items-center gap-1 sm:gap-2">
