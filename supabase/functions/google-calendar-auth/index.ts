@@ -198,9 +198,11 @@ serve(async (req) => {
         requestedEmail = '';
       }
 
-      const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-      const token = authHeader.replace('Bearer ', '');
-      const { data: claims, error: claimsErr } = await supabase.auth.getUser(token);
+      const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') || Deno.env.get('SUPABASE_PUBLISHABLE_KEY') || '';
+      const authSupabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data: claims, error: claimsErr } = await authSupabase.auth.getUser();
       if (claimsErr || !claims?.user) {
         return new Response(JSON.stringify({ error: 'Invalid token' }), {
           status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -208,6 +210,7 @@ serve(async (req) => {
       }
 
       const userId = claims.user.id;
+      const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
       // Get tenant_id
       const { data: profile } = await supabase
@@ -257,15 +260,18 @@ serve(async (req) => {
       });
     }
 
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-    const token = authHeader.replace('Bearer ', '');
-    const { data: claims } = await supabase.auth.getUser(token);
+    const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') || Deno.env.get('SUPABASE_PUBLISHABLE_KEY') || '';
+    const authSupabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: claims } = await authSupabase.auth.getUser();
     if (!claims?.user) {
       return new Response(JSON.stringify({ connected: false }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const { data: calToken } = await supabase
       .from('google_calendar_tokens')
       .select('email, status, token_expires_at, calendar_id')
