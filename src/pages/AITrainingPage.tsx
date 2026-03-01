@@ -15,6 +15,15 @@ interface ChatMessage {
   correction?: string;
 }
 
+interface VoiceTranscriptLine {
+  role: string;
+  text: string;
+  approved?: boolean | null;
+  saved?: boolean;
+  correcting?: boolean;
+  correction?: string;
+}
+
 const AITrainingPage = () => {
   // --- State for simulated bot conversation ---
   const [botState, setBotState] = useState<string>('welcome');
@@ -30,7 +39,7 @@ const AITrainingPage = () => {
   // --- ElevenLabs Voice Agent state ---
   const [isConnecting, setIsConnecting] = useState(false);
   const [voiceError, setVoiceError] = useState<string | null>(null);
-  const [transcriptLines, setTranscriptLines] = useState<Array<{ role: string; text: string }>>([]);
+  const [transcriptLines, setTranscriptLines] = useState<VoiceTranscriptLine[]>([]);
 
   const conversation = useConversation({
     onConnect: () => setVoiceError(null),
@@ -247,6 +256,77 @@ const AITrainingPage = () => {
     setBotState('welcome');
     setBotContext({});
     setSimulatedRole(null);
+  };
+
+  // --- Voice transcript feedback handlers ---
+  const handleVoiceFeedback = (index: number, approved: boolean) => {
+    setTranscriptLines(prev => prev.map((l, i) => i === index ? { ...l, approved, correcting: !approved, correction: '' } : l));
+    if (approved) toast.success('Respuesta aprobada — puedes guardarla como conocimiento');
+  };
+
+  const handleVoiceCorrectionChange = (index: number, value: string) => {
+    setTranscriptLines(prev => prev.map((l, i) => i === index ? { ...l, correction: value } : l));
+  };
+
+  const saveVoiceCorrection = async (index: number) => {
+    const line = transcriptLines[index];
+    // Find the previous user line as the "question"
+    const question = transcriptLines.slice(0, index).reverse().find(l => l.role === 'Tú');
+    if (!question || !line?.correction?.trim()) return;
+
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      const userId = userData?.user?.id;
+      if (!userId) { toast.error('Debes iniciar sesión'); return; }
+      const { data: profile } = await supabase.from('profiles').select('tenant_id').eq('user_id', userId).maybeSingle();
+      if (!profile?.tenant_id) { toast.error('No se encontró el tenant'); return; }
+
+      await supabase.from('knowledge_items').insert({
+        tenant_id: profile.tenant_id,
+        title: `Corrección voz: ${question.text.substring(0, 100)}`,
+        content: `**Pregunta del usuario (voz):**\n${question.text}\n\n**Respuesta correcta (corregida):**\n${line.correction}`,
+        category: 'Entrenamiento IA',
+        tags: ['bot-training', 'correction', 'voice-agent'],
+        author_id: userId,
+        visibility: 'internal',
+        active: true,
+      });
+
+      setTranscriptLines(prev => prev.map((l, i) => i === index ? { ...l, correcting: false, saved: true } : l));
+      toast.success('✅ Corrección guardada — el agente de voz la usará en la próxima llamada');
+    } catch (err: any) {
+      toast.error('Error al guardar: ' + (err.message || 'desconocido'));
+    }
+  };
+
+  const saveVoiceAsKnowledge = async (index: number) => {
+    const answer = transcriptLines[index];
+    const question = transcriptLines.slice(0, index).reverse().find(l => l.role === 'Tú');
+    if (!question || !answer) return;
+
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      const userId = userData?.user?.id;
+      if (!userId) { toast.error('Debes iniciar sesión'); return; }
+      const { data: profile } = await supabase.from('profiles').select('tenant_id').eq('user_id', userId).maybeSingle();
+      if (!profile?.tenant_id) { toast.error('No se encontró el tenant'); return; }
+
+      await supabase.from('knowledge_items').insert({
+        tenant_id: profile.tenant_id,
+        title: `Pregunta voz: ${question.text.substring(0, 100)}`,
+        content: `**Pregunta del usuario (voz):**\n${question.text}\n\n**Respuesta aprobada:**\n${answer.text}`,
+        category: 'Entrenamiento IA',
+        tags: ['bot-training', 'voice-agent'],
+        author_id: userId,
+        visibility: 'internal',
+        active: true,
+      });
+
+      setTranscriptLines(prev => prev.map((l, i) => i === index ? { ...l, saved: true } : l));
+      toast.success('✅ Guardado en Knowledge Hub — el agente lo usará en futuras llamadas');
+    } catch (err: any) {
+      toast.error('Error al guardar: ' + (err.message || 'desconocido'));
+    }
   };
 
   return (
@@ -476,16 +556,77 @@ const AITrainingPage = () => {
                 <p className="text-sm text-muted-foreground text-center py-8">Esperando conversación...</p>
               )}
               {transcriptLines.map((line, i) => (
-                <div
-                  key={i}
-                  className={`px-3 py-2 rounded-lg text-sm ${
-                    line.role === 'Agente'
-                      ? 'bg-primary/5 border-l-2 border-primary'
-                      : 'bg-muted/50 border-l-2 border-muted-foreground/30'
-                  }`}
-                >
-                  <span className="text-xs font-semibold text-muted-foreground">{line.role}:</span>
-                  <p className="text-foreground mt-0.5">{line.text}</p>
+                <div key={i}>
+                  <div
+                    className={`px-3 py-2 rounded-lg text-sm ${
+                      line.role === 'Agente'
+                        ? 'bg-primary/5 border-l-2 border-primary'
+                        : 'bg-muted/50 border-l-2 border-muted-foreground/30'
+                    }`}
+                  >
+                    <span className="text-xs font-semibold text-muted-foreground">{line.role}:</span>
+                    <p className="text-foreground mt-0.5">{line.text}</p>
+                  </div>
+
+                  {/* Feedback controls for agent responses */}
+                  {line.role === 'Agente' && (
+                    <>
+                      <div className="flex items-center gap-1 mt-1 ml-1">
+                        <button
+                          onClick={() => handleVoiceFeedback(i, true)}
+                          className={`p-1 rounded transition-colors ${line.approved === true ? 'text-emerald-500 bg-emerald-500/10' : 'text-muted-foreground hover:text-emerald-500 hover:bg-emerald-500/10'}`}
+                          title="Buena respuesta"
+                        >
+                          <ThumbsUp size={13} />
+                        </button>
+                        <button
+                          onClick={() => handleVoiceFeedback(i, false)}
+                          className={`p-1 rounded transition-colors ${line.approved === false ? 'text-destructive bg-destructive/10' : 'text-muted-foreground hover:text-destructive hover:bg-destructive/10'}`}
+                          title="Respuesta incorrecta"
+                        >
+                          <ThumbsDown size={13} />
+                        </button>
+                        {line.approved === true && !line.saved && (
+                          <button
+                            onClick={() => saveVoiceAsKnowledge(i)}
+                            className="flex items-center gap-1 text-xs text-primary hover:bg-primary/10 px-2 py-0.5 rounded ml-1 transition-colors"
+                          >
+                            <BookOpen size={12} /> Guardar en Knowledge Hub
+                          </button>
+                        )}
+                        {line.saved && (
+                          <span className="text-xs text-emerald-500 ml-1">✓ Guardado</span>
+                        )}
+                      </div>
+
+                      {line.correcting && (
+                        <div className="mt-2 ml-1 space-y-2">
+                          <p className="text-xs text-muted-foreground">Escribe la respuesta correcta para que el agente de voz aprenda:</p>
+                          <textarea
+                            value={line.correction || ''}
+                            onChange={e => handleVoiceCorrectionChange(i, e.target.value)}
+                            placeholder="Escribe aquí la respuesta correcta..."
+                            className="w-full bg-secondary rounded-lg px-3 py-2 text-sm outline-none border border-border focus:border-primary min-h-[60px] resize-y"
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => saveVoiceCorrection(i)}
+                              disabled={!line.correction?.trim()}
+                              className="flex items-center gap-1 text-xs bg-primary text-primary-foreground px-3 py-1.5 rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity"
+                            >
+                              <BookOpen size={12} /> Guardar corrección
+                            </button>
+                            <button
+                              onClick={() => setTranscriptLines(prev => prev.map((l, idx) => idx === i ? { ...l, correcting: false } : l))}
+                              className="text-xs text-muted-foreground hover:text-foreground px-2 py-1.5 transition-colors"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
               ))}
             </div>
