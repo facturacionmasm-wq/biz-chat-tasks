@@ -1,5 +1,5 @@
-import { useState, useCallback, useEffect } from 'react';
-import { Phone, PhoneIncoming, PhoneMissed, PhoneOff, Clock, User, Tag, Play, Pause, CalendarPlus, MessageSquare, ChevronRight, Search, ArrowLeft, CheckCircle2, Edit3, Save, RefreshCw, Activity, Download, Volume2, AlertTriangle, TrendingUp, Hash, Briefcase, Loader2 } from 'lucide-react';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { Phone, PhoneIncoming, PhoneMissed, PhoneOff, Clock, User, Tag, Play, Pause, CalendarPlus, MessageSquare, ChevronRight, Search, ArrowLeft, CheckCircle2, Edit3, Save, RefreshCw, Activity, Download, Volume2, AlertTriangle, TrendingUp, Hash, Briefcase, Loader2, BarChart3, Shield } from 'lucide-react';
 import { type CallRecord, type CallEvent, type TranscriptEntry } from '@/data/mockCallsData';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -7,6 +7,8 @@ import VoiceAgent from '@/components/VoiceAgent';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useIsMobile } from '@/hooks/use-mobile';
+import CallAnalytics from '@/components/calls/CallAnalytics';
+import CallObservability from '@/components/calls/CallObservability';
 
 const parseTranscriptStructured = (transcript: string): TranscriptEntry[] => {
   if (!transcript) return [];
@@ -162,7 +164,10 @@ const CallsPage = () => {
   const [callEvents, setCallEvents] = useState<CallEvent[]>([]);
   const [callAppointments, setCallAppointments] = useState<any[]>([]);
   const [callJobs, setCallJobs] = useState<any[]>([]);
+  const [allJobs, setAllJobs] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState<'calls' | 'analytics' | 'observability'>('calls');
   const isMobile = useIsMobile();
+  const lastToastRef = useRef<string | null>(null);
 
   const loadDbCalls = useCallback(async () => {
     try {
@@ -198,7 +203,6 @@ const CallsPage = () => {
       .channel('call_records_realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'call_records' }, (payload) => {
         loadDbCalls();
-        // If we're viewing a specific call that was updated, refresh it
         if (selectedCall && payload.new && (payload.new as any).id === selectedCall.id) {
           setSelectedCall(dbRowToCallRecord(payload.new));
         }
@@ -206,6 +210,56 @@ const CallsPage = () => {
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [loadDbCalls, selectedCall]);
+
+  // Realtime: call_jobs pipeline notifications
+  useEffect(() => {
+    const channel = supabase
+      .channel('call_jobs_realtime')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'call_jobs' }, (payload) => {
+        const job = payload.new as any;
+        const toastKey = `${job.id}-${job.status}`;
+        if (lastToastRef.current === toastKey) return;
+        lastToastRef.current = toastKey;
+
+        const labels: Record<string, string> = {
+          fetch_recording: 'Grabación',
+          transcribe_call: 'Transcripción',
+          summarize_call: 'Resumen IA',
+          extract_appointment: 'Extracción de cita',
+        };
+        const label = labels[job.job_type] || job.job_type;
+
+        if (job.status === 'success') {
+          toast.success(`✅ ${label} completado`, { duration: 3000 });
+        } else if (job.status === 'error') {
+          toast.error(`❌ ${label} falló: ${job.last_error?.substring(0, 60) || 'Error'}`, { duration: 5000 });
+        }
+
+        // Refresh allJobs for analytics
+        loadAllJobs();
+
+        // Refresh selected call jobs if viewing
+        if (selectedCall && job.call_id === selectedCall.id) {
+          supabase.from('call_jobs').select('id, job_type, status, attempts, last_error, updated_at')
+            .eq('call_id', selectedCall.id)
+            .order('created_at', { ascending: true })
+            .then(({ data }) => setCallJobs(data || []));
+        }
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [selectedCall]);
+
+  // Load all jobs for analytics
+  const loadAllJobs = useCallback(async () => {
+    const { data } = await supabase.from('call_jobs')
+      .select('id, job_type, status, attempts, last_error, updated_at')
+      .order('created_at', { ascending: false })
+      .limit(500);
+    setAllJobs(data || []);
+  }, []);
+
+  useEffect(() => { loadAllJobs(); }, [loadAllJobs]);
 
   // Load appointments and jobs for selected call
   useEffect(() => {
@@ -651,10 +705,52 @@ const CallsPage = () => {
     );
   }
 
-  // ===== LIST VIEW =====
+  // ===== MAIN TABS VIEW =====
+  const mainTabs = [
+    { key: 'calls' as const, label: 'Llamadas', icon: Phone },
+    { key: 'analytics' as const, label: 'Analíticas', icon: BarChart3 },
+    { key: 'observability' as const, label: 'Observabilidad', icon: Shield },
+  ];
+
   return (
     <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-4 sm:space-y-6">
       <VoiceAgent onCallEnd={handleCallEnd} />
+
+      {/* Main tab navigation */}
+      <div className="flex items-center gap-1 border-b border-border pb-0">
+        {mainTabs.map(tab => {
+          const Icon = tab.icon;
+          return (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === tab.key
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
+              }`}
+            >
+              <Icon size={16} />
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Analytics Tab */}
+      {activeTab === 'analytics' && (
+        <CallAnalytics calls={dbCalls} jobs={allJobs} />
+      )}
+
+      {/* Observability Tab */}
+      {activeTab === 'observability' && (
+        <CallObservability />
+      )}
+
+      {/* Calls Tab */}
+      {activeTab === 'calls' && (
+        <>
+
 
       {/* Active calls banner */}
       {activeCalls.length > 0 && (
@@ -774,6 +870,8 @@ const CallsPage = () => {
           })
         )}
       </div>
+        </>
+      )}
     </div>
   );
 };
