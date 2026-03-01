@@ -275,10 +275,15 @@ const ProjectsPage = () => {
                 <div key={m.id} className="flex items-center gap-1.5 shrink-0">
                   <button
                     onClick={() => toggleMilestone(selectedProject.id, m.id)}
-                    className={`w-3 h-3 rounded-full border-2 transition-all hover:scale-125 ${m.completed ? 'bg-success border-success' : 'border-border bg-card hover:border-success/50'}`}
+                    className={`inline-flex items-center gap-2 rounded-full border px-2 py-1 text-xs transition-colors ${m.completed ? 'border-success/30 bg-success/10 text-success' : 'border-border text-muted-foreground hover:border-success/40 hover:bg-success/5 hover:text-foreground'}`}
                     title={m.completed ? 'Marcar como pendiente' : 'Marcar como completado'}
-                  />
-                  <span className={`text-xs ${m.completed ? 'text-success line-through' : 'text-muted-foreground'}`}>{m.name}</span>
+                  >
+                    <span className={`w-2.5 h-2.5 rounded-full border ${m.completed ? 'bg-success border-success' : 'border-border bg-card'}`} />
+                    <span className={m.completed ? 'line-through' : ''}>{m.name}</span>
+                    <span className={`text-[10px] ${m.completed ? 'text-success' : 'text-muted-foreground'}`}>
+                      {m.completed ? 'Completado' : 'Pendiente'}
+                    </span>
+                  </button>
                   {i < selectedProject.milestones.length - 1 && <div className="w-6 h-px bg-border" />}
                 </div>
               ))}
