@@ -44,6 +44,10 @@ export async function executeTool(
     return await executeDeleteBotInstruction(args, tenantId, supabase, conversation);
   }
 
+  if (toolName === 'cancel_appointment') {
+    return await executeCancelAppointment(args, tenantId, supabase, userId, supabaseUrl, serviceRoleKey);
+  }
+
   if (toolName === 'send_whatsapp_message') {
     return await executeSendWhatsAppMessage(args, tenantId, supabase, conversation, supabaseUrl, serviceRoleKey);
   }
@@ -490,6 +494,101 @@ async function executeDeleteBotInstruction(
     deleted_count: matches.length,
     deleted: matches.map((m: any) => m.title),
     message: `Se eliminaron ${matches.length} instrucción(es) del bot.`,
+  });
+}
+
+async function executeCancelAppointment(
+  args: any,
+  tenantId: string,
+  supabase: any,
+  userId: string | null,
+  supabaseUrl: string,
+  serviceRoleKey: string,
+): Promise<string> {
+  const { contact_name, date } = args;
+
+  // Get tenant timezone
+  const { data: tenantData } = await supabase
+    .from('tenants')
+    .select('timezone')
+    .eq('id', tenantId)
+    .single();
+  const tz = tenantData?.timezone || 'America/Mexico_City';
+
+  // Search for matching appointments
+  let query = supabase
+    .from('appointments')
+    .select('id, contact_name, start_at, end_at, service_type, status, user_id, calendar_event_id')
+    .eq('tenant_id', tenantId)
+    .neq('status', 'cancelled')
+    .is('deleted_at', null)
+    .ilike('contact_name', `%${contact_name}%`)
+    .order('start_at', { ascending: true });
+
+  if (date) {
+    query = query
+      .gte('start_at', `${date}T00:00:00`)
+      .lte('start_at', `${date}T23:59:59`);
+  }
+
+  const { data: appointments, error: searchErr } = await query.limit(5);
+
+  if (searchErr) return JSON.stringify({ error: searchErr.message });
+
+  if (!appointments || appointments.length === 0) {
+    return JSON.stringify({
+      error: `No encontré citas ${date ? `para el ${date} ` : ''}con "${contact_name}". Verifica el nombre o la fecha.`,
+    });
+  }
+
+  if (appointments.length > 1 && !date) {
+    return JSON.stringify({
+      multiple: true,
+      count: appointments.length,
+      appointments: appointments.map((a: any) => ({
+        id: a.id,
+        contact: a.contact_name,
+        date: new Date(a.start_at).toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', timeZone: tz }),
+        time: new Date(a.start_at).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', timeZone: tz }),
+        service: a.service_type || 'General',
+      })),
+      message: `Encontré ${appointments.length} citas con "${contact_name}". ¿Cuál quieres cancelar? Indica la fecha para precisar.`,
+    });
+  }
+
+  // Cancel the appointment (first match or single result)
+  const apt = appointments[0];
+
+  const { error: updateErr } = await supabase
+    .from('appointments')
+    .update({ status: 'cancelled' })
+    .eq('id', apt.id);
+
+  if (updateErr) return JSON.stringify({ error: updateErr.message });
+
+  // If it was synced to Google Calendar, try to delete the event
+  if (apt.calendar_event_id && apt.user_id && supabaseUrl && serviceRoleKey) {
+    try {
+      await fetch(`${supabaseUrl}/functions/v1/calendar-sync`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${serviceRoleKey}`,
+        },
+        body: JSON.stringify({ action: 'delete_event', appointment_id: apt.id }),
+      });
+    } catch (syncErr) {
+      console.error('Calendar delete sync error:', syncErr);
+    }
+  }
+
+  return JSON.stringify({
+    success: true,
+    appointment_id: apt.id,
+    contact_name: apt.contact_name,
+    date: new Date(apt.start_at).toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', timeZone: tz }),
+    time: new Date(apt.start_at).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', timeZone: tz }),
+    message: `Cita con ${apt.contact_name} cancelada exitosamente.`,
   });
 }
 
