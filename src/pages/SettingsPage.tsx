@@ -521,6 +521,25 @@ const SettingsPage = () => {
 
   const handleConnectGoogleCalendar = async () => {
     setSavingCalendar(true);
+    const emailToSync = calendarEmail.trim();
+
+    if (!emailToSync) {
+      toast.error('Ingresa un correo de Google antes de conectar');
+      setSavingCalendar(false);
+      return;
+    }
+
+    // IMPORTANT: open popup synchronously from the click event to avoid browser popup blocking
+    const popup = window.open('', 'google-calendar-auth', 'width=600,height=700,scrollbars=yes');
+
+    if (!popup) {
+      toast.error('Tu navegador bloqueó el popup. Habilita popups para continuar.');
+      setSavingCalendar(false);
+      return;
+    }
+
+    popup.document.write('<html><body style="font-family: system-ui; display:flex; align-items:center; justify-content:center; min-height:100vh; margin:0;">Conectando con Google...</body></html>');
+
     try {
       const { data: session } = await supabase.auth.getSession();
       const token = session?.session?.access_token;
@@ -535,28 +554,28 @@ const SettingsPage = () => {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`,
           },
-          body: JSON.stringify({ action: 'initiate', calendar_email: calendarEmail.trim() || null }),
+          body: JSON.stringify({ action: 'initiate', calendar_email: emailToSync }),
         },
       );
 
       const data = await res.json();
-      if (data.auth_url) {
-        // Open Google OAuth in a popup
-        const popup = window.open(data.auth_url, 'google-calendar-auth', 'width=600,height=700,scrollbars=yes');
-
-        // Poll for popup close
-        const pollTimer = setInterval(async () => {
-          if (popup?.closed) {
-            clearInterval(pollTimer);
-            // Check if connection was successful
-            await checkCalendarStatus();
-            setSavingCalendar(false);
-          }
-        }, 1000);
-      } else {
+      if (!data.auth_url) {
+        popup.close();
         throw new Error(data.error || 'Error al obtener URL de autorización');
       }
+
+      popup.location.href = data.auth_url;
+
+      // Poll for popup close and then refresh connection status
+      const pollTimer = setInterval(async () => {
+        if (popup.closed) {
+          clearInterval(pollTimer);
+          await checkCalendarStatus();
+          setSavingCalendar(false);
+        }
+      }, 1000);
     } catch (err: any) {
+      if (!popup.closed) popup.close();
       toast.error(err.message || 'Error al conectar con Google Calendar');
       setSavingCalendar(false);
     }
