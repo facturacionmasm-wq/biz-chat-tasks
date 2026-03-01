@@ -1293,6 +1293,10 @@ export type Database = {
     }
     Functions: {
       block_expired_trials: { Args: never; Returns: undefined }
+      calculate_next_retry: {
+        Args: { _base_delay_minutes?: number; _retry_count: number }
+        Returns: string
+      }
       get_tenant_branding: { Args: { _tenant_id: string }; Returns: Json }
       get_tenant_subscription_status: {
         Args: { _user_id: string }

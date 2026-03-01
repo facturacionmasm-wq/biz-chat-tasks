@@ -668,6 +668,14 @@ async function executeTool(
   if (toolName === 'schedule_appointment') {
     const { contact_name, contact_phone: cPhone, contact_email, date, time, service_type, employee_name, notes } = args;
     
+    // Get tenant timezone for correct date interpretation
+    const { data: tenantData } = await supabase
+      .from('tenants')
+      .select('timezone')
+      .eq('id', tenantId)
+      .single();
+    const tz = tenantData?.timezone || 'America/Mexico_City';
+
     // Find employee if specified
     let employeeId: string | null = null;
     if (employee_name) {
@@ -682,9 +690,44 @@ async function executeTool(
       if (emp) employeeId = emp.user_id;
     }
 
-    const startAt = new Date(`${date}T${time}:00`);
+    // Convert local time to UTC using tenant timezone
+    const rawDateStr = `${date}T${time}:00`;
+    let startAt: Date;
+    const tempDate = new Date(rawDateStr);
+    const formatter = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'shortOffset' });
+    const parts = formatter.formatToParts(tempDate);
+    const offsetPart = parts.find(p => p.type === 'timeZoneName')?.value || '';
+    const offsetMatch = offsetPart.match(/GMT([+-]?\d+)/);
+    if (offsetMatch) {
+      const offsetHours = parseInt(offsetMatch[1]);
+      const sign = offsetHours >= 0 ? '+' : '-';
+      const absHours = Math.abs(offsetHours).toString().padStart(2, '0');
+      startAt = new Date(`${rawDateStr}${sign}${absHours}:00`);
+    } else {
+      startAt = tempDate;
+    }
+
     const endAt = new Date(startAt);
     endAt.setMinutes(endAt.getMinutes() + 30);
+
+    // Idempotency: check for duplicate appointment (same contact, same time, same day)
+    const { data: existing } = await supabase
+      .from('appointments')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .eq('contact_name', contact_name)
+      .eq('start_at', startAt.toISOString())
+      .neq('status', 'cancelled')
+      .maybeSingle();
+
+    if (existing) {
+      return JSON.stringify({
+        success: true,
+        appointment_id: existing.id,
+        duplicate: true,
+        message: 'Ya existe una cita con los mismos datos.',
+      });
+    }
 
     const { data: apt, error } = await supabase
       .from('appointments')
@@ -706,12 +749,15 @@ async function executeTool(
 
     if (error) return JSON.stringify({ error: error.message });
     
+    const displayDate = startAt.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', timeZone: tz });
+    const displayTime = startAt.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', timeZone: tz });
+    
     return JSON.stringify({
       success: true,
       appointment_id: apt.id,
       contact_name: apt.contact_name,
-      date: startAt.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }),
-      time: startAt.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }),
+      date: displayDate,
+      time: displayTime,
       employee: employee_name || 'sin asignar',
     });
   }
