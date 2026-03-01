@@ -2,6 +2,7 @@
 
 export function buildClientPrompt(
   todayStr: string,
+  tomorrowStr: string,
   currentTime: string,
   employeeList: string,
   knowledgeContext: string,
@@ -18,12 +19,13 @@ CAPACIDADES (usa las herramientas disponibles):
 - Puedes CONSULTAR LA AGENDA de cualquier día usando get_today_agenda — acepta parámetro "date" para HOY, MAÑANA, o cualquier fecha
 - Puedes BUSCAR INFORMACIÓN EN INTERNET usando search_web — para direcciones, conocimiento general, precios, clima, recetas, etc.
 
-IMPORTANTE — MANEJO DE FECHAS:
+IMPORTANTE — MANEJO DE FECHAS (NO CALCULES, USA ESTOS VALORES EXACTOS):
 - "hoy" = ${todayStr}
-- "mañana" = calcula sumando 1 día a ${todayStr}
-- SIEMPRE calcula la fecha correcta antes de llamar herramientas. NUNCA confundas "hoy" con "mañana".
-- Si dicen "elimina/cancela las citas de mañana", usa cancel_appointment con la fecha de MAÑANA y cancel_all=true.
-- Si dicen "checa mi calendario" o "verifica la cita", usa get_today_agenda con la fecha correspondiente.
+- "mañana" = ${tomorrowStr}
+- NUNCA intentes calcular fechas sumando días. USA los valores de arriba DIRECTAMENTE.
+- Si dicen "elimina/cancela las citas de mañana", usa cancel_appointment con date="${tomorrowStr}" y cancel_all=true.
+- Si dicen "checa mi calendario de mañana", usa get_today_agenda con date="${tomorrowStr}".
+- Si dicen "checa mi calendario" (sin especificar), usa get_today_agenda con date="${todayStr}".
 
 INSTRUCCIONES PARA AGENDAR (OBLIGATORIO):
 - Cuando alguien quiera una cita, PRIMERO pregunta los datos faltantes (nombre, fecha, hora, servicio).
@@ -57,6 +59,7 @@ ${knowledgeContext}`;
 export function buildEmployeePrompt(
   userName: string,
   todayStr: string,
+  tomorrowStr: string,
   currentTime: string,
   knowledgeContext: string,
 ): string {
@@ -78,12 +81,13 @@ CAPACIDADES (usa las herramientas disponibles):
 - Puedes ENVIAR MENSAJES DE WHATSAPP a personas usando send_whatsapp_message — cuando digan "mándale mensaje a X", "dile a X que Y", "escríbele a X"
 - Puedes BUSCAR INFORMACIÓN EN INTERNET usando search_web — para direcciones, conocimiento general, precios, clima, recetas, definiciones, etc. Usa "gpt" como model_preference para razonamiento complejo
 
-IMPORTANTE — MANEJO DE FECHAS:
+IMPORTANTE — MANEJO DE FECHAS (NO CALCULES, USA ESTOS VALORES EXACTOS):
 - "hoy" = ${todayStr}
-- "mañana" = calcula sumando 1 día a ${todayStr}
-- SIEMPRE calcula la fecha correcta. NUNCA confundas "hoy" con "mañana".
-- Si dicen "elimina las citas de mañana", usa cancel_appointment con la fecha de MAÑANA y cancel_all=true.
-- Si dicen "checa mi calendario" o "verifica la cita", usa get_today_agenda con la fecha correspondiente.
+- "mañana" = ${tomorrowStr}
+- NUNCA intentes calcular fechas sumando días. USA los valores de arriba DIRECTAMENTE.
+- Si dicen "elimina las citas de mañana", usa cancel_appointment con date="${tomorrowStr}" y cancel_all=true.
+- Si dicen "checa mi calendario de mañana", usa get_today_agenda con date="${tomorrowStr}".
+- Si dicen "checa mi calendario" (sin especificar), usa get_today_agenda con date="${todayStr}".
 
 INSTRUCCIONES PARA RECORDATORIOS:
 - Cuando pidan un recordatorio, SIEMPRE usa create_reminder con la hora y mensaje apropiados.
