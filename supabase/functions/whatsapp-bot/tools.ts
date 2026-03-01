@@ -108,6 +108,21 @@ export const AI_TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'cancel_appointment',
+      description: 'Cancelar una cita existente. Usa cuando alguien diga "cancela mi cita", "ya no voy a ir", "quita la cita de X". Busca la cita por nombre del contacto y/o fecha.',
+      parameters: {
+        type: 'object',
+        properties: {
+          contact_name: { type: 'string', description: 'Nombre del contacto o cliente de la cita a cancelar' },
+          date: { type: 'string', description: 'Fecha de la cita a cancelar en formato YYYY-MM-DD (opcional si solo hay una cita con ese contacto)' },
+        },
+        required: ['contact_name'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'send_whatsapp_message',
       description: 'Enviar un mensaje de WhatsApp a una persona específica. Usa cuando un empleado diga "mándale un mensaje a X", "envíale a X que Y", "dile a X por WhatsApp que Y", "escríbele a X". Solo empleados autenticados pueden usar esta herramienta.',
       parameters: {
