@@ -104,11 +104,12 @@ const VoiceAgent = ({ onCallEnd }: VoiceAgentProps) => {
       // 3. Persist completed event
       await persistEvent('completed', { duration, transcript_length: fullTranscript.length });
 
-      // 4. Trigger cost calculation + fraud detection via call-webhook pipeline
+      // 4. Trigger post-call pipeline via call-webhook with existing_record_id
+      //    to avoid creating a duplicate record
       if (tenantId) {
         supabase.functions.invoke('call-webhook', {
           body: {
-            call_id: recordId,
+            existing_record_id: recordId,
             tenant_id: tenantId,
             status: 'completed',
             duration,
@@ -118,35 +119,8 @@ const VoiceAgent = ({ onCallEnd }: VoiceAgentProps) => {
             from_number: 'Voice Agent',
           },
         }).catch((err) => console.error('Post-call pipeline error:', err));
-      }
 
-      // 5. Generate AI summary if there's a transcript
-      if (fullTranscript.trim()) {
-        toast.info('Generando resumen con IA...');
-        const { data: aiData, error: aiError } = await supabase.functions.invoke('ai-copilot', {
-          body: { action: 'summarize_call', data: { transcript: fullTranscript, extractedData: {} } },
-        });
-
-        if (!aiError && aiData?.summary) {
-          let extractedData: Record<string, any> = {};
-          const jsonMatch = aiData.summary.match(/```json\n?([\s\S]*?)\n?```/);
-          if (jsonMatch) {
-            try { extractedData = JSON.parse(jsonMatch[1]); } catch {}
-          }
-
-          const tags = extractedData.suggestedTags || [];
-
-          await supabase
-            .from('call_records')
-            .update({
-              summary_system: aiData.summary.replace(/```json[\s\S]*?```/, '').trim(),
-              extracted_data: extractedData,
-              tags,
-            })
-            .eq('id', recordId);
-
-          toast.success('Resumen generado y guardado');
-        }
+        toast.info('Procesando resumen y pipeline...');
       }
 
       onCallEndRef.current?.(recordId);
