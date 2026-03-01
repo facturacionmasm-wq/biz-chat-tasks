@@ -13,7 +13,7 @@ export async function executeTool(
   const contactPhone = conversation.contact_phone;
 
   if (toolName === 'schedule_appointment') {
-    return await executeScheduleAppointment(args, tenantId, supabase, userId, contactPhone);
+    return await executeScheduleAppointment(args, tenantId, supabase, userId, contactPhone, supabaseUrl, serviceRoleKey);
   }
 
   if (toolName === 'check_availability') {
@@ -59,6 +59,8 @@ async function executeScheduleAppointment(
   supabase: any,
   userId: string | null,
   contactPhone: string | null,
+  supabaseUrl?: string,
+  serviceRoleKey?: string,
 ): Promise<string> {
   const { contact_name, contact_phone: cPhone, contact_email, date, time, service_type, employee_name, notes } = args;
 
@@ -89,7 +91,38 @@ async function executeScheduleAppointment(
   const endAt = new Date(startAt);
   endAt.setMinutes(endAt.getMinutes() + 30);
 
-  // Idempotency: check for duplicate
+  // Validate: no past dates
+  if (startAt.getTime() < Date.now() - 60000) {
+    return JSON.stringify({ error: 'No se puede agendar una cita en el pasado. Indica una fecha y hora futura.' });
+  }
+
+  // Validate: end > start
+  if (endAt <= startAt) {
+    return JSON.stringify({ error: 'La hora de fin debe ser posterior a la hora de inicio.' });
+  }
+
+  // Build idempotency key
+  const assignedUser = employeeId || userId || 'unassigned';
+  const idempotencyKey = `${tenantId}:${contact_name}:${startAt.toISOString()}:${service_type || 'General'}:${assignedUser}`;
+
+  // Idempotency: check for duplicate by key or matching data
+  const { data: existingByKey } = await supabase
+    .from('appointments')
+    .select('id, calendar_sync_status, calendar_event_id')
+    .eq('idempotency_key', idempotencyKey)
+    .neq('status', 'cancelled')
+    .maybeSingle();
+
+  if (existingByKey) {
+    return JSON.stringify({
+      success: true,
+      appointment_id: existingByKey.id,
+      duplicate: true,
+      synced: existingByKey.calendar_sync_status === 'SYNCED',
+      message: 'Ya existe una cita con los mismos datos.',
+    });
+  }
+
   const { data: existing } = await supabase
     .from('appointments')
     .select('id')
@@ -122,20 +155,54 @@ async function executeScheduleAppointment(
       notes: notes || null,
       source: 'whatsapp',
       status: 'scheduled',
+      calendar_sync_status: 'PENDING_SYNC',
+      idempotency_key: idempotencyKey,
     })
-    .select('id, start_at, end_at, contact_name')
+    .select('id, start_at, end_at, contact_name, user_id')
     .single();
 
   if (error) return JSON.stringify({ error: error.message });
 
-  return JSON.stringify({
+  // Trigger calendar sync asynchronously
+  let calendarSynced = false;
+  if (supabaseUrl && serviceRoleKey && apt.user_id) {
+    try {
+      const syncRes = await fetch(`${supabaseUrl}/functions/v1/calendar-sync`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${serviceRoleKey}`,
+        },
+        body: JSON.stringify({ action: 'sync_appointment', appointment_id: apt.id }),
+      });
+      const syncResult = await syncRes.json();
+      calendarSynced = syncResult.success === true;
+      if (!calendarSynced) {
+        console.log(`Calendar sync pending for ${apt.id}: ${syncResult.error || 'unknown'}`);
+      }
+    } catch (syncErr) {
+      console.error('Calendar sync trigger error:', syncErr);
+    }
+  }
+
+  const response: any = {
     success: true,
     appointment_id: apt.id,
     contact_name: apt.contact_name,
     date: startAt.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', timeZone: tz }),
     time: startAt.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', timeZone: tz }),
     employee: employee_name || 'sin asignar',
-  });
+  };
+
+  if (calendarSynced) {
+    response.calendar_synced = true;
+    response.message = 'Cita agendada y sincronizada con Google Calendar.';
+  } else {
+    response.calendar_synced = false;
+    response.message = 'Cita agendada correctamente. La sincronización con el calendario se completará en breve.';
+  }
+
+  return JSON.stringify(response);
 }
 
 async function executeCheckAvailability(
