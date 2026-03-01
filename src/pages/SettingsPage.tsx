@@ -95,6 +95,9 @@ const SettingsPage = () => {
   const [calendarAutoCreate, setCalendarAutoCreate] = useState(true);
   const [savingCalendar, setSavingCalendar] = useState(false);
   const [calendarLoaded, setCalendarLoaded] = useState(false);
+  const [calendarOAuthConnected, setCalendarOAuthConnected] = useState(false);
+  const [calendarHealthy, setCalendarHealthy] = useState<boolean | null>(null);
+  const [checkingHealth, setCheckingHealth] = useState(false);
 
   // Load tenant data
   useEffect(() => {
@@ -133,11 +136,12 @@ const SettingsPage = () => {
         setLogoUrl(settings.logo_url || '');
         setFaviconUrl(settings.favicon_url || '');
 
-        // Load calendar config
+        // Load calendar config from tenant (legacy) and check OAuth status
         const calConfig = (tenant.google_calendar_config || {}) as Record<string, any>;
         const userCalConfig = calConfig?.users?.[user!.id] || {};
         setCalendarEmail(userCalConfig.email || profile.email || user!.email || '');
-        setCalendarConnected(!!userCalConfig.connected);
+        setCalendarConnected(!!userCalConfig.connected || !!userCalConfig.oauth_connected);
+        setCalendarOAuthConnected(!!userCalConfig.oauth_connected);
         setCalendarSyncEnabled(userCalConfig.sync_enabled !== false);
         setCalendarAutoCreate(userCalConfig.auto_create !== false);
         setCalendarLoaded(true);
@@ -515,15 +519,50 @@ const SettingsPage = () => {
     return data.tenant_id;
   };
 
-  const handleSaveCalendar = async (connect: boolean) => {
-    if (connect && !calendarEmail.trim()) {
-      toast.error('Ingresa tu correo electrónico');
-      return;
+  const handleConnectGoogleCalendar = async () => {
+    setSavingCalendar(true);
+    try {
+      const { data: session } = await supabase.auth.getSession();
+      const token = session?.session?.access_token;
+      if (!token) throw new Error('No autenticado');
+
+      const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+      const res = await fetch(
+        `https://${projectId}.supabase.co/functions/v1/google-calendar-auth`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({ action: 'initiate' }),
+        },
+      );
+
+      const data = await res.json();
+      if (data.auth_url) {
+        // Open Google OAuth in a popup
+        const popup = window.open(data.auth_url, 'google-calendar-auth', 'width=600,height=700,scrollbars=yes');
+
+        // Poll for popup close
+        const pollTimer = setInterval(async () => {
+          if (popup?.closed) {
+            clearInterval(pollTimer);
+            // Check if connection was successful
+            await checkCalendarStatus();
+            setSavingCalendar(false);
+          }
+        }, 1000);
+      } else {
+        throw new Error(data.error || 'Error al obtener URL de autorización');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Error al conectar con Google Calendar');
+      setSavingCalendar(false);
     }
-    if (connect && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(calendarEmail.trim())) {
-      toast.error('Ingresa un correo válido');
-      return;
-    }
+  };
+
+  const handleDisconnectCalendar = async () => {
     setSavingCalendar(true);
     try {
       const tenantId = await getTenantId();
@@ -532,39 +571,88 @@ const SettingsPage = () => {
         .select('google_calendar_config')
         .eq('id', tenantId)
         .maybeSingle();
-      
+
       const currentConfig = ((tenant?.google_calendar_config || {}) as Record<string, any>);
       const users = currentConfig.users || {};
-      
-      if (connect) {
-        users[user!.id] = {
-          email: calendarEmail.trim(),
-          connected: true,
-          sync_enabled: calendarSyncEnabled,
-          auto_create: calendarAutoCreate,
-          connected_at: new Date().toISOString(),
-        };
-      } else {
-        delete users[user!.id];
-      }
+      delete users[user!.id];
 
-      const { error } = await supabase
+      await supabase
         .from('tenants')
         .update({ google_calendar_config: { ...currentConfig, users } } as any)
         .eq('id', tenantId);
-      if (error) throw error;
 
-      setCalendarConnected(connect);
-      if (!connect) {
-        setCalendarEmail('');
-        setCalendarSyncEnabled(true);
-        setCalendarAutoCreate(true);
-      }
-      toast.success(connect ? 'Calendario vinculado correctamente' : 'Calendario desvinculado');
+      // Delete tokens
+      await supabase
+        .from('google_calendar_tokens' as any)
+        .delete()
+        .eq('user_id', user!.id);
+
+      setCalendarConnected(false);
+      setCalendarOAuthConnected(false);
+      setCalendarEmail('');
+      setCalendarHealthy(null);
+      toast.success('Calendario desvinculado');
     } catch (err: any) {
-      toast.error(err.message || 'Error al guardar configuración de calendario');
+      toast.error(err.message || 'Error al desvincular');
     } finally {
       setSavingCalendar(false);
+    }
+  };
+
+  const checkCalendarStatus = async () => {
+    try {
+      const { data: session } = await supabase.auth.getSession();
+      const token = session?.session?.access_token;
+      if (!token) return;
+
+      const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+      const res = await fetch(
+        `https://${projectId}.supabase.co/functions/v1/google-calendar-auth`,
+        {
+          method: 'GET',
+          headers: { 'Authorization': `Bearer ${token}` },
+        },
+      );
+      const data = await res.json();
+      setCalendarOAuthConnected(data.connected);
+      setCalendarConnected(data.connected);
+      if (data.email) setCalendarEmail(data.email);
+      setCalendarLoaded(true);
+    } catch { /* ignore */ }
+  };
+
+  const handleCheckHealth = async () => {
+    setCheckingHealth(true);
+    try {
+      const { data: session } = await supabase.auth.getSession();
+      const token = session?.session?.access_token;
+      if (!token) throw new Error('No autenticado');
+
+      const tenantId = await getTenantId();
+      const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+      const res = await fetch(
+        `https://${projectId}.supabase.co/functions/v1/calendar-sync`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({ action: 'health_check', user_id: user!.id, tenant_id: tenantId }),
+        },
+      );
+      const data = await res.json();
+      setCalendarHealthy(data.healthy);
+      if (data.healthy) {
+        toast.success(`Calendario conectado correctamente (${data.email})`);
+      } else {
+        toast.error(data.error || 'El calendario no tiene permisos de escritura');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Error al verificar');
+      setCalendarHealthy(false);
+    } finally {
+      setCheckingHealth(false);
     }
   };
 
@@ -810,45 +898,48 @@ const SettingsPage = () => {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    <div>
-                      <label className="text-xs font-medium text-muted-foreground mb-1 block">
-                        Correo electrónico del calendario
-                      </label>
-                      <div className="flex items-center gap-2">
-                        <Mail size={14} className="text-muted-foreground shrink-0" />
-                        <input
-                          className={inputClass}
-                          value={calendarEmail}
-                          onChange={e => setCalendarEmail(e.target.value)}
-                          placeholder="tu@gmail.com"
-                          type="email"
-                          maxLength={255}
-                          disabled={calendarConnected}
-                        />
+                    {calendarConnected && calendarEmail && (
+                      <div className="flex items-center gap-2 text-sm text-foreground">
+                        <Mail size={14} className="text-muted-foreground" />
+                        <span>{calendarEmail}</span>
                       </div>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Usa tu cuenta de Google para sincronizar con Google Calendar.
-                      </p>
-                    </div>
+                    )}
 
                     {!calendarConnected ? (
                       <button
-                        disabled={savingCalendar || !calendarEmail.trim()}
-                        onClick={() => handleSaveCalendar(true)}
+                        disabled={savingCalendar}
+                        onClick={handleConnectGoogleCalendar}
                         className="bg-primary text-primary-foreground text-sm px-5 py-2.5 rounded-lg hover:opacity-90 disabled:opacity-40 flex items-center gap-2 font-medium w-full justify-center"
                       >
                         {savingCalendar ? <Loader2 size={14} className="animate-spin" /> : <Link2 size={14} />}
-                        Vincular calendario
+                        Conectar con Google Calendar
                       </button>
                     ) : (
-                      <button
-                        disabled={savingCalendar}
-                        onClick={() => handleSaveCalendar(false)}
-                        className="text-sm px-4 py-2 rounded-lg border border-destructive/30 text-destructive hover:bg-destructive/10 flex items-center gap-2 font-medium"
-                      >
-                        {savingCalendar ? <Loader2 size={14} className="animate-spin" /> : <Unlink size={14} />}
-                        Desvincular calendario
-                      </button>
+                      <div className="flex gap-2">
+                        <button
+                          disabled={checkingHealth}
+                          onClick={handleCheckHealth}
+                          className="text-sm px-4 py-2 rounded-lg border border-border text-foreground hover:bg-secondary flex items-center gap-2 font-medium"
+                        >
+                          {checkingHealth ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                          Probar conexión
+                        </button>
+                        <button
+                          disabled={savingCalendar}
+                          onClick={handleDisconnectCalendar}
+                          className="text-sm px-4 py-2 rounded-lg border border-destructive/30 text-destructive hover:bg-destructive/10 flex items-center gap-2 font-medium"
+                        >
+                          {savingCalendar ? <Loader2 size={14} className="animate-spin" /> : <Unlink size={14} />}
+                          Desvincular
+                        </button>
+                      </div>
+                    )}
+
+                    {calendarHealthy !== null && (
+                      <div className={`text-xs flex items-center gap-1.5 ${calendarHealthy ? 'text-primary' : 'text-destructive'}`}>
+                        {calendarHealthy ? <CheckCircle size={12} /> : <XCircle size={12} />}
+                        {calendarHealthy ? 'Calendario verificado con permisos de escritura' : 'No se pudo verificar el calendario'}
+                      </div>
                     )}
                   </div>
                 )}

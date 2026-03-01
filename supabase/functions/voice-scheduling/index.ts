@@ -153,6 +153,9 @@ serve(async (req) => {
       const endDate = new Date(startDate);
       endDate.setMinutes(endDate.getMinutes() + 30);
 
+      // Build idempotency key
+      const idempotencyKey = `${tenant_id}:${contact_name}:${startDate.toISOString()}:${service_type || 'general'}:${employee_id || 'unassigned'}`;
+
       const { data: appointment, error: insertErr } = await supabase
         .from('appointments')
         .insert({
@@ -168,11 +171,26 @@ serve(async (req) => {
           source: source || 'call',
           call_record_id: call_record_id || null,
           status: 'scheduled',
+          calendar_sync_status: 'PENDING_SYNC',
+          idempotency_key: idempotencyKey,
         })
         .select('id, start_at, end_at, contact_name, service_type, status')
         .single();
 
       if (insertErr) throw insertErr;
+
+      // Trigger calendar sync
+      if (appointment.id) {
+        try {
+          await fetch(`${SUPABASE_URL}/functions/v1/calendar-sync`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+            body: JSON.stringify({ action: 'sync_appointment', appointment_id: appointment.id }),
+          });
+        } catch (syncErr) {
+          console.error('Calendar sync trigger error:', syncErr);
+        }
+      }
 
       return jsonResp({
         success: true,

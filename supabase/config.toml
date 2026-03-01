@@ -50,3 +50,9 @@ verify_jwt = false
 
 [functions.send-reminders]
 verify_jwt = false
+
+[functions.google-calendar-auth]
+verify_jwt = false
+
+[functions.calendar-sync]
+verify_jwt = false

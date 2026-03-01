@@ -17,6 +17,8 @@ export type Database = {
       appointments: {
         Row: {
           calendar_event_id: string | null
+          calendar_sync_error: string | null
+          calendar_sync_status: string
           call_record_id: string | null
           contact_email: string | null
           contact_name: string
@@ -25,17 +27,22 @@ export type Database = {
           deleted_at: string | null
           end_at: string
           id: string
+          idempotency_key: string | null
+          last_sync_attempt: string | null
           notes: string | null
           service_type: string | null
           source: string | null
           start_at: string
           status: string
+          sync_attempts: number
           tenant_id: string
           updated_at: string
           user_id: string | null
         }
         Insert: {
           calendar_event_id?: string | null
+          calendar_sync_error?: string | null
+          calendar_sync_status?: string
           call_record_id?: string | null
           contact_email?: string | null
           contact_name: string
@@ -44,17 +51,22 @@ export type Database = {
           deleted_at?: string | null
           end_at: string
           id?: string
+          idempotency_key?: string | null
+          last_sync_attempt?: string | null
           notes?: string | null
           service_type?: string | null
           source?: string | null
           start_at: string
           status?: string
+          sync_attempts?: number
           tenant_id: string
           updated_at?: string
           user_id?: string | null
         }
         Update: {
           calendar_event_id?: string | null
+          calendar_sync_error?: string | null
+          calendar_sync_status?: string
           call_record_id?: string | null
           contact_email?: string | null
           contact_name?: string
@@ -63,11 +75,14 @@ export type Database = {
           deleted_at?: string | null
           end_at?: string
           id?: string
+          idempotency_key?: string | null
+          last_sync_attempt?: string | null
           notes?: string | null
           service_type?: string | null
           source?: string | null
           start_at?: string
           status?: string
+          sync_attempts?: number
           tenant_id?: string
           updated_at?: string
           user_id?: string | null
@@ -527,6 +542,59 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "expenses_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      google_calendar_tokens: {
+        Row: {
+          access_token: string
+          calendar_id: string | null
+          created_at: string
+          email: string | null
+          id: string
+          refresh_token: string
+          scopes: string[] | null
+          status: string
+          tenant_id: string
+          token_expires_at: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          access_token: string
+          calendar_id?: string | null
+          created_at?: string
+          email?: string | null
+          id?: string
+          refresh_token: string
+          scopes?: string[] | null
+          status?: string
+          tenant_id: string
+          token_expires_at: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          access_token?: string
+          calendar_id?: string | null
+          created_at?: string
+          email?: string | null
+          id?: string
+          refresh_token?: string
+          scopes?: string[] | null
+          status?: string
+          tenant_id?: string
+          token_expires_at?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "google_calendar_tokens_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
