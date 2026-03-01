@@ -1,9 +1,16 @@
 import { useState, useCallback, useEffect } from 'react';
-import { CalendarPlus, Phone, MessageSquare, Monitor, User, Clock, CheckCircle2, XCircle, AlertCircle, Plus, ChevronLeft, ChevronRight, RefreshCw, Users } from 'lucide-react';
+import { CalendarPlus, Phone, MessageSquare, Monitor, User, Clock, CheckCircle2, XCircle, AlertCircle, Plus, ChevronLeft, ChevronRight, RefreshCw, Users, Pencil, Trash2, MoreHorizontal, X } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, eachDayOfInterval, addWeeks, subWeeks, isSameDay, addDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 
 interface Appointment {
   id: string;
@@ -18,6 +25,8 @@ interface Appointment {
   notes: string | null;
   userId: string | null;
   employeeName?: string;
+  calendarSyncStatus?: string;
+  calendarEventId?: string | null;
 }
 
 interface Employee {
@@ -33,12 +42,38 @@ interface AvailabilityRule {
   active: boolean;
 }
 
+interface AppointmentForm {
+  contactName: string;
+  contactPhone: string;
+  contactEmail: string;
+  serviceType: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  userId: string;
+  notes: string;
+  status: string;
+}
+
+const emptyForm: AppointmentForm = {
+  contactName: '',
+  contactPhone: '',
+  contactEmail: '',
+  serviceType: '',
+  date: '',
+  startTime: '',
+  endTime: '',
+  userId: '',
+  notes: '',
+  status: 'scheduled',
+};
+
 const statusConfig: Record<string, { label: string; className: string; icon: any }> = {
   scheduled: { label: 'Agendada', className: 'bg-primary/10 text-primary', icon: Clock },
-  confirmed: { label: 'Confirmada', className: 'bg-success/10 text-success', icon: CheckCircle2 },
+  confirmed: { label: 'Confirmada', className: 'bg-green-500/10 text-green-600', icon: CheckCircle2 },
   completed: { label: 'Completada', className: 'bg-muted text-muted-foreground', icon: CheckCircle2 },
   cancelled: { label: 'Cancelada', className: 'bg-destructive/10 text-destructive', icon: XCircle },
-  no_show: { label: 'No asistió', className: 'bg-warning/10 text-warning', icon: AlertCircle },
+  no_show: { label: 'No asistió', className: 'bg-orange-500/10 text-orange-600', icon: AlertCircle },
 };
 
 const sourceIcons: Record<string, { icon: any; label: string }> = {
@@ -47,7 +82,7 @@ const sourceIcons: Record<string, { icon: any; label: string }> = {
   app: { icon: Monitor, label: 'App' },
 };
 
-const HOURS = Array.from({ length: 12 }, (_, i) => i + 8); // 8:00 - 19:00
+const HOURS = Array.from({ length: 12 }, (_, i) => i + 8);
 
 const AppointmentsPage = () => {
   const [view, setView] = useState<'list' | 'calendar'>('calendar');
@@ -57,6 +92,14 @@ const AppointmentsPage = () => {
   const [availRules, setAvailRules] = useState<AvailabilityRule[]>([]);
   const [selectedEmployee, setSelectedEmployee] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  // Dialog states
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
+  const [form, setForm] = useState<AppointmentForm>({ ...emptyForm });
 
   const weekStart = startOfWeek(currentWeek, { weekStartsOn: 1 });
   const weekEnd = endOfWeek(currentWeek, { weekStartsOn: 1 });
@@ -106,10 +149,13 @@ const AppointmentsPage = () => {
           notes: a.notes,
           userId: a.user_id,
           employeeName: a.user_id ? profileMap.get(a.user_id) || 'Desconocido' : 'Sin asignar',
+          calendarSyncStatus: a.calendar_sync_status,
+          calendarEventId: a.calendar_event_id,
         })));
       }
     } catch (err) {
       console.error('Error loading appointments:', err);
+      toast.error('Error al cargar citas');
     } finally {
       setLoading(false);
     }
@@ -126,6 +172,208 @@ const AppointmentsPage = () => {
     return () => { supabase.removeChannel(channel); };
   }, [loadData]);
 
+  // ─── CREATE ───
+  const handleCreate = async () => {
+    if (!form.contactName || !form.date || !form.startTime) {
+      toast.error('Nombre, fecha y hora de inicio son requeridos');
+      return;
+    }
+    setSaving(true);
+    try {
+      const startAt = new Date(`${form.date}T${form.startTime}:00`);
+      const endAt = form.endTime
+        ? new Date(`${form.date}T${form.endTime}:00`)
+        : new Date(startAt.getTime() + 30 * 60000);
+
+      if (endAt <= startAt) {
+        toast.error('La hora de fin debe ser posterior a la hora de inicio');
+        setSaving(false);
+        return;
+      }
+
+      const { data: apt, error } = await supabase
+        .from('appointments')
+        .insert({
+          contact_name: form.contactName,
+          contact_phone: form.contactPhone || null,
+          contact_email: form.contactEmail || null,
+          service_type: form.serviceType || null,
+          start_at: startAt.toISOString(),
+          end_at: endAt.toISOString(),
+          user_id: form.userId || null,
+          notes: form.notes || null,
+          source: 'app',
+          status: form.status || 'scheduled',
+          calendar_sync_status: 'PENDING_SYNC',
+          tenant_id: (await supabase.rpc('get_user_tenant_id', { _user_id: (await supabase.auth.getUser()).data.user?.id })).data,
+        })
+        .select('id, user_id')
+        .single();
+
+      if (error) throw error;
+
+      // Trigger calendar sync
+      if (apt?.user_id) {
+        triggerCalendarSync(apt.id, 'sync_appointment');
+      }
+
+      toast.success('Cita creada exitosamente');
+      setShowCreateDialog(false);
+      setForm({ ...emptyForm });
+    } catch (err: any) {
+      console.error('Create appointment error:', err);
+      toast.error(err.message || 'Error al crear la cita');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ─── EDIT ───
+  const handleEdit = async () => {
+    if (!selectedAppointment || !form.contactName || !form.date || !form.startTime) {
+      toast.error('Nombre, fecha y hora de inicio son requeridos');
+      return;
+    }
+    setSaving(true);
+    try {
+      const startAt = new Date(`${form.date}T${form.startTime}:00`);
+      const endAt = form.endTime
+        ? new Date(`${form.date}T${form.endTime}:00`)
+        : new Date(startAt.getTime() + 30 * 60000);
+
+      if (endAt <= startAt) {
+        toast.error('La hora de fin debe ser posterior a la hora de inicio');
+        setSaving(false);
+        return;
+      }
+
+      const { error } = await supabase
+        .from('appointments')
+        .update({
+          contact_name: form.contactName,
+          contact_phone: form.contactPhone || null,
+          contact_email: form.contactEmail || null,
+          service_type: form.serviceType || null,
+          start_at: startAt.toISOString(),
+          end_at: endAt.toISOString(),
+          user_id: form.userId || null,
+          notes: form.notes || null,
+          status: form.status,
+        })
+        .eq('id', selectedAppointment.id);
+
+      if (error) throw error;
+
+      // Trigger calendar update/sync
+      if (selectedAppointment.calendarEventId) {
+        triggerCalendarSync(selectedAppointment.id, 'update_event');
+      } else if (form.userId) {
+        triggerCalendarSync(selectedAppointment.id, 'sync_appointment');
+      }
+
+      toast.success('Cita actualizada exitosamente');
+      setShowEditDialog(false);
+      setSelectedAppointment(null);
+    } catch (err: any) {
+      console.error('Edit appointment error:', err);
+      toast.error(err.message || 'Error al actualizar la cita');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ─── CANCEL/DELETE ───
+  const handleCancel = async () => {
+    if (!selectedAppointment) return;
+    setSaving(true);
+    try {
+      const { error } = await supabase
+        .from('appointments')
+        .update({ status: 'cancelled' })
+        .eq('id', selectedAppointment.id);
+
+      if (error) throw error;
+
+      // Delete from Google Calendar
+      if (selectedAppointment.calendarEventId) {
+        triggerCalendarSync(selectedAppointment.id, 'cancel_event');
+      }
+
+      toast.success('Cita cancelada exitosamente');
+      setShowDeleteDialog(false);
+      setSelectedAppointment(null);
+    } catch (err: any) {
+      console.error('Cancel appointment error:', err);
+      toast.error(err.message || 'Error al cancelar la cita');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ─── STATUS CHANGE ───
+  const handleStatusChange = async (apt: Appointment, newStatus: string) => {
+    try {
+      const { error } = await supabase
+        .from('appointments')
+        .update({ status: newStatus })
+        .eq('id', apt.id);
+
+      if (error) throw error;
+
+      if (newStatus === 'cancelled' && apt.calendarEventId) {
+        triggerCalendarSync(apt.id, 'cancel_event');
+      }
+
+      toast.success(`Estado cambiado a: ${statusConfig[newStatus]?.label || newStatus}`);
+    } catch (err: any) {
+      toast.error(err.message || 'Error al cambiar estado');
+    }
+  };
+
+  // ─── CALENDAR SYNC HELPER ───
+  const triggerCalendarSync = async (appointmentId: string, action: string) => {
+    try {
+      const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+      if (!projectId) return;
+      await supabase.functions.invoke('calendar-sync', {
+        body: { action, appointment_id: appointmentId },
+      });
+    } catch (err) {
+      console.error('Calendar sync trigger error:', err);
+    }
+  };
+
+  // ─── OPEN EDIT DIALOG ───
+  const openEditDialog = (apt: Appointment) => {
+    setSelectedAppointment(apt);
+    setForm({
+      contactName: apt.contactName,
+      contactPhone: apt.contactPhone || '',
+      contactEmail: apt.contactEmail || '',
+      serviceType: apt.serviceType || '',
+      date: format(apt.startAt, 'yyyy-MM-dd'),
+      startTime: format(apt.startAt, 'HH:mm'),
+      endTime: format(apt.endAt, 'HH:mm'),
+      userId: apt.userId || '',
+      notes: apt.notes || '',
+      status: apt.status,
+    });
+    setShowEditDialog(true);
+  };
+
+  // ─── OPEN CREATE DIALOG ───
+  const openCreateDialog = (date?: Date, hour?: number) => {
+    const d = date || new Date();
+    const h = hour ?? 9;
+    setForm({
+      ...emptyForm,
+      date: format(d, 'yyyy-MM-dd'),
+      startTime: `${h.toString().padStart(2, '0')}:00`,
+      endTime: `${h.toString().padStart(2, '0')}:30`,
+    });
+    setShowCreateDialog(true);
+  };
+
   const filteredAppointments = selectedEmployee
     ? appointments.filter(a => a.userId === selectedEmployee)
     : appointments;
@@ -140,6 +388,77 @@ const AppointmentsPage = () => {
     cancelled: appointments.filter(a => a.status === 'cancelled').length,
   };
 
+  // ─── FORM FIELDS (shared between create/edit) ───
+  const renderFormFields = () => (
+    <div className="grid gap-4 py-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="contactName">Nombre del cliente *</Label>
+          <Input id="contactName" value={form.contactName} onChange={e => setForm(f => ({ ...f, contactName: e.target.value }))} placeholder="Nombre completo" />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="contactPhone">Teléfono</Label>
+          <Input id="contactPhone" value={form.contactPhone} onChange={e => setForm(f => ({ ...f, contactPhone: e.target.value }))} placeholder="+52..." />
+        </div>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="contactEmail">Email</Label>
+          <Input id="contactEmail" type="email" value={form.contactEmail} onChange={e => setForm(f => ({ ...f, contactEmail: e.target.value }))} placeholder="correo@ejemplo.com" />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="serviceType">Tipo de servicio</Label>
+          <Input id="serviceType" value={form.serviceType} onChange={e => setForm(f => ({ ...f, serviceType: e.target.value }))} placeholder="Ej: Consulta, Corte, etc." />
+        </div>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="date">Fecha *</Label>
+          <Input id="date" type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="startTime">Hora inicio *</Label>
+          <Input id="startTime" type="time" value={form.startTime} onChange={e => setForm(f => ({ ...f, startTime: e.target.value }))} />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="endTime">Hora fin</Label>
+          <Input id="endTime" type="time" value={form.endTime} onChange={e => setForm(f => ({ ...f, endTime: e.target.value }))} />
+        </div>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label>Empleado asignado</Label>
+          <Select value={form.userId} onValueChange={v => setForm(f => ({ ...f, userId: v === '__none__' ? '' : v }))}>
+            <SelectTrigger><SelectValue placeholder="Sin asignar" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">Sin asignar</SelectItem>
+              {employees.map(emp => (
+                <SelectItem key={emp.userId} value={emp.userId}>{emp.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label>Estado</Label>
+          <Select value={form.status} onValueChange={v => setForm(f => ({ ...f, status: v }))}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="scheduled">Agendada</SelectItem>
+              <SelectItem value="confirmed">Confirmada</SelectItem>
+              <SelectItem value="completed">Completada</SelectItem>
+              <SelectItem value="cancelled">Cancelada</SelectItem>
+              <SelectItem value="no_show">No asistió</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="notes">Notas</Label>
+        <Textarea id="notes" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Notas adicionales..." rows={2} />
+      </div>
+    </div>
+  );
+
   return (
     <div className="p-4 sm:p-6 h-full flex flex-col max-w-full overflow-hidden">
       {/* Header */}
@@ -153,6 +472,9 @@ const AppointmentsPage = () => {
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          <Button size="sm" onClick={() => openCreateDialog()} className="gap-1">
+            <Plus size={14} /> Nueva Cita
+          </Button>
           <button onClick={() => setView('calendar')} className={`text-xs px-3 py-1.5 rounded-md ${view === 'calendar' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-secondary'}`}>Calendario</button>
           <button onClick={() => setView('list')} className={`text-xs px-3 py-1.5 rounded-md ${view === 'list' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-secondary'}`}>Lista</button>
           <button onClick={loadData} className="p-1.5 rounded-lg bg-muted hover:bg-muted/80 text-muted-foreground"><RefreshCw size={14} /></button>
@@ -161,22 +483,17 @@ const AppointmentsPage = () => {
 
       {/* Stats */}
       <div className="grid grid-cols-4 gap-2 sm:gap-3 mb-4 shrink-0">
-        <div className="bg-card border border-border rounded-lg p-2 sm:p-3 text-center">
-          <p className="text-lg sm:text-xl font-bold text-foreground">{stats.total}</p>
-          <p className="text-[10px] sm:text-xs text-muted-foreground">Total</p>
-        </div>
-        <div className="bg-card border border-border rounded-lg p-2 sm:p-3 text-center">
-          <p className="text-lg sm:text-xl font-bold text-primary">{stats.scheduled}</p>
-          <p className="text-[10px] sm:text-xs text-muted-foreground">Agendadas</p>
-        </div>
-        <div className="bg-card border border-border rounded-lg p-2 sm:p-3 text-center">
-          <p className="text-lg sm:text-xl font-bold text-success">{stats.confirmed}</p>
-          <p className="text-[10px] sm:text-xs text-muted-foreground">Confirmadas</p>
-        </div>
-        <div className="bg-card border border-border rounded-lg p-2 sm:p-3 text-center">
-          <p className="text-lg sm:text-xl font-bold text-destructive">{stats.cancelled}</p>
-          <p className="text-[10px] sm:text-xs text-muted-foreground">Canceladas</p>
-        </div>
+        {[
+          { label: 'Total', value: stats.total, cls: 'text-foreground' },
+          { label: 'Agendadas', value: stats.scheduled, cls: 'text-primary' },
+          { label: 'Confirmadas', value: stats.confirmed, cls: 'text-green-600' },
+          { label: 'Canceladas', value: stats.cancelled, cls: 'text-destructive' },
+        ].map(s => (
+          <div key={s.label} className="bg-card border border-border rounded-lg p-2 sm:p-3 text-center">
+            <p className={`text-lg sm:text-xl font-bold ${s.cls}`}>{s.value}</p>
+            <p className="text-[10px] sm:text-xs text-muted-foreground">{s.label}</p>
+          </div>
+        ))}
       </div>
 
       {/* Employee filter + Week navigation */}
@@ -204,7 +521,6 @@ const AppointmentsPage = () => {
       {/* Calendar View */}
       {view === 'calendar' && (
         <div className="flex-1 border border-border rounded-xl bg-card overflow-auto min-h-0">
-          {/* Day headers */}
           <div className="grid grid-cols-[60px_repeat(7,1fr)] border-b border-border sticky top-0 bg-card z-10">
             <div className="border-r border-border" />
             {weekDays.map(day => {
@@ -218,7 +534,6 @@ const AppointmentsPage = () => {
             })}
           </div>
 
-          {/* Time grid */}
           {HOURS.map(hour => (
             <div key={hour} className="grid grid-cols-[60px_repeat(7,1fr)] border-b border-border last:border-b-0 min-h-[60px]">
               <div className="border-r border-border flex items-start justify-end pr-2 pt-1">
@@ -236,13 +551,22 @@ const AppointmentsPage = () => {
                 );
 
                 return (
-                  <div key={day.toISOString()} className={`border-r border-border last:border-r-0 p-0.5 ${
-                    isToday ? 'bg-primary/5' : hasAvailability ? '' : 'bg-muted/20'
-                  }`}>
+                  <div
+                    key={day.toISOString()}
+                    className={`border-r border-border last:border-r-0 p-0.5 cursor-pointer hover:bg-primary/5 transition-colors ${
+                      isToday ? 'bg-primary/5' : hasAvailability ? '' : 'bg-muted/20'
+                    }`}
+                    onClick={() => openCreateDialog(day, hour)}
+                  >
                     {dayApts.map(apt => {
                       const sc = statusConfig[apt.status] || statusConfig.scheduled;
                       return (
-                        <div key={apt.id} className={`text-[10px] rounded px-1 py-0.5 mb-0.5 truncate cursor-pointer ${sc.className}`} title={`${apt.contactName} - ${apt.serviceType || 'General'}`}>
+                        <div
+                          key={apt.id}
+                          className={`text-[10px] rounded px-1 py-0.5 mb-0.5 truncate cursor-pointer ${sc.className} hover:opacity-80`}
+                          title={`${apt.contactName} - ${apt.serviceType || 'General'}`}
+                          onClick={(e) => { e.stopPropagation(); openEditDialog(apt); }}
+                        >
                           <span className="font-medium">{format(apt.startAt, 'HH:mm')}</span>{' '}
                           <span className="hidden sm:inline">{apt.contactName}</span>
                         </div>
@@ -263,7 +587,9 @@ const AppointmentsPage = () => {
             <div className="bg-card border border-border rounded-xl p-8 text-center text-muted-foreground">
               <CalendarPlus size={32} className="mx-auto mb-2 opacity-50" />
               <p className="text-sm">No hay citas para esta semana</p>
-              <p className="text-xs mt-1">El Voice Agent puede agendar citas automáticamente</p>
+              <Button variant="outline" size="sm" className="mt-3" onClick={() => openCreateDialog()}>
+                <Plus size={14} className="mr-1" /> Crear primera cita
+              </Button>
             </div>
           ) : (
             <div className="space-y-2">
@@ -281,6 +607,39 @@ const AppointmentsPage = () => {
                         {apt.employeeName && (
                           <span className="inline-flex items-center gap-1 text-xs text-muted-foreground"><User size={12} /> {apt.employeeName}</span>
                         )}
+                        {/* Actions dropdown */}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button className="p-1 rounded hover:bg-muted text-muted-foreground"><MoreHorizontal size={14} /></button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => openEditDialog(apt)}>
+                              <Pencil size={14} className="mr-2" /> Editar
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            {apt.status !== 'confirmed' && (
+                              <DropdownMenuItem onClick={() => handleStatusChange(apt, 'confirmed')}>
+                                <CheckCircle2 size={14} className="mr-2" /> Confirmar
+                              </DropdownMenuItem>
+                            )}
+                            {apt.status !== 'completed' && (
+                              <DropdownMenuItem onClick={() => handleStatusChange(apt, 'completed')}>
+                                <CheckCircle2 size={14} className="mr-2" /> Completar
+                              </DropdownMenuItem>
+                            )}
+                            {apt.status !== 'no_show' && (
+                              <DropdownMenuItem onClick={() => handleStatusChange(apt, 'no_show')}>
+                                <AlertCircle size={14} className="mr-2" /> No asistió
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuSeparator />
+                            {apt.status !== 'cancelled' && (
+                              <DropdownMenuItem className="text-destructive" onClick={() => { setSelectedAppointment(apt); setShowDeleteDialog(true); }}>
+                                <XCircle size={14} className="mr-2" /> Cancelar
+                              </DropdownMenuItem>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </div>
                     <p className="font-medium text-foreground">{apt.contactName}</p>
@@ -292,6 +651,9 @@ const AppointmentsPage = () => {
                       </span>
                     </div>
                     {apt.notes && <p className="text-xs text-muted-foreground mt-2 italic">{apt.notes}</p>}
+                    {apt.calendarSyncStatus === 'SYNCED' && (
+                      <p className="text-[10px] text-green-600 mt-1">✓ Sincronizada con Google Calendar</p>
+                    )}
                   </div>
                 );
               })}
@@ -299,6 +661,54 @@ const AppointmentsPage = () => {
           )}
         </div>
       )}
+
+      {/* ─── CREATE DIALOG ─── */}
+      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Nueva Cita</DialogTitle>
+            <DialogDescription>Completa los datos para agendar una nueva cita.</DialogDescription>
+          </DialogHeader>
+          {renderFormFields()}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCreateDialog(false)}>Cancelar</Button>
+            <Button onClick={handleCreate} disabled={saving}>{saving ? 'Guardando...' : 'Crear Cita'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── EDIT DIALOG ─── */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Editar Cita</DialogTitle>
+            <DialogDescription>Modifica los datos de la cita.</DialogDescription>
+          </DialogHeader>
+          {renderFormFields()}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowEditDialog(false)}>Cancelar</Button>
+            <Button onClick={handleEdit} disabled={saving}>{saving ? 'Guardando...' : 'Guardar Cambios'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── DELETE/CANCEL DIALOG ─── */}
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cancelar Cita</DialogTitle>
+            <DialogDescription>
+              ¿Estás seguro de que deseas cancelar la cita de <strong>{selectedAppointment?.contactName}</strong> del{' '}
+              {selectedAppointment && format(selectedAppointment.startAt, "d 'de' MMMM 'a las' HH:mm", { locale: es })}?
+              {selectedAppointment?.calendarEventId && ' También se eliminará de Google Calendar.'}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>No, mantener</Button>
+            <Button variant="destructive" onClick={handleCancel} disabled={saving}>{saving ? 'Cancelando...' : 'Sí, cancelar cita'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
