@@ -16,7 +16,7 @@ const ChatPage = () => {
   const [showChat, setShowChat] = useState(false);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const isMobile = useIsMobile();
-  const onlineUsers = usePresence();
+  const onlineUsers = usePresence(false);
 
   // Fetch real employees from profiles table
   useEffect(() => {
@@ -24,7 +24,7 @@ const ChatPage = () => {
       const [profilesRes, rolesRes] = await Promise.all([
         supabase
           .from('profiles')
-          .select('user_id, name, avatar_url, status, email')
+          .select('user_id, name, avatar_url, status, email, phone, whatsapp_number')
           .eq('status', 'active'),
         supabase
           .from('user_roles')
@@ -55,6 +55,8 @@ const ChatPage = () => {
           role: roleMap[p.user_id] || 'Member',
           status: 'offline' as const,
           email: p.email || undefined,
+          phone: p.phone || undefined,
+          whatsappNumber: p.whatsapp_number || undefined,
         }));
         setTeamMembers(members);
       }
@@ -92,11 +94,40 @@ const ChatPage = () => {
   const activeChannel = allChannels.find(c => c.id === activeChannelId) || allChannels[0];
   const channelMessages = allMessages.filter(m => m.channelId === activeChannelId);
 
-  const handleSendMessage = (content: string) => {
+  const notifyOfflineRecipient = useCallback(async (recipient: TeamMember, content: string) => {
+    const to = recipient.whatsappNumber || recipient.phone;
+    if (!to) return;
+
+    const message = `🔔 Nuevo mensaje en Chat Interno\n\n${content}\n\nAbre la app para responder.`;
+    const { data, error } = await supabase.functions.invoke('twilio-send', {
+      body: { to, body: message },
+    });
+
+    if (error || !data?.ok) {
+      console.error('No se pudo enviar notificación por WhatsApp:', error || data);
+      return;
+    }
+
+    toast.info(`Se notificó por WhatsApp a ${recipient.name}`);
+  }, []);
+
+  const handleSendMessage = async (content: string) => {
     const newMsg: Message = {
       id: Date.now().toString(), channelId: activeChannelId, userId: '0', userName: 'Tú', userAvatar: '', content, timestamp: new Date(), isOwn: true,
     };
     setAllMessages(prev => [...prev, newMsg]);
+
+    // For DM: if recipient is offline, notify via WhatsApp
+    if (activeChannel?.type === 'direct') {
+      const recipientId = activeChannel.id.startsWith('dm-') ? activeChannel.id.replace('dm-', '') : null;
+      const recipient = recipientId
+        ? teamMembers.find(m => m.id === recipientId)
+        : teamMembers.find(m => m.name === activeChannel.name);
+
+      if (recipient && recipient.status !== 'online') {
+        await notifyOfflineRecipient(recipient, content);
+      }
+    }
   };
 
   const handleSelectChannel = (id: string) => {

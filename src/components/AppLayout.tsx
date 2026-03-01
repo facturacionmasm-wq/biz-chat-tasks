@@ -11,6 +11,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import NotificationBell from '@/components/NotificationBell';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
+import { usePresence } from '@/hooks/usePresence';
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
@@ -205,6 +206,9 @@ const AppLayout = ({ children }: AppLayoutProps) => {
   const branding = useBranding();
   const { user, userRole, signOut } = useAuth();
   const isMobile = useIsMobile();
+
+  // Track current user presence globally across the app
+  usePresence();
 
   const sidebarProps = { branding, location, user, userRole, signOut };
 
