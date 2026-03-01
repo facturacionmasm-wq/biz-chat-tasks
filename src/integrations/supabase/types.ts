@@ -509,6 +509,48 @@ export type Database = {
           },
         ]
       }
+      churn_model_metrics: {
+        Row: {
+          accuracy_last_30d: number | null
+          avg_churn_probability: number
+          created_at: string
+          high_risk_count: number
+          id: string
+          low_risk_count: number
+          medium_risk_count: number
+          model_version: string
+          offers_generated: number
+          run_date: string
+          tenants_evaluated: number
+        }
+        Insert: {
+          accuracy_last_30d?: number | null
+          avg_churn_probability?: number
+          created_at?: string
+          high_risk_count?: number
+          id?: string
+          low_risk_count?: number
+          medium_risk_count?: number
+          model_version?: string
+          offers_generated?: number
+          run_date?: string
+          tenants_evaluated?: number
+        }
+        Update: {
+          accuracy_last_30d?: number | null
+          avg_churn_probability?: number
+          created_at?: string
+          high_risk_count?: number
+          id?: string
+          low_risk_count?: number
+          medium_risk_count?: number
+          model_version?: string
+          offers_generated?: number
+          run_date?: string
+          tenants_evaluated?: number
+        }
+        Relationships: []
+      }
       contacts: {
         Row: {
           company: string | null
@@ -661,6 +703,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      fraud_thresholds: {
+        Row: {
+          action: string
+          active: boolean
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+          severity: string
+          threshold_value: number
+          updated_at: string
+        }
+        Insert: {
+          action?: string
+          active?: boolean
+          created_at?: string
+          description?: string | null
+          id?: string
+          name: string
+          severity?: string
+          threshold_value: number
+          updated_at?: string
+        }
+        Update: {
+          action?: string
+          active?: boolean
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
+          severity?: string
+          threshold_value?: number
+          updated_at?: string
+        }
+        Relationships: []
       }
       google_calendar_tokens: {
         Row: {
@@ -1600,6 +1678,63 @@ export type Database = {
           },
         ]
       }
+      tenant_offer_history: {
+        Row: {
+          churn_score_at_time: number | null
+          created_at: string
+          id: string
+          impact_revenue_30d: number | null
+          margin_at_time: number | null
+          offer_id: string | null
+          offer_type: string
+          response_action: string | null
+          response_at: string | null
+          status: string
+          tenant_id: string
+        }
+        Insert: {
+          churn_score_at_time?: number | null
+          created_at?: string
+          id?: string
+          impact_revenue_30d?: number | null
+          margin_at_time?: number | null
+          offer_id?: string | null
+          offer_type: string
+          response_action?: string | null
+          response_at?: string | null
+          status?: string
+          tenant_id: string
+        }
+        Update: {
+          churn_score_at_time?: number | null
+          created_at?: string
+          id?: string
+          impact_revenue_30d?: number | null
+          margin_at_time?: number | null
+          offer_id?: string | null
+          offer_type?: string
+          response_action?: string | null
+          response_at?: string | null
+          status?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_offer_history_offer_id_fkey"
+            columns: ["offer_id"]
+            isOneToOne: false
+            referencedRelation: "retention_offers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tenant_offer_history_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenant_pricing_adjustments: {
         Row: {
           active: boolean
@@ -1652,6 +1787,62 @@ export type Database = {
             foreignKeyName: "tenant_pricing_adjustments_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_rate_limits: {
+        Row: {
+          blocked_at: string | null
+          blocked_reason: string | null
+          blocked_until: string | null
+          calls_last_day: number
+          calls_last_day_reset_at: string
+          calls_last_hour: number
+          calls_last_hour_reset_at: string
+          id: string
+          is_blocked: boolean
+          max_calls_per_day: number
+          max_calls_per_hour: number
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          blocked_at?: string | null
+          blocked_reason?: string | null
+          blocked_until?: string | null
+          calls_last_day?: number
+          calls_last_day_reset_at?: string
+          calls_last_hour?: number
+          calls_last_hour_reset_at?: string
+          id?: string
+          is_blocked?: boolean
+          max_calls_per_day?: number
+          max_calls_per_hour?: number
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          blocked_at?: string | null
+          blocked_reason?: string | null
+          blocked_until?: string | null
+          calls_last_day?: number
+          calls_last_day_reset_at?: string
+          calls_last_hour?: number
+          calls_last_hour_reset_at?: string
+          id?: string
+          is_blocked?: boolean
+          max_calls_per_day?: number
+          max_calls_per_hour?: number
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_rate_limits_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
             referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
