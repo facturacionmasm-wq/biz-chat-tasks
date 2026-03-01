@@ -1,18 +1,32 @@
-import { useState } from 'react';
-import AppSidebar from '@/components/ChatSidebar';
+import { useState, useCallback } from 'react';
+import ChatSidebar from '@/components/ChatSidebar';
 import ChatArea from '@/components/ChatArea';
 import { channels as initialChannels, messages as initialMessages, teamMembers } from '@/data/mockData';
-import { Message } from '@/types/app';
+import { Channel, Message } from '@/types/app';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { ArrowLeft } from 'lucide-react';
+import { toast } from 'sonner';
 
 const ChatPage = () => {
   const [activeChannelId, setActiveChannelId] = useState('general');
   const [allMessages, setAllMessages] = useState<Message[]>(initialMessages);
+  const [allChannels, setAllChannels] = useState<Channel[]>(initialChannels);
   const [showChat, setShowChat] = useState(false);
   const isMobile = useIsMobile();
 
-  const activeChannel = initialChannels.find(c => c.id === activeChannelId) || initialChannels[0];
+  // Track channel members: channelId -> array of member IDs
+  const [channelMembers, setChannelMembers] = useState<Record<string, string[]>>(() => {
+    const map: Record<string, string[]> = {};
+    initialChannels.forEach(ch => {
+      if (ch.type === 'channel') {
+        // Default: all team members are in every channel
+        map[ch.id] = teamMembers.map(m => m.id);
+      }
+    });
+    return map;
+  });
+
+  const activeChannel = allChannels.find(c => c.id === activeChannelId) || allChannels[0];
   const channelMessages = allMessages.filter(m => m.channelId === activeChannelId);
 
   const handleSendMessage = (content: string) => {
@@ -27,6 +41,64 @@ const ChatPage = () => {
     if (isMobile) setShowChat(true);
   };
 
+  const handleCreateChannel = useCallback((name: string) => {
+    const exists = allChannels.some(c => c.name === name && c.type === 'channel');
+    if (exists) {
+      toast.error(`El canal #${name} ya existe`);
+      return;
+    }
+    const newChannel: Channel = {
+      id: `ch-${Date.now()}`,
+      name,
+      type: 'channel',
+      unread: 0,
+    };
+    setAllChannels(prev => [...prev, newChannel]);
+    setChannelMembers(prev => ({ ...prev, [newChannel.id]: teamMembers.map(m => m.id) }));
+    setActiveChannelId(newChannel.id);
+    if (isMobile) setShowChat(true);
+    toast.success(`Canal #${name} creado`);
+  }, [allChannels, isMobile]);
+
+  const handleCreateDM = useCallback((memberId: string) => {
+    const member = teamMembers.find(m => m.id === memberId);
+    if (!member) return;
+    const existing = allChannels.find(c => c.type === 'direct' && c.name === member.name);
+    if (existing) {
+      setActiveChannelId(existing.id);
+      if (isMobile) setShowChat(true);
+      return;
+    }
+    const newDM: Channel = {
+      id: `dm-${memberId}`,
+      name: member.name,
+      type: 'direct',
+      unread: 0,
+    };
+    setAllChannels(prev => [...prev, newDM]);
+    setActiveChannelId(newDM.id);
+    if (isMobile) setShowChat(true);
+    toast.success(`Chat con ${member.name} creado`);
+  }, [allChannels, isMobile]);
+
+  const handleAddMember = useCallback((memberId: string) => {
+    const member = teamMembers.find(m => m.id === memberId);
+    setChannelMembers(prev => ({
+      ...prev,
+      [activeChannelId]: [...(prev[activeChannelId] || []), memberId],
+    }));
+    toast.success(`${member?.name || 'Miembro'} agregado al canal`);
+  }, [activeChannelId]);
+
+  const handleRemoveMember = useCallback((memberId: string) => {
+    const member = teamMembers.find(m => m.id === memberId);
+    setChannelMembers(prev => ({
+      ...prev,
+      [activeChannelId]: (prev[activeChannelId] || []).filter(id => id !== memberId),
+    }));
+    toast.info(`${member?.name || 'Miembro'} removido del canal`);
+  }, [activeChannelId]);
+
   if (isMobile) {
     if (showChat) {
       return (
@@ -38,23 +110,53 @@ const ChatPage = () => {
             <span className="ml-2 text-sm font-medium text-foreground">#{activeChannel.name}</span>
           </div>
           <div className="flex-1 min-w-0">
-            <ChatArea channel={activeChannel} messages={channelMessages} onSendMessage={handleSendMessage} />
+            <ChatArea
+              channel={activeChannel}
+              messages={channelMessages}
+              onSendMessage={handleSendMessage}
+              teamMembers={teamMembers}
+              channelMembers={channelMembers[activeChannelId] || []}
+              onAddMember={handleAddMember}
+              onRemoveMember={handleRemoveMember}
+            />
           </div>
         </div>
       );
     }
     return (
       <div className="h-full">
-        <AppSidebar channels={initialChannels} activeChannelId={activeChannelId} onSelectChannel={handleSelectChannel} teamMembers={teamMembers} />
+        <ChatSidebar
+          channels={allChannels}
+          activeChannelId={activeChannelId}
+          onSelectChannel={handleSelectChannel}
+          teamMembers={teamMembers}
+          onCreateChannel={handleCreateChannel}
+          onCreateDM={handleCreateDM}
+        />
       </div>
     );
   }
 
   return (
     <div className="flex h-full">
-      <AppSidebar channels={initialChannels} activeChannelId={activeChannelId} onSelectChannel={handleSelectChannel} teamMembers={teamMembers} />
+      <ChatSidebar
+        channels={allChannels}
+        activeChannelId={activeChannelId}
+        onSelectChannel={handleSelectChannel}
+        teamMembers={teamMembers}
+        onCreateChannel={handleCreateChannel}
+        onCreateDM={handleCreateDM}
+      />
       <div className="flex-1 min-w-0">
-        <ChatArea channel={activeChannel} messages={channelMessages} onSendMessage={handleSendMessage} />
+        <ChatArea
+          channel={activeChannel}
+          messages={channelMessages}
+          onSendMessage={handleSendMessage}
+          teamMembers={teamMembers}
+          channelMembers={channelMembers[activeChannelId] || []}
+          onAddMember={handleAddMember}
+          onRemoveMember={handleRemoveMember}
+        />
       </div>
     </div>
   );
