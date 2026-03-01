@@ -898,12 +898,16 @@ const SettingsPage = () => {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {calendarConnected && calendarEmail && (
-                      <div className="flex items-center gap-2 text-sm text-foreground">
-                        <Mail size={14} className="text-muted-foreground" />
-                        <span>{calendarEmail}</span>
-                      </div>
-                    )}
+                    <div>
+                      <label className="text-sm font-medium text-foreground block mb-1">Correo de Google Calendar</label>
+                      <input
+                        className="w-full px-3 py-2 rounded-lg bg-secondary border border-border text-foreground text-sm"
+                        value={calendarEmail}
+                        onChange={e => setCalendarEmail(e.target.value)}
+                        placeholder="tu@gmail.com"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">Ingresa el correo de la cuenta de Google que deseas sincronizar</p>
+                    </div>
 
                     {!calendarConnected ? (
                       <button
