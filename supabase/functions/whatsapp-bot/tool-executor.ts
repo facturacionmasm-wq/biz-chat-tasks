@@ -44,6 +44,10 @@ export async function executeTool(
     return await executeDeleteBotInstruction(args, tenantId, supabase, conversation);
   }
 
+  if (toolName === 'send_whatsapp_message') {
+    return await executeSendWhatsAppMessage(args, tenantId, supabase, conversation, supabaseUrl, serviceRoleKey);
+  }
+
   return JSON.stringify({ error: 'Unknown tool' });
 }
 
@@ -420,6 +424,116 @@ async function executeDeleteBotInstruction(
     deleted: matches.map((m: any) => m.title),
     message: `Se eliminaron ${matches.length} instrucción(es) del bot.`,
   });
+}
+
+async function executeSendWhatsAppMessage(
+  args: any,
+  tenantId: string,
+  supabase: any,
+  conversation: any,
+  supabaseUrl: string,
+  serviceRoleKey: string,
+): Promise<string> {
+  const userId = conversation.bot_context?.user_id;
+
+  // Only authenticated employees can send messages
+  if (!userId) {
+    return JSON.stringify({ error: 'Debes estar autenticado como empleado para enviar mensajes.' });
+  }
+
+  const { recipient_name, recipient_phone, message } = args;
+  if (!message) return JSON.stringify({ error: 'El mensaje no puede estar vacío.' });
+
+  let targetPhone: string | null = recipient_phone || null;
+  let targetName: string | null = recipient_name || null;
+
+  // If no phone provided, search by name in profiles and contacts
+  if (!targetPhone && targetName) {
+    // Search in team profiles first
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('name, whatsapp_number, phone')
+      .eq('tenant_id', tenantId)
+      .eq('status', 'active')
+      .ilike('name', `%${targetName}%`)
+      .limit(1)
+      .maybeSingle();
+
+    if (profile) {
+      targetPhone = profile.whatsapp_number || profile.phone;
+      targetName = profile.name;
+    }
+
+    // If not found in profiles, search contacts
+    if (!targetPhone) {
+      const { data: contact } = await supabase
+        .from('contacts')
+        .select('name, phone')
+        .eq('tenant_id', tenantId)
+        .ilike('name', `%${targetName}%`)
+        .limit(1)
+        .maybeSingle();
+
+      if (contact) {
+        targetPhone = contact.phone;
+        targetName = contact.name;
+      }
+    }
+  }
+
+  if (!targetPhone) {
+    return JSON.stringify({
+      error: `No encontré el número de ${targetName || 'esa persona'}. Proporciona el número de teléfono directamente.`,
+    });
+  }
+
+  // Get tenant Twilio config
+  const TWILIO_ACCOUNT_SID = Deno.env.get('TWILIO_ACCOUNT_SID');
+  const TWILIO_AUTH_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN');
+  const TWILIO_PHONE_NUMBER = Deno.env.get('TWILIO_PHONE_NUMBER');
+
+  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_PHONE_NUMBER) {
+    return JSON.stringify({ error: 'No se encontró configuración de WhatsApp/Twilio para enviar el mensaje.' });
+  }
+
+  try {
+    const { sendTwilioMessage } = await import('./helpers.ts');
+    const result = await sendTwilioMessage(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER, targetPhone, message);
+
+    if (result.sid) {
+      // Log the outbound message
+      // Find or create conversation for recipient
+      const { data: recipientConv } = await supabase
+        .from('whatsapp_conversations')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .eq('contact_phone', targetPhone)
+        .maybeSingle();
+
+      if (recipientConv) {
+        await supabase.from('whatsapp_messages').insert({
+          tenant_id: tenantId,
+          conversation_id: recipientConv.id,
+          direction: 'out',
+          body: message,
+          status: 'sent',
+          metadata: { sent_by: userId, sent_by_name: conversation.bot_context?.user_name || 'Empleado', via: 'bot_tool' },
+        });
+      }
+
+      return JSON.stringify({
+        success: true,
+        recipient: targetName || targetPhone,
+        message_sid: result.sid,
+        message: `Mensaje enviado exitosamente a ${targetName || targetPhone}.`,
+      });
+    }
+
+    return JSON.stringify({ error: `Error al enviar: ${result.message || 'Error desconocido de Twilio'}` });
+  } catch (err) {
+    console.error('Send WhatsApp message error:', err);
+    return JSON.stringify({ error: 'Error al enviar el mensaje. Intenta de nuevo.' });
+  }
 }
 
 // ==================== Shared utility ====================

@@ -105,4 +105,20 @@ export const AI_TOOLS = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'send_whatsapp_message',
+      description: 'Enviar un mensaje de WhatsApp a una persona específica. Usa cuando un empleado diga "mándale un mensaje a X", "envíale a X que Y", "dile a X por WhatsApp que Y", "escríbele a X". Solo empleados autenticados pueden usar esta herramienta.',
+      parameters: {
+        type: 'object',
+        properties: {
+          recipient_name: { type: 'string', description: 'Nombre de la persona a quien enviar el mensaje. Puede ser un contacto existente o un empleado del equipo.' },
+          recipient_phone: { type: 'string', description: 'Número de teléfono del destinatario (opcional si se puede buscar por nombre). Formato: +521234567890' },
+          message: { type: 'string', description: 'El mensaje a enviar al destinatario.' },
+        },
+        required: ['message'],
+      },
+    },
+  },
 ];
