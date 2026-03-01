@@ -20,6 +20,7 @@ import AuditLogPage from "./pages/AuditLogPage";
 import AITrainingPage from "./pages/AITrainingPage";
 import ExpensesPage from "./pages/ExpensesPage";
 import AuthPage from "./pages/AuthPage";
+import OnboardingPage from "./pages/OnboardingPage";
 import CredentialsPage from "./pages/CredentialsPage";
 import InstallPage from "./pages/InstallPage";
 import NotFound from "./pages/NotFound";
@@ -28,7 +29,7 @@ import { Loader2 } from "lucide-react";
 const queryClient = new QueryClient();
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const { user, loading } = useAuth();
+  const { user, loading, onboardingCompleted } = useAuth();
 
   if (loading) {
     return (
@@ -39,6 +40,15 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   }
 
   if (!user) return <Navigate to="/auth" replace />;
+  if (onboardingCompleted === false) return <Navigate to="/onboarding" replace />;
+  return <>{children}</>;
+};
+
+const OnboardingRoute = ({ children }: { children: React.ReactNode }) => {
+  const { user, loading, onboardingCompleted } = useAuth();
+  if (loading) return null;
+  if (!user) return <Navigate to="/auth" replace />;
+  if (onboardingCompleted === true) return <Navigate to="/" replace />;
   return <>{children}</>;
 };
 
@@ -52,6 +62,7 @@ const AuthRoute = ({ children }: { children: React.ReactNode }) => {
 const AppRoutes = () => (
   <Routes>
     <Route path="/auth" element={<AuthRoute><AuthPage /></AuthRoute>} />
+    <Route path="/onboarding" element={<OnboardingRoute><OnboardingPage /></OnboardingRoute>} />
     <Route path="/" element={<ProtectedRoute><AppLayout><Dashboard /></AppLayout></ProtectedRoute>} />
     <Route path="/calls" element={<ProtectedRoute><AppLayout><CallsPage /></AppLayout></ProtectedRoute>} />
     <Route path="/whatsapp" element={<ProtectedRoute><AppLayout><WhatsAppInboxPage /></AppLayout></ProtectedRoute>} />

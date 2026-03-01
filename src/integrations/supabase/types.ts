@@ -597,6 +597,7 @@ export type Database = {
           email: string | null
           id: string
           name: string
+          onboarding_completed: boolean | null
           phone: string | null
           pin_hash: string | null
           status: string
@@ -611,6 +612,7 @@ export type Database = {
           email?: string | null
           id?: string
           name: string
+          onboarding_completed?: boolean | null
           phone?: string | null
           pin_hash?: string | null
           status?: string
@@ -625,6 +627,7 @@ export type Database = {
           email?: string | null
           id?: string
           name?: string
+          onboarding_completed?: boolean | null
           phone?: string | null
           pin_hash?: string | null
           status?: string
@@ -720,6 +723,108 @@ export type Database = {
             foreignKeyName: "shared_credentials_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      subscription_plans: {
+        Row: {
+          active: boolean | null
+          created_at: string | null
+          features: Json | null
+          id: string
+          limits: Json | null
+          name: string
+          price_monthly: number
+          price_yearly: number | null
+          slug: string
+          sort_order: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          active?: boolean | null
+          created_at?: string | null
+          features?: Json | null
+          id?: string
+          limits?: Json | null
+          name: string
+          price_monthly?: number
+          price_yearly?: number | null
+          slug: string
+          sort_order?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          active?: boolean | null
+          created_at?: string | null
+          features?: Json | null
+          id?: string
+          limits?: Json | null
+          name?: string
+          price_monthly?: number
+          price_yearly?: number | null
+          slug?: string
+          sort_order?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      tenant_subscriptions: {
+        Row: {
+          canceled_at: string | null
+          created_at: string | null
+          current_period_end: string | null
+          current_period_start: string | null
+          id: string
+          plan_id: string
+          status: string
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
+          tenant_id: string
+          trial_ends_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          canceled_at?: string | null
+          created_at?: string | null
+          current_period_end?: string | null
+          current_period_start?: string | null
+          id?: string
+          plan_id: string
+          status?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          tenant_id: string
+          trial_ends_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          canceled_at?: string | null
+          created_at?: string | null
+          current_period_end?: string | null
+          current_period_start?: string | null
+          id?: string
+          plan_id?: string
+          status?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          tenant_id?: string
+          trial_ends_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_subscriptions_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "subscription_plans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tenant_subscriptions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
             referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
