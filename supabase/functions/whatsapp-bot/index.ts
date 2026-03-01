@@ -275,22 +275,9 @@ async function handleState(input: StateInput): Promise<StateResult> {
     } else if (msg.includes('gasto') || msg.includes('comprobante') || msg.includes('ticket') || msg.includes('factura') || msg.includes('recibo')) {
       reply = '📸 Envíame la *foto del comprobante* y extraeré los datos automáticamente con OCR.\n\nTambién puedes escribir el gasto manualmente:\n_Ej: "Gasto $350 comida con cliente"_';
       newState = 'employee_expense';
-    } else if (msg.includes('agenda') || msg.includes('citas') || msg.includes('calendario')) {
-      const today = new Date().toISOString().split('T')[0];
-      const { data: appointments } = await supabase
-        .from('appointments').select('*')
-        .eq('tenant_id', tenantId).eq('user_id', newContext.user_id as string)
-        .gte('start_at', `${today}T00:00:00`).lte('start_at', `${today}T23:59:59`).order('start_at');
-
-      if (appointments && appointments.length > 0) {
-        reply = `📅 *Tu agenda de hoy:*\n\n${appointments.map((a: any, i: number) => {
-          const time = new Date(a.start_at).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
-          return `${i + 1}. ${time} - ${a.contact_name} (${a.service_type || 'General'})`;
-        }).join('\n')}`;
-      } else {
-        reply = '📅 No tienes citas programadas para hoy.';
-      }
     } else {
+      // Delegate scheduling/agenda/calendar intents to AI tools to avoid hardcoded "hoy" behavior
+      // and correctly support "mañana", ranges, reschedules, and bulk cancellations.
       reply = await getAIResponse(LOVABLE_API_KEY, tenantId, supabase, 'employee', effectiveMessageBody, conv);
     }
 
