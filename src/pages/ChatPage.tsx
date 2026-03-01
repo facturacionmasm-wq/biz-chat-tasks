@@ -4,7 +4,7 @@ import ChatArea from '@/components/ChatArea';
 import { channels as initialChannels, messages as initialMessages } from '@/data/mockData';
 import { Channel, Message, TeamMember } from '@/types/app';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { usePresence } from '@/hooks/usePresence';
+import { usePresenceContext } from '@/contexts/PresenceContext';
 import { ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
@@ -19,7 +19,7 @@ const ChatPage = () => {
   const [showChat, setShowChat] = useState(false);
   const [memberDirectory, setMemberDirectory] = useState<MemberDirectoryItem[]>([]);
   const isMobile = useIsMobile();
-  const onlineUsers = usePresence(false);
+  const { onlineUsers } = usePresenceContext();
   const { user } = useAuth();
 
   const teamMembers = useMemo<TeamMember[]>(() => {
