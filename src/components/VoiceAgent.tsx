@@ -80,7 +80,15 @@ const VoiceAgent = ({ onCallEnd }: VoiceAgentProps) => {
     const fullTranscript = lines.map(l => `[${formatTimestamp(l.timestamp)}] ${l.role}: ${l.text}`).join('\n');
 
     try {
-      // 1. Update call record with final data
+      // 1. Get tenant_id for cost calc
+      const { data: { user } } = await supabase.auth.getUser();
+      let tenantId: string | null = null;
+      if (user) {
+        const { data: tid } = await supabase.rpc('get_user_tenant_id', { _user_id: user.id });
+        tenantId = tid;
+      }
+
+      // 2. Update call record with final data
       await supabase
         .from('call_records')
         .update({
@@ -91,10 +99,26 @@ const VoiceAgent = ({ onCallEnd }: VoiceAgentProps) => {
         })
         .eq('id', recordId);
 
-      // 2. Persist completed event
+      // 3. Persist completed event
       await persistEvent('completed', { duration, transcript_length: fullTranscript.length });
 
-      // 3. Generate AI summary if there's a transcript
+      // 4. Trigger cost calculation + fraud detection via call-webhook pipeline
+      if (tenantId) {
+        supabase.functions.invoke('call-webhook', {
+          body: {
+            call_id: recordId,
+            tenant_id: tenantId,
+            status: 'completed',
+            duration,
+            started_at: startTime ? new Date(startTime).toISOString() : new Date().toISOString(),
+            ended_at: new Date().toISOString(),
+            transcript: fullTranscript,
+            from_number: 'Voice Agent',
+          },
+        }).catch((err) => console.error('Post-call pipeline error:', err));
+      }
+
+      // 5. Generate AI summary if there's a transcript
       if (fullTranscript.trim()) {
         toast.info('Generando resumen con IA...');
         const { data: aiData, error: aiError } = await supabase.functions.invoke('ai-copilot', {

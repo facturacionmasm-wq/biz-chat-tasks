@@ -420,6 +420,66 @@ export type Database = {
           },
         ]
       }
+      call_jobs: {
+        Row: {
+          attempts: number
+          call_id: string
+          created_at: string
+          id: string
+          job_type: string
+          last_error: string | null
+          max_attempts: number
+          result_data: Json | null
+          run_after: string
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          call_id: string
+          created_at?: string
+          id?: string
+          job_type: string
+          last_error?: string | null
+          max_attempts?: number
+          result_data?: Json | null
+          run_after?: string
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          call_id?: string
+          created_at?: string
+          id?: string
+          job_type?: string
+          last_error?: string | null
+          max_attempts?: number
+          result_data?: Json | null
+          run_after?: string
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "call_jobs_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "call_records"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "call_jobs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       call_records: {
         Row: {
           agent_user_id: string | null
