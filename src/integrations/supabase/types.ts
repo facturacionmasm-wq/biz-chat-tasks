@@ -795,6 +795,50 @@ export type Database = {
           },
         ]
       }
+      reminders: {
+        Row: {
+          created_at: string
+          id: string
+          message: string
+          remind_at: string
+          sent_at: string | null
+          source: string | null
+          status: string
+          tenant_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          message: string
+          remind_at: string
+          sent_at?: string | null
+          source?: string | null
+          status?: string
+          tenant_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          message?: string
+          remind_at?: string
+          sent_at?: string | null
+          source?: string | null
+          status?: string
+          tenant_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reminders_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       shared_credentials: {
         Row: {
           created_at: string

@@ -543,6 +543,249 @@ async function sendTwilioMessage(
   return data;
 }
 
+// Tool definitions for function calling
+const AI_TOOLS = [
+  {
+    type: 'function',
+    function: {
+      name: 'schedule_appointment',
+      description: 'Agendar una cita/appointment para un cliente o empleado. Usa esto cuando alguien quiera agendar, programar, o reservar una cita.',
+      parameters: {
+        type: 'object',
+        properties: {
+          contact_name: { type: 'string', description: 'Nombre del cliente o contacto' },
+          contact_phone: { type: 'string', description: 'Teléfono del contacto (si se tiene)' },
+          contact_email: { type: 'string', description: 'Email del contacto (si se tiene)' },
+          date: { type: 'string', description: 'Fecha de la cita en formato YYYY-MM-DD' },
+          time: { type: 'string', description: 'Hora de la cita en formato HH:MM (24h)' },
+          service_type: { type: 'string', description: 'Tipo de servicio o motivo de la cita' },
+          employee_name: { type: 'string', description: 'Nombre del empleado con quien se quiere la cita (opcional)' },
+          notes: { type: 'string', description: 'Notas adicionales' },
+        },
+        required: ['contact_name', 'date', 'time'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'check_availability',
+      description: 'Verificar disponibilidad de horarios para una fecha específica. Usa esto cuando pregunten por horarios disponibles.',
+      parameters: {
+        type: 'object',
+        properties: {
+          date: { type: 'string', description: 'Fecha a consultar en formato YYYY-MM-DD' },
+          employee_name: { type: 'string', description: 'Nombre del empleado (opcional)' },
+        },
+        required: ['date'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'create_reminder',
+      description: 'Crear un recordatorio para el usuario. Usa esto cuando pidan "recuérdame", "avísame", "no me dejes olvidar", etc.',
+      parameters: {
+        type: 'object',
+        properties: {
+          message: { type: 'string', description: 'Mensaje del recordatorio - qué debe recordar' },
+          remind_at: { type: 'string', description: 'Fecha y hora del recordatorio en formato ISO 8601 (YYYY-MM-DDTHH:MM:SS). Si solo dicen hora, usar la fecha de hoy.' },
+        },
+        required: ['message', 'remind_at'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_today_agenda',
+      description: 'Obtener la agenda/citas del día de hoy para el usuario. Usa cuando pregunten por su agenda, citas, o qué tienen hoy.',
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_pending_expenses',
+      description: 'Obtener gastos pendientes de aprobación del usuario.',
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
+];
+
+// Execute a tool call from the AI
+async function executeTool(
+  toolName: string,
+  args: any,
+  tenantId: string,
+  supabase: any,
+  conversation: any,
+  supabaseUrl: string,
+  serviceRoleKey: string,
+): Promise<string> {
+  const userId = conversation.bot_context?.user_id;
+  const contactPhone = conversation.contact_phone;
+
+  if (toolName === 'schedule_appointment') {
+    const { contact_name, contact_phone: cPhone, contact_email, date, time, service_type, employee_name, notes } = args;
+    
+    // Find employee if specified
+    let employeeId: string | null = null;
+    if (employee_name) {
+      const { data: emp } = await supabase
+        .from('profiles')
+        .select('user_id, name')
+        .eq('tenant_id', tenantId)
+        .eq('status', 'active')
+        .ilike('name', `%${employee_name}%`)
+        .limit(1)
+        .maybeSingle();
+      if (emp) employeeId = emp.user_id;
+    }
+
+    const startAt = new Date(`${date}T${time}:00`);
+    const endAt = new Date(startAt);
+    endAt.setMinutes(endAt.getMinutes() + 30);
+
+    const { data: apt, error } = await supabase
+      .from('appointments')
+      .insert({
+        tenant_id: tenantId,
+        contact_name: contact_name,
+        contact_phone: cPhone || contactPhone || null,
+        contact_email: contact_email || null,
+        start_at: startAt.toISOString(),
+        end_at: endAt.toISOString(),
+        service_type: service_type || 'General',
+        user_id: employeeId || userId || null,
+        notes: notes || null,
+        source: 'whatsapp',
+        status: 'scheduled',
+      })
+      .select('id, start_at, end_at, contact_name')
+      .single();
+
+    if (error) return JSON.stringify({ error: error.message });
+    
+    return JSON.stringify({
+      success: true,
+      appointment_id: apt.id,
+      contact_name: apt.contact_name,
+      date: startAt.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }),
+      time: startAt.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }),
+      employee: employee_name || 'sin asignar',
+    });
+  }
+
+  if (toolName === 'check_availability') {
+    const { date, employee_name } = args;
+    let employeeId: string | null = null;
+    if (employee_name) {
+      const { data: emp } = await supabase
+        .from('profiles')
+        .select('user_id')
+        .eq('tenant_id', tenantId)
+        .eq('status', 'active')
+        .ilike('name', `%${employee_name}%`)
+        .limit(1)
+        .maybeSingle();
+      if (emp) employeeId = emp.user_id;
+    }
+
+    try {
+      const res = await fetch(`${supabaseUrl}/functions/v1/voice-scheduling`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${serviceRoleKey}` },
+        body: JSON.stringify({ action: 'check_availability', data: { tenant_id: tenantId, date, employee_id: employeeId } }),
+      });
+      const result = await res.json();
+      return JSON.stringify(result);
+    } catch (err) {
+      return JSON.stringify({ error: 'No se pudo verificar disponibilidad' });
+    }
+  }
+
+  if (toolName === 'create_reminder') {
+    const { message, remind_at } = args;
+    const targetUserId = userId;
+    if (!targetUserId) return JSON.stringify({ error: 'No se pudo identificar al usuario' });
+
+    const { error } = await supabase.from('reminders').insert({
+      tenant_id: tenantId,
+      user_id: targetUserId,
+      message,
+      remind_at: new Date(remind_at).toISOString(),
+      status: 'pending',
+      source: 'whatsapp',
+    });
+
+    if (error) return JSON.stringify({ error: error.message });
+    
+    const remindDate = new Date(remind_at);
+    return JSON.stringify({
+      success: true,
+      message,
+      remind_at: remindDate.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }),
+      date: remindDate.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }),
+    });
+  }
+
+  if (toolName === 'get_today_agenda') {
+    const today = new Date().toISOString().split('T')[0];
+    const targetUserId = userId;
+    
+    let query = supabase
+      .from('appointments')
+      .select('start_at, end_at, contact_name, service_type, status')
+      .eq('tenant_id', tenantId)
+      .gte('start_at', `${today}T00:00:00`)
+      .lte('start_at', `${today}T23:59:59`)
+      .neq('status', 'cancelled')
+      .order('start_at');
+    
+    if (targetUserId) query = query.eq('user_id', targetUserId);
+    const { data: apts } = await query;
+    
+    return JSON.stringify({
+      date: today,
+      appointments: (apts || []).map((a: any) => ({
+        time: new Date(a.start_at).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }),
+        end_time: new Date(a.end_at).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }),
+        contact: a.contact_name,
+        service: a.service_type || 'General',
+        status: a.status,
+      })),
+      count: (apts || []).length,
+    });
+  }
+
+  if (toolName === 'get_pending_expenses') {
+    const targetUserId = userId;
+    if (!targetUserId) return JSON.stringify({ expenses: [], count: 0 });
+    
+    const { data: expenses } = await supabase
+      .from('expenses')
+      .select('amount, description, category, expense_date, status')
+      .eq('user_id', targetUserId)
+      .eq('status', 'pending')
+      .order('expense_date', { ascending: false })
+      .limit(10);
+    
+    return JSON.stringify({
+      expenses: (expenses || []).map((e: any) => ({
+        amount: e.amount,
+        description: e.description,
+        category: e.category,
+        date: e.expense_date,
+      })),
+      count: (expenses || []).length,
+    });
+  }
+
+  return JSON.stringify({ error: 'Unknown tool' });
+}
+
 async function getAIResponse(
   apiKey: string,
   tenantId: string,
@@ -551,9 +794,10 @@ async function getAIResponse(
   userMessage: string,
   conversation: any
 ): Promise<string> {
-  // === KNOWLEDGE RETRIEVAL: Always load ALL active knowledge ===
-  
-  // 1. Training corrections (HIGHEST priority — human-corrected answers)
+  const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
+  const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
+  // === KNOWLEDGE RETRIEVAL ===
   const { data: corrections } = await supabase
     .from('knowledge_items')
     .select('title, content, category, tags')
@@ -563,7 +807,6 @@ async function getAIResponse(
     .order('updated_at', { ascending: false })
     .limit(15);
   
-  // 2. All other knowledge articles
   const { data: generalKnowledge } = await supabase
     .from('knowledge_items')
     .select('title, content, category, tags')
@@ -573,13 +816,9 @@ async function getAIResponse(
     .order('updated_at', { ascending: false })
     .limit(30);
   
-  // Merge: corrections first, then general knowledge
   const allKnowledge = [...(corrections || []), ...(generalKnowledge || [])];
-
-  // Build context with full content for corrections, trimmed for general
   const knowledgeContext = allKnowledge.map((k: any) => {
     const prefix = k.category === 'Entrenamiento IA' ? '⚠️ CORRECCIÓN PRIORITARIA' : (k.category || 'General');
-    // Give full content to corrections, cap general articles
     const content = k.category === 'Entrenamiento IA' ? k.content : k.content?.substring(0, 800);
     return `[${prefix}] ${k.title}:\n${content}`;
   }).join('\n\n') || '';
@@ -597,7 +836,7 @@ async function getAIResponse(
     content: m.body || '',
   }));
 
-  // Get employees for appointment scheduling
+  // Get employees list
   const { data: employees } = await supabase
     .from('profiles')
     .select('name, user_id, email, phone')
@@ -606,64 +845,68 @@ async function getAIResponse(
 
   const employeeList = employees?.map((e: any) => `- ${e.name} (${e.email || 'sin email'})`).join('\n') || 'No hay empleados registrados';
 
+  const today = new Date();
+  const todayStr = today.toISOString().split('T')[0];
+  const currentTime = today.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+
   const systemPrompt = mode === 'client'
-    ? `Eres Aria, una asistente virtual cálida, empática y genuinamente interesada en ayudar. No eres un robot — eres como esa persona amable de recepción que siempre tiene una sonrisa y hace sentir bienvenido a todos.
+    ? `Eres Aria, una asistente virtual cálida, empática y genuinamente interesada en ayudar. Hablas de forma natural y cercana en español mexicano.
 
-PERSONALIDAD:
-- Hablas de forma natural, cercana y con calidez humana. Usa expresiones coloquiales mexicanas cuando sea apropiado.
-- Muestra interés genuino: "¡Qué bueno que nos contactas!", "Entiendo perfectamente tu situación", "Con mucho gusto te ayudo".
-- Si alguien está frustrado o tiene un problema, primero valida sus emociones antes de ofrecer soluciones: "Lamento que estés pasando por eso, vamos a resolverlo juntos".
-- Usa emojis con moderación y de forma natural (no en cada oración).
-- NUNCA uses frases robóticas como "procesando su solicitud" o "su consulta ha sido registrada".
+FECHA Y HORA ACTUAL: ${todayStr} ${currentTime}
 
-TU TRABAJO:
-1. Informar sobre los servicios de la empresa con entusiasmo genuino, basándote en la base de conocimientos.
-2. Agendar citas con los colaboradores — pregunta con naturalidad: "¿Cuándo te acomodaría mejor?", "¿Hay algún colaborador en particular con quien te gustaría la cita?"
-3. Si quieren hablar con alguien específico, facilita el contacto con amabilidad.
-4. Si detectas frustración, urgencia o quejas, muestra empatía primero y luego ofrece escalar: "Entiendo que es importante para ti, déjame conectarte con alguien que pueda ayudarte de inmediato".
+CAPACIDADES (usa las herramientas disponibles):
+- Puedes AGENDAR CITAS realmente usando la herramienta schedule_appointment
+- Puedes VERIFICAR DISPONIBILIDAD usando check_availability
+- Puedes CONSULTAR LA AGENDA usando get_today_agenda
+
+INSTRUCCIONES PARA AGENDAR:
+- Cuando alguien quiera una cita, PRIMERO pregunta los datos faltantes (nombre, fecha, hora, servicio).
+- Una vez tengas fecha y hora, USA la herramienta schedule_appointment para crear la cita REAL.
+- NO digas que agendaste si no usaste la herramienta.
 
 REGLA CRÍTICA DE CONOCIMIENTO:
-- SIEMPRE busca la respuesta en la "Base de conocimientos" antes de inventar información.
-- Los artículos marcados como [Entrenamiento IA] son correcciones humanas con MÁXIMA prioridad. Úsalos como referencia principal.
-- Si la pregunta coincide con una corrección previa, usa ESA respuesta corregida, no inventes otra.
-- Si no encuentras información relevante, di que no tienes esa información y ofrece conectar con el equipo.
-
-Responde siempre en español. Sé concisa pero nunca fría.
+- Los artículos [Entrenamiento IA] son correcciones humanas con MÁXIMA prioridad.
+- Si no encuentras información, ofrece conectar con el equipo.
 
 Empleados disponibles:
 ${employeeList}
 
 Base de conocimientos:
 ${knowledgeContext}`
-    : `Eres Aria, la asistente personal de ${conversation.bot_context?.user_name || 'tu compañero'}. Eres como esa colega confiable que siempre está al pendiente y te hace la vida más fácil en el trabajo.
+    : `Eres Aria, la asistente personal de ${conversation.bot_context?.user_name || 'tu compañero'}. Hablas con confianza y cercanía en español mexicano.
 
-PERSONALIDAD:
-- Hablas con confianza y cercanía, como alguien del equipo. Usa "tú", no "usted".
-- Muestra interés real: "¿Cómo va tu día?", "¡Ánimo con eso!", "Excelente trabajo registrando tus gastos".
-- Si el empleado parece estresado o abrumado, ofrece apoyo emocional: "Entiendo que ha sido un día pesado, vamos paso a paso".
-- Celebra los logros pequeños: "¡Listo! Un pendiente menos 🎉"
-- NUNCA uses lenguaje corporativo frío. Sé directa pero con calidez.
-- Usa emojis con naturalidad y moderación.
+FECHA Y HORA ACTUAL: ${todayStr} ${currentTime}
 
-TU TRABAJO:
-1. Recordar pendientes y compromisos con gentileza, no como alarma.
-2. Informar sobre la agenda del día de forma clara y útil.
-3. Ayudar a registrar gastos — si mandan foto, procesarla con OCR; si es texto, extraer los datos.
-4. Responder consultas de la base de conocimientos interna.
-5. Dar resúmenes de actividad cuando los pida.
-6. Si el empleado necesita algo que no puedes hacer, sé honesta y sugiere alternativas.
+CAPACIDADES (usa las herramientas disponibles):
+- Puedes CREAR RECORDATORIOS usando create_reminder — cuando digan "recuérdame", "avísame", "no me dejes olvidar"
+- Puedes AGENDAR CITAS usando schedule_appointment
+- Puedes VERIFICAR DISPONIBILIDAD usando check_availability  
+- Puedes VER LA AGENDA DEL DÍA usando get_today_agenda
+- Puedes VER GASTOS PENDIENTES usando get_pending_expenses
+
+INSTRUCCIONES PARA RECORDATORIOS:
+- Cuando pidan un recordatorio, SIEMPRE usa create_reminder con la hora y mensaje apropiados.
+- Si dicen "a las 8:21" sin fecha, usa la fecha de hoy: ${todayStr}.
+- Confirma el recordatorio creado con la hora y mensaje.
+
+INSTRUCCIONES PARA AGENDAR:
+- USA la herramienta schedule_appointment para crear citas REALES.
+- Si faltan datos, pregunta antes de agendar.
 
 REGLA CRÍTICA DE CONOCIMIENTO:
-- SIEMPRE busca la respuesta en la "Base de conocimientos" antes de inventar información.
-- Los artículos marcados como [Entrenamiento IA] son correcciones humanas con MÁXIMA prioridad. Úsalos siempre como referencia principal.
-- Si la pregunta coincide con una corrección previa, usa ESA respuesta corregida.
-
-Responde en español, de forma eficiente pero siempre amable.
+- Los artículos [Entrenamiento IA] son correcciones humanas con MÁXIMA prioridad.
 
 Base de conocimientos:
 ${knowledgeContext}`;
 
   try {
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      ...chatHistory,
+      { role: 'user', content: userMessage },
+    ];
+
+    // First AI call with tools
     const response = await fetch(AI_GATEWAY_URL, {
       method: 'POST',
       headers: {
@@ -671,24 +914,79 @@ ${knowledgeContext}`;
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-3-flash-preview',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          ...chatHistory,
-          { role: 'user', content: userMessage },
-        ],
+        model: 'google/gemini-2.5-flash',
+        messages,
+        tools: AI_TOOLS,
       }),
     });
 
     if (!response.ok) {
-      console.error('AI gateway error:', response.status);
+      console.error('AI gateway error:', response.status, await response.text());
       return mode === 'client'
-        ? 'Disculpa, tengo un problema técnico momentáneo. ¿Podrías intentar de nuevo en un momento? 🙏'
+        ? 'Disculpa, tengo un problema técnico momentáneo. ¿Podrías intentar de nuevo? 🙏'
         : 'Error al procesar tu solicitud. Intenta de nuevo.';
     }
 
     const result = await response.json();
-    return result.choices?.[0]?.message?.content || 'No pude generar una respuesta. Intenta reformular tu pregunta.';
+    const choice = result.choices?.[0];
+
+    if (!choice) return 'No pude generar una respuesta. Intenta reformular tu pregunta.';
+
+    // Check if AI wants to call tools
+    if (choice.finish_reason === 'tool_calls' || choice.message?.tool_calls) {
+      const toolCalls = choice.message.tool_calls;
+      const toolResults: any[] = [];
+
+      for (const tc of toolCalls) {
+        const fnName = tc.function.name;
+        let fnArgs: any;
+        try {
+          fnArgs = typeof tc.function.arguments === 'string' ? JSON.parse(tc.function.arguments) : tc.function.arguments;
+        } catch {
+          fnArgs = {};
+        }
+
+        console.log(`Executing tool: ${fnName}`, JSON.stringify(fnArgs));
+        const toolResult = await executeTool(fnName, fnArgs, tenantId, supabase, conversation, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+        console.log(`Tool result: ${toolResult.substring(0, 200)}`);
+        
+        toolResults.push({
+          role: 'tool',
+          tool_call_id: tc.id,
+          content: toolResult,
+        });
+      }
+
+      // Second AI call with tool results
+      const followUpMessages = [
+        ...messages,
+        choice.message,
+        ...toolResults,
+      ];
+
+      const followUpResponse = await fetch(AI_GATEWAY_URL, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'google/gemini-2.5-flash',
+          messages: followUpMessages,
+        }),
+      });
+
+      if (!followUpResponse.ok) {
+        console.error('AI follow-up error:', followUpResponse.status);
+        return 'Ejecuté la acción pero tuve un problema generando la respuesta. Intenta de nuevo.';
+      }
+
+      const followUpResult = await followUpResponse.json();
+      return followUpResult.choices?.[0]?.message?.content || 'Acción ejecutada correctamente.';
+    }
+
+    // No tool calls — direct response
+    return choice.message?.content || 'No pude generar una respuesta.';
   } catch (err) {
     console.error('AI error:', err);
     return 'Disculpa, tengo un problema técnico. Intenta de nuevo en un momento.';
