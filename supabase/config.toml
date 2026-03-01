@@ -65,3 +65,6 @@ verify_jwt = false
 
 [functions.billing-monthly-report]
 verify_jwt = false
+
+[functions.pricing-engine]
+verify_jwt = false
