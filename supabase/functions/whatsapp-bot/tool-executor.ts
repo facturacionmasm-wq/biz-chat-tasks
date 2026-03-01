@@ -541,33 +541,59 @@ async function executeCancelAppointment(
     .single();
   const tz = tenantData?.timezone || 'America/Mexico_City';
 
-  // Search for matching appointments
-  let query = supabase
-    .from('appointments')
-    .select('id, contact_name, start_at, end_at, service_type, status, user_id, calendar_event_id')
-    .eq('tenant_id', tenantId)
-    .neq('status', 'cancelled')
-    .is('deleted_at', null)
-    .order('start_at', { ascending: true });
+  // Build base query for matching appointments
+  const buildAppointmentsQuery = () => {
+    let query = supabase
+      .from('appointments')
+      .select('id, contact_name, start_at, end_at, service_type, status, user_id, calendar_event_id')
+      .eq('tenant_id', tenantId)
+      .neq('status', 'cancelled')
+      .is('deleted_at', null)
+      .order('start_at', { ascending: true });
 
-  if (contact_name) {
-    query = query.ilike('contact_name', `%${contact_name}%`);
+    if (contact_name) {
+      query = query.ilike('contact_name', `%${contact_name}%`);
+    }
+
+    if (date) {
+      query = query
+        .gte('start_at', `${date}T00:00:00`)
+        .lte('start_at', `${date}T23:59:59`);
+    }
+
+    // If filtering by user
+    if (userId && !contact_name) {
+      query = query.eq('user_id', userId);
+    }
+
+    return query;
+  };
+
+  let appointments: any[] = [];
+
+  if (cancel_all) {
+    // Fetch ALL matches in pages to avoid silent truncation from .limit()
+    const pageSize = 200;
+    let from = 0;
+
+    while (true) {
+      const { data: page, error: pageErr } = await buildAppointmentsQuery().range(from, from + pageSize - 1);
+      if (pageErr) return JSON.stringify({ error: pageErr.message });
+
+      const rows = page || [];
+      appointments.push(...rows);
+
+      if (rows.length < pageSize) break;
+      from += pageSize;
+
+      // Safety cap to prevent infinite loops in case of unexpected API behavior
+      if (from > 5000) break;
+    }
+  } else {
+    const { data, error: searchErr } = await buildAppointmentsQuery().limit(20);
+    if (searchErr) return JSON.stringify({ error: searchErr.message });
+    appointments = data || [];
   }
-
-  if (date) {
-    query = query
-      .gte('start_at', `${date}T00:00:00`)
-      .lte('start_at', `${date}T23:59:59`);
-  }
-
-  // If filtering by user
-  if (userId && !contact_name) {
-    query = query.eq('user_id', userId);
-  }
-
-  const { data: appointments, error: searchErr } = await query.limit(20);
-
-  if (searchErr) return JSON.stringify({ error: searchErr.message });
 
   if (!appointments || appointments.length === 0) {
     return JSON.stringify({
