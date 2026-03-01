@@ -320,13 +320,14 @@ async function executeGetTodayAgenda(
     .eq('id', tenantId)
     .single();
   const tz = tenantData?.timezone || 'America/Mexico_City';
+  const { startIsoUtc, endIsoUtc } = getUtcDayRangeFromLocalDate(queryDate, tz);
 
   let query = supabase
     .from('appointments')
     .select('start_at, end_at, contact_name, service_type, status, calendar_sync_status, calendar_event_id')
     .eq('tenant_id', tenantId)
-    .gte('start_at', `${queryDate}T00:00:00`)
-    .lte('start_at', `${queryDate}T23:59:59`)
+    .gte('start_at', startIsoUtc)
+    .lte('start_at', endIsoUtc)
     .neq('status', 'cancelled')
     .is('deleted_at', null)
     .order('start_at');
@@ -556,9 +557,10 @@ async function executeCancelAppointment(
     }
 
     if (date) {
+      const { startIsoUtc, endIsoUtc } = getUtcDayRangeFromLocalDate(date, tz);
       query = query
-        .gte('start_at', `${date}T00:00:00`)
-        .lte('start_at', `${date}T23:59:59`);
+        .gte('start_at', startIsoUtc)
+        .lte('start_at', endIsoUtc);
     }
 
     // If filtering by user
@@ -698,9 +700,10 @@ async function executeRescheduleAppointment(
     .order('start_at', { ascending: true });
 
   if (current_date) {
+    const { startIsoUtc, endIsoUtc } = getUtcDayRangeFromLocalDate(current_date, tz);
     query = query
-      .gte('start_at', `${current_date}T00:00:00`)
-      .lte('start_at', `${current_date}T23:59:59`);
+      .gte('start_at', startIsoUtc)
+      .lte('start_at', endIsoUtc);
   }
 
   const { data: appointments, error: searchErr } = await query.limit(5);
@@ -966,6 +969,15 @@ async function executeSearchWeb(
 }
 
 // ==================== Shared utility ====================
+
+function getUtcDayRangeFromLocalDate(localDate: string, tz: string): { startIsoUtc: string; endIsoUtc: string } {
+  const start = parseLocalToUTC(`${localDate}T00:00:00`, tz);
+  const end = parseLocalToUTC(`${localDate}T23:59:59`, tz);
+  return {
+    startIsoUtc: start.toISOString(),
+    endIsoUtc: end.toISOString(),
+  };
+}
 
 function parseLocalToUTC(rawDateStr: string, tz: string): Date {
   const tempDate = new Date(rawDateStr);
