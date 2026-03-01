@@ -1,17 +1,19 @@
+import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Navigate } from 'react-router-dom';
-import { useSuperAdminData } from '@/hooks/useSuperAdminData';
+import { useSuperAdminData, FinancialProjection } from '@/hooks/useSuperAdminData';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import {
   DollarSign, TrendingUp, TrendingDown, AlertTriangle, ShieldAlert,
   Users, Gift, BarChart3, Activity, ArrowUpRight, ArrowDownRight,
-  Loader2,
+  Loader2, Brain, RefreshCw, Calendar, Target, Zap,
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   BarChart, Bar, Cell,
 } from 'recharts';
+import { Button } from '@/components/ui/button';
 
 const fmt = (n: number) => `$${n.toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 const fmtPct = (n: number) => `${n.toFixed(1)}%`;
@@ -38,7 +40,7 @@ const SuperAdminPage = () => {
 };
 
 const SuperAdminDashboard = () => {
-  const { margins, fraudAlerts, churnScores, retentionOffers, pricingEvals, marginMetrics, totals } = useSuperAdminData();
+  const { margins, fraudAlerts, churnScores, retentionOffers, pricingEvals, marginMetrics, projections, generateProjections, totals } = useSuperAdminData();
 
   const isLoading = margins.isLoading || fraudAlerts.isLoading;
 
@@ -246,6 +248,14 @@ const SuperAdminDashboard = () => {
         </div>
       </div>
 
+      {/* AI Financial Projections */}
+      <ProjectionsSection
+        projections={projections.data || []}
+        isLoading={projections.isLoading}
+        onGenerate={() => generateProjections.mutate()}
+        isGenerating={generateProjections.isPending}
+      />
+
       {/* Tenant Margin Table */}
       <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
         <h3 className="font-semibold text-foreground flex items-center gap-2 mb-4">
@@ -314,5 +324,145 @@ const KPICard = ({ icon: Icon, label, value, subtitle, trend, color }: {
     )}
   </div>
 );
+
+const confidenceLabel = (score: number) => {
+  if (score >= 0.8) return { text: 'Alta', color: 'text-success' };
+  if (score >= 0.5) return { text: 'Media', color: 'text-warning' };
+  return { text: 'Baja', color: 'text-destructive' };
+};
+
+const horizonLabel: Record<number, string> = { 30: '30 días', 60: '60 días', 90: '90 días' };
+const horizonIcon: Record<number, any> = { 30: Calendar, 60: Target, 90: Zap };
+
+const ProjectionsSection = ({
+  projections, isLoading, onGenerate, isGenerating,
+}: {
+  projections: FinancialProjection[];
+  isLoading: boolean;
+  onGenerate: () => void;
+  isGenerating: boolean;
+}) => {
+  // Get latest set (same projection_date)
+  const latestDate = projections[0]?.projection_date;
+  const latest = projections.filter(p => p.projection_date === latestDate);
+  const narrative = latest[0]?.ai_narrative;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="font-semibold text-foreground flex items-center gap-2">
+          <Brain size={18} className="text-primary" /> Proyecciones Financieras IA
+        </h3>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onGenerate}
+          disabled={isGenerating}
+          className="gap-2"
+        >
+          {isGenerating ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+          {isGenerating ? 'Generando...' : 'Generar proyecciones'}
+        </Button>
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center justify-center py-10">
+          <Loader2 className="animate-spin text-primary" size={24} />
+        </div>
+      ) : latest.length === 0 ? (
+        <div className="bg-card border border-border rounded-xl p-8 text-center">
+          <Brain size={32} className="mx-auto text-muted-foreground mb-3" />
+          <p className="text-sm text-muted-foreground">No hay proyecciones generadas aún.</p>
+          <p className="text-xs text-muted-foreground mt-1">Haz clic en "Generar proyecciones" para crear el análisis con IA.</p>
+        </div>
+      ) : (
+        <>
+          {/* Projection Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {latest.map(p => {
+              const HIcon = horizonIcon[p.horizon_days] || Calendar;
+              const conf = confidenceLabel(Number(p.confidence_score));
+              return (
+                <div key={p.id} className="bg-card border border-border rounded-xl p-5 shadow-sm">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <HIcon size={16} className="text-primary" />
+                      <span className="font-semibold text-foreground">{horizonLabel[p.horizon_days]}</span>
+                    </div>
+                    <span className={`text-xs font-semibold ${conf.color}`}>
+                      Confianza: {conf.text}
+                    </span>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground">Ingresos</span>
+                      <span className="text-sm font-semibold text-foreground">{fmt(Number(p.projected_revenue))}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground">Costos</span>
+                      <span className="text-sm text-muted-foreground">{fmt(Number(p.projected_cost))}</span>
+                    </div>
+                    <div className="flex justify-between border-t border-border pt-2">
+                      <span className="text-sm font-medium text-foreground">Margen</span>
+                      <span className={`text-sm font-bold ${Number(p.projected_margin_pct) >= 20 ? 'text-success' : Number(p.projected_margin_pct) >= 10 ? 'text-warning' : 'text-destructive'}`}>
+                        {fmt(Number(p.projected_margin))} ({fmtPct(Number(p.projected_margin_pct))})
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-xs text-muted-foreground pt-1">
+                      <span>📞 {p.projected_calls} llamadas</span>
+                      <span>⏱ {Number(p.projected_minutes).toFixed(0)} min</span>
+                    </div>
+                  </div>
+
+                  {/* Risk factors */}
+                  {(p.risk_factors as any[])?.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-border">
+                      <p className="text-xs font-semibold text-muted-foreground mb-1">Riesgos:</p>
+                      {(p.risk_factors as any[]).slice(0, 2).map((r, i) => (
+                        <p key={i} className="text-xs text-muted-foreground">
+                          <span className={`font-bold ${r.impact === 'high' ? 'text-destructive' : r.impact === 'medium' ? 'text-warning' : 'text-muted-foreground'}`}>
+                            {r.impact === 'high' ? '🔴' : r.impact === 'medium' ? '🟡' : '🟢'}
+                          </span>{' '}
+                          {r.description}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Opportunities */}
+                  {(p.opportunities as any[])?.length > 0 && (
+                    <div className="mt-2">
+                      <p className="text-xs font-semibold text-muted-foreground mb-1">Oportunidades:</p>
+                      {(p.opportunities as any[]).slice(0, 2).map((o, i) => (
+                        <p key={i} className="text-xs text-muted-foreground">
+                          💡 {o.description} ({fmt(o.potential_revenue)})
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* AI Narrative */}
+          {narrative && (
+            <div className="bg-primary/5 border border-primary/15 rounded-xl p-5">
+              <div className="flex items-center gap-2 mb-2">
+                <Brain size={16} className="text-primary" />
+                <span className="text-sm font-semibold text-foreground">Análisis Ejecutivo IA</span>
+                <span className="text-xs text-muted-foreground ml-auto">
+                  {latestDate && format(new Date(latestDate), "d MMM yyyy", { locale: es })}
+                </span>
+              </div>
+              <p className="text-sm text-muted-foreground leading-relaxed">{narrative}</p>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+};
 
 export default SuperAdminPage;
