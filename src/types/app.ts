@@ -37,6 +37,8 @@ export interface TeamMember {
   role: string;
   status: 'online' | 'away' | 'offline';
   email?: string;
+  phone?: string;
+  whatsappNumber?: string;
 }
 
 export interface Milestone {
