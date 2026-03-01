@@ -11,7 +11,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import NotificationBell from '@/components/NotificationBell';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
-import { usePresence } from '@/hooks/usePresence';
+import { PresenceProvider } from '@/contexts/PresenceContext';
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
@@ -207,12 +207,10 @@ const AppLayout = ({ children }: AppLayoutProps) => {
   const { user, userRole, signOut } = useAuth();
   const isMobile = useIsMobile();
 
-  // Track current user presence globally across the app
-  usePresence();
-
   const sidebarProps = { branding, location, user, userRole, signOut };
 
   return (
+    <PresenceProvider>
     <div className="flex h-screen bg-background overflow-hidden">
       {/* Mobile sidebar (Sheet) */}
       {isMobile && (
@@ -277,6 +275,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
       {/* AI Assistant Widget */}
       <AIAssistantWidget />
     </div>
+    </PresenceProvider>
   );
 };
 
