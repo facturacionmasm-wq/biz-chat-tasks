@@ -32,6 +32,8 @@ serve(async (req) => {
     });
   }
 
+  const userId = data.claims.sub as string;
+
   const ELEVENLABS_API_KEY = Deno.env.get('ELEVENLABS_API_KEY');
   const ELEVENLABS_AGENT_ID = Deno.env.get('ELEVENLABS_AGENT_ID');
 
@@ -42,6 +44,58 @@ serve(async (req) => {
   }
 
   try {
+    // Fetch Knowledge Hub for dynamic context injection
+    const serviceClient = createClient(supabaseUrl, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+    
+    const { data: profile } = await serviceClient
+      .from('profiles')
+      .select('tenant_id, name')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    let knowledgeContext = '';
+    let companyName = '';
+
+    if (profile?.tenant_id) {
+      // Get company name
+      const { data: tenant } = await serviceClient
+        .from('tenants')
+        .select('name')
+        .eq('id', profile.tenant_id)
+        .single();
+      companyName = tenant?.name || '';
+
+      // Training corrections (highest priority)
+      const { data: corrections } = await serviceClient
+        .from('knowledge_items')
+        .select('title, content, category')
+        .eq('tenant_id', profile.tenant_id)
+        .eq('active', true)
+        .eq('category', 'Entrenamiento IA')
+        .order('updated_at', { ascending: false })
+        .limit(15);
+
+      // General knowledge
+      const { data: generalKnowledge } = await serviceClient
+        .from('knowledge_items')
+        .select('title, content, category')
+        .eq('tenant_id', profile.tenant_id)
+        .eq('active', true)
+        .neq('category', 'Entrenamiento IA')
+        .order('updated_at', { ascending: false })
+        .limit(20);
+
+      const allKnowledge = [...(corrections || []), ...(generalKnowledge || [])];
+      
+      if (allKnowledge.length > 0) {
+        knowledgeContext = allKnowledge.map(k => {
+          const prefix = k.category === 'Entrenamiento IA' ? '⚠️ CORRECCIÓN PRIORITARIA' : (k.category || 'General');
+          const content = k.category === 'Entrenamiento IA' ? k.content : k.content?.substring(0, 600);
+          return `[${prefix}] ${k.title}: ${content}`;
+        }).join('\n\n');
+      }
+    }
+
     const response = await fetch(
       `https://api.elevenlabs.io/v1/convai/conversation/token?agent_id=${ELEVENLABS_AGENT_ID}`,
       { headers: { 'xi-api-key': ELEVENLABS_API_KEY } }
@@ -54,7 +108,12 @@ serve(async (req) => {
 
     const { token } = await response.json();
 
-    return new Response(JSON.stringify({ token }), {
+    return new Response(JSON.stringify({ 
+      token, 
+      knowledgeContext, 
+      companyName,
+      userName: profile?.name || '',
+    }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (error) {

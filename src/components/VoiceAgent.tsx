@@ -344,7 +344,7 @@ const VoiceAgent = ({ onCallEnd }: VoiceAgentProps) => {
       // Persist initiated event
       await persistEvent('initiated', { user_email: user.email });
 
-      // Get ElevenLabs token
+      // Get ElevenLabs token + Knowledge Hub context
       const { data, error: fnError } = await supabase.functions.invoke('elevenlabs-conversation-token');
 
       if (fnError || !data?.token) {
@@ -360,6 +360,12 @@ const VoiceAgent = ({ onCallEnd }: VoiceAgentProps) => {
         conversationToken: data.token,
         connectionType: 'webrtc',
       });
+
+      // Inject Knowledge Hub as dynamic context for the voice agent
+      if (data.knowledgeContext) {
+        const contextMsg = `CONTEXTO IMPORTANTE - Base de conocimientos de ${data.companyName || 'la empresa'}:\n\nLos artículos marcados como "⚠️ CORRECCIÓN PRIORITARIA" son correcciones humanas y tienen máxima prioridad. Úsalos siempre como referencia principal cuando el usuario pregunte sobre esos temas.\n\n${data.knowledgeContext}`;
+        conversation.sendContextualUpdate(contextMsg);
+      }
 
       toast.success('Llamada conectada');
     } catch (err: any) {
