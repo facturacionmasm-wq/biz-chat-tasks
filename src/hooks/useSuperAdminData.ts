@@ -1,6 +1,7 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { toast } from 'sonner';
 
 export interface TenantMarginRow {
   tenant_id: string;
@@ -58,8 +59,27 @@ export interface PricingEval {
   evaluation_date: string;
 }
 
+export interface FinancialProjection {
+  id: string;
+  projection_date: string;
+  horizon_days: number;
+  projected_revenue: number;
+  projected_cost: number;
+  projected_margin: number;
+  projected_margin_pct: number;
+  projected_calls: number;
+  projected_minutes: number;
+  confidence_score: number;
+  risk_factors: Array<{ factor: string; impact: string; description: string }>;
+  opportunities: Array<{ opportunity: string; potential_revenue: number; description: string }>;
+  ai_narrative: string | null;
+  model_version: string;
+  created_at: string;
+}
+
 export function useSuperAdminData() {
   const { userRole } = useAuth();
+  const queryClient = useQueryClient();
   const enabled = userRole === 'super_admin';
 
   const margins = useQuery({
@@ -152,6 +172,36 @@ export function useSuperAdminData() {
     },
   });
 
+  const projections = useQuery({
+    queryKey: ['sa-projections'],
+    enabled,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('financial_projections')
+        .select('*')
+        .order('projection_date', { ascending: false })
+        .order('horizon_days', { ascending: true })
+        .limit(6); // latest 2 runs × 3 horizons
+      return (data || []) as unknown as FinancialProjection[];
+    },
+  });
+
+  const generateProjections = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke('financial-projections');
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      return data;
+    },
+    onSuccess: (data) => {
+      toast.success('Proyecciones generadas exitosamente');
+      queryClient.invalidateQueries({ queryKey: ['sa-projections'] });
+    },
+    onError: (err: any) => {
+      toast.error(`Error generando proyecciones: ${err.message}`);
+    },
+  });
+
   const totalRevenue = margins.data?.reduce((s, m) => s + Number(m.current_month_revenue), 0) ?? 0;
   const totalCost = margins.data?.reduce((s, m) => s + Number(m.current_month_cost), 0) ?? 0;
   const totalMargin = totalRevenue - totalCost;
@@ -164,6 +214,8 @@ export function useSuperAdminData() {
     retentionOffers,
     pricingEvals,
     marginMetrics,
+    projections,
+    generateProjections,
     totals: { totalRevenue, totalCost, totalMargin, avgMarginPct },
   };
 }

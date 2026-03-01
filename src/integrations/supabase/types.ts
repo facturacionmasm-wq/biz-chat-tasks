@@ -657,6 +657,63 @@ export type Database = {
           },
         ]
       }
+      financial_projections: {
+        Row: {
+          ai_narrative: string | null
+          confidence_score: number
+          created_at: string
+          horizon_days: number
+          id: string
+          input_data: Json
+          model_version: string
+          opportunities: Json
+          projected_calls: number
+          projected_cost: number
+          projected_margin: number
+          projected_margin_pct: number
+          projected_minutes: number
+          projected_revenue: number
+          projection_date: string
+          risk_factors: Json
+        }
+        Insert: {
+          ai_narrative?: string | null
+          confidence_score?: number
+          created_at?: string
+          horizon_days: number
+          id?: string
+          input_data?: Json
+          model_version?: string
+          opportunities?: Json
+          projected_calls?: number
+          projected_cost?: number
+          projected_margin?: number
+          projected_margin_pct?: number
+          projected_minutes?: number
+          projected_revenue?: number
+          projection_date?: string
+          risk_factors?: Json
+        }
+        Update: {
+          ai_narrative?: string | null
+          confidence_score?: number
+          created_at?: string
+          horizon_days?: number
+          id?: string
+          input_data?: Json
+          model_version?: string
+          opportunities?: Json
+          projected_calls?: number
+          projected_cost?: number
+          projected_margin?: number
+          projected_margin_pct?: number
+          projected_minutes?: number
+          projected_revenue?: number
+          projection_date?: string
+          risk_factors?: Json
+        }
+        Relationships: []
+      }
       fraud_detection_logs: {
         Row: {
           action_taken: string | null
