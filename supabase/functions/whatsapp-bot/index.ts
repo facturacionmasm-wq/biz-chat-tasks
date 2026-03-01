@@ -551,30 +551,9 @@ async function getAIResponse(
   userMessage: string,
   conversation: any
 ): Promise<string> {
-  // Get knowledge base — keyword search for relevance
-  const searchTerms = userMessage.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+  // === KNOWLEDGE RETRIEVAL: Always load ALL active knowledge ===
   
-  // First try to find relevant items by searching in title/content
-  let knowledge: any[] = [];
-  if (searchTerms.length > 0) {
-    // Build OR search pattern for ilike
-    const searchPattern = searchTerms.slice(0, 5).map(t => `%${t}%`);
-    
-    // Query items matching any search term in title or content
-    const { data: relevantItems } = await supabase
-      .from('knowledge_items')
-      .select('title, content, category, tags')
-      .eq('tenant_id', tenantId)
-      .eq('active', true)
-      .or(searchPattern.map(p => `title.ilike.${p},content.ilike.${p}`).join(','))
-      .limit(10);
-    
-    if (relevantItems && relevantItems.length > 0) {
-      knowledge = relevantItems;
-    }
-  }
-  
-  // Also get training corrections (high priority)
+  // 1. Training corrections (HIGHEST priority — human-corrected answers)
   const { data: corrections } = await supabase
     .from('knowledge_items')
     .select('title, content, category, tags')
@@ -582,28 +561,28 @@ async function getAIResponse(
     .eq('active', true)
     .eq('category', 'Entrenamiento IA')
     .order('updated_at', { ascending: false })
-    .limit(10);
+    .limit(15);
   
-  if (corrections && corrections.length > 0) {
-    // Merge corrections first (higher priority), then relevant items
-    const correctionIds = new Set(corrections.map((c: any) => c.title));
-    const uniqueKnowledge = knowledge.filter((k: any) => !correctionIds.has(k.title));
-    knowledge = [...corrections, ...uniqueKnowledge].slice(0, 20);
-  }
+  // 2. All other knowledge articles
+  const { data: generalKnowledge } = await supabase
+    .from('knowledge_items')
+    .select('title, content, category, tags')
+    .eq('tenant_id', tenantId)
+    .eq('active', true)
+    .neq('category', 'Entrenamiento IA')
+    .order('updated_at', { ascending: false })
+    .limit(30);
   
-  // Fallback: if no relevant items found, get recent ones
-  if (knowledge.length === 0) {
-    const { data: recentItems } = await supabase
-      .from('knowledge_items')
-      .select('title, content, category, tags')
-      .eq('tenant_id', tenantId)
-      .eq('active', true)
-      .order('updated_at', { ascending: false })
-      .limit(15);
-    knowledge = recentItems || [];
-  }
+  // Merge: corrections first, then general knowledge
+  const allKnowledge = [...(corrections || []), ...(generalKnowledge || [])];
 
-  const knowledgeContext = knowledge.map((k: any) => `[${k.category || 'General'}] ${k.title}: ${k.content}`).join('\n\n') || '';
+  // Build context with full content for corrections, trimmed for general
+  const knowledgeContext = allKnowledge.map((k: any) => {
+    const prefix = k.category === 'Entrenamiento IA' ? '⚠️ CORRECCIÓN PRIORITARIA' : (k.category || 'General');
+    // Give full content to corrections, cap general articles
+    const content = k.category === 'Entrenamiento IA' ? k.content : k.content?.substring(0, 800);
+    return `[${prefix}] ${k.title}:\n${content}`;
+  }).join('\n\n') || '';
 
   // Get recent messages for context
   const { data: recentMsgs } = await supabase
