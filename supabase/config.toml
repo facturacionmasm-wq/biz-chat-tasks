@@ -56,3 +56,6 @@ verify_jwt = false
 
 [functions.calendar-sync]
 verify_jwt = false
+
+[functions.calculate-usage-cost]
+verify_jwt = false

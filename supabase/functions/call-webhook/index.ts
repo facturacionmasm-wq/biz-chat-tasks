@@ -103,6 +103,28 @@ Formato del JSON (devuelve al final entre \`\`\`json y \`\`\`):
       }
     }
 
+    // Calculate usage cost
+    if (callRecord && tenant_id) {
+      const costUrl = `${SUPABASE_URL}/functions/v1/calculate-usage-cost`;
+      try {
+        await fetch(costUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          },
+          body: JSON.stringify({
+            call_record_id: callRecord.id,
+            tenant_id,
+            duration_seconds: duration || 0,
+            ai_tokens_used: transcript ? Math.ceil((transcript.length / 4)) : 0,
+          }),
+        });
+      } catch (e) {
+        console.error('Cost calculation trigger failed:', e);
+      }
+    }
+
     // Log audit event
     await supabase.from('audit_events').insert({
       tenant_id,
