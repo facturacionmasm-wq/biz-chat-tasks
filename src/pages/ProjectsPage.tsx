@@ -46,9 +46,23 @@ const ProjectsPage = () => {
   const [view, setView] = useState<'list' | 'board'>('list');
   const [allTasks, setAllTasks] = useState<TaskWithMeta[]>(initialTasks.map(t => ({ ...t })));
   const [selectedTask, setSelectedTask] = useState<TaskWithMeta | null>(null);
+  const [allProjects, setAllProjects] = useState(() => initialProjects.map(p => ({ ...p, milestones: p.milestones.map(m => ({ ...m })) })));
 
-  const selectedProject = initialProjects.find(p => p.id === selectedProjectId);
+  const selectedProject = allProjects.find(p => p.id === selectedProjectId);
   const projectTasks = selectedProjectId ? allTasks.filter(t => t.projectId === selectedProjectId) : allTasks;
+
+  const toggleMilestone = useCallback((projectId: string, milestoneId: string) => {
+    setAllProjects(prev => prev.map(p => {
+      if (p.id !== projectId) return p;
+      return {
+        ...p,
+        milestones: p.milestones.map(m =>
+          m.id === milestoneId ? { ...m, completed: !m.completed } : m
+        ),
+      };
+    }));
+    toast.success('Hito actualizado');
+  }, []);
 
   const cycleTaskStatus = useCallback((taskId: string, e?: React.MouseEvent) => {
     e?.stopPropagation();
@@ -259,8 +273,12 @@ const ProjectsPage = () => {
             <div className="mt-4 flex items-center gap-2 overflow-x-auto pb-1">
               {selectedProject.milestones.map((m, i) => (
                 <div key={m.id} className="flex items-center gap-1.5 shrink-0">
-                  <div className={`w-3 h-3 rounded-full border-2 ${m.completed ? 'bg-success border-success' : 'border-border bg-card'}`} />
-                  <span className={`text-xs ${m.completed ? 'text-success' : 'text-muted-foreground'}`}>{m.name}</span>
+                  <button
+                    onClick={() => toggleMilestone(selectedProject.id, m.id)}
+                    className={`w-3 h-3 rounded-full border-2 transition-all hover:scale-125 ${m.completed ? 'bg-success border-success' : 'border-border bg-card hover:border-success/50'}`}
+                    title={m.completed ? 'Marcar como pendiente' : 'Marcar como completado'}
+                  />
+                  <span className={`text-xs ${m.completed ? 'text-success line-through' : 'text-muted-foreground'}`}>{m.name}</span>
                   {i < selectedProject.milestones.length - 1 && <div className="w-6 h-px bg-border" />}
                 </div>
               ))}
@@ -417,7 +435,7 @@ const ProjectsPage = () => {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {initialProjects.map(proj => {
+        {allProjects.map(proj => {
           const projTasks = allTasks.filter(t => t.projectId === proj.id);
           const doneTasks = projTasks.filter(t => t.status === 'done').length;
           const computedProgress = projTasks.length > 0 ? Math.round((doneTasks / projTasks.length) * 100) : 0;
