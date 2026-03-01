@@ -196,19 +196,35 @@ serve(async (req) => {
         contextualPrompt += `\n## INSTRUCCIONES PERSONALIZADAS DEL TENANT\n${settings.custom_instructions}\n`;
       }
 
-      // Get recent knowledge items for context
-      const { data: knowledge } = await serviceClient
+      // Get training corrections first (highest priority)
+      const { data: corrections } = await serviceClient
         .from('knowledge_items')
         .select('title, content, category')
         .eq('tenant_id', profile.tenant_id)
         .eq('active', true)
-        .limit(10)
-        .order('updated_at', { ascending: false });
+        .eq('category', 'Entrenamiento IA')
+        .order('updated_at', { ascending: false })
+        .limit(15);
 
-      if (knowledge && knowledge.length > 0) {
-        contextualPrompt += `\n## KNOWLEDGE HUB (Artículos recientes del tenant)\n`;
-        knowledge.forEach(k => {
-          contextualPrompt += `### ${k.title} [${k.category || 'General'}]\n${k.content?.substring(0, 500)}\n\n`;
+      // Get all other knowledge items
+      const { data: generalKnowledge } = await serviceClient
+        .from('knowledge_items')
+        .select('title, content, category')
+        .eq('tenant_id', profile.tenant_id)
+        .eq('active', true)
+        .neq('category', 'Entrenamiento IA')
+        .order('updated_at', { ascending: false })
+        .limit(30);
+
+      const allKnowledge = [...(corrections || []), ...(generalKnowledge || [])];
+
+      if (allKnowledge.length > 0) {
+        contextualPrompt += `\n## KNOWLEDGE HUB (Base de conocimientos del tenant)\n`;
+        contextualPrompt += `IMPORTANTE: Los artículos marcados como [⚠️ CORRECCIÓN] son correcciones humanas y tienen MÁXIMA prioridad. Siempre úsalos como referencia principal.\n\n`;
+        allKnowledge.forEach(k => {
+          const prefix = k.category === 'Entrenamiento IA' ? '⚠️ CORRECCIÓN' : (k.category || 'General');
+          const content = k.category === 'Entrenamiento IA' ? k.content : k.content?.substring(0, 600);
+          contextualPrompt += `### ${k.title} [${prefix}]\n${content}\n\n`;
         });
       }
     }
