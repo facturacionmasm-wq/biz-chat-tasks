@@ -66,10 +66,14 @@ export async function getAIResponse(
   const today = new Date();
   const todayStr = today.toISOString().split('T')[0];
   const currentTime = today.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+  // Pre-calculate tomorrow so the model doesn't have to do date arithmetic
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowStr = tomorrow.toISOString().split('T')[0];
 
   const systemPrompt = mode === 'client'
-    ? buildClientPrompt(todayStr, currentTime, employeeList, knowledgeContext)
-    : buildEmployeePrompt(conversation.bot_context?.user_name || 'tu compañero', todayStr, currentTime, knowledgeContext);
+    ? buildClientPrompt(todayStr, tomorrowStr, currentTime, employeeList, knowledgeContext)
+    : buildEmployeePrompt(conversation.bot_context?.user_name || 'tu compañero', todayStr, tomorrowStr, currentTime, knowledgeContext);
 
   try {
     const messages = [
