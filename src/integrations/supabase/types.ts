@@ -935,6 +935,140 @@ export type Database = {
           },
         ]
       }
+      plan_change_history: {
+        Row: {
+          applied_by: string
+          change_reason: string | null
+          change_type: string
+          created_at: string
+          evaluation_id: string | null
+          id: string
+          new_plan_slug: string
+          old_plan_slug: string | null
+          stripe_subscription_id: string | null
+          tenant_id: string
+        }
+        Insert: {
+          applied_by?: string
+          change_reason?: string | null
+          change_type?: string
+          created_at?: string
+          evaluation_id?: string | null
+          id?: string
+          new_plan_slug: string
+          old_plan_slug?: string | null
+          stripe_subscription_id?: string | null
+          tenant_id: string
+        }
+        Update: {
+          applied_by?: string
+          change_reason?: string | null
+          change_type?: string
+          created_at?: string
+          evaluation_id?: string | null
+          id?: string
+          new_plan_slug?: string
+          old_plan_slug?: string | null
+          stripe_subscription_id?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plan_change_history_evaluation_id_fkey"
+            columns: ["evaluation_id"]
+            isOneToOne: false
+            referencedRelation: "pricing_evaluations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "plan_change_history_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pricing_evaluations: {
+        Row: {
+          action_applied: boolean
+          action_reason: string | null
+          applied_at: string | null
+          avg_margin_pct_3m: number
+          avg_monthly_calls_3m: number
+          avg_monthly_cost_3m: number
+          avg_monthly_minutes_3m: number
+          avg_monthly_revenue_3m: number
+          created_at: string
+          current_plan_slug: string | null
+          evaluation_date: string
+          growth_rate_pct: number
+          id: string
+          new_markup_pct: number | null
+          new_per_minute_rate: number | null
+          old_markup_pct: number | null
+          old_per_minute_rate: number | null
+          recommended_action: string
+          recommended_plan_slug: string | null
+          tenant_id: string
+          usage_tier: string
+        }
+        Insert: {
+          action_applied?: boolean
+          action_reason?: string | null
+          applied_at?: string | null
+          avg_margin_pct_3m?: number
+          avg_monthly_calls_3m?: number
+          avg_monthly_cost_3m?: number
+          avg_monthly_minutes_3m?: number
+          avg_monthly_revenue_3m?: number
+          created_at?: string
+          current_plan_slug?: string | null
+          evaluation_date?: string
+          growth_rate_pct?: number
+          id?: string
+          new_markup_pct?: number | null
+          new_per_minute_rate?: number | null
+          old_markup_pct?: number | null
+          old_per_minute_rate?: number | null
+          recommended_action?: string
+          recommended_plan_slug?: string | null
+          tenant_id: string
+          usage_tier?: string
+        }
+        Update: {
+          action_applied?: boolean
+          action_reason?: string | null
+          applied_at?: string | null
+          avg_margin_pct_3m?: number
+          avg_monthly_calls_3m?: number
+          avg_monthly_cost_3m?: number
+          avg_monthly_minutes_3m?: number
+          avg_monthly_revenue_3m?: number
+          created_at?: string
+          current_plan_slug?: string | null
+          evaluation_date?: string
+          growth_rate_pct?: number
+          id?: string
+          new_markup_pct?: number | null
+          new_per_minute_rate?: number | null
+          old_markup_pct?: number | null
+          old_per_minute_rate?: number | null
+          recommended_action?: string
+          recommended_plan_slug?: string | null
+          tenant_id?: string
+          usage_tier?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pricing_evaluations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pricing_rules: {
         Row: {
           active: boolean
@@ -1775,6 +1909,48 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      volume_tiers: {
+        Row: {
+          active: boolean
+          created_at: string
+          discount_pct: number
+          id: string
+          markup_pct: number
+          max_minutes: number | null
+          min_minutes: number
+          name: string
+          per_minute_rate: number
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          discount_pct?: number
+          id?: string
+          markup_pct?: number
+          max_minutes?: number | null
+          min_minutes?: number
+          name: string
+          per_minute_rate: number
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          discount_pct?: number
+          id?: string
+          markup_pct?: number
+          max_minutes?: number | null
+          min_minutes?: number
+          name?: string
+          per_minute_rate?: number
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
       }
       whatsapp_conversations: {
         Row: {
