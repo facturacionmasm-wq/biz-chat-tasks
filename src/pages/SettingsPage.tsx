@@ -99,6 +99,21 @@ const SettingsPage = () => {
   const [calendarHealthy, setCalendarHealthy] = useState<boolean | null>(null);
   const [checkingHealth, setCheckingHealth] = useState(false);
 
+  // Handle redirect back from Google OAuth (same-window flow)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('calendar_connected') === 'true') {
+      setActiveSection('calendar');
+      const email = params.get('email');
+      if (email) setCalendarEmail(decodeURIComponent(email));
+      // Clean URL
+      window.history.replaceState({}, '', window.location.pathname);
+      // Refresh status
+      checkCalendarStatus();
+      toast.success(`Google Calendar conectado exitosamente${email ? ` con ${decodeURIComponent(email)}` : ''}`);
+    }
+  }, []);
+
   // Load tenant data
   useEffect(() => {
     if (!user) return;
@@ -529,17 +544,6 @@ const SettingsPage = () => {
       return;
     }
 
-    // IMPORTANT: open popup synchronously from the click event to avoid browser popup blocking
-    const popup = window.open('', 'google-calendar-auth', 'width=600,height=700,scrollbars=yes');
-
-    if (!popup) {
-      toast.error('Tu navegador bloqueó el popup. Habilita popups para continuar.');
-      setSavingCalendar(false);
-      return;
-    }
-
-    popup.document.write('<html><body style="font-family: system-ui; display:flex; align-items:center; justify-content:center; min-height:100vh; margin:0;">Conectando con Google...</body></html>');
-
     try {
       const { data: session } = await supabase.auth.getSession();
       const token = session?.session?.access_token;
@@ -554,28 +558,42 @@ const SettingsPage = () => {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`,
           },
-          body: JSON.stringify({ action: 'initiate', calendar_email: emailToSync }),
+          body: JSON.stringify({
+            action: 'initiate',
+            calendar_email: emailToSync,
+            app_origin: window.location.origin,
+          }),
         },
       );
 
       const data = await res.json();
       if (!data.auth_url) {
-        popup.close();
         throw new Error(data.error || 'Error al obtener URL de autorización');
       }
 
-      popup.location.href = data.auth_url;
+      // Try popup first (synchronous open)
+      const popup = window.open(data.auth_url, 'google-calendar-auth', 'width=600,height=700,scrollbars=yes');
 
-      // Poll for popup close and then refresh connection status
-      const pollTimer = setInterval(async () => {
-        if (popup.closed) {
-          clearInterval(pollTimer);
-          await checkCalendarStatus();
-          setSavingCalendar(false);
-        }
-      }, 1000);
+      if (popup && !popup.closed) {
+        // Poll for popup close and then refresh connection status
+        const pollTimer = setInterval(async () => {
+          try {
+            if (popup.closed) {
+              clearInterval(pollTimer);
+              await checkCalendarStatus();
+              setSavingCalendar(false);
+            }
+          } catch {
+            clearInterval(pollTimer);
+            await checkCalendarStatus();
+            setSavingCalendar(false);
+          }
+        }, 1000);
+      } else {
+        // Popup was blocked → redirect in same window
+        window.location.href = data.auth_url;
+      }
     } catch (err: any) {
-      if (!popup.closed) popup.close();
       toast.error(err.message || 'Error al conectar con Google Calendar');
       setSavingCalendar(false);
     }
