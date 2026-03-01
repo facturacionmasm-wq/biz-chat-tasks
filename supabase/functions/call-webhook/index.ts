@@ -20,6 +20,7 @@ serve(async (req) => {
 
     const {
       call_id,
+      existing_record_id,
       from_number,
       to_number,
       status,
@@ -57,7 +58,7 @@ serve(async (req) => {
       });
     }
 
-    console.log(`[call-webhook] call_id=${call_id} tenant=${tenant_id} status=${status}`);
+    console.log(`[call-webhook] call_id=${call_id} existing_record_id=${existing_record_id} tenant=${tenant_id} status=${status}`);
 
     // ---- Pre-call fraud check: rate limiting ----
     const { data: rateLimit } = await supabase
@@ -87,27 +88,26 @@ serve(async (req) => {
       }
     }
 
-    // UPSERT call record by external_call_id for idempotency
-    const callData: Record<string, any> = {
-      tenant_id,
-      external_call_id: call_id || null,
-      from_number: from_number || null,
-      to_number: to_number || null,
-      status: status || 'completed',
-      duration: duration || 0,
-      started_at: started_at || new Date().toISOString(),
-      ended_at: ended_at || new Date().toISOString(),
-      transcript: transcript || null,
-      audio_url: audio_url || null,
-      recording_status: audio_url ? 'ready' : 'not_requested',
-      transcript_status: transcript?.trim() ? 'ready' : 'pending',
-      summary_status: 'pending',
-    };
-
     let callRecord: { id: string } | null = null;
 
-    // Try to find existing record
-    if (call_id) {
+    // ═══════════ RESOLVE OR CREATE CALL RECORD ═══════════
+    // If existing_record_id is provided (e.g. from VoiceAgent), use it directly
+    // This prevents creating duplicate records
+    if (existing_record_id) {
+      const { data: existing } = await supabase
+        .from('call_records')
+        .select('id')
+        .eq('id', existing_record_id)
+        .maybeSingle();
+
+      if (existing) {
+        callRecord = existing;
+        console.log(`[call-webhook] Using existing record ${existing.id}`);
+      }
+    }
+
+    // Try to find by external_call_id (Twilio CallSid) for idempotency
+    if (!callRecord && call_id) {
       const { data: existing } = await supabase
         .from('call_records')
         .select('id')
@@ -115,13 +115,45 @@ serve(async (req) => {
         .maybeSingle();
 
       if (existing) {
-        await supabase.from('call_records').update(callData).eq('id', existing.id);
         callRecord = existing;
-        console.log(`[call-webhook] Updated existing call ${existing.id}`);
+        console.log(`[call-webhook] Found existing call by external_call_id ${existing.id}`);
       }
     }
 
+    // Update existing record with latest data
+    if (callRecord) {
+      const updateData: Record<string, any> = {};
+      if (call_id) updateData.external_call_id = call_id;
+      if (status) updateData.status = status;
+      if (duration) updateData.duration = duration;
+      if (ended_at) updateData.ended_at = ended_at;
+      if (audio_url) {
+        updateData.audio_url = audio_url;
+        updateData.recording_status = 'ready';
+      }
+      if (Object.keys(updateData).length > 0) {
+        await supabase.from('call_records').update(updateData).eq('id', callRecord.id);
+      }
+    }
+
+    // Create new record only if none found
     if (!callRecord) {
+      const callData: Record<string, any> = {
+        tenant_id,
+        external_call_id: call_id || null,
+        from_number: from_number || null,
+        to_number: to_number || null,
+        status: status || 'completed',
+        duration: duration || 0,
+        started_at: started_at || new Date().toISOString(),
+        ended_at: ended_at || new Date().toISOString(),
+        transcript: transcript || null,
+        audio_url: audio_url || null,
+        recording_status: audio_url ? 'ready' : 'not_requested',
+        transcript_status: transcript?.trim() ? 'ready' : 'pending',
+        summary_status: 'pending',
+      };
+
       const { data: newRecord, error } = await supabase
         .from('call_records')
         .insert(callData)

@@ -279,6 +279,27 @@ const CallsPage = () => {
     }
   };
 
+  const retryFailedJob = async (jobId: string) => {
+    const { error } = await supabase
+      .from('call_jobs')
+      .update({ status: 'queued', last_error: null, run_after: new Date().toISOString() })
+      .eq('id', jobId);
+    if (error) {
+      toast.error('Error al reintentar job');
+    } else {
+      toast.success('Job re-encolado');
+      // Trigger worker
+      supabase.functions.invoke('call-job-worker', { body: { trigger: 'manual_retry' } }).catch(() => {});
+      // Refresh jobs
+      if (selectedCall) {
+        supabase.from('call_jobs').select('id, job_type, status, attempts, last_error, updated_at')
+          .eq('call_id', selectedCall.id)
+          .order('created_at', { ascending: true })
+          .then(({ data }) => setCallJobs(data || []));
+      }
+    }
+  };
+
   const regenerateSummary = async () => {
     if (!selectedCall?.transcript) return;
     toast.info('Regenerando resumen con IA...');
@@ -595,6 +616,15 @@ const CallsPage = () => {
                         {job.status === 'running' && <Loader2 size={12} className="text-primary animate-spin" />}
                         {job.status === 'error' && <AlertTriangle size={12} className="text-destructive" />}
                         <span className="text-foreground font-medium">{job.job_type.replace(/_/g, ' ')}</span>
+                        {job.status === 'error' && (
+                          <button
+                            onClick={() => retryFailedJob(job.id)}
+                            className="text-[10px] bg-destructive/10 text-destructive hover:bg-destructive/20 px-1.5 py-0.5 rounded flex items-center gap-1 transition-colors"
+                            title={job.last_error || 'Reintentar'}
+                          >
+                            <RefreshCw size={10} /> Reintentar
+                          </button>
+                        )}
                         <span className={`ml-auto px-1.5 py-0.5 rounded ${
                           job.status === 'success' ? 'bg-success/10 text-success' :
                           job.status === 'error' ? 'bg-destructive/10 text-destructive' :
