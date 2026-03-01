@@ -153,4 +153,19 @@ export const AI_TOOLS = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'search_web',
+      description: 'Buscar información en internet o responder preguntas de conocimiento general. Usa cuando pregunten sobre: direcciones, cómo llegar a un lugar, clima, precios de algo, información general, cultura, ciencia, recetas, consejos, definiciones, noticias, o cualquier cosa que NO esté en la base de conocimientos del negocio. También usa cuando digan "busca", "investiga", "dime sobre", "qué es", "cómo llego a", "cuánto cuesta".',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'La pregunta o consulta a buscar. Reformúlala de forma clara y específica.' },
+          model_preference: { type: 'string', enum: ['gemini', 'gpt'], description: 'Modelo preferido: "gemini" para consultas rápidas/generales, "gpt" para razonamiento complejo. Default: gemini.' },
+        },
+        required: ['query'],
+      },
+    },
+  },
 ];

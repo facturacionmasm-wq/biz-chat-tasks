@@ -250,6 +250,23 @@ const VoiceAgent = ({ onCallEnd }: VoiceAgentProps) => {
           return `Error al transferir: ${err.message}`;
         }
       },
+      search_web: async (params: { query: string; model_preference?: string }) => {
+        try {
+          addTranscriptLine('Sistema', `[Buscando: ${params.query}]`);
+          const { data, error } = await supabase.functions.invoke('web-search', {
+            body: { 
+              query: params.query, 
+              model_preference: params.model_preference || 'gemini' 
+            },
+          });
+          if (error) return `Error en búsqueda: ${error.message}`;
+          if (!data?.success) return `No se encontró información: ${data?.error || 'error desconocido'}`;
+          addTranscriptLine('Sistema', `[Resultado de búsqueda (${data.model_used})]`);
+          return data.answer;
+        } catch (err: any) {
+          return `Error al buscar: ${err.message}`;
+        }
+      },
     },
     onConnect: () => {
       setError(null);
