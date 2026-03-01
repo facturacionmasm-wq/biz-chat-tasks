@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import ChatSidebar from '@/components/ChatSidebar';
 import ChatArea from '@/components/ChatArea';
 import { channels as initialChannels, messages as initialMessages } from '@/data/mockData';
@@ -8,15 +8,26 @@ import { usePresence } from '@/hooks/usePresence';
 import { ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
+
+type MemberDirectoryItem = Omit<TeamMember, 'status'>;
 
 const ChatPage = () => {
   const [activeChannelId, setActiveChannelId] = useState('general');
   const [allMessages, setAllMessages] = useState<Message[]>(initialMessages);
   const [allChannels, setAllChannels] = useState<Channel[]>(initialChannels);
   const [showChat, setShowChat] = useState(false);
-  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [memberDirectory, setMemberDirectory] = useState<MemberDirectoryItem[]>([]);
   const isMobile = useIsMobile();
   const onlineUsers = usePresence(false);
+  const { user } = useAuth();
+
+  const teamMembers = useMemo<TeamMember[]>(() => {
+    return memberDirectory.map(member => ({
+      ...member,
+      status: onlineUsers.has(member.id) ? 'online' : 'offline',
+    }));
+  }, [memberDirectory, onlineUsers]);
 
   // Fetch real employees from profiles table
   useEffect(() => {
@@ -48,55 +59,49 @@ const ChatPage = () => {
       }
 
       if (profilesRes.data && profilesRes.data.length > 0) {
-        const members: TeamMember[] = profilesRes.data.map(p => ({
+        const members: MemberDirectoryItem[] = profilesRes.data.map(p => ({
           id: p.user_id,
           name: p.name,
           avatar: p.avatar_url || '',
           role: roleMap[p.user_id] || 'Member',
-          status: 'offline' as const,
           email: p.email || undefined,
           phone: p.phone || undefined,
           whatsappNumber: p.whatsapp_number || undefined,
         }));
-        setTeamMembers(members);
+        setMemberDirectory(members);
       }
     };
 
     fetchProfiles();
   }, []);
 
-  // Update team members status based on realtime presence
-  useEffect(() => {
-    setTeamMembers(prev => prev.map(m => ({
-      ...m,
-      status: onlineUsers.has(m.id) ? 'online' as const : 'offline' as const,
-    })));
-  }, [onlineUsers]);
-
   // Track channel members: channelId -> array of member IDs
   const [channelMembers, setChannelMembers] = useState<Record<string, string[]>>({});
 
-  // Initialize channel members when teamMembers load
+  // Initialize channel members when team members load
   useEffect(() => {
-    if (teamMembers.length > 0) {
+    if (memberDirectory.length > 0) {
       setChannelMembers(prev => {
         const map: Record<string, string[]> = { ...prev };
         allChannels.forEach(ch => {
           if (ch.type === 'channel' && !map[ch.id]) {
-            map[ch.id] = teamMembers.map(m => m.id);
+            map[ch.id] = memberDirectory.map(m => m.id);
           }
         });
         return map;
       });
     }
-  }, [teamMembers]);
+  }, [memberDirectory, allChannels]);
 
   const activeChannel = allChannels.find(c => c.id === activeChannelId) || allChannels[0];
   const channelMessages = allMessages.filter(m => m.channelId === activeChannelId);
 
   const notifyOfflineRecipient = useCallback(async (recipient: TeamMember, content: string) => {
     const to = recipient.whatsappNumber || recipient.phone;
-    if (!to) return;
+    if (!to) {
+      console.warn(`No hay teléfono/WhatsApp para ${recipient.name}`);
+      return false;
+    }
 
     const message = `🔔 Nuevo mensaje en Chat Interno\n\n${content}\n\nAbre la app para responder.`;
     const { data, error } = await supabase.functions.invoke('twilio-send', {
@@ -105,27 +110,64 @@ const ChatPage = () => {
 
     if (error || !data?.ok) {
       console.error('No se pudo enviar notificación por WhatsApp:', error || data);
-      return;
+      return false;
     }
 
-    toast.info(`Se notificó por WhatsApp a ${recipient.name}`);
+    return true;
   }, []);
+
+  const resolveDirectRecipient = useCallback((channel: Channel) => {
+    if (channel.type !== 'direct') return null;
+
+    const normalize = (value: string) => value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const rawId = channel.id.startsWith('dm-') ? channel.id.replace('dm-', '') : '';
+
+    return (
+      teamMembers.find(m => m.id === rawId) ||
+      teamMembers.find(m => m.name === channel.name) ||
+      teamMembers.find(m => {
+        if (!rawId) return false;
+        const normalizedName = normalize(m.name).replace(/\s+/g, '-');
+        return normalizedName.includes(normalize(rawId));
+      }) ||
+      null
+    );
+  }, [teamMembers]);
 
   const handleSendMessage = async (content: string) => {
     const newMsg: Message = {
-      id: Date.now().toString(), channelId: activeChannelId, userId: '0', userName: 'Tú', userAvatar: '', content, timestamp: new Date(), isOwn: true,
+      id: Date.now().toString(), channelId: activeChannelId, userId: user?.id || '0', userName: 'Tú', userAvatar: '', content, timestamp: new Date(), isOwn: true,
     };
     setAllMessages(prev => [...prev, newMsg]);
 
     // For DM: if recipient is offline, notify via WhatsApp
     if (activeChannel?.type === 'direct') {
-      const recipientId = activeChannel.id.startsWith('dm-') ? activeChannel.id.replace('dm-', '') : null;
-      const recipient = recipientId
-        ? teamMembers.find(m => m.id === recipientId)
-        : teamMembers.find(m => m.name === activeChannel.name);
-
+      const recipient = resolveDirectRecipient(activeChannel);
       if (recipient && recipient.status !== 'online') {
-        await notifyOfflineRecipient(recipient, content);
+        const sent = await notifyOfflineRecipient(recipient, content);
+        if (sent) toast.info(`Se notificó por WhatsApp a ${recipient.name}`);
+      }
+      return;
+    }
+
+    // For channel: notify all offline members except current user
+    if (activeChannel?.type === 'channel') {
+      const memberIds = channelMembers[activeChannelId] || [];
+      const offlineRecipients = teamMembers.filter(member =>
+        memberIds.includes(member.id) &&
+        member.id !== user?.id &&
+        member.status !== 'online'
+      );
+
+      if (offlineRecipients.length > 0) {
+        const results = await Promise.all(
+          offlineRecipients.map(recipient => notifyOfflineRecipient(recipient, content))
+        );
+
+        const notifiedCount = results.filter(Boolean).length;
+        if (notifiedCount > 0) {
+          toast.info(`Notificación enviada a ${notifiedCount} usuario(s) offline por WhatsApp`);
+        }
       }
     }
   };
@@ -152,7 +194,7 @@ const ChatPage = () => {
     setActiveChannelId(newChannel.id);
     if (isMobile) setShowChat(true);
     toast.success(`Canal #${name} creado`);
-  }, [allChannels, isMobile]);
+  }, [allChannels, isMobile, teamMembers]);
 
   const handleCreateDM = useCallback((memberId: string) => {
     const member = teamMembers.find(m => m.id === memberId);
@@ -173,16 +215,16 @@ const ChatPage = () => {
     setActiveChannelId(newDM.id);
     if (isMobile) setShowChat(true);
     toast.success(`Chat con ${member.name} creado`);
-  }, [allChannels, isMobile]);
+  }, [allChannels, isMobile, teamMembers]);
 
   const handleAddMember = useCallback((memberId: string) => {
     const member = teamMembers.find(m => m.id === memberId);
     setChannelMembers(prev => ({
       ...prev,
-      [activeChannelId]: [...(prev[activeChannelId] || []), memberId],
+      [activeChannelId]: Array.from(new Set([...(prev[activeChannelId] || []), memberId])),
     }));
     toast.success(`${member?.name || 'Miembro'} agregado al canal`);
-  }, [activeChannelId]);
+  }, [activeChannelId, teamMembers]);
 
   const handleRemoveMember = useCallback((memberId: string) => {
     const member = teamMembers.find(m => m.id === memberId);
@@ -191,7 +233,7 @@ const ChatPage = () => {
       [activeChannelId]: (prev[activeChannelId] || []).filter(id => id !== memberId),
     }));
     toast.info(`${member?.name || 'Miembro'} removido del canal`);
-  }, [activeChannelId]);
+  }, [activeChannelId, teamMembers]);
 
   if (isMobile) {
     if (showChat) {
