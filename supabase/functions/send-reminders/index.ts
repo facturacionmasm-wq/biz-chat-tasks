@@ -28,11 +28,11 @@ serve(async (req) => {
   try {
     const now = new Date().toISOString();
 
-    // Get pending reminders that are due
+    // Get pending reminders that are due (including retryable failed ones)
     const { data: reminders, error: fetchErr } = await supabase
       .from('reminders')
-      .select('id, user_id, tenant_id, message, remind_at')
-      .eq('status', 'pending')
+      .select('id, user_id, tenant_id, message, remind_at, retry_count, max_retries, status')
+      .or('status.eq.pending,and(status.eq.failed,retry_count.lt.max_retries)')
       .lte('remind_at', now)
       .order('remind_at')
       .limit(50);
@@ -45,9 +45,19 @@ serve(async (req) => {
       });
     }
 
-    let sentCount = 0;
+    // Filter failed ones that haven't exceeded max retries
+    const eligibleReminders = reminders.filter((r: any) => {
+      if (r.status === 'pending') return true;
+      if (r.status === 'failed' && r.retry_count < (r.max_retries || 3)) return true;
+      return false;
+    });
 
-    for (const reminder of reminders) {
+    console.log(`Processing ${eligibleReminders.length} reminders (${reminders.length} total found)`);
+
+    let sentCount = 0;
+    const results: any[] = [];
+
+    for (const reminder of eligibleReminders) {
       // Get user's WhatsApp number
       const { data: profile } = await supabase
         .from('profiles')
@@ -57,8 +67,24 @@ serve(async (req) => {
         .maybeSingle();
 
       if (!profile?.whatsapp_number) {
-        // Mark as sent anyway to avoid retrying forever
-        await supabase.from('reminders').update({ status: 'no_phone', sent_at: now }).eq('id', reminder.id);
+        await supabase.from('reminders').update({ 
+          status: 'no_phone', 
+          sent_at: now,
+          error_message: 'El usuario no tiene número de WhatsApp configurado',
+        }).eq('id', reminder.id);
+        results.push({ id: reminder.id, status: 'no_phone' });
+        continue;
+      }
+
+      // Validate phone number format
+      const phone = profile.whatsapp_number.replace(/\s/g, '');
+      if (!/^\+?\d{10,15}$/.test(phone.replace('whatsapp:', ''))) {
+        await supabase.from('reminders').update({ 
+          status: 'failed',
+          error_message: `Número inválido: ${phone}`,
+          retry_count: (reminder.retry_count || 0) + 1,
+        }).eq('id', reminder.id);
+        results.push({ id: reminder.id, status: 'invalid_phone' });
         continue;
       }
 
@@ -66,7 +92,7 @@ serve(async (req) => {
 
       try {
         const fromWA = TWILIO_PHONE_NUMBER.startsWith('whatsapp:') ? TWILIO_PHONE_NUMBER : `whatsapp:${TWILIO_PHONE_NUMBER}`;
-        const toWA = profile.whatsapp_number.startsWith('whatsapp:') ? profile.whatsapp_number : `whatsapp:${profile.whatsapp_number}`;
+        const toWA = phone.startsWith('whatsapp:') ? phone : `whatsapp:${phone}`;
         const basicAuth = btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`);
 
         const res = await fetch(
@@ -88,9 +114,13 @@ serve(async (req) => {
         const data = await res.json();
         if (res.ok) {
           sentCount++;
-          console.log(`Reminder sent to ${profile.name}: "${reminder.message}"`);
+          console.log(`✅ Reminder sent to ${profile.name}: "${reminder.message}" (id=${reminder.id})`);
 
-          await supabase.from('reminders').update({ status: 'sent', sent_at: now }).eq('id', reminder.id);
+          await supabase.from('reminders').update({ 
+            status: 'sent', 
+            sent_at: now,
+            error_message: null,
+          }).eq('id', reminder.id);
 
           // Save to WhatsApp messages
           const { data: conv } = await supabase
@@ -109,20 +139,48 @@ serve(async (req) => {
               direction: 'out',
               body: reminderMsg,
               status: 'sent',
-              metadata: { provider: 'reminder', reminder_id: reminder.id },
+              metadata: { provider: 'reminder', reminder_id: reminder.id, message_sid: data.sid },
             });
           }
+
+          results.push({ id: reminder.id, status: 'sent', sid: data.sid });
         } else {
-          console.error(`Failed to send reminder to ${profile.name}:`, JSON.stringify(data));
-          await supabase.from('reminders').update({ status: 'failed' }).eq('id', reminder.id);
+          const errorMsg = data.message || data.error_message || `Twilio error ${data.code}`;
+          console.error(`❌ Failed to send reminder to ${profile.name}: ${errorMsg}`);
+          
+          const newRetryCount = (reminder.retry_count || 0) + 1;
+          const maxRetries = reminder.max_retries || 3;
+          
+          await supabase.from('reminders').update({ 
+            status: newRetryCount >= maxRetries ? 'failed' : 'failed',
+            error_message: errorMsg,
+            retry_count: newRetryCount,
+          }).eq('id', reminder.id);
+
+          results.push({ id: reminder.id, status: 'failed', error: errorMsg, retry: `${newRetryCount}/${maxRetries}` });
         }
       } catch (sendErr) {
-        console.error(`Error sending reminder:`, sendErr);
-        await supabase.from('reminders').update({ status: 'failed' }).eq('id', reminder.id);
+        const errorMsg = sendErr instanceof Error ? sendErr.message : 'Unknown send error';
+        console.error(`❌ Error sending reminder ${reminder.id}:`, errorMsg);
+        
+        await supabase.from('reminders').update({ 
+          status: 'failed',
+          error_message: errorMsg,
+          retry_count: (reminder.retry_count || 0) + 1,
+        }).eq('id', reminder.id);
+
+        results.push({ id: reminder.id, status: 'error', error: errorMsg });
       }
     }
 
-    return new Response(JSON.stringify({ ok: true, sent: sentCount, total: reminders.length }), {
+    console.log(`Reminder batch complete: ${sentCount}/${eligibleReminders.length} sent`);
+
+    return new Response(JSON.stringify({ 
+      ok: true, 
+      sent: sentCount, 
+      total: eligibleReminders.length,
+      results,
+    }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (error) {
