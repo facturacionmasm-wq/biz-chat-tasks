@@ -28,11 +28,31 @@ serve(async (req) => {
       ended_at,
       transcript,
       audio_url,
-      tenant_id,
+      tenant_id: tenantIdParam,
     } = body;
 
+    // ═══════════ RESOLVE TENANT ═══════════
+    let tenant_id = tenantIdParam;
+
+    // If no tenant_id provided, try to resolve from phone numbers
     if (!tenant_id) {
-      return new Response(JSON.stringify({ error: 'tenant_id is required' }), {
+      for (const phone of [to_number, from_number].filter(Boolean)) {
+        const { data: phoneMatch } = await supabase
+          .from('tenant_phone_numbers')
+          .select('tenant_id')
+          .eq('phone_e164', phone)
+          .eq('active', true)
+          .maybeSingle();
+        if (phoneMatch) {
+          tenant_id = phoneMatch.tenant_id;
+          console.log(`[call-webhook] Resolved tenant ${tenant_id} from phone ${phone}`);
+          break;
+        }
+      }
+    }
+
+    if (!tenant_id) {
+      return new Response(JSON.stringify({ error: 'tenant_id could not be resolved' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
@@ -79,6 +99,9 @@ serve(async (req) => {
       ended_at: ended_at || new Date().toISOString(),
       transcript: transcript || null,
       audio_url: audio_url || null,
+      recording_status: audio_url ? 'ready' : 'not_requested',
+      transcript_status: transcript?.trim() ? 'ready' : 'pending',
+      summary_status: 'pending',
     };
 
     let callRecord: { id: string } | null = null;
@@ -92,7 +115,6 @@ serve(async (req) => {
         .maybeSingle();
 
       if (existing) {
-        // Update existing
         await supabase.from('call_records').update(callData).eq('id', existing.id);
         callRecord = existing;
         console.log(`[call-webhook] Updated existing call ${existing.id}`);
@@ -113,16 +135,13 @@ serve(async (req) => {
     // Enqueue async jobs (idempotent via unique constraint)
     const jobsToEnqueue = [];
 
-    // Always enqueue recording fetch
     if (audio_url || call_id) {
       jobsToEnqueue.push({ job_type: 'fetch_recording' });
     }
 
-    // If transcript available, go straight to summarize
     if (transcript?.trim()) {
       jobsToEnqueue.push({ job_type: 'summarize_call' });
     } else {
-      // Need transcription first
       jobsToEnqueue.push({ job_type: 'transcribe_call' });
     }
 
@@ -138,7 +157,7 @@ serve(async (req) => {
       });
     }
 
-    // Trigger cost calculation immediately (synchronous, fast)
+    // Trigger cost calculation immediately
     try {
       await fetch(`${SUPABASE_URL}/functions/v1/calculate-usage-cost`, {
         method: 'POST',

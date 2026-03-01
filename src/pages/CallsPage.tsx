@@ -716,10 +716,16 @@ const CallsPage = () => {
                     {isLive && <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />}
                     {call.audioUrl && <Volume2 size={12} className="text-muted-foreground shrink-0" />}
                   </div>
-                  <p className="text-xs text-muted-foreground truncate">
-                    {call.channel === 'voice_agent' ? 'Voice Agent' : 'Twilio'} · {format(call.startedAt, "d MMM HH:mm", { locale: es })}
-                    {call.summarySystem && ' · 📝'}
-                  </p>
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <span>{call.channel === 'voice_agent' ? 'Voice Agent' : 'Twilio'}</span>
+                    <span>·</span>
+                    <span>{format(call.startedAt, "d MMM HH:mm", { locale: es })}</span>
+                    {(call as any).recording_status === 'ready' && <span title="Grabación">🎙️</span>}
+                    {(call as any).transcript_status === 'ready' && <span title="Transcripción">💬</span>}
+                    {(call as any).summary_status === 'ready' && <span title="Resumen IA">📝</span>}
+                    {(call as any).appointment_status === 'created' && <span title="Cita creada">📅</span>}
+                    {((call as any).recording_status === 'error' || (call as any).transcript_status === 'error' || (call as any).summary_status === 'error' || (call as any).appointment_status === 'error') && <span title="Error en pipeline">⚠️</span>}
+                  </div>
                 </div>
                 <div className="text-right shrink-0 hidden sm:block">
                   <p className="text-sm text-foreground">{formatDuration(call.duration)}</p>

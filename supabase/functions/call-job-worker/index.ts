@@ -23,7 +23,6 @@ serve(async (req) => {
   const results: Array<{ job_id: string; job_type: string; status: string; error?: string }> = [];
 
   try {
-    // Fetch queued jobs ready to run
     const { data: jobs, error: fetchErr } = await supabase
       .from('call_jobs')
       .select('*')
@@ -40,7 +39,6 @@ serve(async (req) => {
     console.log(`[call-job-worker] Processing ${jobs.length} jobs`);
 
     for (const job of jobs) {
-      // Mark as running
       await supabase.from('call_jobs').update({
         status: 'running',
         attempts: job.attempts + 1,
@@ -77,7 +75,7 @@ serve(async (req) => {
       } catch (jobErr: any) {
         const errMsg = jobErr.message || 'Unknown error';
         const shouldRetry = job.attempts + 1 < job.max_attempts;
-        const backoffMinutes = Math.pow(2, job.attempts + 1) * 2; // 4, 8, 16 min
+        const backoffMinutes = Math.pow(2, job.attempts + 1) * 2;
         const runAfter = new Date(Date.now() + backoffMinutes * 60 * 1000).toISOString();
 
         await supabase.from('call_jobs').update({
@@ -86,8 +84,13 @@ serve(async (req) => {
           run_after: shouldRetry ? runAfter : job.run_after,
         }).eq('id', job.id);
 
-        // Audit log on final failure
+        // Update pipeline status on final failure
         if (!shouldRetry) {
+          const statusField = getStatusField(job.job_type);
+          if (statusField) {
+            await supabase.from('call_records').update({ [statusField]: 'error' }).eq('id', job.call_id);
+          }
+
           await supabase.from('audit_events').insert({
             tenant_id: job.tenant_id,
             event_type: 'call_job.failed',
@@ -103,16 +106,24 @@ serve(async (req) => {
     }
 
     return jsonResp({ processed: results.length, results });
-
   } catch (error: any) {
     console.error('[call-job-worker] Fatal error:', error.message);
     return jsonResp({ error: error.message }, 500);
   }
 });
 
+function getStatusField(jobType: string): string | null {
+  switch (jobType) {
+    case 'fetch_recording': return 'recording_status';
+    case 'transcribe_call': return 'transcript_status';
+    case 'summarize_call': return 'summary_status';
+    case 'extract_appointment': return 'appointment_status';
+    default: return null;
+  }
+}
+
 // ═══════════════════════════════════════════════
 // JOB: fetch_recording
-// Fetches recording URL from Twilio and optionally stores in Storage
 // ═══════════════════════════════════════════════
 async function jobFetchRecording(
   supabase: any, job: any,
@@ -126,15 +137,48 @@ async function jobFetchRecording(
 
   if (!call) throw new Error('Call record not found');
 
-  // If audio_url already set (from webhook), we're done
+  // If audio_url already set, try to store in Supabase Storage
   if (call.audio_url) {
-    await supabase.from('call_records').update({ recording_status: 'available' } as any).eq('id', job.call_id);
-    return { audio_url: call.audio_url, source: 'existing' };
+    let storagePath: string | null = null;
+
+    try {
+      const audioRes = await fetch(call.audio_url);
+      if (audioRes.ok) {
+        const audioBlob = await audioRes.arrayBuffer();
+        const path = `${call.tenant_id}/${job.call_id}/recording.mp3`;
+        const { error: uploadErr } = await supabase.storage
+          .from('call-recordings')
+          .upload(path, audioBlob, { contentType: 'audio/mpeg', upsert: true });
+        if (!uploadErr) {
+          storagePath = path;
+          console.log(`[call-job-worker] Stored recording at ${path}`);
+        }
+      }
+    } catch (e) {
+      console.warn('[call-job-worker] Could not store recording in Storage:', e);
+    }
+
+    await supabase.from('call_records').update({
+      recording_status: 'ready',
+    }).eq('id', job.call_id);
+
+    // Enqueue transcription
+    await supabase.from('call_jobs').upsert({
+      tenant_id: job.tenant_id,
+      call_id: job.call_id,
+      job_type: 'transcribe_call',
+      status: 'queued',
+      run_after: new Date().toISOString(),
+    }, { onConflict: 'call_id,job_type' });
+
+    return { audio_url: call.audio_url, storage_path: storagePath, source: 'existing' };
   }
 
   // Try fetching from Twilio API
   if (!twilioSid || !twilioToken || !call.external_call_id) {
-    throw new Error('No recording available and Twilio credentials not configured');
+    // No recording available — mark as not_requested and move on
+    await supabase.from('call_records').update({ recording_status: 'not_requested' }).eq('id', job.call_id);
+    return { status: 'no_recording_source' };
   }
 
   const twilioAuth = btoa(`${twilioSid}:${twilioToken}`);
@@ -147,17 +191,37 @@ async function jobFetchRecording(
   const data = await res.json();
 
   if (!data.recordings || data.recordings.length === 0) {
-    throw new Error('No recordings found for this call');
+    await supabase.from('call_records').update({ recording_status: 'not_requested' }).eq('id', job.call_id);
+    return { status: 'no_recordings_found' };
   }
 
   const recording = data.recordings[0];
   const recordingUrl = `https://api.twilio.com${recording.uri.replace('.json', '.mp3')}`;
 
+  // Store in Supabase Storage
+  let storagePath: string | null = null;
+  try {
+    const audioRes = await fetch(recordingUrl, {
+      headers: { Authorization: `Basic ${twilioAuth}` },
+    });
+    if (audioRes.ok) {
+      const audioBlob = await audioRes.arrayBuffer();
+      const path = `${call.tenant_id}/${job.call_id}/${recording.sid}.mp3`;
+      const { error: uploadErr } = await supabase.storage
+        .from('call-recordings')
+        .upload(path, audioBlob, { contentType: 'audio/mpeg', upsert: true });
+      if (!uploadErr) storagePath = path;
+    }
+  } catch (e) {
+    console.warn('[call-job-worker] Could not store recording:', e);
+  }
+
   await supabase.from('call_records').update({
     audio_url: recordingUrl,
+    recording_status: 'ready',
   }).eq('id', job.call_id);
 
-  // Enqueue transcription job now that recording exists
+  // Enqueue transcription
   await supabase.from('call_jobs').upsert({
     tenant_id: job.tenant_id,
     call_id: job.call_id,
@@ -166,12 +230,11 @@ async function jobFetchRecording(
     run_after: new Date().toISOString(),
   }, { onConflict: 'call_id,job_type' });
 
-  return { audio_url: recordingUrl, recording_sid: recording.sid };
+  return { audio_url: recordingUrl, storage_path: storagePath, recording_sid: recording.sid };
 }
 
 // ═══════════════════════════════════════════════
 // JOB: transcribe_call
-// Checks if transcript already exists; if not, marks as needing manual/external transcription
 // ═══════════════════════════════════════════════
 async function jobTranscribeCall(supabase: any, job: any) {
   const { data: call } = await supabase
@@ -182,9 +245,10 @@ async function jobTranscribeCall(supabase: any, job: any) {
 
   if (!call) throw new Error('Call record not found');
 
-  // If transcript already exists (from ElevenLabs real-time capture), chain to summary
   if (call.transcript?.trim()) {
-    // Enqueue summarize
+    // Transcript exists → mark ready, chain to summary
+    await supabase.from('call_records').update({ transcript_status: 'ready' }).eq('id', job.call_id);
+
     await supabase.from('call_jobs').upsert({
       tenant_id: job.tenant_id,
       call_id: job.call_id,
@@ -196,19 +260,18 @@ async function jobTranscribeCall(supabase: any, job: any) {
     return { status: 'transcript_exists', length: call.transcript.length };
   }
 
-  // No transcript and no audio → nothing to do
   if (!call.audio_url) {
+    await supabase.from('call_records').update({ transcript_status: 'not_requested' }).eq('id', job.call_id);
     return { status: 'no_audio_no_transcript' };
   }
 
-  // For now, mark that transcript needs external processing
-  // In the future, integrate ElevenLabs STT or another provider here
+  // Mark as awaiting external transcription
+  await supabase.from('call_records').update({ transcript_status: 'processing' }).eq('id', job.call_id);
   return { status: 'awaiting_transcription_service', audio_url: call.audio_url };
 }
 
 // ═══════════════════════════════════════════════
 // JOB: summarize_call
-// Generates AI summary + extracted data from transcript
 // ═══════════════════════════════════════════════
 async function jobSummarizeCall(supabase: any, job: any, apiKey: string) {
   const { data: call } = await supabase
@@ -220,8 +283,12 @@ async function jobSummarizeCall(supabase: any, job: any, apiKey: string) {
   if (!call) throw new Error('Call record not found');
   if (!call.transcript?.trim()) throw new Error('No transcript to summarize');
 
-  // Skip if already has a summary
+  // Update status to processing
+  await supabase.from('call_records').update({ summary_status: 'processing' }).eq('id', job.call_id);
+
   if (call.summary_system?.trim()) {
+    await supabase.from('call_records').update({ summary_status: 'ready' }).eq('id', job.call_id);
+
     // Still enqueue appointment extraction
     await supabase.from('call_jobs').upsert({
       tenant_id: job.tenant_id,
@@ -232,6 +299,15 @@ async function jobSummarizeCall(supabase: any, job: any, apiKey: string) {
     }, { onConflict: 'call_id,job_type' });
     return { status: 'summary_exists' };
   }
+
+  // Get tenant timezone for context
+  const { data: tenant } = await supabase
+    .from('tenants')
+    .select('timezone, name')
+    .eq('id', job.tenant_id)
+    .single();
+
+  const timezone = tenant?.timezone || 'America/Mexico_City';
 
   const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
     method: 'POST',
@@ -245,6 +321,9 @@ async function jobSummarizeCall(supabase: any, job: any, apiKey: string) {
 1. Un resumen estructurado en markdown
 2. Un JSON con datos extraídos
 
+Zona horaria del negocio: ${timezone}
+Nombre del negocio: ${tenant?.name || 'N/A'}
+
 Formato del resumen:
 **Resumen:** (2-3 líneas)
 **Sentimiento general:** (positivo/neutro/negativo) — Puntuación: X/10
@@ -255,9 +334,9 @@ Formato del resumen:
 **Seguimiento recomendado:** (fecha y contexto)
 
 Formato del JSON (devuelve al final entre \`\`\`json y \`\`\`):
-{"contactName":"","reason":"","intent":"","budget":"","urgency":"alta|media|baja","sentiment":"positivo|neutro|negativo","sentimentScore":7,"keyTopics":[],"suggestedTags":[],"objections":[],"agreements":[],"risks":[],"alerts":[],"followUp":"ISO date or empty","appointmentRequested":false,"appointmentDate":"","appointmentTime":"","appointmentService":""}
+{"contactName":"","reason":"","intent":"","budget":"","urgency":"alta|media|baja","sentiment":"positivo|neutro|negativo","sentimentScore":7,"keyTopics":[],"suggestedTags":[],"objections":[],"agreements":[],"risks":[],"alerts":[],"followUp":"ISO date or empty","appointmentRequested":false,"appointmentDate":"","appointmentTime":"","appointmentService":"","appointmentEmployeeName":""}
 
-IMPORTANTE: Si el usuario pidió agendar una cita, establece appointmentRequested=true y extrae fecha/hora/servicio.`,
+IMPORTANTE: Si el usuario pidió agendar una cita, establece appointmentRequested=true y extrae fecha/hora/servicio/empleado.`,
         },
         { role: 'user', content: call.transcript },
       ],
@@ -281,10 +360,13 @@ IMPORTANTE: Si el usuario pidió agendar una cita, establece appointmentRequeste
     summary_system: summary.replace(/```json[\s\S]*?```/, '').trim(),
     extracted_data: extractedData,
     tags,
+    summary_status: 'ready',
   }).eq('id', job.call_id);
 
   // If appointment was requested, enqueue extraction
   if (extractedData.appointmentRequested) {
+    await supabase.from('call_records').update({ appointment_status: 'requested' }).eq('id', job.call_id);
+
     await supabase.from('call_jobs').upsert({
       tenant_id: job.tenant_id,
       call_id: job.call_id,
@@ -299,7 +381,7 @@ IMPORTANTE: Si el usuario pidió agendar una cita, establece appointmentRequeste
 
 // ═══════════════════════════════════════════════
 // JOB: extract_appointment
-// If transcript contains appointment request, creates appointment via voice-scheduling
+// Uses Google Calendar per tenant/user when available
 // ═══════════════════════════════════════════════
 async function jobExtractAppointment(
   supabase: any, job: any, apiKey: string,
@@ -323,19 +405,21 @@ async function jobExtractAppointment(
     .maybeSingle();
 
   if (existingApt) {
+    await supabase.from('call_records').update({ appointment_status: 'created' }).eq('id', job.call_id);
     return { status: 'appointment_already_exists', appointment_id: existingApt.id };
   }
 
-  // Need extracted appointment data
   if (!extracted.appointmentRequested) {
+    await supabase.from('call_records').update({ appointment_status: 'not_requested' }).eq('id', job.call_id);
     return { status: 'no_appointment_requested' };
   }
 
   if (!extracted.appointmentDate || !extracted.appointmentTime) {
+    await supabase.from('call_records').update({ appointment_status: 'error' }).eq('id', job.call_id);
     return { status: 'incomplete_appointment_data', extracted };
   }
 
-  // Call voice-scheduling to book
+  // Call voice-scheduling to book (which handles Google Calendar sync internally)
   const bookRes = await fetch(`${supabaseUrl}/functions/v1/voice-scheduling`, {
     method: 'POST',
     headers: {
@@ -358,10 +442,13 @@ async function jobExtractAppointment(
 
   if (!bookRes.ok) {
     const errText = await bookRes.text();
+    await supabase.from('call_records').update({ appointment_status: 'error' }).eq('id', job.call_id);
     throw new Error(`Booking failed: ${errText}`);
   }
 
   const bookData = await bookRes.json();
+
+  await supabase.from('call_records').update({ appointment_status: 'created' }).eq('id', job.call_id);
 
   // Audit
   await supabase.from('audit_events').insert({

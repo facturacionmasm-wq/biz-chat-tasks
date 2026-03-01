@@ -483,6 +483,7 @@ export type Database = {
       call_records: {
         Row: {
           agent_user_id: string | null
+          appointment_status: string
           audio_url: string | null
           channel: string | null
           created_at: string
@@ -494,9 +495,11 @@ export type Database = {
           extracted_data: Json | null
           from_number: string | null
           id: string
+          recording_status: string
           started_at: string | null
           status: string
           summary_human: string | null
+          summary_status: string
           summary_system: string | null
           summary_version: number | null
           tags: string[] | null
@@ -505,10 +508,12 @@ export type Database = {
           transcript: string | null
           transcript_confidence: number | null
           transcript_language: string | null
+          transcript_status: string
           updated_at: string
         }
         Insert: {
           agent_user_id?: string | null
+          appointment_status?: string
           audio_url?: string | null
           channel?: string | null
           created_at?: string
@@ -520,9 +525,11 @@ export type Database = {
           extracted_data?: Json | null
           from_number?: string | null
           id?: string
+          recording_status?: string
           started_at?: string | null
           status?: string
           summary_human?: string | null
+          summary_status?: string
           summary_system?: string | null
           summary_version?: number | null
           tags?: string[] | null
@@ -531,10 +538,12 @@ export type Database = {
           transcript?: string | null
           transcript_confidence?: number | null
           transcript_language?: string | null
+          transcript_status?: string
           updated_at?: string
         }
         Update: {
           agent_user_id?: string | null
+          appointment_status?: string
           audio_url?: string | null
           channel?: string | null
           created_at?: string
@@ -546,9 +555,11 @@ export type Database = {
           extracted_data?: Json | null
           from_number?: string | null
           id?: string
+          recording_status?: string
           started_at?: string | null
           status?: string
           summary_human?: string | null
+          summary_status?: string
           summary_system?: string | null
           summary_version?: number | null
           tags?: string[] | null
@@ -557,6 +568,7 @@ export type Database = {
           transcript?: string | null
           transcript_confidence?: number | null
           transcript_language?: string | null
+          transcript_status?: string
           updated_at?: string
         }
         Relationships: [
@@ -1845,6 +1857,50 @@ export type Database = {
           },
           {
             foreignKeyName: "tenant_offer_history_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_phone_numbers: {
+        Row: {
+          active: boolean
+          created_at: string
+          id: string
+          label: string | null
+          phone_e164: string
+          provider: string
+          tenant_id: string
+          twilio_subaccount_sid: string | null
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          label?: string | null
+          phone_e164: string
+          provider?: string
+          tenant_id: string
+          twilio_subaccount_sid?: string | null
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          label?: string | null
+          phone_e164?: string
+          provider?: string
+          tenant_id?: string
+          twilio_subaccount_sid?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_phone_numbers_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
