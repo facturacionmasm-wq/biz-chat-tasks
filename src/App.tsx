@@ -1,3 +1,4 @@
+import React, { forwardRef } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -32,7 +33,9 @@ import { Loader2 } from "lucide-react";
 
 const queryClient = new QueryClient();
 
-const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+type RouteGuardProps = { children: React.ReactNode };
+
+const ProtectedRoute = forwardRef<HTMLDivElement, RouteGuardProps>(({ children }, _ref) => {
   const { user, loading, onboardingCompleted, subscriptionStatus, userRole, profileStatus } = useAuth();
 
   if (loading) {
@@ -53,17 +56,19 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   }
 
   return <>{children}</>;
-};
+});
+ProtectedRoute.displayName = 'ProtectedRoute';
 
-const OnboardingRoute = ({ children }: { children: React.ReactNode }) => {
+const OnboardingRoute = forwardRef<HTMLDivElement, RouteGuardProps>(({ children }, _ref) => {
   const { user, loading, onboardingCompleted } = useAuth();
   if (loading) return null;
   if (!user) return <Navigate to="/auth" replace />;
   if (onboardingCompleted === true) return <Navigate to="/" replace />;
   return <>{children}</>;
-};
+});
+OnboardingRoute.displayName = 'OnboardingRoute';
 
-const BlockedRoute = ({ children }: { children: React.ReactNode }) => {
+const BlockedRoute = forwardRef<HTMLDivElement, RouteGuardProps>(({ children }, _ref) => {
   const { user, loading, subscriptionStatus, userRole } = useAuth();
   if (loading) return null;
   if (!user) return <Navigate to="/auth" replace />;
@@ -72,22 +77,25 @@ const BlockedRoute = ({ children }: { children: React.ReactNode }) => {
     return <Navigate to="/" replace />;
   }
   return <>{children}</>;
-};
+});
+BlockedRoute.displayName = 'BlockedRoute';
 
-const AuthRoute = ({ children }: { children: React.ReactNode }) => {
+const AuthRoute = forwardRef<HTMLDivElement, RouteGuardProps>(({ children }, _ref) => {
   const { user, loading } = useAuth();
   if (loading) return null;
   if (user) return <Navigate to="/" replace />;
   return <>{children}</>;
-};
+});
+AuthRoute.displayName = 'AuthRoute';
 
-const PendingApprovalRoute = ({ children }: { children: React.ReactNode }) => {
+const PendingApprovalRoute = forwardRef<HTMLDivElement, RouteGuardProps>(({ children }, _ref) => {
   const { user, loading, profileStatus } = useAuth();
   if (loading) return null;
   if (!user) return <Navigate to="/auth" replace />;
   if (profileStatus !== 'pending_approval') return <Navigate to="/" replace />;
   return <>{children}</>;
-};
+});
+PendingApprovalRoute.displayName = 'PendingApprovalRoute';
 
 const AppRoutes = () => (
   <Routes>
