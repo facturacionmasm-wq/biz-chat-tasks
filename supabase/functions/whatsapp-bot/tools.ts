@@ -55,8 +55,14 @@ export const AI_TOOLS = [
     type: 'function',
     function: {
       name: 'get_today_agenda',
-      description: 'Obtener la agenda/citas del día de hoy para el usuario. Usa cuando pregunten por su agenda, citas, o qué tienen hoy.',
-      parameters: { type: 'object', properties: {}, required: [] },
+      description: 'Obtener la agenda/citas para una fecha específica. Usa cuando pregunten por su agenda, citas de hoy, de mañana, de una fecha en particular, o si quieren verificar que una cita se registró correctamente. También usa cuando digan "checa mi calendario", "verifica la cita".',
+      parameters: {
+        type: 'object',
+        properties: {
+          date: { type: 'string', description: 'Fecha a consultar en formato YYYY-MM-DD. Si no se especifica, usa la fecha de hoy. Para "mañana" calcula el día siguiente.' },
+        },
+        required: [],
+      },
     },
   },
   {
@@ -109,14 +115,15 @@ export const AI_TOOLS = [
     type: 'function',
     function: {
       name: 'cancel_appointment',
-      description: 'Cancelar una cita existente. Usa cuando alguien diga "cancela mi cita", "ya no voy a ir", "quita la cita de X". Busca la cita por nombre del contacto y/o fecha.',
+      description: 'Cancelar una o varias citas existentes. Usa cuando alguien diga "cancela mi cita", "ya no voy a ir", "quita la cita de X", "elimina todas mis citas de mañana", "cancela las citas del viernes". Puede buscar por nombre del contacto Y/O por fecha.',
       parameters: {
         type: 'object',
         properties: {
-          contact_name: { type: 'string', description: 'Nombre del contacto o cliente de la cita a cancelar' },
-          date: { type: 'string', description: 'Fecha de la cita a cancelar en formato YYYY-MM-DD (opcional si solo hay una cita con ese contacto)' },
+          contact_name: { type: 'string', description: 'Nombre del contacto o cliente de la cita a cancelar (opcional si se quiere cancelar por fecha)' },
+          date: { type: 'string', description: 'Fecha de la(s) cita(s) a cancelar en formato YYYY-MM-DD. Para "mañana" calcula el día siguiente.' },
+          cancel_all: { type: 'boolean', description: 'Si es true, cancela TODAS las citas que coincidan con los filtros. Usa cuando digan "elimina todas", "cancela todas".' },
         },
-        required: ['contact_name'],
+        required: [],
       },
     },
   },
