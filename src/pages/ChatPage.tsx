@@ -4,6 +4,7 @@ import ChatArea from '@/components/ChatArea';
 import { channels as initialChannels, messages as initialMessages } from '@/data/mockData';
 import { Channel, Message, TeamMember } from '@/types/app';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { usePresence } from '@/hooks/usePresence';
 import { ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
@@ -15,12 +16,11 @@ const ChatPage = () => {
   const [showChat, setShowChat] = useState(false);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const isMobile = useIsMobile();
+  const onlineUsers = usePresence();
 
   // Fetch real employees from profiles table
   useEffect(() => {
     const fetchProfiles = async () => {
-      const { data: { user: currentUser } } = await supabase.auth.getUser();
-      
       const [profilesRes, rolesRes] = await Promise.all([
         supabase
           .from('profiles')
@@ -53,7 +53,7 @@ const ChatPage = () => {
           name: p.name,
           avatar: p.avatar_url || '',
           role: roleMap[p.user_id] || 'Member',
-          status: (currentUser && p.user_id === currentUser.id ? 'online' : 'offline') as 'online' | 'away' | 'offline',
+          status: 'offline' as const,
           email: p.email || undefined,
         }));
         setTeamMembers(members);
@@ -62,6 +62,14 @@ const ChatPage = () => {
 
     fetchProfiles();
   }, []);
+
+  // Update team members status based on realtime presence
+  useEffect(() => {
+    setTeamMembers(prev => prev.map(m => ({
+      ...m,
+      status: onlineUsers.has(m.id) ? 'online' as const : 'offline' as const,
+    })));
+  }, [onlineUsers]);
 
   // Track channel members: channelId -> array of member IDs
   const [channelMembers, setChannelMembers] = useState<Record<string, string[]>>({});
