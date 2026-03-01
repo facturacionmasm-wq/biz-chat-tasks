@@ -102,6 +102,15 @@ const SettingsPage = () => {
   // Handle redirect back from Google OAuth (same-window flow)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+
+    const calendarError = params.get('calendar_error');
+    if (calendarError) {
+      setActiveSection('calendar');
+      window.history.replaceState({}, '', window.location.pathname);
+      toast.error(`No se pudo conectar Google Calendar: ${decodeURIComponent(calendarError)}`);
+      return;
+    }
+
     if (params.get('calendar_connected') === 'true') {
       setActiveSection('calendar');
       const email = params.get('email');
