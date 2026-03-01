@@ -3,8 +3,9 @@ import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, MessageSquare, FolderKanban, CalendarDays,
   Target, BookOpen, Plug, Settings, ChevronLeft, ChevronRight,
-  Building2, Bell, Search, Sparkles, MessageCircle, Phone, CalendarPlus, Shield, GraduationCap, Receipt, LogOut, KeyRound, Menu, X
+  Building2, Bell, Search, Sparkles, MessageCircle, Phone, CalendarPlus, Shield, GraduationCap, Receipt, LogOut, KeyRound, Menu, X, Bot
 } from 'lucide-react';
+import AIAssistantWidget from '@/components/AIAssistantWidget';
 import { useBranding } from '@/hooks/useBranding';
 import { useAuth } from '@/contexts/AuthContext';
 import NotificationBell from '@/components/NotificationBell';
@@ -29,6 +30,7 @@ const navItems = [
 const adminItems = [
   { to: '/integrations', icon: Plug, label: 'Integraciones' },
   { to: '/audit', icon: Shield, label: 'Auditoría' },
+  { to: '/assistant-admin', icon: Bot, label: 'Asistente IA' },
   { to: '/settings', icon: Settings, label: 'Configuración' },
 ];
 
@@ -134,13 +136,7 @@ const SidebarContent = ({
         </div>
       </div>
 
-      {/* AI Copilot */}
-      <div className="mt-4 px-1">
-        <button className={`w-full flex items-center gap-2.5 rounded-lg text-sm font-medium bg-primary/10 text-primary border border-primary/20 transition-colors hover:bg-primary/20 ${collapsed ? 'justify-center px-2 py-2' : 'px-3 py-2'}`}>
-          <Sparkles size={18} className="shrink-0" />
-          {!collapsed && <span>AI Copilot</span>}
-        </button>
-      </div>
+      {/* AI Copilot - removed, now using floating widget */}
     </nav>
 
     {/* User & Logout */}
@@ -240,6 +236,9 @@ const AppLayout = ({ children }: AppLayoutProps) => {
           {children}
         </main>
       </div>
+
+      {/* AI Assistant Widget */}
+      <AIAssistantWidget />
     </div>
   );
 };
