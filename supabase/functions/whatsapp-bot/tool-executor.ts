@@ -56,6 +56,10 @@ export async function executeTool(
     return await executeSendWhatsAppMessage(args, tenantId, supabase, conversation, supabaseUrl, serviceRoleKey);
   }
 
+  if (toolName === 'search_web') {
+    return await executeSearchWeb(args, supabaseUrl, serviceRoleKey);
+  }
+
   return JSON.stringify({ error: 'Unknown tool' });
 }
 
@@ -815,6 +819,41 @@ async function executeSendWhatsAppMessage(
   } catch (err) {
     console.error('Send WhatsApp message error:', err);
     return JSON.stringify({ error: 'Error al enviar el mensaje. Intenta de nuevo.' });
+  }
+}
+
+async function executeSearchWeb(
+  args: any,
+  supabaseUrl: string,
+  serviceRoleKey: string,
+): Promise<string> {
+  const { query, model_preference } = args;
+
+  try {
+    const res = await fetch(`${supabaseUrl}/functions/v1/web-search`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${serviceRoleKey}`,
+      },
+      body: JSON.stringify({ query, model_preference: model_preference || 'gemini' }),
+    });
+
+    const result = await res.json();
+
+    if (!res.ok || !result.success) {
+      return JSON.stringify({ error: result.error || 'Error en la búsqueda' });
+    }
+
+    return JSON.stringify({
+      success: true,
+      answer: result.answer,
+      model_used: result.model_used,
+      note: 'Información proporcionada por IA. Puede no estar 100% actualizada.',
+    });
+  } catch (err) {
+    console.error('Search web error:', err);
+    return JSON.stringify({ error: 'No se pudo realizar la búsqueda.' });
   }
 }
 

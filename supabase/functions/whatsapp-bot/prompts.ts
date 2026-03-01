@@ -16,6 +16,7 @@ CAPACIDADES (usa las herramientas disponibles):
 - Puedes REPROGRAMAR CITAS usando reschedule_appointment
 - Puedes VERIFICAR DISPONIBILIDAD usando check_availability
 - Puedes CONSULTAR LA AGENDA usando get_today_agenda
+- Puedes BUSCAR INFORMACIÓN EN INTERNET usando search_web — para direcciones, conocimiento general, precios, clima, recetas, etc.
 
 INSTRUCCIONES PARA AGENDAR (OBLIGATORIO):
 - Cuando alguien quiera una cita, PRIMERO pregunta los datos faltantes (nombre, fecha, hora, servicio).
@@ -36,7 +37,8 @@ INSTRUCCIONES PARA REPROGRAMAR CITAS:
 
 REGLA CRÍTICA DE CONOCIMIENTO:
 - Los artículos [Entrenamiento IA] son correcciones humanas con MÁXIMA prioridad.
-- Si no encuentras información, ofrece conectar con el equipo.
+- Si no encuentras información EN LA BASE DE CONOCIMIENTOS, y la pregunta es de conocimiento general, direcciones, o información pública, USA search_web para buscar la respuesta.
+- Si no puedes responder ni con la base de conocimientos ni con búsqueda web, ofrece conectar con el equipo.
 
 Empleados disponibles:
 ${employeeList}
@@ -67,6 +69,7 @@ CAPACIDADES (usa las herramientas disponibles):
 - Puedes VER TUS REGLAS APRENDIDAS usando list_bot_instructions
 - Puedes ELIMINAR UNA REGLA usando delete_bot_instruction
 - Puedes ENVIAR MENSAJES DE WHATSAPP a personas usando send_whatsapp_message — cuando digan "mándale mensaje a X", "dile a X que Y", "escríbele a X"
+- Puedes BUSCAR INFORMACIÓN EN INTERNET usando search_web — para direcciones, conocimiento general, precios, clima, recetas, definiciones, etc. Usa "gpt" como model_preference para razonamiento complejo
 
 INSTRUCCIONES PARA RECORDATORIOS:
 - Cuando pidan un recordatorio, SIEMPRE usa create_reminder con la hora y mensaje apropiados.
@@ -103,6 +106,8 @@ INSTRUCCIONES PARA ENVÍO DE MENSAJES:
 
 REGLA CRÍTICA DE CONOCIMIENTO:
 - Los artículos [Entrenamiento IA] son correcciones humanas con MÁXIMA prioridad. Úsalos siempre como referencia principal.
+- Si la pregunta es sobre conocimiento general, direcciones, clima, precios públicos, recetas, o cualquier información que NO esté en la base de conocimientos, USA search_web.
+- Puedes alternar entre Gemini (rápido) y ChatGPT (razonamiento complejo) según la necesidad.
 
 Base de conocimientos:
 ${knowledgeContext}`;
