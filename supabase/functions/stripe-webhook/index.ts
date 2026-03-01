@@ -83,6 +83,17 @@ serve(async (req) => {
 
   console.log(`Processing Stripe event: ${event.type} (${event.id})`);
 
+  async function logAudit(tenantId: string, eventType: string, payload: Record<string, unknown>) {
+    const { error } = await adminClient.from('audit_events').insert({
+      tenant_id: tenantId,
+      event_type: eventType,
+      resource_type: 'subscription',
+      resource_id: payload.stripe_subscription_id || payload.session_id || null,
+      payload,
+    });
+    if (error) console.error('Audit log error:', error);
+  }
+
   try {
     switch (event.type) {
       case 'checkout.session.completed': {
@@ -94,7 +105,6 @@ serve(async (req) => {
           break;
         }
 
-        // Find plan
         const { data: plan } = await adminClient
           .from('subscription_plans')
           .select('id')
@@ -106,7 +116,6 @@ serve(async (req) => {
           break;
         }
 
-        // Upsert subscription
         const { error } = await adminClient
           .from('tenant_subscriptions')
           .upsert({
@@ -122,7 +131,15 @@ serve(async (req) => {
           }, { onConflict: 'tenant_id' });
 
         if (error) console.error('Error upserting subscription:', error);
-        else console.log(`Tenant ${tenantId} activated on plan ${planSlug}`);
+        else {
+          console.log(`Tenant ${tenantId} activated on plan ${planSlug}`);
+          await logAudit(tenantId, 'subscription.activated', {
+            plan_slug: planSlug,
+            stripe_subscription_id: session.subscription,
+            session_id: session.id,
+            stripe_customer_id: session.customer,
+          });
+        }
         break;
       }
 
@@ -133,7 +150,7 @@ serve(async (req) => {
 
         const { data: sub } = await adminClient
           .from('tenant_subscriptions')
-          .select('id')
+          .select('id, tenant_id')
           .eq('stripe_subscription_id', subscriptionId)
           .maybeSingle();
 
@@ -148,6 +165,11 @@ serve(async (req) => {
             })
             .eq('id', sub.id);
           console.log(`Invoice paid for subscription ${subscriptionId}`);
+          await logAudit(sub.tenant_id, 'subscription.invoice_paid', {
+            stripe_subscription_id: subscriptionId,
+            invoice_id: invoice.id,
+            amount_paid: invoice.amount_paid,
+          });
         }
         break;
       }
@@ -159,7 +181,7 @@ serve(async (req) => {
 
         const { data: sub } = await adminClient
           .from('tenant_subscriptions')
-          .select('id')
+          .select('id, tenant_id')
           .eq('stripe_subscription_id', subscriptionId)
           .maybeSingle();
 
@@ -172,6 +194,10 @@ serve(async (req) => {
             })
             .eq('id', sub.id);
           console.log(`Payment failed for subscription ${subscriptionId}`);
+          await logAudit(sub.tenant_id, 'subscription.payment_failed', {
+            stripe_subscription_id: subscriptionId,
+            invoice_id: invoice.id,
+          });
         }
         break;
       }
@@ -180,7 +206,7 @@ serve(async (req) => {
         const subscription = event.data.object;
         const { data: sub } = await adminClient
           .from('tenant_subscriptions')
-          .select('id')
+          .select('id, tenant_id')
           .eq('stripe_subscription_id', subscription.id)
           .maybeSingle();
 
@@ -196,10 +222,11 @@ serve(async (req) => {
             paused: 'blocked',
           };
 
+          const newStatus = statusMap[subscription.status] || subscription.status;
           await adminClient
             .from('tenant_subscriptions')
             .update({
-              status: statusMap[subscription.status] || subscription.status,
+              status: newStatus,
               current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
               current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
               canceled_at: subscription.canceled_at
@@ -209,6 +236,11 @@ serve(async (req) => {
             })
             .eq('id', sub.id);
           console.log(`Subscription ${subscription.id} updated to ${subscription.status}`);
+          await logAudit(sub.tenant_id, 'subscription.updated', {
+            stripe_subscription_id: subscription.id,
+            new_status: newStatus,
+            stripe_status: subscription.status,
+          });
         }
         break;
       }
@@ -217,7 +249,7 @@ serve(async (req) => {
         const subscription = event.data.object;
         const { data: sub } = await adminClient
           .from('tenant_subscriptions')
-          .select('id')
+          .select('id, tenant_id')
           .eq('stripe_subscription_id', subscription.id)
           .maybeSingle();
 
@@ -231,6 +263,9 @@ serve(async (req) => {
             })
             .eq('id', sub.id);
           console.log(`Subscription ${subscription.id} canceled`);
+          await logAudit(sub.tenant_id, 'subscription.canceled', {
+            stripe_subscription_id: subscription.id,
+          });
         }
         break;
       }
