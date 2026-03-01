@@ -671,23 +671,23 @@ async function executeRescheduleAppointment(
     return JSON.stringify({ error: 'No se puede reprogramar a una fecha/hora en el pasado.' });
   }
 
-  // Update the appointment
+  // Update the appointment - keep calendar_event_id for update
   const { error: updateErr } = await supabase
     .from('appointments')
     .update({
       start_at: newStartAt.toISOString(),
       end_at: newEndAt.toISOString(),
       status: 'scheduled',
-      calendar_sync_status: apt.calendar_event_id ? 'PENDING_SYNC' : 'CREATED_LOCAL',
     })
     .eq('id', apt.id);
 
   if (updateErr) return JSON.stringify({ error: updateErr.message });
 
-  // If synced to Google Calendar, update the event
+  // Immediately sync to Google Calendar
+  let calendarSynced = false;
   if (apt.calendar_event_id && apt.user_id && supabaseUrl && serviceRoleKey) {
     try {
-      await fetch(`${supabaseUrl}/functions/v1/calendar-sync`, {
+      const syncRes = await fetch(`${supabaseUrl}/functions/v1/calendar-sync`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -695,12 +695,46 @@ async function executeRescheduleAppointment(
         },
         body: JSON.stringify({ action: 'update_event', appointment_id: apt.id }),
       });
+      const syncResult = await syncRes.json();
+      calendarSynced = syncResult.success === true;
+      if (calendarSynced) {
+        await supabase
+          .from('appointments')
+          .update({ calendar_sync_status: 'SYNCED' })
+          .eq('id', apt.id);
+      } else {
+        console.log(`Calendar update pending for ${apt.id}: ${syncResult.error || 'unknown'}`);
+        await supabase
+          .from('appointments')
+          .update({ calendar_sync_status: 'PENDING_SYNC', calendar_sync_error: syncResult.error || null })
+          .eq('id', apt.id);
+      }
     } catch (syncErr) {
       console.error('Calendar update sync error:', syncErr);
+      await supabase
+        .from('appointments')
+        .update({ calendar_sync_status: 'PENDING_SYNC' })
+        .eq('id', apt.id);
+    }
+  } else if (!apt.calendar_event_id && apt.user_id && supabaseUrl && serviceRoleKey) {
+    // No existing event — create one immediately
+    try {
+      const syncRes = await fetch(`${supabaseUrl}/functions/v1/calendar-sync`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${serviceRoleKey}`,
+        },
+        body: JSON.stringify({ action: 'sync_appointment', appointment_id: apt.id }),
+      });
+      const syncResult = await syncRes.json();
+      calendarSynced = syncResult.success === true;
+    } catch (syncErr) {
+      console.error('Calendar sync trigger error:', syncErr);
     }
   }
 
-  return JSON.stringify({
+  const response: any = {
     success: true,
     appointment_id: apt.id,
     contact_name: apt.contact_name,
@@ -708,8 +742,13 @@ async function executeRescheduleAppointment(
     old_time: new Date(apt.start_at).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', timeZone: tz }),
     new_date: newStartAt.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', timeZone: tz }),
     new_time: newStartAt.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', timeZone: tz }),
-    message: `Cita con ${apt.contact_name} reprogramada exitosamente.`,
-  });
+    calendar_synced: calendarSynced,
+    message: calendarSynced
+      ? `Cita con ${apt.contact_name} reprogramada y calendario actualizado.`
+      : `Cita con ${apt.contact_name} reprogramada. El calendario se actualizará en breve.`,
+  };
+
+  return JSON.stringify(response);
 }
 
 async function executeSendWhatsAppMessage(
