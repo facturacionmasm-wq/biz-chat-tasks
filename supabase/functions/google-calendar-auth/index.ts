@@ -53,7 +53,7 @@ serve(async (req) => {
         });
       }
 
-      let state: { user_id: string; tenant_id: string };
+      let state: { user_id: string; tenant_id: string; app_origin?: string };
       try {
         state = JSON.parse(atob(stateParam));
       } catch {
@@ -158,6 +158,15 @@ serve(async (req) => {
         payload: { email: googleEmail },
       });
 
+      // If we have app_origin, redirect back to the app settings
+      if (state.app_origin) {
+        const redirectUrl = `${state.app_origin}/settings?calendar_connected=true&email=${encodeURIComponent(googleEmail)}`;
+        return new Response(null, {
+          status: 302,
+          headers: { 'Location': redirectUrl },
+        });
+      }
+
       return new Response(htmlPage('¡Conectado!', `Google Calendar conectado exitosamente con ${googleEmail}. Puedes cerrar esta ventana.`), {
         headers: { 'Content-Type': 'text/html' },
       });
@@ -180,13 +189,13 @@ serve(async (req) => {
       }
 
       let requestedEmail = '';
-      if (req.method === 'POST') {
-        try {
-          const body = await req.json();
-          requestedEmail = typeof body?.calendar_email === 'string' ? body.calendar_email.trim() : '';
-        } catch {
-          requestedEmail = '';
-        }
+      let appOrigin = '';
+      try {
+        const body = await req.json();
+        requestedEmail = typeof body?.calendar_email === 'string' ? body.calendar_email.trim() : '';
+        appOrigin = typeof body?.app_origin === 'string' ? body.app_origin.trim() : '';
+      } catch {
+        requestedEmail = '';
       }
 
       const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
@@ -213,7 +222,7 @@ serve(async (req) => {
       }
 
       // Encode state with user info
-      const state = btoa(JSON.stringify({ user_id: userId, tenant_id: profile.tenant_id }));
+      const state = btoa(JSON.stringify({ user_id: userId, tenant_id: profile.tenant_id, app_origin: appOrigin }));
 
       const authUrl = new URL(GOOGLE_AUTH_URL);
       authUrl.searchParams.set('client_id', GOOGLE_CLIENT_ID);
