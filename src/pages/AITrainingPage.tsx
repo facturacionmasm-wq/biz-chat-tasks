@@ -86,12 +86,24 @@ const AITrainingPage = () => {
     setWaLoading(true);
 
     try {
+      // Get the real tenant_id so the bot can query the Knowledge Hub
+      const { data: userData } = await supabase.auth.getUser();
+      let realTenantId = '__sandbox__';
+      if (userData?.user?.id) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('tenant_id')
+          .eq('user_id', userData.user.id)
+          .maybeSingle();
+        if (profile?.tenant_id) realTenantId = profile.tenant_id;
+      }
+
       const { data, error } = await supabase.functions.invoke('whatsapp-bot', {
         body: {
           conversationId: '__training_sandbox__',
           messageBody: userMsg.content,
           contactPhone: '+0000000000',
-          tenantId: '__sandbox__',
+          tenantId: realTenantId,
           // Pass simulated state so the bot continues the conversation
           sandboxMode: true,
           sandboxState: botState,

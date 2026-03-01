@@ -551,15 +551,59 @@ async function getAIResponse(
   userMessage: string,
   conversation: any
 ): Promise<string> {
-  // Get knowledge base
-  const { data: knowledge } = await supabase
+  // Get knowledge base — keyword search for relevance
+  const searchTerms = userMessage.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+  
+  // First try to find relevant items by searching in title/content
+  let knowledge: any[] = [];
+  if (searchTerms.length > 0) {
+    // Build OR search pattern for ilike
+    const searchPattern = searchTerms.slice(0, 5).map(t => `%${t}%`);
+    
+    // Query items matching any search term in title or content
+    const { data: relevantItems } = await supabase
+      .from('knowledge_items')
+      .select('title, content, category, tags')
+      .eq('tenant_id', tenantId)
+      .eq('active', true)
+      .or(searchPattern.map(p => `title.ilike.${p},content.ilike.${p}`).join(','))
+      .limit(10);
+    
+    if (relevantItems && relevantItems.length > 0) {
+      knowledge = relevantItems;
+    }
+  }
+  
+  // Also get training corrections (high priority)
+  const { data: corrections } = await supabase
     .from('knowledge_items')
-    .select('title, content, category')
+    .select('title, content, category, tags')
     .eq('tenant_id', tenantId)
     .eq('active', true)
-    .limit(20);
+    .eq('category', 'Entrenamiento IA')
+    .order('updated_at', { ascending: false })
+    .limit(10);
+  
+  if (corrections && corrections.length > 0) {
+    // Merge corrections first (higher priority), then relevant items
+    const correctionIds = new Set(corrections.map((c: any) => c.title));
+    const uniqueKnowledge = knowledge.filter((k: any) => !correctionIds.has(k.title));
+    knowledge = [...corrections, ...uniqueKnowledge].slice(0, 20);
+  }
+  
+  // Fallback: if no relevant items found, get recent ones
+  if (knowledge.length === 0) {
+    const { data: recentItems } = await supabase
+      .from('knowledge_items')
+      .select('title, content, category, tags')
+      .eq('tenant_id', tenantId)
+      .eq('active', true)
+      .order('updated_at', { ascending: false })
+      .limit(15);
+    knowledge = recentItems || [];
+  }
 
-  const knowledgeContext = knowledge?.map((k: any) => `[${k.category || 'General'}] ${k.title}: ${k.content}`).join('\n\n') || '';
+  const knowledgeContext = knowledge.map((k: any) => `[${k.category || 'General'}] ${k.title}: ${k.content}`).join('\n\n') || '';
 
   // Get recent messages for context
   const { data: recentMsgs } = await supabase
@@ -599,6 +643,12 @@ TU TRABAJO:
 3. Si quieren hablar con alguien específico, facilita el contacto con amabilidad.
 4. Si detectas frustración, urgencia o quejas, muestra empatía primero y luego ofrece escalar: "Entiendo que es importante para ti, déjame conectarte con alguien que pueda ayudarte de inmediato".
 
+REGLA CRÍTICA DE CONOCIMIENTO:
+- SIEMPRE busca la respuesta en la "Base de conocimientos" antes de inventar información.
+- Los artículos marcados como [Entrenamiento IA] son correcciones humanas con MÁXIMA prioridad. Úsalos como referencia principal.
+- Si la pregunta coincide con una corrección previa, usa ESA respuesta corregida, no inventes otra.
+- Si no encuentras información relevante, di que no tienes esa información y ofrece conectar con el equipo.
+
 Responde siempre en español. Sé concisa pero nunca fría.
 
 Empleados disponibles:
@@ -623,6 +673,11 @@ TU TRABAJO:
 4. Responder consultas de la base de conocimientos interna.
 5. Dar resúmenes de actividad cuando los pida.
 6. Si el empleado necesita algo que no puedes hacer, sé honesta y sugiere alternativas.
+
+REGLA CRÍTICA DE CONOCIMIENTO:
+- SIEMPRE busca la respuesta en la "Base de conocimientos" antes de inventar información.
+- Los artículos marcados como [Entrenamiento IA] son correcciones humanas con MÁXIMA prioridad. Úsalos siempre como referencia principal.
+- Si la pregunta coincide con una corrección previa, usa ESA respuesta corregida.
 
 Responde en español, de forma eficiente pero siempre amable.
 
