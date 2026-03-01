@@ -123,6 +123,23 @@ export const AI_TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'reschedule_appointment',
+      description: 'Reprogramar/cambiar la fecha u hora de una cita existente. Usa cuando alguien diga "cambia mi cita", "mueve la cita de X", "reprograma", "cámbiala para el jueves". Busca la cita por nombre del contacto y/o fecha original.',
+      parameters: {
+        type: 'object',
+        properties: {
+          contact_name: { type: 'string', description: 'Nombre del contacto o cliente de la cita a reprogramar' },
+          current_date: { type: 'string', description: 'Fecha actual de la cita en formato YYYY-MM-DD (opcional si solo hay una cita con ese contacto)' },
+          new_date: { type: 'string', description: 'Nueva fecha para la cita en formato YYYY-MM-DD' },
+          new_time: { type: 'string', description: 'Nueva hora para la cita en formato HH:MM (24h)' },
+        },
+        required: ['contact_name', 'new_date', 'new_time'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'send_whatsapp_message',
       description: 'Enviar un mensaje de WhatsApp a una persona específica. Usa cuando un empleado diga "mándale un mensaje a X", "envíale a X que Y", "dile a X por WhatsApp que Y", "escríbele a X". Solo empleados autenticados pueden usar esta herramienta.',
       parameters: {
