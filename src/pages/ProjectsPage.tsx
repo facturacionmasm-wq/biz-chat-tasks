@@ -51,6 +51,24 @@ const ProjectsPage = () => {
   const selectedProject = allProjects.find(p => p.id === selectedProjectId);
   const projectTasks = selectedProjectId ? allTasks.filter(t => t.projectId === selectedProjectId) : allTasks;
 
+  const getProjectProgress = useCallback((projectId: string) => {
+    const project = allProjects.find(p => p.id === projectId);
+    const tasks = allTasks.filter(t => t.projectId === projectId);
+
+    const taskPct = tasks.length > 0
+      ? Math.round((tasks.filter(t => t.status === 'done').length / tasks.length) * 100)
+      : null;
+
+    const milestonePct = project && project.milestones.length > 0
+      ? Math.round((project.milestones.filter(m => m.completed).length / project.milestones.length) * 100)
+      : null;
+
+    if (taskPct !== null && milestonePct !== null) return Math.round((taskPct + milestonePct) / 2);
+    if (taskPct !== null) return taskPct;
+    if (milestonePct !== null) return milestonePct;
+    return 0;
+  }, [allProjects, allTasks]);
+
   const toggleMilestone = useCallback((projectId: string, milestoneId: string) => {
     setAllProjects(prev => prev.map(p => {
       if (p.id !== projectId) return p;
@@ -257,9 +275,7 @@ const ProjectsPage = () => {
             <span className="flex items-center gap-1"><Calendar size={12} /> {format(selectedProject.startDate, 'd MMM', { locale: es })} - {format(selectedProject.endDate, 'd MMM', { locale: es })}</span>
             <span className="flex items-center gap-1"><Users size={12} /> {selectedProject.teamIds.length}</span>
             {(() => {
-              const total = projectTasks.length;
-              const done = projectTasks.filter(t => t.status === 'done').length;
-              const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+              const pct = getProjectProgress(selectedProject.id);
               return (
                 <div className="flex items-center gap-2">
                   <div className="w-24 h-1.5 bg-secondary rounded-full overflow-hidden"><div className="h-full bg-primary rounded-full transition-all" style={{ width: `${pct}%` }} /></div>
@@ -443,7 +459,7 @@ const ProjectsPage = () => {
         {allProjects.map(proj => {
           const projTasks = allTasks.filter(t => t.projectId === proj.id);
           const doneTasks = projTasks.filter(t => t.status === 'done').length;
-          const computedProgress = projTasks.length > 0 ? Math.round((doneTasks / projTasks.length) * 100) : 0;
+          const computedProgress = getProjectProgress(proj.id);
           return (
             <button key={proj.id} onClick={() => setSelectedProjectId(proj.id)} className="bg-card border border-border rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow text-left">
               <div className="flex items-center justify-between mb-2">
