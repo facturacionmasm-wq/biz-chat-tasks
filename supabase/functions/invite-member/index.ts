@@ -76,7 +76,7 @@ Deno.serve(async (req) => {
         email,
         password,
         email_confirm: true,
-        user_metadata: { name },
+        user_metadata: { name, invited_to_tenant: callerRole.tenant_id },
       });
       if (createError) {
         return new Response(JSON.stringify({ error: createError.message }), {
@@ -87,7 +87,7 @@ Deno.serve(async (req) => {
       newUserId = newUser.user.id;
     } else {
       const { data: newUser, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(email, {
-        data: { name },
+        data: { name, invited_to_tenant: callerRole.tenant_id },
       });
       if (inviteError) {
         return new Response(JSON.stringify({ error: inviteError.message }), {
@@ -98,11 +98,45 @@ Deno.serve(async (req) => {
       newUserId = newUser.user.id;
     }
 
-    // Ensure profile has the correct name
+    // The handle_new_user trigger creates a new tenant + profile + role for this user.
+    // We need to fix this: move the user to the inviter's tenant with pending_approval status.
+
+    // 1. Get the auto-created tenant (to delete later)
+    const { data: autoProfile } = await adminClient
+      .from("profiles")
+      .select("tenant_id")
+      .eq("user_id", newUserId)
+      .maybeSingle();
+
+    const autoTenantId = autoProfile?.tenant_id;
+
+    // 2. Delete the auto-created role in the wrong tenant
+    if (autoTenantId && autoTenantId !== callerRole.tenant_id) {
+      await adminClient.from("user_roles").delete().eq("user_id", newUserId).eq("tenant_id", autoTenantId);
+    }
+
+    // 3. Update profile to the correct tenant with pending_approval status
     await adminClient
       .from("profiles")
-      .update({ name })
+      .update({
+        tenant_id: callerRole.tenant_id,
+        name,
+        status: 'pending_approval',
+        onboarding_completed: true, // Skip onboarding for invited users
+      })
       .eq("user_id", newUserId);
+
+    // 4. Create role in the correct tenant
+    await adminClient.from("user_roles").upsert({
+      user_id: newUserId,
+      tenant_id: callerRole.tenant_id,
+      role: 'staff',
+    }, { onConflict: 'user_id,tenant_id,role' });
+
+    // 5. Delete the auto-created empty tenant (if different)
+    if (autoTenantId && autoTenantId !== callerRole.tenant_id) {
+      await adminClient.from("tenants").delete().eq("id", autoTenantId);
+    }
 
     // Create availability rules if provided
     if (availability && Array.isArray(availability) && availability.length > 0) {
@@ -124,7 +158,6 @@ Deno.serve(async (req) => {
 
       if (rulesError) {
         console.error("Error creating availability rules:", rulesError);
-        // Don't fail the invite, just log
       }
     }
 
@@ -135,7 +168,7 @@ Deno.serve(async (req) => {
         success: true,
         user_id: newUserId,
         method,
-        message: `Miembro ${name} creado exitosamente vía ${method}`,
+        message: `Miembro ${name} invitado. Pendiente de aprobación.`,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

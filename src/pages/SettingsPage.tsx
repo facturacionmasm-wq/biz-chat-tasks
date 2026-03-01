@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Building2, Users, CreditCard, Bell, Database, Brain, Globe, ChevronRight, User, KeyRound, Loader2, Palette, Save, Upload, Image, X, Mail, Phone as PhoneIcon, MessageSquare, Trash2, Settings2, ChevronDown, ChevronUp, RefreshCw, ArrowLeft, ArrowRight } from 'lucide-react';
+import { Building2, Users, CreditCard, Bell, Database, Brain, Globe, ChevronRight, User, KeyRound, Loader2, Palette, Save, Upload, Image, X, Mail, Phone as PhoneIcon, MessageSquare, Trash2, Settings2, ChevronDown, ChevronUp, RefreshCw, ArrowLeft, ArrowRight, CheckCircle, XCircle } from 'lucide-react';
 import BillingSection from '@/components/BillingSection';
 import AvailabilityWizard, { type AvailabilityRule, DEFAULT_RULES } from '@/components/AvailabilityWizard';
 import { teamMembers } from '@/data/mockData';
@@ -322,6 +322,7 @@ const SettingsPage = () => {
 
 
   const [resendingUserId, setResendingUserId] = useState<string | null>(null);
+  const [approvingUserId, setApprovingUserId] = useState<string | null>(null);
 
   const handleResendInvite = async (targetUserId: string, targetEmail: string) => {
     setResendingUserId(targetUserId);
@@ -336,6 +337,32 @@ const SettingsPage = () => {
       toast.error(err.message || 'Error al reenviar invitación');
     } finally {
       setResendingUserId(null);
+    }
+  };
+
+  const handleApproveMember = async (targetUserId: string, approve: boolean) => {
+    setApprovingUserId(targetUserId);
+    try {
+      if (approve) {
+        const { error } = await supabase
+          .from('profiles')
+          .update({ status: 'active' } as any)
+          .eq('user_id', targetUserId);
+        if (error) throw error;
+        setTeamData(prev => prev.map(m => m.user_id === targetUserId ? { ...m, status: 'active' } : m));
+        toast.success('Miembro aprobado exitosamente');
+      } else {
+        // Reject: remove profile and role
+        const tenantId = await getTenantId();
+        await supabase.from('user_roles').delete().eq('user_id', targetUserId).eq('tenant_id', tenantId);
+        await supabase.from('profiles').delete().eq('user_id', targetUserId);
+        setTeamData(prev => prev.filter(m => m.user_id !== targetUserId));
+        toast.success('Solicitud rechazada');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Error al procesar solicitud');
+    } finally {
+      setApprovingUserId(null);
     }
   };
 
@@ -857,8 +884,32 @@ const SettingsPage = () => {
                           ) : (
                             <span className="text-xs bg-secondary px-2 py-0.5 rounded-full">{m.role}</span>
                           )}
-                          <span className={`inline-block w-2 h-2 rounded-full ${m.status === 'active' ? 'bg-green-500' : 'bg-muted-foreground/40'}`} />
-                          {isSuperAdmin && !isSelf && !m.confirmed && (
+                          <span className={`inline-block w-2 h-2 rounded-full ${m.status === 'active' ? 'bg-green-500' : m.status === 'pending_approval' ? 'bg-amber-500' : 'bg-muted-foreground/40'}`} />
+                          {/* Pending approval buttons */}
+                          {isSuperAdmin && !isSelf && m.status === 'pending_approval' && (
+                            <>
+                              <button
+                                onClick={() => handleApproveMember(m.user_id, true)}
+                                disabled={approvingUserId === m.user_id}
+                                className="text-xs bg-green-500/10 text-green-600 px-2 py-1 rounded-full hover:bg-green-500/20 transition-colors flex items-center gap-1 disabled:opacity-40"
+                                title="Aprobar miembro"
+                              >
+                                {approvingUserId === m.user_id ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle size={12} />}
+                                Aprobar
+                              </button>
+                              <button
+                                onClick={() => handleApproveMember(m.user_id, false)}
+                                disabled={approvingUserId === m.user_id}
+                                className="text-xs bg-destructive/10 text-destructive px-2 py-1 rounded-full hover:bg-destructive/20 transition-colors flex items-center gap-1 disabled:opacity-40"
+                                title="Rechazar solicitud"
+                              >
+                                <XCircle size={12} />
+                                Rechazar
+                              </button>
+                              <span className="text-[10px] text-amber-600 bg-amber-500/10 px-2 py-0.5 rounded-full">Pendiente aprobación</span>
+                            </>
+                          )}
+                          {isSuperAdmin && !isSelf && m.status !== 'pending_approval' && !m.confirmed && (
                             <button
                               onClick={() => handleResendInvite(m.user_id, m.email)}
                               disabled={resendingUserId === m.user_id}
@@ -869,7 +920,7 @@ const SettingsPage = () => {
                               Reenviar
                             </button>
                           )}
-                          {!m.confirmed && !isSelf && (
+                          {!m.confirmed && !isSelf && m.status !== 'pending_approval' && (
                             <span className="text-[10px] text-amber-600 bg-amber-500/10 px-2 py-0.5 rounded-full">Pendiente</span>
                           )}
                           {isSuperAdmin && !isSelf && (

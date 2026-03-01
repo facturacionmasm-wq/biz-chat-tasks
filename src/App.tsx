@@ -24,13 +24,14 @@ import OnboardingPage from "./pages/OnboardingPage";
 import SubscriptionBlockedPage from "./pages/SubscriptionBlockedPage";
 import CredentialsPage from "./pages/CredentialsPage";
 import InstallPage from "./pages/InstallPage";
+import PendingApprovalPage from "./pages/PendingApprovalPage";
 import NotFound from "./pages/NotFound";
 import { Loader2 } from "lucide-react";
 
 const queryClient = new QueryClient();
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const { user, loading, onboardingCompleted, subscriptionStatus, userRole } = useAuth();
+  const { user, loading, onboardingCompleted, subscriptionStatus, userRole, profileStatus } = useAuth();
 
   if (loading) {
     return (
@@ -41,6 +42,7 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   }
 
   if (!user) return <Navigate to="/auth" replace />;
+  if (profileStatus === 'pending_approval') return <Navigate to="/pending-approval" replace />;
   if (onboardingCompleted === false) return <Navigate to="/onboarding" replace />;
 
   // Super admins bypass subscription checks
@@ -77,11 +79,20 @@ const AuthRoute = ({ children }: { children: React.ReactNode }) => {
   return <>{children}</>;
 };
 
+const PendingApprovalRoute = ({ children }: { children: React.ReactNode }) => {
+  const { user, loading, profileStatus } = useAuth();
+  if (loading) return null;
+  if (!user) return <Navigate to="/auth" replace />;
+  if (profileStatus !== 'pending_approval') return <Navigate to="/" replace />;
+  return <>{children}</>;
+};
+
 const AppRoutes = () => (
   <Routes>
     <Route path="/auth" element={<AuthRoute><AuthPage /></AuthRoute>} />
     <Route path="/onboarding" element={<OnboardingRoute><OnboardingPage /></OnboardingRoute>} />
     <Route path="/blocked" element={<BlockedRoute><SubscriptionBlockedPage /></BlockedRoute>} />
+    <Route path="/pending-approval" element={<PendingApprovalRoute><PendingApprovalPage /></PendingApprovalRoute>} />
     <Route path="/" element={<ProtectedRoute><AppLayout><Dashboard /></AppLayout></ProtectedRoute>} />
     <Route path="/calls" element={<ProtectedRoute><AppLayout><CallsPage /></AppLayout></ProtectedRoute>} />
     <Route path="/whatsapp" element={<ProtectedRoute><AppLayout><WhatsAppInboxPage /></AppLayout></ProtectedRoute>} />
