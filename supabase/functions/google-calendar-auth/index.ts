@@ -202,14 +202,16 @@ serve(async (req) => {
       const authSupabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
         global: { headers: { Authorization: authHeader } },
       });
-      const { data: claims, error: claimsErr } = await authSupabase.auth.getUser();
-      if (claimsErr || !claims?.user) {
+      const token = authHeader.replace('Bearer ', '');
+      const { data: claimsData, error: claimsErr } = await authSupabase.auth.getClaims(token);
+      
+      if (claimsErr || !claimsData?.claims?.sub) {
         return new Response(JSON.stringify({ error: 'Invalid token' }), {
           status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
 
-      const userId = claims.user.id;
+      const userId = claimsData.claims.sub as string;
       const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
       // Get tenant_id
@@ -264,18 +266,20 @@ serve(async (req) => {
     const authSupabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       global: { headers: { Authorization: authHeader } },
     });
-    const { data: claims } = await authSupabase.auth.getUser();
-    if (!claims?.user) {
+    const token = authHeader.replace('Bearer ', '');
+    const { data: claimsData } = await authSupabase.auth.getClaims(token);
+    if (!claimsData?.claims?.sub) {
       return new Response(JSON.stringify({ connected: false }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+    const userId = claimsData.claims.sub as string;
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const { data: calToken } = await supabase
       .from('google_calendar_tokens')
       .select('email, status, token_expires_at, calendar_id')
-      .eq('user_id', claims.user.id)
+      .eq('user_id', userId)
       .eq('status', 'active')
       .maybeSingle();
 
