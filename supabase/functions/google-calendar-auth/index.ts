@@ -29,10 +29,148 @@ serve(async (req) => {
 
   const url = new URL(req.url);
   const path = url.pathname.split('/').pop();
+  const hasOAuthCode = url.searchParams.has('code') && url.searchParams.has('state');
+  const hasOAuthError = url.searchParams.has('error') && url.searchParams.has('state');
   const REDIRECT_URI = `${SUPABASE_URL}/functions/v1/google-calendar-auth/callback`;
 
+  // ─── CALLBACK: exchange code for tokens (check FIRST before initiate) ───
+  if (hasOAuthCode || hasOAuthError || path === 'callback') {
+    try {
+      const code = url.searchParams.get('code');
+      const stateParam = url.searchParams.get('state');
+      const error = url.searchParams.get('error');
+
+      if (error) {
+        console.error('Google OAuth error:', error);
+        return new Response(htmlPage('Error', `Google rechazó la autorización: ${error}`), {
+          headers: { 'Content-Type': 'text/html' },
+        });
+      }
+
+      if (!code || !stateParam) {
+        return new Response(htmlPage('Error', 'Parámetros faltantes'), {
+          headers: { 'Content-Type': 'text/html' },
+        });
+      }
+
+      let state: { user_id: string; tenant_id: string };
+      try {
+        state = JSON.parse(atob(stateParam));
+      } catch {
+        return new Response(htmlPage('Error', 'Estado inválido'), {
+          headers: { 'Content-Type': 'text/html' },
+        });
+      }
+
+      // Exchange code for tokens
+      const tokenRes = await fetch(GOOGLE_TOKEN_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          code,
+          client_id: GOOGLE_CLIENT_ID,
+          client_secret: GOOGLE_CLIENT_SECRET,
+          redirect_uri: REDIRECT_URI,
+          grant_type: 'authorization_code',
+        }),
+      });
+
+      const tokenData = await tokenRes.json();
+      console.log('Token exchange status:', tokenRes.status, 'has_access_token:', !!tokenData.access_token, 'has_refresh_token:', !!tokenData.refresh_token);
+      
+      if (!tokenRes.ok || !tokenData.access_token) {
+        console.error('Token exchange failed:', JSON.stringify(tokenData));
+        return new Response(htmlPage('Error', `Error al obtener tokens: ${tokenData.error_description || tokenData.error}`), {
+          headers: { 'Content-Type': 'text/html' },
+        });
+      }
+
+      // Get user email from Google
+      let googleEmail = '';
+      try {
+        const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+          headers: { Authorization: `Bearer ${tokenData.access_token}` },
+        });
+        const userInfo = await userInfoRes.json();
+        googleEmail = userInfo.email || '';
+        console.log('Google email retrieved:', googleEmail);
+      } catch (e) {
+        console.error('Failed to get Google user info:', e);
+      }
+
+      const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+      const expiresAt = new Date(Date.now() + (tokenData.expires_in || 3600) * 1000).toISOString();
+
+      // Upsert tokens
+      const { error: upsertErr } = await supabase
+        .from('google_calendar_tokens')
+        .upsert({
+          user_id: state.user_id,
+          tenant_id: state.tenant_id,
+          access_token: tokenData.access_token,
+          refresh_token: tokenData.refresh_token || '',
+          token_expires_at: expiresAt,
+          email: googleEmail,
+          status: 'active',
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'user_id,tenant_id' });
+
+      if (upsertErr) {
+        console.error('Token save error:', JSON.stringify(upsertErr));
+        return new Response(htmlPage('Error', 'No se pudieron guardar los tokens'), {
+          headers: { 'Content-Type': 'text/html' },
+        });
+      }
+
+      console.log('Tokens saved successfully for user:', state.user_id);
+
+      // Update tenant google_calendar_config
+      const { data: tenant } = await supabase
+        .from('tenants')
+        .select('google_calendar_config')
+        .eq('id', state.tenant_id)
+        .single();
+
+      const currentConfig = ((tenant?.google_calendar_config || {}) as Record<string, any>);
+      const users = currentConfig.users || {};
+      users[state.user_id] = {
+        ...users[state.user_id],
+        email: googleEmail,
+        connected: true,
+        oauth_connected: true,
+        sync_enabled: true,
+        auto_create: true,
+        connected_at: new Date().toISOString(),
+      };
+
+      await supabase
+        .from('tenants')
+        .update({ google_calendar_config: { ...currentConfig, users } })
+        .eq('id', state.tenant_id);
+
+      // Audit log
+      await supabase.from('audit_events').insert({
+        tenant_id: state.tenant_id,
+        event_type: 'google_calendar_connected',
+        actor_id: state.user_id,
+        resource_type: 'google_calendar_tokens',
+        payload: { email: googleEmail },
+      });
+
+      return new Response(htmlPage('¡Conectado!', `Google Calendar conectado exitosamente con ${googleEmail}. Puedes cerrar esta ventana.`), {
+        headers: { 'Content-Type': 'text/html' },
+      });
+    } catch (err) {
+      console.error('Callback error:', err);
+      return new Response(htmlPage('Error', 'Error interno al procesar la autorización'), {
+        headers: { 'Content-Type': 'text/html' },
+      });
+    }
+  }
+
   // ─── INITIATE: redirect user to Google consent screen ───
-  if (path === 'initiate' || (!path?.includes('callback') && req.method === 'POST')) {
+  if (req.method === 'POST') {
     try {
       const authHeader = req.headers.get('Authorization');
       if (!authHeader) {
@@ -101,137 +239,8 @@ serve(async (req) => {
     }
   }
 
-  // ─── CALLBACK: exchange code for tokens ───
-  if (path === 'callback' || url.searchParams.has('code')) {
-    try {
-      const code = url.searchParams.get('code');
-      const stateParam = url.searchParams.get('state');
-      const error = url.searchParams.get('error');
-
-      if (error) {
-        console.error('Google OAuth error:', error);
-        return new Response(htmlPage('Error', `Google rechazó la autorización: ${error}`), {
-          headers: { 'Content-Type': 'text/html' },
-        });
-      }
-
-      if (!code || !stateParam) {
-        return new Response(htmlPage('Error', 'Parámetros faltantes'), {
-          headers: { 'Content-Type': 'text/html' },
-        });
-      }
-
-      let state: { user_id: string; tenant_id: string };
-      try {
-        state = JSON.parse(atob(stateParam));
-      } catch {
-        return new Response(htmlPage('Error', 'Estado inválido'), {
-          headers: { 'Content-Type': 'text/html' },
-        });
-      }
-
-      // Exchange code for tokens
-      const tokenRes = await fetch(GOOGLE_TOKEN_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          code,
-          client_id: GOOGLE_CLIENT_ID,
-          client_secret: GOOGLE_CLIENT_SECRET,
-          redirect_uri: REDIRECT_URI,
-          grant_type: 'authorization_code',
-        }),
-      });
-
-      const tokenData = await tokenRes.json();
-      if (!tokenRes.ok || !tokenData.access_token) {
-        console.error('Token exchange failed:', JSON.stringify(tokenData));
-        return new Response(htmlPage('Error', `Error al obtener tokens: ${tokenData.error_description || tokenData.error}`), {
-          headers: { 'Content-Type': 'text/html' },
-        });
-      }
-
-      // Get user email from Google
-      let googleEmail = '';
-      try {
-        const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-          headers: { Authorization: `Bearer ${tokenData.access_token}` },
-        });
-        const userInfo = await userInfoRes.json();
-        googleEmail = userInfo.email || '';
-      } catch { /* ignore */ }
-
-      const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
-      const expiresAt = new Date(Date.now() + (tokenData.expires_in || 3600) * 1000).toISOString();
-
-      // Upsert tokens
-      const { error: upsertErr } = await supabase
-        .from('google_calendar_tokens')
-        .upsert({
-          user_id: state.user_id,
-          tenant_id: state.tenant_id,
-          access_token: tokenData.access_token,
-          refresh_token: tokenData.refresh_token || '',
-          token_expires_at: expiresAt,
-          email: googleEmail,
-          status: 'active',
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'user_id,tenant_id' });
-
-      if (upsertErr) {
-        console.error('Token save error:', upsertErr);
-        return new Response(htmlPage('Error', 'No se pudieron guardar los tokens'), {
-          headers: { 'Content-Type': 'text/html' },
-        });
-      }
-
-      // Update tenant google_calendar_config
-      const { data: tenant } = await supabase
-        .from('tenants')
-        .select('google_calendar_config')
-        .eq('id', state.tenant_id)
-        .single();
-
-      const currentConfig = ((tenant?.google_calendar_config || {}) as Record<string, any>);
-      const users = currentConfig.users || {};
-      users[state.user_id] = {
-        ...users[state.user_id],
-        email: googleEmail,
-        connected: true,
-        oauth_connected: true,
-        sync_enabled: true,
-        auto_create: true,
-        connected_at: new Date().toISOString(),
-      };
-
-      await supabase
-        .from('tenants')
-        .update({ google_calendar_config: { ...currentConfig, users } })
-        .eq('id', state.tenant_id);
-
-      // Audit log
-      await supabase.from('audit_events').insert({
-        tenant_id: state.tenant_id,
-        event_type: 'google_calendar_connected',
-        actor_id: state.user_id,
-        resource_type: 'google_calendar_tokens',
-        payload: { email: googleEmail },
-      });
-
-      return new Response(htmlPage('¡Conectado!', `Google Calendar conectado exitosamente con ${googleEmail}. Puedes cerrar esta ventana.`), {
-        headers: { 'Content-Type': 'text/html' },
-      });
-    } catch (err) {
-      console.error('Callback error:', err);
-      return new Response(htmlPage('Error', 'Error interno al procesar la autorización'), {
-        headers: { 'Content-Type': 'text/html' },
-      });
-    }
-  }
-
   // ─── STATUS: check token health ───
-  if (path === 'status' || req.method === 'GET') {
+  if (req.method === 'GET') {
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
