@@ -41,6 +41,16 @@ serve(async (req) => {
         });
       }
 
+      let requestedEmail = '';
+      if (req.method === 'POST') {
+        try {
+          const body = await req.json();
+          requestedEmail = typeof body?.calendar_email === 'string' ? body.calendar_email.trim() : '';
+        } catch {
+          requestedEmail = '';
+        }
+      }
+
       const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
       const token = authHeader.replace('Bearer ', '');
       const { data: claims, error: claimsErr } = await supabase.auth.getUser(token);
@@ -73,9 +83,12 @@ serve(async (req) => {
       authUrl.searchParams.set('response_type', 'code');
       authUrl.searchParams.set('scope', SCOPES);
       authUrl.searchParams.set('access_type', 'offline');
-      authUrl.searchParams.set('prompt', 'consent');
+      authUrl.searchParams.set('prompt', 'select_account consent');
       authUrl.searchParams.set('state', state);
       authUrl.searchParams.set('include_granted_scopes', 'true');
+      if (requestedEmail) {
+        authUrl.searchParams.set('login_hint', requestedEmail);
+      }
 
       return new Response(JSON.stringify({ auth_url: authUrl.toString() }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
