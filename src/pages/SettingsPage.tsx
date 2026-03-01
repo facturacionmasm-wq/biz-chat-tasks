@@ -952,6 +952,17 @@ const SettingsPage = () => {
                     <Settings2 size={16} className="text-primary" /> Preferencias de sincronización
                   </h4>
                   <div className="space-y-4">
+                    <div>
+                      <label className="text-sm font-medium text-foreground block mb-1">Correo de calendario</label>
+                      <input
+                        className="w-full px-3 py-2 rounded-lg bg-secondary border border-border text-foreground text-sm"
+                        value={calendarEmail}
+                        onChange={e => setCalendarEmail(e.target.value)}
+                        placeholder="tu@email.com"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">Email vinculado a tu Google Calendar para sincronizar citas</p>
+                    </div>
+
                     <label className="flex items-center justify-between cursor-pointer group">
                       <div>
                         <span className="text-sm font-medium text-foreground">Sincronización activa</span>
