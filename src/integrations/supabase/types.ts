@@ -1125,7 +1125,12 @@ export type Database = {
       }
     }
     Functions: {
+      block_expired_trials: { Args: never; Returns: undefined }
       get_tenant_branding: { Args: { _tenant_id: string }; Returns: Json }
+      get_tenant_subscription_status: {
+        Args: { _user_id: string }
+        Returns: Json
+      }
       get_user_tenant_id: { Args: { _user_id: string }; Returns: string }
       has_role: {
         Args: {
