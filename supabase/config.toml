@@ -24,6 +24,9 @@ verify_jwt = false
 [functions.call-webhook]
 verify_jwt = false
 
+[functions.call-inbound-webhook]
+verify_jwt = false
+
 [functions.voice-scheduling]
 verify_jwt = false
 
