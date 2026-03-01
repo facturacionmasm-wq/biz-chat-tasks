@@ -1,0 +1,108 @@
+// Tool definitions for AI function calling
+export const AI_TOOLS = [
+  {
+    type: 'function',
+    function: {
+      name: 'schedule_appointment',
+      description: 'Agendar una cita/appointment para un cliente o empleado. Usa esto cuando alguien quiera agendar, programar, o reservar una cita.',
+      parameters: {
+        type: 'object',
+        properties: {
+          contact_name: { type: 'string', description: 'Nombre del cliente o contacto' },
+          contact_phone: { type: 'string', description: 'Teléfono del contacto (si se tiene)' },
+          contact_email: { type: 'string', description: 'Email del contacto (si se tiene)' },
+          date: { type: 'string', description: 'Fecha de la cita en formato YYYY-MM-DD' },
+          time: { type: 'string', description: 'Hora de la cita en formato HH:MM (24h)' },
+          service_type: { type: 'string', description: 'Tipo de servicio o motivo de la cita' },
+          employee_name: { type: 'string', description: 'Nombre del empleado con quien se quiere la cita (opcional)' },
+          notes: { type: 'string', description: 'Notas adicionales' },
+        },
+        required: ['contact_name', 'date', 'time'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'check_availability',
+      description: 'Verificar disponibilidad de horarios para una fecha específica. Usa esto cuando pregunten por horarios disponibles.',
+      parameters: {
+        type: 'object',
+        properties: {
+          date: { type: 'string', description: 'Fecha a consultar en formato YYYY-MM-DD' },
+          employee_name: { type: 'string', description: 'Nombre del empleado (opcional)' },
+        },
+        required: ['date'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'create_reminder',
+      description: 'Crear un recordatorio para el usuario. Usa esto cuando pidan "recuérdame", "avísame", "no me dejes olvidar", etc.',
+      parameters: {
+        type: 'object',
+        properties: {
+          message: { type: 'string', description: 'Mensaje del recordatorio - qué debe recordar' },
+          remind_at: { type: 'string', description: 'Fecha y hora del recordatorio en formato ISO 8601 (YYYY-MM-DDTHH:MM:SS). Si solo dicen hora, usar la fecha de hoy.' },
+        },
+        required: ['message', 'remind_at'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_today_agenda',
+      description: 'Obtener la agenda/citas del día de hoy para el usuario. Usa cuando pregunten por su agenda, citas, o qué tienen hoy.',
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_pending_expenses',
+      description: 'Obtener gastos pendientes de aprobación del usuario.',
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'save_bot_instruction',
+      description: 'Guardar una corrección, instrucción o regla nueva para modificar el comportamiento del bot. Usa cuando un humano diga cosas como: "cuando te pregunten X responde Y", "no digas X", "aprende esto", "corrige esto", "de ahora en adelante haz X", "tu respuesta sobre X estuvo mal, la correcta es Y". Esta herramienta reprograma el comportamiento futuro del bot.',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: 'Título corto y descriptivo de la instrucción/corrección (ej: "Respuesta correcta sobre precios", "No mencionar competencia")' },
+          instruction: { type: 'string', description: 'La instrucción completa, corrección o nueva regla de comportamiento. Incluye el contexto de qué pregunta/situación aplica y cuál debe ser la respuesta o comportamiento correcto.' },
+          correction_type: { type: 'string', enum: ['correction', 'new_rule', 'knowledge', 'personality'], description: 'Tipo: correction=corregir respuesta incorrecta, new_rule=nueva regla de comportamiento, knowledge=nuevo conocimiento/dato, personality=ajuste de personalidad/tono' },
+        },
+        required: ['title', 'instruction', 'correction_type'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_bot_instructions',
+      description: 'Listar las instrucciones/correcciones activas del bot. Usa cuando pregunten "qué reglas tienes", "qué has aprendido", "muéstrame tus correcciones".',
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'delete_bot_instruction',
+      description: 'Eliminar/desactivar una instrucción o corrección del bot. Usa cuando digan "olvida la regla de X", "elimina la corrección sobre Y", "ya no apliques eso".',
+      parameters: {
+        type: 'object',
+        properties: {
+          search_term: { type: 'string', description: 'Término de búsqueda para encontrar la instrucción a eliminar (busca en título y contenido)' },
+        },
+        required: ['search_term'],
+      },
+    },
+  },
+];
