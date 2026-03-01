@@ -42,24 +42,26 @@ serve(async (req) => {
 
       if (error) {
         console.error('Google OAuth error:', error);
-        return new Response(htmlPage('Error', `Google rechazó la autorización: ${error}`), {
-          headers: { 'Content-Type': 'text/html' },
-        });
+        const appOrigin = decodeAppOriginFromState(stateParam);
+        if (appOrigin) {
+          const redirectUrl = `${appOrigin}/settings?calendar_error=${encodeURIComponent(error)}`;
+          return new Response(null, {
+            status: 302,
+            headers: { 'Location': redirectUrl },
+          });
+        }
+        return htmlResponse('Error', `Google rechazó la autorización: ${error}`);
       }
 
       if (!code || !stateParam) {
-        return new Response(htmlPage('Error', 'Parámetros faltantes'), {
-          headers: { 'Content-Type': 'text/html' },
-        });
+        return htmlResponse('Error', 'Parámetros faltantes');
       }
 
       let state: { user_id: string; tenant_id: string; app_origin?: string };
       try {
         state = JSON.parse(atob(stateParam));
       } catch {
-        return new Response(htmlPage('Error', 'Estado inválido'), {
-          headers: { 'Content-Type': 'text/html' },
-        });
+        return htmlResponse('Error', 'Estado inválido');
       }
 
       // Exchange code for tokens
@@ -80,9 +82,7 @@ serve(async (req) => {
       
       if (!tokenRes.ok || !tokenData.access_token) {
         console.error('Token exchange failed:', JSON.stringify(tokenData));
-        return new Response(htmlPage('Error', `Error al obtener tokens: ${tokenData.error_description || tokenData.error}`), {
-          headers: { 'Content-Type': 'text/html' },
-        });
+        return htmlResponse('Error', `Error al obtener tokens: ${tokenData.error_description || tokenData.error}`);
       }
 
       // Get user email from Google
@@ -118,9 +118,7 @@ serve(async (req) => {
 
       if (upsertErr) {
         console.error('Token save error:', JSON.stringify(upsertErr));
-        return new Response(htmlPage('Error', 'No se pudieron guardar los tokens'), {
-          headers: { 'Content-Type': 'text/html' },
-        });
+        return htmlResponse('Error', 'No se pudieron guardar los tokens');
       }
 
       console.log('Tokens saved successfully for user:', state.user_id);
@@ -167,14 +165,10 @@ serve(async (req) => {
         });
       }
 
-      return new Response(htmlPage('¡Conectado!', `Google Calendar conectado exitosamente con ${googleEmail}. Puedes cerrar esta ventana.`), {
-        headers: { 'Content-Type': 'text/html' },
-      });
+      return htmlResponse('¡Conectado!', `Google Calendar conectado exitosamente con ${googleEmail}. Puedes cerrar esta ventana.`);
     } catch (err) {
       console.error('Callback error:', err);
-      return new Response(htmlPage('Error', 'Error interno al procesar la autorización'), {
-        headers: { 'Content-Type': 'text/html' },
-      });
+      return htmlResponse('Error', 'Error interno al procesar la autorización');
     }
   }
 
@@ -298,6 +292,29 @@ serve(async (req) => {
     status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
 });
+
+function decodeAppOriginFromState(stateParam: string | null): string | null {
+  try {
+    if (!stateParam) return null;
+    const parsed = JSON.parse(atob(stateParam));
+    if (typeof parsed?.app_origin === 'string' && parsed.app_origin.trim()) {
+      return parsed.app_origin.trim();
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function htmlResponse(title: string, message: string, status = 200): Response {
+  return new Response(htmlPage(title, message), {
+    status,
+    headers: {
+      'content-type': 'text/html; charset=utf-8',
+      'cache-control': 'no-store',
+    },
+  });
+}
 
 function htmlPage(title: string, message: string): string {
   return `<!DOCTYPE html>
