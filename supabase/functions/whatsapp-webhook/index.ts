@@ -612,6 +612,7 @@ serve(async (req) => {
             const contactName = contacts.find((c: any) => c.wa_id === contactPhone)?.profile?.name || 'Desconocido';
             const messageBody = msg.text?.body || msg.caption || '';
             const mediaUrl = msg.image?.id || msg.document?.id || null;
+            const waMessageId = msg.id || '';
 
             // Resolve tenant from phone_number_id (strict — NO fallback)
             const phoneNumberId = value.metadata?.phone_number_id;
@@ -637,7 +638,7 @@ serve(async (req) => {
               await logWebhook({
                 stage: 'meta_tenant_resolution',
                 status: 'skip',
-                messageId: msg.id,
+                messageId: waMessageId,
                 payload: { phone_number_id: phoneNumberId, reason: 'tenant_not_found' },
               });
               continue;
@@ -650,7 +651,7 @@ serve(async (req) => {
               .eq('tenant_id', tenantId)
               .neq('status', 'closed')
               .limit(1)
-              .single();
+              .maybeSingle();
 
             if (!conversation) {
               const { data: newConv } = await supabase
@@ -673,6 +674,28 @@ serve(async (req) => {
             }
 
             if (conversation) {
+              // Idempotency: check for duplicate wa_message_id
+              if (waMessageId) {
+                const { data: existingMsg } = await supabase
+                  .from('whatsapp_messages')
+                  .select('id')
+                  .eq('conversation_id', conversation.id)
+                  .eq('direction', 'in')
+                  .contains('metadata', { wa_message_id: waMessageId })
+                  .maybeSingle();
+
+                if (existingMsg) {
+                  await logWebhook({
+                    tenantId,
+                    conversationId: conversation.id,
+                    messageId: waMessageId,
+                    stage: 'meta_inbound_dedup',
+                    status: 'skip',
+                  });
+                  continue;
+                }
+              }
+
               await supabase.from('whatsapp_messages').insert({
                 tenant_id: tenantId,
                 conversation_id: conversation.id,
@@ -680,15 +703,23 @@ serve(async (req) => {
                 body: messageBody,
                 media_url: mediaUrl,
                 status: 'received',
-                metadata: { wa_message_id: msg.id, type: msg.type, provider: 'meta' },
+                metadata: { wa_message_id: waMessageId, type: msg.type, provider: 'meta' },
               });
 
               await supabase.from('audit_events').insert({
                 tenant_id: tenantId,
                 event_type: 'whatsapp.message_received',
                 resource_type: 'whatsapp_message',
-                resource_id: msg.id,
+                resource_id: waMessageId,
                 payload: { from: contactPhone, provider: 'meta', preview: messageBody.substring(0, 100) },
+              });
+
+              await logWebhook({
+                tenantId,
+                conversationId: conversation.id,
+                messageId: waMessageId,
+                stage: 'meta_inbound_saved',
+                status: 'ok',
               });
 
               // Trigger AI bot with SERVICE_ROLE_KEY
@@ -709,12 +740,57 @@ serve(async (req) => {
                   }),
                 });
 
+                const botResponseText = await botRes.text();
                 if (!botRes.ok) {
-                  const botErr = await botRes.text();
-                  console.error(`[WH-Meta] Bot error (${botRes.status}): ${botErr.substring(0, 200)}`);
+                  console.error(`[WH-Meta] Bot error (${botRes.status}): ${botResponseText.substring(0, 200)}`);
+                  // Save fallback reply so the user always gets a response
+                  await supabase.from('whatsapp_messages').insert({
+                    tenant_id: tenantId,
+                    conversation_id: conversation.id,
+                    direction: 'out',
+                    body: 'Perdón, tuve un problema técnico momentáneo. ¿Me lo repites en un mensaje corto? 🙏',
+                    status: 'pending',
+                    metadata: { provider: 'bot_fallback', reason: 'bot_http_error', delivery_method: 'meta_api' },
+                  });
+
+                  await logWebhook({
+                    tenantId,
+                    conversationId: conversation.id,
+                    messageId: waMessageId,
+                    stage: 'meta_bot_invocation',
+                    status: 'error',
+                    error: `HTTP ${botRes.status}: ${botResponseText.substring(0, 200)}`,
+                  });
+                } else {
+                  await logWebhook({
+                    tenantId,
+                    conversationId: conversation.id,
+                    messageId: waMessageId,
+                    stage: 'meta_bot_invocation',
+                    status: 'ok',
+                    payload: { response_length: botResponseText.length },
+                  });
                 }
               } catch (botErr) {
                 console.error('[WH-Meta] Bot trigger failed:', botErr);
+                // Save fallback reply
+                await supabase.from('whatsapp_messages').insert({
+                  tenant_id: tenantId,
+                  conversation_id: conversation.id,
+                  direction: 'out',
+                  body: 'Perdón, tuve un problema técnico momentáneo. ¿Me lo repites en un mensaje corto? 🙏',
+                  status: 'pending',
+                  metadata: { provider: 'bot_fallback', reason: 'bot_exception', delivery_method: 'meta_api' },
+                });
+
+                await logWebhook({
+                  tenantId,
+                  conversationId: conversation.id,
+                  messageId: waMessageId,
+                  stage: 'meta_bot_invocation',
+                  status: 'error',
+                  error: botErr instanceof Error ? botErr.message : 'Unknown bot error',
+                });
               }
             }
           }

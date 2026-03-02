@@ -1017,7 +1017,6 @@ async function executeSendWhatsAppMessage(
 
   // If no phone provided, search by name in profiles and contacts
   if (!targetPhone && targetName) {
-    // Search in team profiles first
     const { data: profile } = await supabase
       .from('profiles')
       .select('name, whatsapp_number, phone')
@@ -1032,7 +1031,6 @@ async function executeSendWhatsAppMessage(
       targetName = profile.name;
     }
 
-    // If not found in profiles, search contacts
     if (!targetPhone) {
       const { data: contact } = await supabase
         .from('contacts')
@@ -1055,22 +1053,57 @@ async function executeSendWhatsAppMessage(
     });
   }
 
-  // Get tenant Twilio config
+  // Resolve tenant WhatsApp sender config (same pattern as main bot flow)
   const TWILIO_ACCOUNT_SID = Deno.env.get('TWILIO_ACCOUNT_SID');
   const TWILIO_AUTH_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN');
-  const TWILIO_PHONE_NUMBER = Deno.env.get('TWILIO_PHONE_NUMBER');
 
-  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_PHONE_NUMBER) {
+  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) {
     return JSON.stringify({ error: 'No se encontró configuración de WhatsApp/Twilio para enviar el mensaje.' });
+  }
+
+  // Use tenant's configured WhatsApp number to avoid 63007 sender-channel mismatch
+  let fromNumber: string | null = null;
+  let messagingServiceSid: string | undefined = undefined;
+
+  const { data: tenantData } = await supabase
+    .from('tenants')
+    .select('whatsapp_config')
+    .eq('id', tenantId)
+    .single();
+
+  const waConfig = tenantData?.whatsapp_config as Record<string, any> | null;
+  if (waConfig?.phone_number) {
+    fromNumber = String(waConfig.phone_number).replace(/^whatsapp:/i, '');
+  }
+  if (waConfig?.messaging_service_sid) {
+    messagingServiceSid = String(waConfig.messaging_service_sid).trim();
+  }
+
+  // Fallback to global env vars
+  if (!fromNumber) {
+    fromNumber = Deno.env.get('TWILIO_PHONE_NUMBER') || null;
+  }
+  if (!messagingServiceSid) {
+    messagingServiceSid = Deno.env.get('TWILIO_MESSAGING_SERVICE_SID') || undefined;
+  }
+
+  if (!fromNumber && !messagingServiceSid) {
+    return JSON.stringify({ error: 'No se encontró número de WhatsApp configurado para enviar el mensaje.' });
   }
 
   try {
     const { sendTwilioMessage } = await import('./helpers.ts');
-    const result = await sendTwilioMessage(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER, targetPhone, message);
+    const result = await sendTwilioMessage(
+      TWILIO_ACCOUNT_SID,
+      TWILIO_AUTH_TOKEN,
+      fromNumber || '',
+      targetPhone,
+      message,
+      messagingServiceSid,
+    );
 
     if (result.sid) {
       // Log the outbound message
-      // Find or create conversation for recipient
       const { data: recipientConv } = await supabase
         .from('whatsapp_conversations')
         .select('id')
@@ -1085,7 +1118,7 @@ async function executeSendWhatsAppMessage(
           direction: 'out',
           body: message,
           status: 'sent',
-          metadata: { sent_by: userId, sent_by_name: conversation.bot_context?.user_name || 'Empleado', via: 'bot_tool' },
+          metadata: { sent_by: userId, sent_by_name: conversation.bot_context?.user_name || 'Empleado', via: 'bot_tool', message_sid: result.sid, from_number: fromNumber },
         });
       }
 
