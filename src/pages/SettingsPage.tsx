@@ -625,6 +625,9 @@ const SettingsPage = () => {
       return;
     }
 
+    // Open popup SYNCHRONOUSLY with user gesture to avoid browser blocking
+    const popup = window.open('about:blank', 'google-calendar-auth', 'width=600,height=700,scrollbars=yes');
+
     try {
       const { data: session } = await supabase.auth.getSession();
       const token = session?.session?.access_token;
@@ -649,19 +652,18 @@ const SettingsPage = () => {
 
       const data = await res.json();
       if (!data.auth_url) {
+        popup?.close();
         throw new Error(data.error || 'Error al obtener URL de autorización');
       }
 
-      // Try popup first (synchronous open)
-      const popup = window.open(data.auth_url, 'google-calendar-auth', 'width=600,height=700,scrollbars=yes');
-
       if (popup && !popup.closed) {
+        // Navigate the already-open popup to Google's auth page
+        popup.location.href = data.auth_url;
         toast.info('Completa la autorización en la ventana emergente de Google');
 
         const startedAt = Date.now();
         const timeoutMs = 120000;
 
-        // Poll for connection status and popup close
         const pollTimer = setInterval(async () => {
           try {
             const connected = await checkCalendarStatus();
@@ -685,6 +687,7 @@ const SettingsPage = () => {
         window.location.href = data.auth_url;
       }
     } catch (err: any) {
+      popup?.close();
       toast.error(err.message || 'Error al conectar con Google Calendar');
       setSavingCalendar(false);
     }

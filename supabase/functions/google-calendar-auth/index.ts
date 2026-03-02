@@ -192,20 +192,18 @@ serve(async (req) => {
         requestedEmail = '';
       }
 
-      const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') || Deno.env.get('SUPABASE_PUBLISHABLE_KEY') || '';
-      const authSupabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-        global: { headers: { Authorization: authHeader } },
-      });
+      const authSupabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
       const token = authHeader.replace('Bearer ', '');
-      const { data: claimsData, error: claimsErr } = await authSupabase.auth.getClaims(token);
+      const { data: userData, error: userErr } = await authSupabase.auth.getUser(token);
       
-      if (claimsErr || !claimsData?.claims?.sub) {
+      if (userErr || !userData?.user?.id) {
+        console.error('Auth error:', userErr?.message);
         return new Response(JSON.stringify({ error: 'Invalid token' }), {
           status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
 
-      const userId = claimsData.claims.sub as string;
+      const userId = userData.user.id;
       const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
       // Get tenant_id
@@ -256,18 +254,15 @@ serve(async (req) => {
       });
     }
 
-    const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') || Deno.env.get('SUPABASE_PUBLISHABLE_KEY') || '';
-    const authSupabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      global: { headers: { Authorization: authHeader } },
-    });
+    const authSupabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const token = authHeader.replace('Bearer ', '');
-    const { data: claimsData } = await authSupabase.auth.getClaims(token);
-    if (!claimsData?.claims?.sub) {
+    const { data: userData } = await authSupabase.auth.getUser(token);
+    if (!userData?.user?.id) {
       return new Response(JSON.stringify({ connected: false }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
-    const userId = claimsData.claims.sub as string;
+    const userId = userData.user.id;
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const { data: calToken } = await supabase
