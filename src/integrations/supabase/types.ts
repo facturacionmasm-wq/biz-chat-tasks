@@ -581,6 +581,75 @@ export type Database = {
           },
         ]
       }
+      call_sessions: {
+        Row: {
+          agent_mode: string
+          call_record_id: string
+          call_sid: string
+          created_at: string
+          elevenlabs_agent_id: string | null
+          error_message: string | null
+          id: string
+          language: string | null
+          retry_count: number
+          routing_method: string
+          state: string
+          target_url: string | null
+          tenant_id: string
+          updated_at: string
+          voice_id: string | null
+        }
+        Insert: {
+          agent_mode?: string
+          call_record_id: string
+          call_sid: string
+          created_at?: string
+          elevenlabs_agent_id?: string | null
+          error_message?: string | null
+          id?: string
+          language?: string | null
+          retry_count?: number
+          routing_method?: string
+          state?: string
+          target_url?: string | null
+          tenant_id: string
+          updated_at?: string
+          voice_id?: string | null
+        }
+        Update: {
+          agent_mode?: string
+          call_record_id?: string
+          call_sid?: string
+          created_at?: string
+          elevenlabs_agent_id?: string | null
+          error_message?: string | null
+          id?: string
+          language?: string | null
+          retry_count?: number
+          routing_method?: string
+          state?: string
+          target_url?: string | null
+          tenant_id?: string
+          updated_at?: string
+          voice_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "call_sessions_call_record_id_fkey"
+            columns: ["call_record_id"]
+            isOneToOne: false
+            referencedRelation: "call_records"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "call_sessions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       churn_model_metrics: {
         Row: {
           accuracy_last_30d: number | null
