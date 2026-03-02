@@ -1,10 +1,9 @@
-import { useState } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { lovable } from '@/integrations/lovable';
 import { toast } from 'sonner';
 import { Loader2, Building2, Eye, EyeOff } from 'lucide-react';
 import { useBranding } from '@/hooks/useBranding';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 
 // ─── Helpers (outside component to avoid re-creation) ───
 
@@ -77,6 +76,8 @@ const Divider = () => (
 );
 
 interface PasswordInputProps {
+  id: string;
+  name: string;
   value: string;
   onChange: (v: string) => void;
   label: string;
@@ -87,13 +88,15 @@ interface PasswordInputProps {
 }
 
 const PasswordInput = ({
-  value, onChange, label, placeholder = "••••••••", autoComplete = "current-password",
-  showPassword, onToggleShow,
+  id, name, value, onChange, label, placeholder = "••••••••",
+  autoComplete = "current-password", showPassword, onToggleShow,
 }: PasswordInputProps) => (
   <div>
-    <label className="text-sm font-medium text-foreground block mb-1">{label}</label>
+    <label htmlFor={id} className="text-sm font-medium text-foreground block mb-1">{label}</label>
     <div className="relative">
       <input
+        id={id}
+        name={name}
         type={showPassword ? 'text' : 'password'}
         value={value}
         onChange={e => onChange(e.target.value)}
@@ -101,6 +104,10 @@ const PasswordInput = ({
         minLength={6}
         placeholder={placeholder}
         autoComplete={autoComplete}
+        autoCapitalize="off"
+        autoCorrect="off"
+        spellCheck={false}
+        enterKeyHint="done"
         className="w-full bg-secondary rounded-lg px-3 py-2.5 text-sm outline-none border border-border focus:border-primary text-foreground placeholder:text-muted-foreground pr-10"
       />
       <button
@@ -110,10 +117,45 @@ const PasswordInput = ({
         onClick={onToggleShow}
         className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
         tabIndex={-1}
+        aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
       >
         {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
       </button>
     </div>
+  </div>
+);
+
+// ─── Tab selector (avoids Radix Tabs unmount/remount issues on mobile) ───
+
+interface TabSelectorProps {
+  activeTab: string;
+  onTabChange: (tab: string) => void;
+}
+
+const TabSelector = ({ activeTab, onTabChange }: TabSelectorProps) => (
+  <div className="grid grid-cols-2 bg-muted rounded-md p-1 mb-4">
+    <button
+      type="button"
+      onClick={() => onTabChange('login')}
+      className={`rounded-sm px-3 py-1.5 text-sm font-medium transition-all ${
+        activeTab === 'login'
+          ? 'bg-background text-foreground shadow-sm'
+          : 'text-muted-foreground'
+      }`}
+    >
+      Login
+    </button>
+    <button
+      type="button"
+      onClick={() => onTabChange('signup')}
+      className={`rounded-sm px-3 py-1.5 text-sm font-medium transition-all ${
+        activeTab === 'signup'
+          ? 'bg-background text-foreground shadow-sm'
+          : 'text-muted-foreground'
+      }`}
+    >
+      Sign Up
+    </button>
   </div>
 );
 
@@ -131,9 +173,9 @@ const AuthPage = () => {
   const [forgotMode, setForgotMode] = useState(false);
   const branding = useBranding();
 
-  const toggleShowPassword = () => setShowPassword(prev => !prev);
+  const toggleShowPassword = useCallback(() => setShowPassword(prev => !prev), []);
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleLogin = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validateEmail(email)) { toast.error('Formato de email inválido'); return; }
     setLoading(true);
@@ -156,9 +198,9 @@ const AuthPage = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [email, password]);
 
-  const handleSignUp = async (e: React.FormEvent) => {
+  const handleSignUp = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validateEmail(email)) { toast.error('Formato de email inválido'); return; }
     if (password.length < 6) { toast.error('La contraseña debe tener al menos 6 caracteres'); return; }
@@ -182,9 +224,9 @@ const AuthPage = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [email, password, confirmPassword, name]);
 
-  const handleForgotPassword = async (e: React.FormEvent) => {
+  const handleForgotPassword = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validateEmail(email)) { toast.error('Ingresa un email válido'); return; }
     setLoading(true);
@@ -200,9 +242,9 @@ const AuthPage = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [email]);
 
-  const handleOAuth = async (provider: 'google' | 'apple') => {
+  const handleOAuth = useCallback(async (provider: 'google' | 'apple') => {
     setOauthLoading(provider);
     try {
       const result = await lovable.auth.signInWithOAuth(provider, { redirect_uri: window.location.origin });
@@ -212,10 +254,10 @@ const AuthPage = () => {
     } finally {
       setOauthLoading(null);
     }
-  };
+  }, []);
 
-  // ─── Header ───
-  const header = (
+  // ─── Header (memoized to prevent re-creation on every keystroke) ───
+  const header = useMemo(() => (
     <div className="text-center mb-6">
       {branding.logoUrl ? (
         <img src={branding.logoUrl} alt={branding.orgName} className="h-16 mx-auto mb-4 object-contain" />
@@ -227,7 +269,7 @@ const AuthPage = () => {
       <h1 className="text-2xl font-bold text-foreground">{branding.orgName}</h1>
       {branding.slogan && <p className="text-xs text-muted-foreground mt-0.5">{branding.slogan}</p>}
     </div>
-  );
+  ), [branding.logoUrl, branding.orgName, branding.slogan]);
 
   // ─── FORGOT PASSWORD VIEW ───
   if (forgotMode) {
@@ -238,8 +280,8 @@ const AuthPage = () => {
           <p className="text-sm text-muted-foreground text-center mb-4">Te enviaremos un enlace a tu email</p>
           <form onSubmit={handleForgotPassword} className="bg-card border border-border rounded-xl p-6 space-y-4">
             <div>
-              <label className="text-sm font-medium text-foreground block mb-1">Email</label>
-              <input type="email" value={email} onChange={e => setEmail(e.target.value)} required autoComplete="email"
+              <label htmlFor="forgot-email" className="text-sm font-medium text-foreground block mb-1">Email</label>
+              <input id="forgot-email" name="email" type="email" value={email} onChange={e => setEmail(e.target.value)} required autoComplete="email"
                 placeholder="tu@email.com"
                 className="w-full bg-secondary rounded-lg px-3 py-2.5 text-sm outline-none border border-border focus:border-primary text-foreground placeholder:text-muted-foreground" />
             </div>
@@ -250,7 +292,7 @@ const AuthPage = () => {
             </button>
           </form>
           <p className="text-center text-sm text-muted-foreground mt-4">
-            <button onClick={() => setForgotMode(false)} className="text-primary hover:underline font-medium">Volver al login</button>
+            <button type="button" onClick={() => setForgotMode(false)} className="text-primary hover:underline font-medium">Volver al login</button>
           </p>
         </div>
       </div>
@@ -258,71 +300,68 @@ const AuthPage = () => {
   }
 
   // ─── MAIN AUTH VIEW ───
+  // Using plain div-based tabs instead of Radix Tabs to prevent
+  // unmount/remount of form inputs that causes keyboard dismissal on mobile.
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
         {header}
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-2 mb-4">
-            <TabsTrigger value="login">Login</TabsTrigger>
-            <TabsTrigger value="signup">Sign Up</TabsTrigger>
-          </TabsList>
+        <TabSelector activeTab={activeTab} onTabChange={setActiveTab} />
 
-          {/* ─── LOGIN TAB ─── */}
-          <TabsContent value="login">
-            <OAuthButtons onOAuth={handleOAuth} oauthLoading={oauthLoading} disabled={!!oauthLoading || loading} />
-            <Divider />
-            <form onSubmit={handleLogin} className="bg-card border border-border rounded-xl p-6 space-y-4">
-              <div>
-                <label className="text-sm font-medium text-foreground block mb-1">Email</label>
-                <input type="email" value={email} onChange={e => setEmail(e.target.value)} required autoComplete="email"
-                  placeholder="tu@email.com"
-                  className="w-full bg-secondary rounded-lg px-3 py-2.5 text-sm outline-none border border-border focus:border-primary text-foreground placeholder:text-muted-foreground" />
-              </div>
-              <PasswordInput value={password} onChange={setPassword} label="Contraseña"
-                autoComplete="current-password" showPassword={showPassword} onToggleShow={toggleShowPassword} />
-              <button type="submit" disabled={loading}
-                className="w-full bg-primary text-primary-foreground font-medium text-sm px-4 py-2.5 rounded-lg hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2">
-                {loading && <Loader2 size={16} className="animate-spin" />}
-                Iniciar sesión
-              </button>
-              <div className="text-center">
-                <button type="button" onClick={() => setForgotMode(true)}
-                  className="text-xs text-primary hover:underline font-medium">¿Olvidaste tu contraseña?</button>
-              </div>
-            </form>
-          </TabsContent>
+        {/* ─── LOGIN TAB ─── */}
+        <div style={{ display: activeTab === 'login' ? 'block' : 'none' }}>
+          <OAuthButtons onOAuth={handleOAuth} oauthLoading={oauthLoading} disabled={!!oauthLoading || loading} />
+          <Divider />
+          <form onSubmit={handleLogin} className="bg-card border border-border rounded-xl p-6 space-y-4">
+            <div>
+              <label htmlFor="login-email" className="text-sm font-medium text-foreground block mb-1">Email</label>
+              <input id="login-email" name="email" type="email" value={email} onChange={e => setEmail(e.target.value)} required autoComplete="email"
+                placeholder="tu@email.com"
+                className="w-full bg-secondary rounded-lg px-3 py-2.5 text-sm outline-none border border-border focus:border-primary text-foreground placeholder:text-muted-foreground" />
+            </div>
+            <PasswordInput id="login-password" name="password" value={password} onChange={setPassword} label="Contraseña"
+              autoComplete="current-password" showPassword={showPassword} onToggleShow={toggleShowPassword} />
+            <button type="submit" disabled={loading}
+              className="w-full bg-primary text-primary-foreground font-medium text-sm px-4 py-2.5 rounded-lg hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2">
+              {loading && <Loader2 size={16} className="animate-spin" />}
+              Iniciar sesión
+            </button>
+            <div className="text-center">
+              <button type="button" onClick={() => setForgotMode(true)}
+                className="text-xs text-primary hover:underline font-medium">¿Olvidaste tu contraseña?</button>
+            </div>
+          </form>
+        </div>
 
-          {/* ─── SIGN UP TAB ─── */}
-          <TabsContent value="signup">
-            <OAuthButtons onOAuth={handleOAuth} oauthLoading={oauthLoading} disabled={!!oauthLoading || loading} />
-            <Divider />
-            <form onSubmit={handleSignUp} className="bg-card border border-border rounded-xl p-6 space-y-4">
-              <div>
-                <label className="text-sm font-medium text-foreground block mb-1">Nombre</label>
-                <input type="text" value={name} onChange={e => setName(e.target.value)} autoComplete="name"
-                  placeholder="Tu nombre (opcional)"
-                  className="w-full bg-secondary rounded-lg px-3 py-2.5 text-sm outline-none border border-border focus:border-primary text-foreground placeholder:text-muted-foreground" />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-foreground block mb-1">Email</label>
-                <input type="email" value={email} onChange={e => setEmail(e.target.value)} required autoComplete="email"
-                  placeholder="tu@email.com"
-                  className="w-full bg-secondary rounded-lg px-3 py-2.5 text-sm outline-none border border-border focus:border-primary text-foreground placeholder:text-muted-foreground" />
-              </div>
-              <PasswordInput value={password} onChange={setPassword} label="Contraseña"
-                autoComplete="new-password" showPassword={showPassword} onToggleShow={toggleShowPassword} />
-              <PasswordInput value={confirmPassword} onChange={setConfirmPassword} label="Confirmar contraseña"
-                autoComplete="new-password" showPassword={showPassword} onToggleShow={toggleShowPassword} />
-              <button type="submit" disabled={loading}
-                className="w-full bg-primary text-primary-foreground font-medium text-sm px-4 py-2.5 rounded-lg hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2">
-                {loading && <Loader2 size={16} className="animate-spin" />}
-                Crear cuenta
-              </button>
-            </form>
-          </TabsContent>
-        </Tabs>
+        {/* ─── SIGN UP TAB ─── */}
+        <div style={{ display: activeTab === 'signup' ? 'block' : 'none' }}>
+          <OAuthButtons onOAuth={handleOAuth} oauthLoading={oauthLoading} disabled={!!oauthLoading || loading} />
+          <Divider />
+          <form onSubmit={handleSignUp} className="bg-card border border-border rounded-xl p-6 space-y-4">
+            <div>
+              <label htmlFor="signup-name" className="text-sm font-medium text-foreground block mb-1">Nombre</label>
+              <input id="signup-name" name="name" type="text" value={name} onChange={e => setName(e.target.value)} autoComplete="name"
+                placeholder="Tu nombre (opcional)"
+                className="w-full bg-secondary rounded-lg px-3 py-2.5 text-sm outline-none border border-border focus:border-primary text-foreground placeholder:text-muted-foreground" />
+            </div>
+            <div>
+              <label htmlFor="signup-email" className="text-sm font-medium text-foreground block mb-1">Email</label>
+              <input id="signup-email" name="email" type="email" value={email} onChange={e => setEmail(e.target.value)} required autoComplete="email"
+                placeholder="tu@email.com"
+                className="w-full bg-secondary rounded-lg px-3 py-2.5 text-sm outline-none border border-border focus:border-primary text-foreground placeholder:text-muted-foreground" />
+            </div>
+            <PasswordInput id="signup-password" name="new-password" value={password} onChange={setPassword} label="Contraseña"
+              autoComplete="new-password" showPassword={showPassword} onToggleShow={toggleShowPassword} />
+            <PasswordInput id="signup-confirm-password" name="confirm-password" value={confirmPassword} onChange={setConfirmPassword} label="Confirmar contraseña"
+              autoComplete="new-password" showPassword={showPassword} onToggleShow={toggleShowPassword} />
+            <button type="submit" disabled={loading}
+              className="w-full bg-primary text-primary-foreground font-medium text-sm px-4 py-2.5 rounded-lg hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2">
+              {loading && <Loader2 size={16} className="animate-spin" />}
+              Crear cuenta
+            </button>
+          </form>
+        </div>
       </div>
     </div>
   );
