@@ -201,21 +201,121 @@ async function executeScheduleAppointment(
     }
   }
 
+  // === SEND CONFIRMATION TO CONTACT & SCHEDULE REMINDERS ===
+  const finalContactPhone = cPhone || contactPhone || null;
+  const { data: tenantInfo } = await supabase.from('tenants').select('name').eq('id', tenantId).single();
+  const companyName = tenantInfo?.name || 'Nuestro negocio';
+  const dateDisplay = startAt.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', timeZone: tz });
+  const timeDisplay = startAt.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', timeZone: tz });
+
+  // 1. Send immediate confirmation to the contact
+  if (finalContactPhone && supabaseUrl && serviceRoleKey) {
+    const confirmMsg = `📅 *Confirmación de cita — ${companyName}*\n\nHola *${contact_name}*, te confirmo tu cita:\n\n📆 ${dateDisplay}\n⏰ ${timeDisplay}\n${service_type ? `📋 ${service_type}\n` : ''}${employee_name ? `👤 Con: ${employee_name}\n` : ''}${notes ? `📝 ${notes}\n` : ''}\n¿Puedes confirmar tu asistencia? Responde:\n✅ *CONFIRMO* — Asistiré\n❌ *CANCELO* — No podré asistir\n\n_Mensaje automático de ${companyName}_`;
+
+    try {
+      const TWILIO_ACCOUNT_SID = Deno.env.get('TWILIO_ACCOUNT_SID')!;
+      const TWILIO_AUTH_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN')!;
+      const { sendTwilioMessage } = await import('./helpers.ts');
+
+      // Get tenant from number
+      const { data: tData } = await supabase.from('tenants').select('whatsapp_config').eq('id', tenantId).single();
+      const waConfig = tData?.whatsapp_config as Record<string, any> | null;
+      const fromNum = waConfig?.phone_number ? String(waConfig.phone_number).replace(/^whatsapp:/i, '') : Deno.env.get('TWILIO_PHONE_NUMBER') || '';
+      const msgSvcSid = waConfig?.messaging_service_sid ? String(waConfig.messaging_service_sid).trim() : Deno.env.get('TWILIO_MESSAGING_SERVICE_SID') || undefined;
+
+      await sendTwilioMessage(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, fromNum, finalContactPhone, confirmMsg, msgSvcSid);
+      console.log(`[APPT] Confirmation sent to ${finalContactPhone}`);
+
+      // Store confirmation notification record
+      await supabase.from('appointment_notifications').insert({
+        appointment_id: apt.id,
+        tenant_id: tenantId,
+        target_phone: finalContactPhone,
+        notification_type: 'confirmation',
+        status: 'sent',
+        scheduled_at: new Date().toISOString(),
+        sent_at: new Date().toISOString(),
+        message_body: confirmMsg,
+      });
+    } catch (confirmErr) {
+      console.error('[APPT] Confirmation send error:', confirmErr);
+    }
+  }
+
+  // 2. Schedule reminders: 1h and 15min before for BOTH parties
+  const reminder1h = new Date(startAt.getTime() - 60 * 60 * 1000);
+  const reminder15m = new Date(startAt.getTime() - 15 * 60 * 1000);
+  const now = new Date();
+
+  const notificationsToInsert: any[] = [];
+
+  // Reminders for the contact (external)
+  if (finalContactPhone) {
+    if (reminder1h > now) {
+      notificationsToInsert.push({
+        appointment_id: apt.id, tenant_id: tenantId,
+        target_phone: finalContactPhone,
+        notification_type: 'reminder_1h', status: 'pending',
+        scheduled_at: reminder1h.toISOString(),
+        message_body: `⏰ *Recordatorio de cita — ${companyName}*\n\nHola *${contact_name}*, tu cita es en *1 hora*:\n\n📆 ${dateDisplay}\n⏰ ${timeDisplay}\n${service_type ? `📋 ${service_type}\n` : ''}\n¡Te esperamos! 😊`,
+      });
+    }
+    if (reminder15m > now) {
+      notificationsToInsert.push({
+        appointment_id: apt.id, tenant_id: tenantId,
+        target_phone: finalContactPhone,
+        notification_type: 'reminder_15m', status: 'pending',
+        scheduled_at: reminder15m.toISOString(),
+        message_body: `⏰ *¡Tu cita es en 15 minutos!*\n\nHola *${contact_name}*, tu cita con *${companyName}* es en 15 minutos.\n\n⏰ ${timeDisplay}\n${employee_name ? `👤 Con: ${employee_name}\n` : ''}\n¡Ya casi! 🙌`,
+      });
+    }
+  }
+
+  // Reminders for the creator/employee (internal user)
+  const creatorUserId = employeeId || userId || null;
+  if (creatorUserId) {
+    if (reminder1h > now) {
+      notificationsToInsert.push({
+        appointment_id: apt.id, tenant_id: tenantId,
+        target_user_id: creatorUserId,
+        notification_type: 'reminder_1h', status: 'pending',
+        scheduled_at: reminder1h.toISOString(),
+        message_body: `⏰ *Recordatorio*: Tu cita con *${contact_name}* es en *1 hora* (${timeDisplay}).${service_type ? `\n📋 ${service_type}` : ''}`,
+      });
+    }
+    if (reminder15m > now) {
+      notificationsToInsert.push({
+        appointment_id: apt.id, tenant_id: tenantId,
+        target_user_id: creatorUserId,
+        notification_type: 'reminder_15m', status: 'pending',
+        scheduled_at: reminder15m.toISOString(),
+        message_body: `⏰ *¡15 minutos!* Tu cita con *${contact_name}* es a las ${timeDisplay}. ¡Prepárate! 💪`,
+      });
+    }
+  }
+
+  if (notificationsToInsert.length > 0) {
+    await supabase.from('appointment_notifications').insert(notificationsToInsert);
+    console.log(`[APPT] Scheduled ${notificationsToInsert.length} reminder notifications for appointment ${apt.id}`);
+  }
+
   const response: any = {
     success: true,
     appointment_id: apt.id,
     contact_name: apt.contact_name,
-    date: startAt.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', timeZone: tz }),
-    time: startAt.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', timeZone: tz }),
+    date: dateDisplay,
+    time: timeDisplay,
     employee: employee_name || 'sin asignar',
+    confirmation_sent: !!finalContactPhone,
+    reminders_scheduled: notificationsToInsert.length,
   };
 
   if (calendarSynced) {
     response.calendar_synced = true;
-    response.message = 'Cita agendada y sincronizada con Google Calendar.';
+    response.message = 'Cita agendada y sincronizada con Google Calendar.' + (finalContactPhone ? ' Se envió confirmación al contacto.' : '');
   } else {
     response.calendar_synced = false;
-    response.message = 'Cita agendada correctamente. La sincronización con el calendario se completará en breve.';
+    response.message = 'Cita agendada correctamente.' + (finalContactPhone ? ' Se envió confirmación al contacto.' : '') + ' La sincronización con el calendario se completará en breve.';
   }
 
   return JSON.stringify(response);

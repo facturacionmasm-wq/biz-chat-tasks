@@ -14,6 +14,72 @@ export type Database = {
   }
   public: {
     Tables: {
+      appointment_notifications: {
+        Row: {
+          appointment_id: string
+          created_at: string
+          error_message: string | null
+          id: string
+          message_body: string | null
+          notification_type: string
+          responded_at: string | null
+          response: string | null
+          scheduled_at: string
+          sent_at: string | null
+          status: string
+          target_phone: string | null
+          target_user_id: string | null
+          tenant_id: string
+        }
+        Insert: {
+          appointment_id: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          message_body?: string | null
+          notification_type: string
+          responded_at?: string | null
+          response?: string | null
+          scheduled_at: string
+          sent_at?: string | null
+          status?: string
+          target_phone?: string | null
+          target_user_id?: string | null
+          tenant_id: string
+        }
+        Update: {
+          appointment_id?: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          message_body?: string | null
+          notification_type?: string
+          responded_at?: string | null
+          response?: string | null
+          scheduled_at?: string
+          sent_at?: string | null
+          status?: string
+          target_phone?: string | null
+          target_user_id?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "appointment_notifications_appointment_id_fkey"
+            columns: ["appointment_id"]
+            isOneToOne: false
+            referencedRelation: "appointments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "appointment_notifications_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       appointments: {
         Row: {
           calendar_event_id: string | null
