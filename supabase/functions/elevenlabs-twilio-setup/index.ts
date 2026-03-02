@@ -58,8 +58,8 @@ serve(async (req) => {
     });
   }
 
-  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_PHONE_NUMBER) {
-    return new Response(JSON.stringify({ error: 'Twilio no configurado. Se requiere Account SID, Auth Token y Phone Number.' }), {
+  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) {
+    return new Response(JSON.stringify({ error: 'Twilio no configurado. Se requiere Account SID y Auth Token.' }), {
       status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
@@ -70,7 +70,14 @@ serve(async (req) => {
   };
 
   try {
-    const { action } = await req.json();
+    const { action, phone_number: requestPhoneNumber } = await req.json();
+    // Allow overriding the phone number from the request body
+    const PHONE_NUMBER = requestPhoneNumber || TWILIO_PHONE_NUMBER;
+    if (!PHONE_NUMBER) {
+      return new Response(JSON.stringify({ error: 'Se requiere un número de teléfono. Envíalo en el campo phone_number o configura TWILIO_PHONE_NUMBER.' }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     // ═══════════ STATUS: List imported numbers ═══════════
     if (action === 'status') {
@@ -86,14 +93,14 @@ serve(async (req) => {
       const phoneNumbers = data.phone_numbers || data || [];
       const found = Array.isArray(phoneNumbers)
         ? phoneNumbers.find((p: any) =>
-            p.phone_number === TWILIO_PHONE_NUMBER ||
-            p.phone_number === TWILIO_PHONE_NUMBER.replace(/^\+/, '')
+            p.phone_number === PHONE_NUMBER ||
+            p.phone_number === PHONE_NUMBER.replace(/^\+/, '')
           )
         : null;
 
       return new Response(JSON.stringify({
         configured: !!found,
-        phone_number: TWILIO_PHONE_NUMBER,
+        phone_number: PHONE_NUMBER,
         agent_id: ELEVENLABS_AGENT_ID,
         details: found || null,
       }), {
@@ -104,8 +111,8 @@ serve(async (req) => {
     // ═══════════ SETUP: Import number + assign agent ═══════════
     if (action === 'setup') {
       // Step 0: Verify the number exists in Twilio as an Incoming Phone Number
-      console.log(`[el-twilio] Verifying ${TWILIO_PHONE_NUMBER} in Twilio account...`);
-      const encodedNumber = encodeURIComponent(TWILIO_PHONE_NUMBER);
+      console.log(`[el-twilio] Verifying ${PHONE_NUMBER} in Twilio account...`);
+      const encodedNumber = encodeURIComponent(PHONE_NUMBER);
       const twilioListRes = await fetch(
         `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/IncomingPhoneNumbers.json?PhoneNumber=${encodedNumber}`,
         {
@@ -118,9 +125,9 @@ serve(async (req) => {
         const twilioData = await twilioListRes.json();
         if (!twilioData.incoming_phone_numbers || twilioData.incoming_phone_numbers.length === 0) {
           return new Response(JSON.stringify({
-            error: `El número ${TWILIO_PHONE_NUMBER} NO está comprado en tu cuenta de Twilio. ` +
+            error: `El número ${PHONE_NUMBER} NO está comprado en tu cuenta de Twilio. ` +
               `Debes comprarlo en Twilio Console → Phone Numbers → Buy a Number, ` +
-              `o actualizar el secret TWILIO_PHONE_NUMBER con un número que ya tengas comprado.`,
+              `o ingresar un número diferente.`,
           }), {
             status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           });
@@ -131,14 +138,14 @@ serve(async (req) => {
       }
 
       // Step 1: Import the Twilio phone number into ElevenLabs
-      console.log(`[el-twilio] Importing ${TWILIO_PHONE_NUMBER} into ElevenLabs...`);
+      console.log(`[el-twilio] Importing ${PHONE_NUMBER} into ElevenLabs...`);
 
       const importRes = await fetch('https://api.elevenlabs.io/v1/convai/phone-numbers', {
         method: 'POST',
         headers: elHeaders,
         body: JSON.stringify({
           provider: 'twilio',
-          phone_number: TWILIO_PHONE_NUMBER,
+          phone_number: PHONE_NUMBER,
           label: 'Rybix Voice Agent',
           sid: TWILIO_ACCOUNT_SID,
           token: TWILIO_AUTH_TOKEN,
@@ -152,7 +159,7 @@ serve(async (req) => {
         // If already exists, try to find it
         if (importRes.status === 404) {
           throw new Error(
-            `El número ${TWILIO_PHONE_NUMBER} no se encontró en tu cuenta de Twilio. ` +
+            `El número ${PHONE_NUMBER} no se encontró en tu cuenta de Twilio. ` +
             `Asegúrate de que esté comprado como "Incoming Phone Number" (no solo como Verified Caller ID) ` +
             `en tu consola de Twilio antes de conectarlo.`
           );
@@ -181,8 +188,8 @@ serve(async (req) => {
           const numbers = listData.phone_numbers || listData || [];
           const existing = Array.isArray(numbers)
             ? numbers.find((p: any) =>
-                p.phone_number === TWILIO_PHONE_NUMBER ||
-                p.phone_number === TWILIO_PHONE_NUMBER.replace(/^\+/, '')
+                p.phone_number === PHONE_NUMBER ||
+                p.phone_number === PHONE_NUMBER.replace(/^\+/, '')
               )
             : null;
           if (existing) {
@@ -258,7 +265,7 @@ serve(async (req) => {
           resource_type: 'phone_number',
           resource_id: phoneNumberId,
           payload: {
-            phone_number: TWILIO_PHONE_NUMBER,
+            phone_number: PHONE_NUMBER,
             agent_id: ELEVENLABS_AGENT_ID,
             action: 'setup',
           },
@@ -268,6 +275,7 @@ serve(async (req) => {
       return new Response(JSON.stringify({
         success: true,
         phone_number_id: phoneNumberId,
+        phone_number: PHONE_NUMBER,
         message: 'Número importado y agente asignado. ElevenLabs ahora maneja las llamadas entrantes directamente.',
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -286,8 +294,8 @@ serve(async (req) => {
       const numbers = listData.phone_numbers || listData || [];
       const existing = Array.isArray(numbers)
         ? numbers.find((p: any) =>
-            p.phone_number === TWILIO_PHONE_NUMBER ||
-            p.phone_number === TWILIO_PHONE_NUMBER.replace(/^\+/, '')
+            p.phone_number === PHONE_NUMBER ||
+            p.phone_number === PHONE_NUMBER.replace(/^\+/, '')
           )
         : null;
 
