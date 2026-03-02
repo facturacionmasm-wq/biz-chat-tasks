@@ -49,6 +49,7 @@ const IntegrationsPage = () => {
   });
   const [saving, setSaving] = useState(false);
   const [waConnected, setWaConnected] = useState(false);
+  const [calendarConnected, setCalendarConnected] = useState(false);
   const [voiceAgentConnected, setVoiceAgentConnected] = useState(false);
   const [voiceAgentLoading, setVoiceAgentLoading] = useState(false);
   const [voiceDialogOpen, setVoiceDialogOpen] = useState(false);
@@ -57,6 +58,7 @@ const IntegrationsPage = () => {
   const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-webhook`;
 
   const integrations = integrationsMeta.map(i => {
+    if (i.id === 'google-calendar') return { ...i, connected: calendarConnected };
     if (i.id === 'whatsapp') return { ...i, connected: waConnected };
     if (i.id === 'voice-agent') return { ...i, connected: voiceAgentConnected };
     return i;
@@ -66,6 +68,28 @@ const IntegrationsPage = () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
+
+      try {
+        const { data: session } = await supabase.auth.getSession();
+        const token = session?.session?.access_token;
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+        if (token && supabaseUrl) {
+          const controller = new AbortController();
+          const timeoutId = window.setTimeout(() => controller.abort(), 15000);
+          const res = await fetch(`${supabaseUrl}/functions/v1/google-calendar-auth`, {
+            method: 'GET',
+            headers: { Authorization: `Bearer ${token}` },
+            signal: controller.signal,
+          });
+          window.clearTimeout(timeoutId);
+          const calendarData = await res.json();
+          setCalendarConnected(Boolean(calendarData?.connected));
+        } else {
+          setCalendarConnected(false);
+        }
+      } catch {
+        setCalendarConnected(false);
+      }
 
       const { data: profile } = await supabase
         .from('profiles')
@@ -126,7 +150,9 @@ const IntegrationsPage = () => {
   }, [loadIntegrationStatus]);
 
   const handleIntegrationClick = (id: string) => {
-    if (id === 'whatsapp') {
+    if (id === 'google-calendar') {
+      window.location.href = '/settings';
+    } else if (id === 'whatsapp') {
       setWaDialogOpen(true);
     } else if (id === 'voice-agent') {
       setVoiceDialogOpen(true);
@@ -143,7 +169,34 @@ const IntegrationsPage = () => {
       const { data: profile } = await supabase.from('profiles').select('tenant_id').eq('user_id', user.id).maybeSingle();
       if (!profile?.tenant_id) throw new Error('No se encontró tenant');
 
-      if (id === 'whatsapp') {
+      if (id === 'google-calendar') {
+        const { error: tokenError } = await supabase
+          .from('google_calendar_tokens' as any)
+          .delete()
+          .eq('user_id', user.id);
+        if (tokenError) throw tokenError;
+
+        // Best-effort cleanup for legacy tenant config (may be blocked by RLS for staff)
+        try {
+          const { data: tenant } = await supabase
+            .from('tenants')
+            .select('google_calendar_config')
+            .eq('id', profile.tenant_id)
+            .maybeSingle();
+          const currentConfig = ((tenant?.google_calendar_config || {}) as Record<string, any>);
+          const users = currentConfig.users || {};
+          delete users[user.id];
+          await supabase
+            .from('tenants')
+            .update({ google_calendar_config: { ...currentConfig, users } } as any)
+            .eq('id', profile.tenant_id);
+        } catch {
+          // ignore RLS restrictions
+        }
+
+        setCalendarConnected(false);
+        toast.success('Google Calendar desconectado');
+      } else if (id === 'whatsapp') {
         await supabase.from('tenants').update({ whatsapp_config: null }).eq('id', profile.tenant_id);
         setWaConnected(false);
         toast.success('WhatsApp desconectado');
@@ -310,7 +363,7 @@ const IntegrationsPage = () => {
                   <>{int.connected ? 'Configurar' : 'Conectar'} <ExternalLink size={12} /></>
                 )}
               </button>
-              {int.connected && (int.id === 'whatsapp' || int.id === 'voice-agent') && (
+              {int.connected && (int.id === 'google-calendar' || int.id === 'whatsapp' || int.id === 'voice-agent') && (
                 <button
                   onClick={() => handleDisconnect(int.id)}
                   className="text-xs font-medium px-3 py-2 rounded-lg border border-destructive/30 text-destructive hover:bg-destructive/10 transition-colors flex items-center gap-1.5"
