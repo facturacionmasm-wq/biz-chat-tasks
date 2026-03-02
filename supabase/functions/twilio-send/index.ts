@@ -43,11 +43,52 @@ serve(async (req) => {
       );
     }
 
+    const userId = String(claimsData.claims.sub || "");
+    if (!userId) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Service client for backend lookups/inserts
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, SUPABASE_SERVICE_ROLE_KEY);
+
+    // Resolve tenant (request value first, then by authenticated user)
+    let effectiveTenantId = tenantId as string | undefined;
+    if (!effectiveTenantId) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("tenant_id")
+        .eq("user_id", userId)
+        .maybeSingle();
+      effectiveTenantId = profile?.tenant_id || undefined;
+    }
+
+    // Prefer tenant WhatsApp sender config (same sender as bot conversation)
+    let tenantFromNumber: string | null = null;
+    let tenantMessagingServiceSid: string | null = null;
+    if (effectiveTenantId) {
+      const { data: tenant } = await supabase
+        .from("tenants")
+        .select("whatsapp_config")
+        .eq("id", effectiveTenantId)
+        .maybeSingle();
+
+      const waConfig = (tenant?.whatsapp_config || {}) as Record<string, unknown>;
+      if (typeof waConfig.phone_number === "string" && waConfig.phone_number.trim()) {
+        tenantFromNumber = waConfig.phone_number.trim();
+      }
+      if (typeof waConfig.messaging_service_sid === "string" && waConfig.messaging_service_sid.trim()) {
+        tenantMessagingServiceSid = waConfig.messaging_service_sid.trim();
+      }
+    }
+
     // Get Twilio credentials from secrets
     const accountSid = Deno.env.get("TWILIO_ACCOUNT_SID");
     const authToken = Deno.env.get("TWILIO_AUTH_TOKEN");
-    const messagingServiceSid = Deno.env.get("TWILIO_MESSAGING_SERVICE_SID");
-    const fromNumber = Deno.env.get("TWILIO_PHONE_NUMBER");
+    const messagingServiceSid = tenantMessagingServiceSid || Deno.env.get("TWILIO_MESSAGING_SERVICE_SID");
+    const fromNumber = tenantFromNumber || Deno.env.get("TWILIO_PHONE_NUMBER");
 
     if (!accountSid || !authToken || (!messagingServiceSid && !fromNumber)) {
       return new Response(
@@ -64,17 +105,20 @@ serve(async (req) => {
     })();
     const toWhatsApp = normalizedTo.startsWith("whatsapp:") ? normalizedTo : `whatsapp:${normalizedTo}`;
 
-    // Build request params — prefer MessagingServiceSid over From number
+    const statusCallbackUrl = `${supabaseUrl}/functions/v1/whatsapp-webhook`;
+
+    // Build request params — prefer explicit tenant sender number to keep same WhatsApp session
     const twilioParams: Record<string, string> = {
       To: toWhatsApp,
       Body: body,
+      StatusCallback: statusCallbackUrl,
     };
 
-    if (messagingServiceSid) {
-      twilioParams.MessagingServiceSid = messagingServiceSid;
-    } else {
-      const fromWhatsApp = fromNumber!.startsWith("whatsapp:") ? fromNumber! : `whatsapp:${fromNumber}`;
+    if (fromNumber) {
+      const fromWhatsApp = fromNumber.startsWith("whatsapp:") ? fromNumber : `whatsapp:${fromNumber}`;
       twilioParams.From = fromWhatsApp;
+    } else if (messagingServiceSid) {
+      twilioParams.MessagingServiceSid = messagingServiceSid;
     }
 
     // Send via Twilio API
@@ -101,16 +145,11 @@ serve(async (req) => {
       );
     }
 
-    // Save message to DB
-    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
-    const effectiveTenantId = tenantId || "00000000-0000-0000-0000-000000000001";
+    const finalTenantId = effectiveTenantId || "00000000-0000-0000-0000-000000000001";
 
     if (conversationId) {
       await supabase.from("whatsapp_messages").insert({
-        tenant_id: effectiveTenantId,
+        tenant_id: finalTenantId,
         conversation_id: conversationId,
         direction: "out",
         body: body,
