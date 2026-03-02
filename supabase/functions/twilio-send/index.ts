@@ -56,8 +56,13 @@ serve(async (req) => {
       );
     }
 
-    // Format destination for Twilio WhatsApp
-    const toWhatsApp = to.startsWith("whatsapp:") ? to : `whatsapp:${to}`;
+    // Format destination for Twilio WhatsApp (normalize MX format +521 -> +52)
+    const normalizedTo = (() => {
+      const raw = String(to || '').trim().replace(/\s+/g, '');
+      if (/^\+521\d{10}$/.test(raw)) return `+52${raw.slice(4)}`;
+      return raw;
+    })();
+    const toWhatsApp = normalizedTo.startsWith("whatsapp:") ? normalizedTo : `whatsapp:${normalizedTo}`;
 
     // Build request params — prefer MessagingServiceSid over From number
     const twilioParams: Record<string, string> = {
