@@ -58,7 +58,8 @@ const BillingSection = ({ user, isSuperAdmin, getTenantId, inputClass, userRole 
     days_remaining: number;
   }>>([]);
 
-  const isMasterAdmin = userRole === 'super_admin';
+  const [isMasterTenant, setIsMasterTenant] = useState(false);
+  const isMasterAdmin = userRole === 'super_admin' || (userRole === 'owner' && isMasterTenant);
 
   useEffect(() => {
     if (!user) return;
@@ -76,6 +77,8 @@ const BillingSection = ({ user, isSuperAdmin, getTenantId, inputClass, userRole 
 
       setPlans((plansRes.data || []) as SubPlan[]);
       if (statusRes.data) setSubStatus(statusRes.data);
+      const masterTenantId = '00000000-0000-0000-0000-000000000001';
+      setIsMasterTenant(tenantId === masterTenantId);
 
       // Load current subscription
       const { data: sub } = await supabase
@@ -86,7 +89,6 @@ const BillingSection = ({ user, isSuperAdmin, getTenantId, inputClass, userRole 
       setCurrentSub(sub);
 
       // Check if Stripe is globally configured (master tenant settings)
-      const masterTenantId = '00000000-0000-0000-0000-000000000001';
       const { data: masterTenant } = await supabase
         .from('tenants')
         .select('settings_json')
