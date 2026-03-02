@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Plug, MessageSquare, CalendarDays, Brain, Shield, ExternalLink, CheckCircle2, Circle, X, Save, Phone, Loader2, Settings } from 'lucide-react';
+import { Plug, MessageSquare, CalendarDays, Brain, Shield, ExternalLink, CheckCircle2, Circle, X, Save, Phone, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
@@ -159,6 +159,18 @@ const IntegrationsPage = () => {
     }
   };
 
+  const normalizeE164 = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) return '';
+
+    const compact = trimmed.replace(/[\s\-().]/g, '');
+    if (compact.startsWith('00')) return `+${compact.slice(2).replace(/\D/g, '')}`;
+    if (compact.startsWith('+')) return `+${compact.slice(1).replace(/\D/g, '')}`;
+    return `+${compact.replace(/\D/g, '')}`;
+  };
+
+  const isValidE164 = (value: string) => /^\+[1-9]\d{7,14}$/.test(value);
+
   const handleVoiceAgentSetup = async (phoneNumber?: string) => {
     setVoiceAgentLoading(true);
     try {
@@ -168,7 +180,11 @@ const IntegrationsPage = () => {
       const { data, error } = await supabase.functions.invoke('elevenlabs-twilio-setup', {
         body,
       });
-      if (error) throw error;
+
+      if (error) {
+        const contextError = (error as any)?.context?.error || (error as any)?.context?.json?.error;
+        throw new Error(contextError || error.message || 'Error configurando agente de voz');
+      }
       if (data?.error) throw new Error(data.error);
       setVoiceAgentConnected(true);
       setVoiceCurrentNumber(phoneNumber || data?.phone_number || '');
@@ -397,11 +413,12 @@ const IntegrationsPage = () => {
           <div className="flex gap-2 mt-4">
             <Button
               onClick={() => {
-                if (!voicePhoneNumber.trim()) {
-                  toast.error('Ingresa un número de teléfono');
+                const normalized = normalizeE164(voicePhoneNumber);
+                if (!normalized || !isValidE164(normalized)) {
+                  toast.error('Número inválido. Usa formato internacional E.164, por ejemplo: +12135551234');
                   return;
                 }
-                handleVoiceAgentSetup(voicePhoneNumber.trim());
+                handleVoiceAgentSetup(normalized);
               }}
               disabled={voiceAgentLoading}
               className="flex-1"
