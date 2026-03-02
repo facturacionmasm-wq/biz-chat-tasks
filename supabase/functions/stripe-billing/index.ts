@@ -273,7 +273,105 @@ serve(async (req) => {
       }
 
       // ============================================
-      // 3. GET BILLING STATUS
+      // 3. CREATE SETUP SESSION (card registration)
+      // ============================================
+      case 'create_setup_session': {
+        if (!tenant_id || !email) {
+          return new Response(JSON.stringify({ error: 'tenant_id and email required' }), {
+            status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Get or create Stripe customer
+        let { data: existing } = await supabase
+          .from('stripe_customers')
+          .select('stripe_customer_id')
+          .eq('tenant_id', tenant_id)
+          .maybeSingle();
+
+        let customerId = existing?.stripe_customer_id;
+
+        if (!customerId) {
+          const customer = await stripeRequest('/customers', 'POST', {
+            email,
+            name: name || email,
+            'metadata[tenant_id]': tenant_id,
+            'metadata[source]': 'setup_session',
+          }, STRIPE_SECRET_KEY);
+          customerId = customer.id;
+
+          await supabase.from('stripe_customers').upsert({
+            tenant_id,
+            stripe_customer_id: customerId,
+            email,
+            name: name || email,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'tenant_id' });
+        }
+
+        // Create Checkout Session in setup mode
+        const origin = req.headers.get('origin') || 'https://biz-chat-tasks.lovable.app';
+        const session = await stripeRequest('/checkout/sessions', 'POST', {
+          customer: customerId,
+          mode: 'setup',
+          'payment_method_types[0]': 'card',
+          success_url: `${origin}/calls?setup=success`,
+          cancel_url: `${origin}/calls?setup=cancel`,
+          'metadata[tenant_id]': tenant_id,
+        }, STRIPE_SECRET_KEY);
+
+        // Audit
+        await supabase.from('audit_events').insert({
+          tenant_id,
+          event_type: 'billing.setup_session_created',
+          resource_type: 'stripe_session',
+          resource_id: session.id,
+          payload: { session_url: session.url },
+        });
+
+        return new Response(JSON.stringify({
+          success: true,
+          checkout_url: session.url,
+          session_id: session.id,
+        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+
+      // ============================================
+      // 4. CHECK PAYMENT METHOD
+      // ============================================
+      case 'check_payment_method': {
+        if (!tenant_id) {
+          return new Response(JSON.stringify({ error: 'tenant_id required' }), {
+            status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        const { data: sc } = await supabase
+          .from('stripe_customers')
+          .select('stripe_customer_id')
+          .eq('tenant_id', tenant_id)
+          .maybeSingle();
+
+        if (!sc?.stripe_customer_id) {
+          return new Response(JSON.stringify({ has_payment_method: false }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Check if customer has payment methods
+        const paymentMethods = await stripeRequest(
+          `/payment_methods?customer=${sc.stripe_customer_id}&type=card&limit=1`,
+          'GET', undefined, STRIPE_SECRET_KEY
+        );
+
+        return new Response(JSON.stringify({
+          has_payment_method: paymentMethods.data.length > 0,
+          stripe_customer_id: sc.stripe_customer_id,
+        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+
+      // ============================================
+      // 5. GET BILLING STATUS
       // ============================================
       case 'get_billing_status': {
         if (!tenant_id) {
