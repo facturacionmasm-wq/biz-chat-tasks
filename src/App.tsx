@@ -29,6 +29,7 @@ import PendingApprovalPage from "./pages/PendingApprovalPage";
 import AssistantAdminPage from "./pages/AssistantAdminPage";
 import RemindersPage from "./pages/RemindersPage";
 import SuperAdminPage from "./pages/SuperAdminPage";
+import ResetPasswordPage from "./pages/ResetPasswordPage";
 import NotFound from "./pages/NotFound";
 import { Loader2 } from "lucide-react";
 
@@ -123,6 +124,7 @@ const AppRoutes = () => (
     <Route path="/reminders" element={<ProtectedRoute><AppLayout><RemindersPage /></AppLayout></ProtectedRoute>} />
     <Route path="/super-admin" element={<ProtectedRoute><AppLayout><SuperAdminPage /></AppLayout></ProtectedRoute>} />
     <Route path="/install" element={<InstallPage />} />
+    <Route path="/reset-password" element={<ResetPasswordPage />} />
     <Route path="*" element={<NotFound />} />
   </Routes>
 );
