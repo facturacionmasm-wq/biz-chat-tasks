@@ -92,3 +92,6 @@ verify_jwt = false
 
 [functions.expense-reminders]
 verify_jwt = false
+
+[functions.elevenlabs-twilio-setup]
+verify_jwt = false

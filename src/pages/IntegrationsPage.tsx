@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plug, MessageSquare, CalendarDays, Brain, Shield, ExternalLink, CheckCircle2, Circle, X, Save } from 'lucide-react';
+import { Plug, MessageSquare, CalendarDays, Brain, Shield, ExternalLink, CheckCircle2, Circle, X, Save, Phone, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
@@ -14,6 +14,10 @@ const integrationsMeta = [
   {
     id: 'whatsapp', name: 'WhatsApp Business', description: 'Captura mensajes y datos importantes desde WhatsApp',
     icon: MessageSquare, connected: false, category: 'Comunicación',
+  },
+  {
+    id: 'voice-agent', name: 'Agente de Voz (ElevenLabs)', description: 'Conecta tu número Twilio con el agente de voz IA para llamadas entrantes',
+    icon: Phone, connected: false, category: 'Voz IA',
   },
   {
     id: 'ai-copilot', name: 'AI Copilot', description: 'Resúmenes, extracción de acciones y búsqueda semántica con IA',
@@ -45,16 +49,49 @@ const IntegrationsPage = () => {
   });
   const [saving, setSaving] = useState(false);
   const [waConnected, setWaConnected] = useState(false);
+  const [voiceAgentConnected, setVoiceAgentConnected] = useState(false);
+  const [voiceAgentLoading, setVoiceAgentLoading] = useState(false);
 
-  const integrations = integrationsMeta.map(i =>
-    i.id === 'whatsapp' ? { ...i, connected: waConnected } : i
-  );
+  const integrations = integrationsMeta.map(i => {
+    if (i.id === 'whatsapp') return { ...i, connected: waConnected };
+    if (i.id === 'voice-agent') return { ...i, connected: voiceAgentConnected };
+    return i;
+  });
 
   const handleIntegrationClick = (id: string) => {
     if (id === 'whatsapp') {
       setWaDialogOpen(true);
+    } else if (id === 'voice-agent') {
+      handleVoiceAgentSetup();
     } else {
       toast.info('Configuración próximamente');
+    }
+  };
+
+  const handleVoiceAgentSetup = async () => {
+    setVoiceAgentLoading(true);
+    try {
+      if (voiceAgentConnected) {
+        // Check status
+        const { data, error } = await supabase.functions.invoke('elevenlabs-twilio-setup', {
+          body: { action: 'status' },
+        });
+        if (error) throw error;
+        toast.info(`Estado: ${data?.configured ? 'Conectado' : 'No conectado'} — Número: ${data?.phone_number}`);
+      } else {
+        // Setup
+        const { data, error } = await supabase.functions.invoke('elevenlabs-twilio-setup', {
+          body: { action: 'setup' },
+        });
+        if (error) throw error;
+        if (data?.error) throw new Error(data.error);
+        setVoiceAgentConnected(true);
+        toast.success('¡Agente de voz conectado! ElevenLabs ahora maneja las llamadas entrantes a tu número Twilio.');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Error configurando agente de voz');
+    } finally {
+      setVoiceAgentLoading(false);
     }
   };
 
@@ -112,14 +149,44 @@ const IntegrationsPage = () => {
             <p className="text-sm text-muted-foreground mb-4">{int.description}</p>
             <button
               onClick={() => handleIntegrationClick(int.id)}
-              className={`text-xs font-medium px-4 py-2 rounded-lg flex items-center gap-1.5 transition-colors ${
+              disabled={int.id === 'voice-agent' && voiceAgentLoading}
+              className={`text-xs font-medium px-4 py-2 rounded-lg flex items-center gap-1.5 transition-colors disabled:opacity-50 ${
                 int.connected ? 'bg-secondary text-secondary-foreground hover:bg-secondary/80' : 'bg-primary text-primary-foreground hover:opacity-90'
               }`}
             >
-              {int.connected ? 'Configurar' : 'Conectar'} <ExternalLink size={12} />
+              {int.id === 'voice-agent' && voiceAgentLoading ? (
+                <><Loader2 size={12} className="animate-spin" /> Configurando...</>
+              ) : (
+                <>{int.connected ? 'Configurar' : 'Conectar'} <ExternalLink size={12} /></>
+              )}
             </button>
           </div>
         ))}
+      </div>
+
+      {/* Voice Agent Info */}
+      <div className="mt-8 bg-card border border-border rounded-xl p-6 shadow-sm">
+        <h2 className="text-lg font-bold text-foreground flex items-center gap-2 mb-3">
+          <Phone size={18} className="text-primary" /> Agente de Voz IA
+        </h2>
+        <p className="text-sm text-muted-foreground mb-4">
+          Conecta tu número de Twilio directamente con ElevenLabs para que el agente de voz IA
+          maneje llamadas entrantes automáticamente. ElevenLabs configura los webhooks de Twilio por ti.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+          <div className="bg-muted/50 rounded-lg p-3">
+            <p className="font-semibold text-foreground mb-1">📞 Llamadas entrantes</p>
+            <p className="text-muted-foreground">El agente IA contesta y conversa con los clientes automáticamente</p>
+          </div>
+          <div className="bg-muted/50 rounded-lg p-3">
+            <p className="font-semibold text-foreground mb-1">🧠 Base de conocimiento</p>
+            <p className="text-muted-foreground">Usa tu Knowledge Hub para dar respuestas precisas y personalizadas</p>
+          </div>
+          <div className="bg-muted/50 rounded-lg p-3">
+            <p className="font-semibold text-foreground mb-1">⚡ Configuración nativa</p>
+            <p className="text-muted-foreground">ElevenLabs configura automáticamente los webhooks de Twilio</p>
+          </div>
+        </div>
       </div>
 
       {/* WhatsApp Info */}
