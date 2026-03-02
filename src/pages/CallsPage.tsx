@@ -10,6 +10,8 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import CallAnalytics from '@/components/calls/CallAnalytics';
 import CallObservability from '@/components/calls/CallObservability';
 import ManualCallDialog from '@/components/calls/ManualCallDialog';
+import { usePaymentGate } from '@/hooks/usePaymentGate';
+import PaymentGateCard from '@/components/PaymentGateCard';
 
 const parseTranscriptStructured = (transcript: string): TranscriptEntry[] => {
   if (!transcript) return [];
@@ -155,6 +157,7 @@ const EventTimeline = ({ events }: { events: CallEvent[] }) => {
 };
 
 const CallsPage = () => {
+  const { hasPaymentMethod, loading: paymentLoading, redirecting, redirectToSetup } = usePaymentGate();
   const [selectedCall, setSelectedCall] = useState<CallRecord | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [transcriptSearch, setTranscriptSearch] = useState('');
@@ -738,6 +741,19 @@ const CallsPage = () => {
     { key: 'analytics' as const, label: 'Analíticas', icon: BarChart3 },
     { key: 'observability' as const, label: 'Observabilidad', icon: Shield },
   ];
+
+  // ===== PAYMENT GATE =====
+  if (!paymentLoading && hasPaymentMethod === false) {
+    return (
+      <div className="p-4 sm:p-6 max-w-7xl mx-auto">
+        <PaymentGateCard
+          serviceName="Voice Agent IA"
+          onRegisterCard={redirectToSetup}
+          redirecting={redirecting}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-4 sm:space-y-6">

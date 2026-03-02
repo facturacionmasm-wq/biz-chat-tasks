@@ -7,6 +7,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useWhatsAppData, type DBConversation, type DBMessage } from '@/hooks/useWhatsAppData';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { usePaymentGate } from '@/hooks/usePaymentGate';
+import PaymentGateCard from '@/components/PaymentGateCard';
 
 const statusColors: Record<string, string> = {
   open: 'bg-success/10 text-success',
@@ -22,6 +24,7 @@ const statusLabels: Record<string, string> = {
 
 const WhatsAppInboxPage = () => {
   const { conversations, messages, loading, fetchMessages, DEMO_TENANT } = useWhatsAppData();
+  const { hasPaymentMethod, loading: paymentLoading, redirecting, redirectToSetup } = usePaymentGate();
   const [selectedConvId, setSelectedConvId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
@@ -98,8 +101,18 @@ const WhatsAppInboxPage = () => {
 
   const selectedConv = conversations.find(c => c.id === selectedConvId);
 
-  if (loading) {
+  if (paymentLoading || loading) {
     return (<div className="flex h-full items-center justify-center"><Loader2 size={24} className="animate-spin text-muted-foreground" /></div>);
+  }
+
+  if (hasPaymentMethod === false) {
+    return (
+      <PaymentGateCard
+        serviceName="WhatsApp Business Bot"
+        onRegisterCard={redirectToSetup}
+        redirecting={redirecting}
+      />
+    );
   }
 
   const showChatView = selectedConvId && selectedConv;
