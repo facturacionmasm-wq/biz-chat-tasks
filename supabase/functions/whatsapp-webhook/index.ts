@@ -542,6 +542,7 @@ serve(async (req) => {
 
       if (twimlReply) {
         const twiml = `<Response><Message>${escapeXml(twimlReply)}</Message></Response>`;
+        console.log(`[WH] Returning TwiML reply (${twimlReply.length} chars): ${twiml.substring(0, 300)}`);
         return new Response(twiml, {
           status: 200,
           headers: { ...corsHeaders, 'Content-Type': 'text/xml' },
