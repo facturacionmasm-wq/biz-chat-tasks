@@ -21,7 +21,13 @@ export async function processReceiptOCR(
     }
 
     const imgBuffer = await imgRes.arrayBuffer();
-    const base64Image = btoa(String.fromCharCode(...new Uint8Array(imgBuffer)));
+    const bytes = new Uint8Array(imgBuffer);
+    let binary = '';
+    const chunkSize = 8192;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+    }
+    const base64Image = btoa(binary);
     const contentType = imgRes.headers.get('content-type') || 'image/jpeg';
 
     const ocrResponse = await fetch(AI_GATEWAY_URL, {
