@@ -268,7 +268,7 @@ async function handleState(input: StateInput): Promise<StateResult> {
 
   } else if (botState === 'employee_mode') {
     if (mediaUrl) {
-      reply = await processReceiptOCR(mediaUrl, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, LOVABLE_API_KEY, tenantId, newContext, supabase);
+      reply = await processReceiptOCR(mediaUrl, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, LOVABLE_API_KEY, tenantId, newContext, supabase, effectiveMessageBody);
     } else if (msg.includes('credencial') || msg.includes('contraseña') || msg.includes('password') || msg.includes('usuario y contraseña') || msg.includes('acceso')) {
       reply = '🔐 Vamos a guardar una credencial compartida.\n\n¿De qué *plataforma o servicio* es? (Ej: Gmail, Hosting, CPanel, Facebook Ads...)';
       newState = 'credential_collect_platform';
@@ -321,7 +321,7 @@ async function handleState(input: StateInput): Promise<StateResult> {
 
   } else if (botState === 'employee_expense') {
     if (mediaUrl) {
-      reply = await processReceiptOCR(mediaUrl, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, LOVABLE_API_KEY, tenantId, newContext, supabase);
+      reply = await processReceiptOCR(mediaUrl, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, LOVABLE_API_KEY, tenantId, newContext, supabase, effectiveMessageBody);
       newState = 'employee_mode';
     } else {
       const amountMatch = effectiveMessageBody.match(/\$?([\d,]+\.?\d*)/);
