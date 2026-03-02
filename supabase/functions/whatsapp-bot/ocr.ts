@@ -7,7 +7,8 @@ export async function processReceiptOCR(
   apiKey: string,
   tenantId: string,
   context: Record<string, unknown>,
-  supabase: any
+  supabase: any,
+  userMessage?: string
 ): Promise<string> {
   try {
     const basicAuth = btoa(`${twilioSid}:${twilioToken}`);
@@ -30,6 +31,9 @@ export async function processReceiptOCR(
     const base64Image = btoa(binary);
     const contentType = imgRes.headers.get('content-type') || 'image/jpeg';
 
+    const today = new Date().toISOString().split('T')[0];
+    const userHint = userMessage ? `\nContexto adicional del usuario: "${userMessage}"` : '';
+
     const ocrResponse = await fetch(AI_GATEWAY_URL, {
       method: 'POST',
       headers: {
@@ -41,22 +45,36 @@ export async function processReceiptOCR(
         messages: [
           {
             role: 'system',
-            content: `Eres un sistema OCR especializado en extraer datos de comprobantes, tickets, facturas y recibos mexicanos.
-Extrae EXACTAMENTE estos campos del comprobante en la imagen:
-- monto: número decimal (solo el total final)
-- descripcion: breve descripción del gasto
-- fecha: fecha del comprobante en formato YYYY-MM-DD
-- categoria: una de estas categorías: Comida, Transporte, Hospedaje, Material, Servicio, Combustible, Papelería, Otro
-- rfc_emisor: RFC del emisor si es visible
-- nombre_negocio: nombre del negocio/establecimiento
+            content: `Eres un sistema OCR inteligente que extrae gastos de imágenes. Puedes procesar:
+- Comprobantes, tickets, facturas y recibos individuales
+- Screenshots de estados de cuenta bancarios o apps bancarias con múltiples transacciones
+- Listas de transacciones
 
-Responde SOLO con un JSON válido, sin markdown ni texto adicional.
-Ejemplo: {"monto":350.00,"descripcion":"Comida en restaurante","fecha":"2026-02-28","categoria":"Comida","rfc_emisor":"ABC123456XYZ","nombre_negocio":"Restaurante El Buen Sazón"}`
+REGLAS:
+1. Si la imagen tiene UNA sola transacción/comprobante, devuelve un JSON con el objeto directamente.
+2. Si la imagen tiene MÚLTIPLES transacciones, devuelve un JSON con un array "gastos".
+3. Ignora transacciones que sean comisiones bancarias obvias (como "Intl. Transaction Fee", "Cargo por servicio bancario") a menos que el usuario las pida explícitamente.
+4. Si no puedes determinar la fecha, usa "${today}".
+5. Para montos en USD, convierte multiplicando por 20 y agrega "(USD)" a la descripción, o déjalos en USD si el usuario lo prefiere.
+
+Campos por gasto:
+- monto: número decimal positivo (valor absoluto, sin signo negativo)
+- descripcion: descripción clara del gasto
+- fecha: formato YYYY-MM-DD
+- categoria: Comida | Transporte | Hospedaje | Material | Servicio | Software | Combustible | Papelería | Suscripción | Otro
+- nombre_negocio: nombre del negocio si es visible
+- moneda: "MXN" o "USD"
+
+Formato de respuesta:
+- Un gasto: {"monto":350,"descripcion":"Comida","fecha":"2026-03-01","categoria":"Comida","nombre_negocio":"Restaurante","moneda":"MXN"}
+- Varios gastos: {"gastos":[{...},{...}]}
+
+Responde SOLO con JSON válido, sin markdown ni texto adicional.`
           },
           {
             role: 'user',
             content: [
-              { type: 'text', text: 'Extrae los datos de este comprobante de gasto:' },
+              { type: 'text', text: `Extrae los gastos de esta imagen.${userHint}` },
               { type: 'image_url', image_url: { url: `data:${contentType};base64,${base64Image}` } },
             ],
           },
@@ -65,7 +83,7 @@ Ejemplo: {"monto":350.00,"descripcion":"Comida en restaurante","fecha":"2026-02-
     });
 
     if (!ocrResponse.ok) {
-      console.error('OCR AI error:', ocrResponse.status);
+      console.error('OCR AI error:', ocrResponse.status, await ocrResponse.text());
       return '❌ Error al procesar la imagen con IA. Intenta de nuevo o registra el gasto manualmente.';
     }
 
@@ -82,33 +100,55 @@ Ejemplo: {"monto":350.00,"descripcion":"Comida en restaurante","fecha":"2026-02-
       parsed = JSON.parse(cleaned);
     } catch {
       console.error('OCR parse error, raw:', rawText);
-      return '❌ No pude interpretar el comprobante. Intenta con una foto más clara o registra manualmente:\n_Ej: "$350 comida con cliente"_';
+      return '❌ No pude interpretar la imagen. Intenta con una foto más clara o registra manualmente:\n_Ej: "$350 comida con cliente"_';
     }
 
-    const amount = Number(parsed.monto) || 0;
-    if (amount <= 0) {
-      return '❌ No pude detectar el monto en el comprobante. Intenta con una foto más clara.';
+    // Normalize to array
+    const expenses: any[] = parsed.gastos ? parsed.gastos : [parsed];
+    const validExpenses = expenses.filter(e => Number(e.monto) > 0);
+
+    if (validExpenses.length === 0) {
+      console.error('No valid expenses found, parsed:', JSON.stringify(parsed));
+      return '❌ No pude detectar montos en la imagen. Intenta con una foto más clara o registra manualmente:\n_Ej: "$350 comida con cliente"_';
     }
 
-    const description = parsed.descripcion || parsed.nombre_negocio || 'Gasto por comprobante';
-    const expenseDate = parsed.fecha || new Date().toISOString().split('T')[0];
-    const category = parsed.categoria || 'Otro';
-
-    await supabase.from('expenses').insert({
+    // Insert all expenses
+    const rows = validExpenses.map(e => ({
       tenant_id: tenantId,
       user_id: context.user_id as string,
-      amount,
-      description,
-      category,
-      expense_date: expenseDate,
+      amount: Number(e.monto),
+      description: e.descripcion || e.nombre_negocio || 'Gasto por comprobante',
+      category: e.categoria || 'Otro',
+      expense_date: e.fecha || today,
+      currency: e.moneda || 'MXN',
       status: 'pending',
       receipt_url: mediaUrl,
-      ocr_data: parsed,
+      ocr_data: e,
+    }));
+
+    await supabase.from('expenses').insert(rows);
+
+    // Format reply
+    if (validExpenses.length === 1) {
+      const e = validExpenses[0];
+      const amount = Number(e.monto);
+      const currency = e.moneda || 'MXN';
+      return `✅ *Gasto registrado:*\n\n• 💰 Monto: *$${amount.toFixed(2)} ${currency}*\n• 📝 ${e.descripcion || e.nombre_negocio || 'Gasto'}\n• 📂 ${e.categoria || 'Otro'}\n• 📅 ${e.fecha || today}\n${e.nombre_negocio ? `• 🏪 ${e.nombre_negocio}` : ''}\n\n¿Los datos son correctos?`;
+    }
+
+    const totalByCurrency: Record<string, number> = {};
+    const lines = validExpenses.map((e, i) => {
+      const amt = Number(e.monto);
+      const cur = e.moneda || 'MXN';
+      totalByCurrency[cur] = (totalByCurrency[cur] || 0) + amt;
+      return `${i + 1}. $${amt.toFixed(2)} ${cur} — ${e.descripcion || e.nombre_negocio || 'Gasto'}`;
     });
 
-    return `✅ *Gasto registrado por OCR:*\n\n• 💰 Monto: *$${amount.toFixed(2)} MXN*\n• 📝 Descripción: ${description}\n• 📂 Categoría: ${category}\n• 📅 Fecha: ${expenseDate}\n${parsed.nombre_negocio ? `• 🏪 Negocio: ${parsed.nombre_negocio}` : ''}\n${parsed.rfc_emisor ? `• 🔢 RFC: ${parsed.rfc_emisor}` : ''}\n\n¿Los datos son correctos? Si necesitas corregir algo, dímelo.`;
+    const totals = Object.entries(totalByCurrency).map(([cur, total]) => `$${total.toFixed(2)} ${cur}`).join(' + ');
+
+    return `✅ *${validExpenses.length} gastos registrados:*\n\n${lines.join('\n')}\n\n💰 *Total: ${totals}*\n\n¿Todo correcto? Si necesitas corregir algo, dímelo.`;
   } catch (err) {
     console.error('OCR processing error:', err);
-    return '❌ Error al procesar el comprobante. Intenta de nuevo o registra manualmente:\n_Ej: "$350 comida con cliente"_';
+    return '❌ Error al procesar la imagen. Intenta de nuevo o registra manualmente:\n_Ej: "$350 comida con cliente"_';
   }
 }
