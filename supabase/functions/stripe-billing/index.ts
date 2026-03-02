@@ -43,7 +43,7 @@ serve(async (req) => {
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
   try {
-    const { action, tenant_id, email, name, plan_slug, currency: reqCurrency } = await req.json();
+    const { action, tenant_id, email, name, plan_slug, currency: reqCurrency, package_id } = await req.json();
 
     switch (action) {
       // ============================================
@@ -371,7 +371,144 @@ serve(async (req) => {
       }
 
       // ============================================
-      // 5. GET BILLING STATUS
+      // 5. PURCHASE PACKAGE (one-time payment + card setup)
+      // ============================================
+      case 'purchase_package': {
+        if (!tenant_id || !package_id || !email) {
+          return new Response(JSON.stringify({ error: 'tenant_id, package_id and email required' }), {
+            status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Get package details
+        const { data: pkg } = await supabase
+          .from('service_packages')
+          .select('*')
+          .eq('id', package_id)
+          .eq('active', true)
+          .maybeSingle();
+
+        if (!pkg) {
+          return new Response(JSON.stringify({ error: 'Package not found' }), {
+            status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Get or create Stripe customer
+        let { data: existingCust } = await supabase
+          .from('stripe_customers')
+          .select('stripe_customer_id')
+          .eq('tenant_id', tenant_id)
+          .maybeSingle();
+
+        let custId = existingCust?.stripe_customer_id;
+
+        if (!custId) {
+          const customer = await stripeRequest('/customers', 'POST', {
+            email,
+            name: name || email,
+            'metadata[tenant_id]': tenant_id,
+            'metadata[source]': 'package_purchase',
+          }, STRIPE_SECRET_KEY);
+          custId = customer.id;
+
+          await supabase.from('stripe_customers').upsert({
+            tenant_id,
+            stripe_customer_id: custId,
+            email,
+            name: name || email,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'tenant_id' });
+        }
+
+        // Create one-time price for this package
+        const priceCurrency = (pkg as any).currency?.toLowerCase() || 'mxn';
+        const priceAmount = Math.round((pkg as any).price * 100); // cents
+
+        // Search for existing price with metadata
+        const existingPrices = await stripeRequest(
+          `/prices?active=true&limit=20&lookup_keys=${package_id}_${priceCurrency}`,
+          'GET', undefined, STRIPE_SECRET_KEY
+        );
+
+        let priceId: string;
+        if (existingPrices.data.length > 0) {
+          priceId = existingPrices.data[0].id;
+        } else {
+          // Create product for this package if needed
+          const products = await stripeRequest('/products?active=true&limit=100', 'GET', undefined, STRIPE_SECRET_KEY);
+          let packageProduct = products.data.find((p: any) => p.metadata?.type === 'officehub_package');
+
+          if (!packageProduct) {
+            packageProduct = await stripeRequest('/products', 'POST', {
+              name: 'OfficeHub - Paquete de Servicio',
+              description: 'Paquete prepagado de minutos o mensajes',
+              'metadata[type]': 'officehub_package',
+            }, STRIPE_SECRET_KEY);
+          }
+
+          const newPrice = await stripeRequest('/prices', 'POST', {
+            product: packageProduct.id,
+            unit_amount: String(priceAmount),
+            currency: priceCurrency,
+            lookup_key: `${package_id}_${priceCurrency}`,
+          }, STRIPE_SECRET_KEY);
+          priceId = newPrice.id;
+        }
+
+        // Create Checkout Session in payment mode
+        const origin = req.headers.get('origin') || 'https://biz-chat-tasks.lovable.app';
+        const successRoute = (pkg as any).service_type === 'voice' ? '/calls' : '/whatsapp';
+
+        const session = await stripeRequest('/checkout/sessions', 'POST', {
+          customer: custId,
+          mode: 'payment',
+          'line_items[0][price]': priceId,
+          'line_items[0][quantity]': '1',
+          'payment_intent_data[setup_future_usage]': 'off_session',
+          success_url: `${origin}${successRoute}?package=success&pkg_id=${package_id}`,
+          cancel_url: `${origin}${successRoute}?package=cancel`,
+          'metadata[tenant_id]': tenant_id,
+          'metadata[package_id]': package_id,
+          'metadata[service_type]': (pkg as any).service_type,
+          'metadata[units]': String((pkg as any).units),
+        }, STRIPE_SECRET_KEY);
+
+        // Provision balance immediately (will be confirmed by webhook)
+        await supabase.from('tenant_package_balances').insert({
+          tenant_id,
+          package_id,
+          service_type: (pkg as any).service_type,
+          units_purchased: (pkg as any).units,
+          units_used: 0,
+          status: 'pending_payment',
+          stripe_payment_intent_id: session.payment_intent || session.id,
+        });
+
+        // Audit
+        await supabase.from('audit_events').insert({
+          tenant_id,
+          event_type: 'billing.package_purchase_initiated',
+          resource_type: 'service_package',
+          resource_id: package_id,
+          payload: {
+            package_name: (pkg as any).name,
+            units: (pkg as any).units,
+            price: (pkg as any).price,
+            currency: (pkg as any).currency,
+            session_id: session.id,
+          },
+        });
+
+        return new Response(JSON.stringify({
+          success: true,
+          checkout_url: session.url,
+          session_id: session.id,
+        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+
+      // ============================================
+      // 6. GET BILLING STATUS
       // ============================================
       case 'get_billing_status': {
         if (!tenant_id) {

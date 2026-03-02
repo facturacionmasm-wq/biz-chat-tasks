@@ -157,7 +157,7 @@ const EventTimeline = ({ events }: { events: CallEvent[] }) => {
 };
 
 const CallsPage = () => {
-  const { hasPaymentMethod, loading: paymentLoading, redirecting, redirectToSetup } = usePaymentGate();
+  const { canUseService, loading: paymentLoading, redirecting, purchasePackage } = usePaymentGate();
   const [selectedCall, setSelectedCall] = useState<CallRecord | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [transcriptSearch, setTranscriptSearch] = useState('');
@@ -743,12 +743,13 @@ const CallsPage = () => {
   ];
 
   // ===== PAYMENT GATE =====
-  if (!paymentLoading && hasPaymentMethod === false) {
+  if (!paymentLoading && !canUseService('voice')) {
     return (
       <div className="p-4 sm:p-6 max-w-7xl mx-auto">
         <PaymentGateCard
           serviceName="Voice Agent IA"
-          onRegisterCard={redirectToSetup}
+          serviceType="voice"
+          onPurchasePackage={purchasePackage}
           redirecting={redirecting}
         />
       </div>
