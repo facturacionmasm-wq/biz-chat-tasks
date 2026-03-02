@@ -177,20 +177,8 @@ const BillingSection = ({ user, isSuperAdmin, getTenantId, inputClass, userRole 
       const { error: updateError } = await supabase.from('tenants').update({ settings_json: updated } as any).eq('id', masterTenantId);
       if (updateError) throw updateError;
 
-      // Validate that Stripe secret key works by making a test call
-      const { data: testData, error: testError } = await supabase.functions.invoke('stripe-billing', {
-        body: {
-          action: 'validate_key',
-          secret_key: stripeSecretKey,
-          webhook_secret: stripeWebhookSecret || undefined,
-        },
-      });
-
-      // If the validate_key action doesn't exist yet, just save settings
-      // The STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET are already configured as backend secrets
-      if (testError) {
-        console.warn('Stripe key validation skipped (secrets already configured at infrastructure level)');
-      }
+      // Secrets are managed at backend level (STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET)
+      // so we only persist the publishable key and activation flag in tenant settings.
 
       setStripeConfigured(true);
       setShowStripeWizard(false);
