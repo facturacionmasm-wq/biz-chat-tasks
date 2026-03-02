@@ -108,13 +108,38 @@ serve(async (req) => {
     if (!isSandbox) {
       await supabase.from('whatsapp_conversations').update({ bot_state: newState, bot_context: newContext }).eq('id', conversationId);
 
+      // Track inbound usage event
+      try {
+        await supabase.from('whatsapp_usage_events').insert({
+          tenant_id: tenantId,
+          region: 'LATAM',
+          provider: 'twilio',
+          event_type: 'message_in',
+          units: 1,
+          metadata: { conversation_id: conversationId, bot_state: botState },
+        });
+      } catch (e) { console.error('Usage tracking (in) error:', e); }
+
       if (reply && TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && TWILIO_PHONE_NUMBER) {
-        await sendTwilioMessage(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER, contactPhone, reply);
+        const twilioResult = await sendTwilioMessage(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER, contactPhone, reply);
         await supabase.from('whatsapp_messages').insert({
           tenant_id: tenantId, conversation_id: conversationId,
           direction: 'out', body: reply, status: 'sent',
           metadata: { provider: 'bot', bot_state: newState },
         });
+
+        // Track outbound usage event
+        try {
+          await supabase.from('whatsapp_usage_events').insert({
+            tenant_id: tenantId,
+            region: 'LATAM',
+            provider: 'twilio',
+            provider_message_id: twilioResult?.sid || null,
+            event_type: 'message_out',
+            units: 1,
+            metadata: { conversation_id: conversationId, bot_state: newState },
+          });
+        } catch (e) { console.error('Usage tracking (out) error:', e); }
       }
     }
 

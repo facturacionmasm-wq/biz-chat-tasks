@@ -83,3 +83,6 @@ verify_jwt = false
 
 [functions.financial-projections]
 verify_jwt = false
+
+[functions.usage-tracking]
+verify_jwt = false

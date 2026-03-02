@@ -869,6 +869,36 @@ export type Database = {
         }
         Relationships: []
       }
+      fx_rates: {
+        Row: {
+          base_currency: string
+          created_at: string
+          id: string
+          rate: number
+          rate_date: string
+          source: string
+          target_currency: string
+        }
+        Insert: {
+          base_currency?: string
+          created_at?: string
+          id?: string
+          rate?: number
+          rate_date?: string
+          source?: string
+          target_currency: string
+        }
+        Update: {
+          base_currency?: string
+          created_at?: string
+          id?: string
+          rate?: number
+          rate_date?: string
+          source?: string
+          target_currency?: string
+        }
+        Relationships: []
+      }
       global_metrics_daily: {
         Row: {
           active_tenants: number
@@ -940,6 +970,53 @@ export type Database = {
           total_tenants?: number
         }
         Relationships: []
+      }
+      global_plan_pricing: {
+        Row: {
+          active: boolean
+          base_price: number
+          country_code: string
+          created_at: string
+          currency: string
+          id: string
+          included_units: number
+          overage_price: number
+          plan_id: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          base_price?: number
+          country_code?: string
+          created_at?: string
+          currency?: string
+          id?: string
+          included_units?: number
+          overage_price?: number
+          plan_id: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          base_price?: number
+          country_code?: string
+          created_at?: string
+          currency?: string
+          id?: string
+          included_units?: number
+          overage_price?: number
+          plan_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "global_plan_pricing_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "subscription_plans"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       google_calendar_tokens: {
         Row: {
@@ -2397,6 +2474,83 @@ export type Database = {
           },
         ]
       }
+      usage_costs_reconciled: {
+        Row: {
+          created_at: string
+          currency: string
+          fx_rate_used: number
+          id: string
+          margin_local: number
+          margin_pct: number
+          margin_usd: number
+          period_end: string
+          period_start: string
+          real_cost_local_currency: number
+          real_cost_usd: number
+          reconciled_at: string | null
+          reconciliation_status: string
+          region: string
+          revenue_local_currency: number
+          revenue_usd: number
+          tenant_id: string
+          total_events: number
+          total_units: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          currency?: string
+          fx_rate_used?: number
+          id?: string
+          margin_local?: number
+          margin_pct?: number
+          margin_usd?: number
+          period_end: string
+          period_start: string
+          real_cost_local_currency?: number
+          real_cost_usd?: number
+          reconciled_at?: string | null
+          reconciliation_status?: string
+          region?: string
+          revenue_local_currency?: number
+          revenue_usd?: number
+          tenant_id: string
+          total_events?: number
+          total_units?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          currency?: string
+          fx_rate_used?: number
+          id?: string
+          margin_local?: number
+          margin_pct?: number
+          margin_usd?: number
+          period_end?: string
+          period_start?: string
+          real_cost_local_currency?: number
+          real_cost_usd?: number
+          reconciled_at?: string | null
+          reconciliation_status?: string
+          region?: string
+          revenue_local_currency?: number
+          revenue_usd?: number
+          tenant_id?: string
+          total_events?: number
+          total_units?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "usage_costs_reconciled_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           created_at: string
@@ -2580,6 +2734,56 @@ export type Database = {
           },
           {
             foreignKeyName: "whatsapp_messages_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_usage_events: {
+        Row: {
+          billing_status: string
+          created_at: string
+          event_type: string
+          id: string
+          metadata: Json | null
+          occurred_at: string
+          provider: string
+          provider_message_id: string | null
+          region: string
+          tenant_id: string
+          units: number
+        }
+        Insert: {
+          billing_status?: string
+          created_at?: string
+          event_type?: string
+          id?: string
+          metadata?: Json | null
+          occurred_at?: string
+          provider?: string
+          provider_message_id?: string | null
+          region?: string
+          tenant_id: string
+          units?: number
+        }
+        Update: {
+          billing_status?: string
+          created_at?: string
+          event_type?: string
+          id?: string
+          metadata?: Json | null
+          occurred_at?: string
+          provider?: string
+          provider_message_id?: string | null
+          region?: string
+          tenant_id?: string
+          units?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_usage_events_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
