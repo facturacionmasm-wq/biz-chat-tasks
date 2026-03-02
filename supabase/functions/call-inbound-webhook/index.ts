@@ -7,17 +7,30 @@ const corsHeaders = {
 };
 
 /**
- * Inbound Call Webhook
- * 
- * Twilio calls this URL when someone dials the Twilio phone number.
- * It creates a call_record immediately and returns TwiML to handle the call.
- * 
+ * Inbound Call Webhook — Professional Flow
+ *
+ * Twilio → this webhook → registers call in DB → resolves tenant →
+ * routes to ElevenLabs via <Connect><Stream> → fallback if unavailable.
+ *
  * Configure in Twilio Console:
- *   Phone Number → Voice → "A Call Comes In" → Webhook → POST
+ *   Phone Number → Voice → "A Call Comes In" → Webhook POST
  *   URL: https://<project>.supabase.co/functions/v1/call-inbound-webhook
- *   
  *   Status Callback URL: https://<project>.supabase.co/functions/v1/call-status-webhook
  */
+
+// ═══════════ Twilio HMAC-SHA1 Signature Validation ═══════════
+async function validateTwilioSignature(
+  authToken: string, signature: string, url: string, params: Record<string, string>
+): Promise<boolean> {
+  const sortedKeys = Object.keys(params).sort();
+  let data = url;
+  for (const key of sortedKeys) data += key + params[key];
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey('raw', encoder.encode(authToken), { name: 'HMAC', hash: 'SHA-1' }, false, ['sign']);
+  const sig = await crypto.subtle.sign('HMAC', key, encoder.encode(data));
+  const computed = btoa(String.fromCharCode(...new Uint8Array(sig)));
+  return computed === signature;
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -26,13 +39,15 @@ serve(async (req) => {
 
   const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
   const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const TWILIO_AUTH_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN');
+  const ELEVENLABS_API_KEY = Deno.env.get('ELEVENLABS_API_KEY');
+  const ELEVENLABS_AGENT_ID = Deno.env.get('ELEVENLABS_AGENT_ID');
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
   try {
-    // Parse Twilio form-encoded or JSON
+    // ═══════════ 1. PARSE TWILIO PARAMS ═══════════
     const contentType = req.headers.get('content-type') || '';
     let params: Record<string, string> = {};
-
     if (contentType.includes('application/x-www-form-urlencoded')) {
       const formData = await req.formData();
       formData.forEach((value, key) => { params[key] = String(value); });
@@ -40,27 +55,44 @@ serve(async (req) => {
       params = await req.json();
     }
 
-    const callSid = params.CallSid || params.call_sid || '';
-    const from = params.From || params.from_number || '';
-    const to = params.To || params.to_number || '';
+    const callSid = params.CallSid || '';
+    const from = params.From || '';
+    const to = params.To || '';
     const direction = params.Direction || 'inbound';
     const callerCity = params.CallerCity || '';
     const callerState = params.CallerState || '';
     const callerCountry = params.CallerCountry || '';
+    const accountSid = params.AccountSid || '';
 
-    console.log(`[call-inbound-webhook] CallSid=${callSid} From=${from} To=${to} Direction=${direction}`);
+    console.log(`[inbound] CallSid=${callSid} From=${from} To=${to} Dir=${direction}`);
 
-    if (!callSid) {
-      return new Response(
-        twimlSay('Error interno. Por favor intente más tarde.'),
-        { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-      );
+    // ═══════════ 2. TWILIO SIGNATURE VALIDATION ═══════════
+    if (TWILIO_AUTH_TOKEN) {
+      const twilioSignature = req.headers.get('X-Twilio-Signature') || '';
+      if (twilioSignature) {
+        const webhookUrl = `${SUPABASE_URL}/functions/v1/call-inbound-webhook`;
+        const isValid = await validateTwilioSignature(TWILIO_AUTH_TOKEN, twilioSignature, webhookUrl, params);
+        if (!isValid) {
+          console.error(`[inbound] INVALID Twilio signature for CallSid=${callSid}`);
+          return new Response(twimlSay('Solicitud no autorizada.'), {
+            status: 403, headers: { ...corsHeaders, 'Content-Type': 'text/xml' },
+          });
+        }
+        console.log(`[inbound] Twilio signature VALID`);
+      } else {
+        console.warn(`[inbound] No X-Twilio-Signature header`);
+      }
     }
 
-    // ═══════════ RESOLVE TENANT ═══════════
+    if (!callSid) {
+      return new Response(twimlSay('Error interno. Intente más tarde.'), {
+        headers: { ...corsHeaders, 'Content-Type': 'text/xml' },
+      });
+    }
+
+    // ═══════════ 3. RESOLVE TENANT (multi-tenant) ═══════════
     let tenantId: string | null = null;
 
-    // Resolve by the Twilio phone number (the "To" number for inbound)
     for (const phone of [to, from].filter(Boolean)) {
       const { data: phoneMatch } = await supabase
         .from('tenant_phone_numbers')
@@ -70,136 +102,209 @@ serve(async (req) => {
         .maybeSingle();
       if (phoneMatch) {
         tenantId = phoneMatch.tenant_id;
-        console.log(`[call-inbound-webhook] Resolved tenant ${tenantId} from phone ${phone}`);
+        console.log(`[inbound] Tenant ${tenantId} from phone ${phone}`);
         break;
       }
     }
 
-    // Fallback: check if TWILIO_PHONE_NUMBER matches and use a default tenant
+    // Fallback: match by configured TWILIO_PHONE_NUMBER
     if (!tenantId) {
       const twilioPhone = Deno.env.get('TWILIO_PHONE_NUMBER') || '';
       if (twilioPhone && (to === twilioPhone || to === `+${twilioPhone.replace(/^\+/, '')}`)) {
-        // Find any tenant that has this number or get the first active tenant
-        const { data: anyTenant } = await supabase
-          .from('tenants')
-          .select('id')
-          .limit(1)
-          .single();
+        const { data: anyTenant } = await supabase.from('tenants').select('id').limit(1).single();
         if (anyTenant) {
           tenantId = anyTenant.id;
-          console.log(`[call-inbound-webhook] Fallback tenant ${tenantId}`);
+          console.log(`[inbound] Fallback tenant ${tenantId}`);
         }
       }
     }
 
     if (!tenantId) {
-      console.warn(`[call-inbound-webhook] No tenant found for To=${to}`);
-      return new Response(
-        twimlSay('Este número no está configurado. Disculpe las molestias.'),
-        { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-      );
+      console.warn(`[inbound] No tenant found for To=${to}`);
+      return new Response(twimlSay('Este número no está configurado. Disculpe las molestias.'), {
+        headers: { ...corsHeaders, 'Content-Type': 'text/xml' },
+      });
     }
 
     // ═══════════ RATE LIMIT CHECK ═══════════
     const { data: rateLimit } = await supabase
-      .from('tenant_rate_limits')
-      .select('is_blocked, blocked_until')
-      .eq('tenant_id', tenantId)
-      .maybeSingle();
-
+      .from('tenant_rate_limits').select('is_blocked, blocked_until').eq('tenant_id', tenantId).maybeSingle();
     if (rateLimit?.is_blocked) {
       const blockedUntil = rateLimit.blocked_until ? new Date(rateLimit.blocked_until) : null;
       if (!blockedUntil || blockedUntil > new Date()) {
-        console.log(`[call-inbound-webhook] Tenant ${tenantId} BLOCKED`);
-        return new Response(
-          twimlSay('El servicio no está disponible en este momento. Intente más tarde.'),
-          { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-        );
+        console.log(`[inbound] Tenant ${tenantId} BLOCKED`);
+        return new Response(twimlSay('El servicio no está disponible en este momento. Intente más tarde.'), {
+          headers: { ...corsHeaders, 'Content-Type': 'text/xml' },
+        });
       }
     }
 
-    // ═══════════ CREATE CALL RECORD ═══════════
-    const { data: callRecord, error: insertError } = await supabase
-      .from('call_records')
-      .insert({
-        tenant_id: tenantId,
-        external_call_id: callSid,
-        from_number: from,
-        to_number: to,
-        status: 'ringing',
-        channel: 'twilio_inbound',
-        started_at: new Date().toISOString(),
-        recording_status: 'not_requested',
-        transcript_status: 'pending',
-        summary_status: 'pending',
-        appointment_status: 'not_requested',
-        extracted_data: {
-          direction: 'inbound',
-          callerCity,
-          callerState,
-          callerCountry,
-        },
-      })
-      .select('id')
-      .single();
+    // ═══════════ 4. IDEMPOTENCY: Check existing record by CallSid ═══════════
+    let callRecordId: string | null = null;
 
-    if (insertError) {
-      console.error('[call-inbound-webhook] Insert error:', insertError);
+    const { data: existing } = await supabase
+      .from('call_records').select('id').eq('external_call_id', callSid).maybeSingle();
+
+    if (existing) {
+      callRecordId = existing.id;
+      console.log(`[inbound] Idempotent hit: existing record ${callRecordId}`);
     } else {
-      console.log(`[call-inbound-webhook] Created call record ${callRecord.id}`);
+      // ═══════════ 5. CREATE CALL RECORD ═══════════
+      const { data: newRecord, error: insertError } = await supabase
+        .from('call_records')
+        .insert({
+          tenant_id: tenantId,
+          external_call_id: callSid,
+          from_number: from,
+          to_number: to,
+          status: 'ringing',
+          channel: 'twilio_inbound',
+          started_at: new Date().toISOString(),
+          recording_status: 'not_requested',
+          transcript_status: 'pending',
+          summary_status: 'pending',
+          appointment_status: 'not_requested',
+          extracted_data: { direction: 'inbound', callerCity, callerState, callerCountry, accountSid },
+        })
+        .select('id')
+        .single();
+
+      if (insertError) {
+        console.error('[inbound] Insert error:', insertError);
+        // Race condition on unique index — retry lookup
+        const { data: retry } = await supabase
+          .from('call_records').select('id').eq('external_call_id', callSid).maybeSingle();
+        callRecordId = retry?.id || null;
+      } else {
+        callRecordId = newRecord.id;
+        console.log(`[inbound] Created call record ${callRecordId}`);
+      }
     }
 
-    // ═══════════ RECORD INITIAL EVENT ═══════════
-    if (callRecord) {
-      await supabase.from('call_events').insert({
-        call_record_id: callRecord.id,
-        tenant_id: tenantId,
-        event_type: 'ringing',
-        twilio_call_sid: callSid,
-        event_data: {
-          from, to, direction,
-          callerCity, callerState, callerCountry,
-          timestamp: new Date().toISOString(),
-        },
-      });
-
-      // Audit event
-      await supabase.from('audit_events').insert({
-        tenant_id: tenantId,
-        event_type: 'call.inbound_received',
-        resource_type: 'call_record',
-        resource_id: callRecord.id,
-        payload: { call_sid: callSid, from, to },
-      });
+    // Record initial events
+    if (callRecordId) {
+      await Promise.all([
+        supabase.from('call_events').insert({
+          call_record_id: callRecordId,
+          tenant_id: tenantId,
+          event_type: 'ringing',
+          twilio_call_sid: callSid,
+          event_data: { from, to, direction, callerCity, callerState, callerCountry, timestamp: new Date().toISOString() },
+        }),
+        supabase.from('audit_events').insert({
+          tenant_id: tenantId,
+          event_type: 'call.inbound_received',
+          resource_type: 'call_record',
+          resource_id: callRecordId,
+          payload: { call_sid: callSid, from, to },
+        }),
+      ]);
     }
 
-    // ═══════════ LOAD TENANT SETTINGS FOR GREETING ═══════════
-    let companyName = '';
+    // ═══════════ LOAD TENANT SETTINGS ═══════════
     const { data: tenant } = await supabase
-      .from('tenants')
-      .select('name, settings_json')
-      .eq('id', tenantId)
-      .single();
+      .from('tenants').select('name, settings_json').eq('id', tenantId).single();
+    const companyName = tenant?.name || '';
+    const greeting = companyName
+      ? `Hola, bienvenido a ${escapeXml(companyName)}.`
+      : 'Hola, bienvenido.';
 
-    if (tenant) {
-      companyName = tenant.name || '';
+    // ═══════════ 6–7. ROUTE TO ELEVENLABS ═══════════
+    let routingMethod = 'record';
+    let signedUrl = '';
+    let sessionState = 'fallback_recording';
+
+    if (ELEVENLABS_API_KEY && ELEVENLABS_AGENT_ID) {
+      // Attempt to get ElevenLabs signed WebSocket URL (with one retry)
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const elRes = await fetch(
+            `https://api.elevenlabs.io/v1/convai/conversation/get-signed-url?agent_id=${ELEVENLABS_AGENT_ID}`,
+            { headers: { 'xi-api-key': ELEVENLABS_API_KEY } }
+          );
+          if (elRes.ok) {
+            const elData = await elRes.json();
+            if (elData.signed_url) {
+              routingMethod = 'stream';
+              signedUrl = elData.signed_url;
+              sessionState = 'connected_to_agent';
+              console.log(`[inbound] ElevenLabs signed URL obtained (attempt ${attempt + 1})`);
+              break;
+            }
+          } else {
+            console.error(`[inbound] ElevenLabs API error: ${elRes.status} (attempt ${attempt + 1})`);
+          }
+        } catch (e) {
+          console.error(`[inbound] ElevenLabs fetch error (attempt ${attempt + 1}):`, e);
+        }
+      }
+
+      if (routingMethod !== 'stream') {
+        sessionState = 'failed_routing';
+        console.error(`[inbound] ElevenLabs routing FAILED after retries`);
+      }
+    } else {
+      console.warn(`[inbound] ElevenLabs not configured, using recording fallback`);
     }
 
-    const greeting = companyName
-      ? `Bienvenido a ${escapeXml(companyName)}. Su llamada está siendo atendida.`
-      : 'Bienvenido. Su llamada está siendo atendida.';
+    // ═══════════ CREATE CALL SESSION ═══════════
+    if (callRecordId) {
+      await supabase.from('call_sessions').upsert({
+        tenant_id: tenantId,
+        call_record_id: callRecordId,
+        call_sid: callSid,
+        agent_mode: 'elevenlabs',
+        elevenlabs_agent_id: ELEVENLABS_AGENT_ID || null,
+        language: 'es',
+        routing_method: routingMethod,
+        target_url: routingMethod === 'stream' ? '(signed_url_redacted)' : null,
+        state: sessionState,
+        retry_count: routingMethod === 'stream' ? 0 : 1,
+      }, { onConflict: 'call_sid' });
 
-    // Build statusCallback URL for ongoing status updates
+      if (sessionState === 'failed_routing') {
+        await supabase.from('call_records').update({ status: 'failed' }).eq('id', callRecordId);
+        await supabase.from('call_events').insert({
+          call_record_id: callRecordId,
+          tenant_id: tenantId,
+          event_type: 'failed_routing',
+          twilio_call_sid: callSid,
+          event_data: { reason: 'elevenlabs_unavailable', timestamp: new Date().toISOString() },
+        });
+      }
+    }
+
+    // ═══════════ GENERATE TwiML RESPONSE ═══════════
     const statusCallbackUrl = `${SUPABASE_URL}/functions/v1/call-status-webhook`;
+    let twiml: string;
 
-    // ═══════════ RETURN TwiML ═══════════
-    // Record the call and connect; Twilio will send status updates to call-status-webhook
-    const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+    if (routingMethod === 'stream' && signedUrl) {
+      // Route to ElevenLabs via Twilio <Connect><Stream>
+      twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say voice="Polly.Mia-Neural" language="es-MX">${greeting}</Say>
+  <Connect>
+    <Stream url="${escapeXml(signedUrl)}">
+      <Parameter name="tenant_id" value="${escapeXml(tenantId)}" />
+      <Parameter name="call_record_id" value="${escapeXml(callRecordId || '')}" />
+      <Parameter name="call_sid" value="${escapeXml(callSid)}" />
+    </Stream>
+  </Connect>
+  <Say voice="Polly.Mia-Neural" language="es-MX">Gracias por su llamada. Hasta pronto.</Say>
+</Response>`;
+    } else if (sessionState === 'failed_routing') {
+      // 8. FALLBACK: ElevenLabs unavailable
+      twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="Polly.Mia-Neural" language="es-MX">Lo sentimos, nuestro asistente no está disponible en este momento. Por favor intente más tarde.</Say>
+</Response>`;
+    } else {
+      // Fallback: Record mode (ElevenLabs not configured)
+      twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="Polly.Mia-Neural" language="es-MX">${greeting} Por favor espere mientras lo conectamos.</Say>
   <Pause length="1"/>
-  <Say voice="Polly.Mia-Neural" language="es-MX">Por favor espere mientras lo conectamos.</Say>
-  <Record 
+  <Record
     maxLength="3600"
     recordingStatusCallback="${escapeXml(statusCallbackUrl)}"
     recordingStatusCallbackEvent="completed"
@@ -209,17 +314,19 @@ serve(async (req) => {
   />
   <Say voice="Polly.Mia-Neural" language="es-MX">Gracias por su llamada. Hasta pronto.</Say>
 </Response>`;
+    }
+
+    console.log(`[inbound] Response: routing=${routingMethod} state=${sessionState} callRecordId=${callRecordId}`);
 
     return new Response(twiml, {
       headers: { ...corsHeaders, 'Content-Type': 'text/xml' },
     });
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Unknown error';
-    console.error('[call-inbound-webhook] Error:', msg);
-    return new Response(
-      twimlSay('Ha ocurrido un error. Por favor intente más tarde.'),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'text/xml' } }
-    );
+    console.error('[inbound] Fatal error:', msg);
+    return new Response(twimlSay('Ha ocurrido un error. Por favor intente más tarde.'), {
+      status: 500, headers: { ...corsHeaders, 'Content-Type': 'text/xml' },
+    });
   }
 });
 
@@ -231,10 +338,5 @@ function twimlSay(message: string): string {
 }
 
 function escapeXml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
 }
