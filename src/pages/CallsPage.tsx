@@ -157,7 +157,7 @@ const EventTimeline = ({ events }: { events: CallEvent[] }) => {
 };
 
 const CallsPage = () => {
-  const { canUseService, loading: paymentLoading, redirecting, purchasePackage } = usePaymentGate();
+  const { canUseService, loading: paymentLoading, redirecting, purchasePackage, setupCard } = usePaymentGate();
   const [selectedCall, setSelectedCall] = useState<CallRecord | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [transcriptSearch, setTranscriptSearch] = useState('');
@@ -750,6 +750,7 @@ const CallsPage = () => {
           serviceName="Voice Agent IA"
           serviceType="voice"
           onPurchasePackage={purchasePackage}
+          onSetupCard={setupCard}
           redirecting={redirecting}
         />
       </div>

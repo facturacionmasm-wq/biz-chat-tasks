@@ -24,7 +24,7 @@ const statusLabels: Record<string, string> = {
 
 const WhatsAppInboxPage = () => {
   const { conversations, messages, loading, fetchMessages, DEMO_TENANT } = useWhatsAppData();
-  const { canUseService, loading: paymentLoading, redirecting, purchasePackage } = usePaymentGate();
+  const { canUseService, loading: paymentLoading, redirecting, purchasePackage, setupCard } = usePaymentGate();
   const [selectedConvId, setSelectedConvId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
@@ -111,6 +111,7 @@ const WhatsAppInboxPage = () => {
         serviceName="WhatsApp Business Bot"
         serviceType="whatsapp"
         onPurchasePackage={purchasePackage}
+        onSetupCard={setupCard}
         redirecting={redirecting}
       />
     );
