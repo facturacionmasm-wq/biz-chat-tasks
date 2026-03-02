@@ -132,75 +132,162 @@ const VoiceAgent = ({ onCallEnd }: VoiceAgentProps) => {
 
   const conversation = useConversation({
     clientTools: {
-      check_availability: async (params: { date: string; employee_name?: string }) => {
+      check_availability: async (params: { date?: string; employee_name?: string; employee_id?: string }) => {
         try {
+          const date = (params?.date || '').trim();
+          if (!date) return 'Falta la fecha. Usa formato YYYY-MM-DD';
+
           const { data: { user } } = await supabase.auth.getUser();
           if (!user) return 'No autenticado';
+
           const { data: tenantId } = await supabase.rpc('get_user_tenant_id', { _user_id: user.id });
           if (!tenantId) return 'No se encontró tenant';
 
+          let employeeId = params?.employee_id || undefined;
+          if (!employeeId && params?.employee_name?.trim()) {
+            const { data: profiles } = await supabase
+              .from('profiles_safe' as any)
+              .select('user_id, name')
+              .eq('tenant_id', tenantId)
+              .eq('status', 'active') as { data: any[] | null };
+
+            const match = (profiles || []).find((p) =>
+              p.name?.toLowerCase().includes(params.employee_name!.toLowerCase())
+            );
+            if (match?.user_id) employeeId = match.user_id;
+          }
+
           const { data, error } = await supabase.functions.invoke('voice-scheduling', {
-            body: { action: 'check_availability', data: { tenant_id: tenantId, date: params.date } },
+            body: {
+              action: 'check_availability',
+              data: { tenant_id: tenantId, date, employee_id: employeeId || null },
+            },
           });
+
           if (error) return `Error: ${error.message}`;
-          addTranscriptLine('Sistema', `[Consulta disponibilidad: ${params.date}]`);
-          return data.message + (data.slots?.length > 0 ? `. Horarios: ${data.slots.slice(0, 5).map((s: any) => new Date(s.start).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })).join(', ')}` : '');
+          if (data?.error) return `Error: ${data.error}`;
+
+          addTranscriptLine('Sistema', `[Consulta disponibilidad: ${date}]`);
+          return data.message + (data.slots?.length > 0
+            ? `. Horarios: ${data.slots.slice(0, 5).map((s: any) => new Date(s.start).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })).join(', ')}`
+            : '');
         } catch (err: any) {
           return `Error al consultar disponibilidad: ${err.message}`;
         }
       },
-      book_appointment: async (params: { contact_name: string; contact_phone?: string; date: string; time: string; service_type?: string }) => {
+      book_appointment: async (params: {
+        contact_name?: string;
+        customer_name?: string;
+        contact_phone?: string;
+        phone?: string;
+        contact_email?: string;
+        date?: string;
+        time?: string;
+        start_at?: string;
+        datetime?: string;
+        service_type?: string;
+        employee_name?: string;
+        employee_id?: string;
+        notes?: string;
+      }) => {
         try {
           const { data: { user } } = await supabase.auth.getUser();
           if (!user) return 'No autenticado';
+
           const { data: tenantId } = await supabase.rpc('get_user_tenant_id', { _user_id: user.id });
           if (!tenantId) return 'No se encontró tenant';
 
-          const startAt = `${params.date}T${params.time}:00`;
+          const contactName = (params.contact_name || params.customer_name || '').trim();
+          if (!contactName) return 'Falta contact_name';
+
+          const normalizedDate = (params.date || '').trim();
+          const normalizedTime = (params.time || '').trim();
+          const rawDateTime = (params.start_at || params.datetime || '').trim();
+
+          const startAt = rawDateTime
+            ? rawDateTime
+            : (normalizedDate && normalizedTime ? `${normalizedDate}T${normalizedTime}:00` : '');
+
+          if (!startAt) {
+            return 'Falta fecha/hora. Usa date+time o start_at en formato ISO';
+          }
+
+          let employeeId = params.employee_id || undefined;
+          if (!employeeId && params.employee_name?.trim()) {
+            const { data: profiles } = await supabase
+              .from('profiles_safe' as any)
+              .select('user_id, name')
+              .eq('tenant_id', tenantId)
+              .eq('status', 'active') as { data: any[] | null };
+
+            const match = (profiles || []).find((p) =>
+              p.name?.toLowerCase().includes(params.employee_name!.toLowerCase())
+            );
+            if (match?.user_id) employeeId = match.user_id;
+          }
+
           const { data, error } = await supabase.functions.invoke('voice-scheduling', {
             body: {
               action: 'book_appointment',
               data: {
                 tenant_id: tenantId,
-                contact_name: params.contact_name,
-                contact_phone: params.contact_phone || null,
+                contact_name: contactName,
+                contact_phone: params.contact_phone || params.phone || null,
+                contact_email: params.contact_email || null,
                 start_at: startAt,
                 service_type: params.service_type || 'general',
+                employee_id: employeeId || null,
+                notes: params.notes || null,
                 source: 'call',
                 call_record_id: callRecordIdRef.current,
               },
             },
           });
+
           if (error) return `Error: ${error.message}`;
-          addTranscriptLine('Sistema', `[Cita agendada: ${params.contact_name} - ${params.date} ${params.time}]`);
+          if (data?.error) return `Error: ${data.error}`;
+
+          addTranscriptLine('Sistema', `[Cita agendada: ${contactName} - ${startAt}]`);
           return data.message || 'Cita agendada exitosamente';
         } catch (err: any) {
           return `Error al agendar: ${err.message}`;
         }
       },
-      cancel_appointment: async (params: { appointment_id: string }) => {
+      cancel_appointment: async (params: { appointment_id?: string }) => {
         try {
+          if (!params?.appointment_id) return 'Falta appointment_id';
+
           const { data, error } = await supabase.functions.invoke('voice-scheduling', {
             body: { action: 'cancel_appointment', data: { appointment_id: params.appointment_id } },
           });
+
           if (error) return `Error: ${error.message}`;
+          if (data?.error) return `Error: ${data.error}`;
+
           addTranscriptLine('Sistema', `[Cita cancelada: ${params.appointment_id}]`);
           return data.message || 'Cita cancelada';
         } catch (err: any) {
           return `Error al cancelar: ${err.message}`;
         }
       },
-      reschedule_appointment: async (params: { appointment_id: string; new_date: string; new_time: string }) => {
+      reschedule_appointment: async (params: { appointment_id?: string; new_date?: string; new_time?: string; new_start_at?: string }) => {
         try {
-          const newStartAt = `${params.new_date}T${params.new_time}:00`;
+          if (!params?.appointment_id) return 'Falta appointment_id';
+
+          const newStartAt = params.new_start_at || (params.new_date && params.new_time ? `${params.new_date}T${params.new_time}:00` : '');
+          if (!newStartAt) return 'Falta nueva fecha/hora';
+
           const { data, error } = await supabase.functions.invoke('voice-scheduling', {
             body: {
               action: 'reschedule_appointment',
               data: { appointment_id: params.appointment_id, new_start_at: newStartAt },
             },
           });
+
           if (error) return `Error: ${error.message}`;
-          addTranscriptLine('Sistema', `[Cita reprogramada: ${params.new_date} ${params.new_time}]`);
+          if (data?.error) return `Error: ${data.error}`;
+
+          addTranscriptLine('Sistema', `[Cita reprogramada: ${newStartAt}]`);
           return data.message || 'Cita reprogramada';
         } catch (err: any) {
           return `Error al reprogramar: ${err.message}`;
@@ -254,9 +341,9 @@ const VoiceAgent = ({ onCallEnd }: VoiceAgentProps) => {
         try {
           addTranscriptLine('Sistema', `[Buscando: ${params.query}]`);
           const { data, error } = await supabase.functions.invoke('web-search', {
-            body: { 
-              query: params.query, 
-              model_preference: params.model_preference || 'gemini' 
+            body: {
+              query: params.query,
+              model_preference: params.model_preference || 'gemini'
             },
           });
           if (error) return `Error en búsqueda: ${error.message}`;
@@ -285,6 +372,14 @@ const VoiceAgent = ({ onCallEnd }: VoiceAgentProps) => {
       if (message.type === 'agent_response') {
         const text = message.agent_response_event?.agent_response;
         if (text) addTranscriptLine('Agente', text);
+      }
+      if (message.type === 'client_tool_call') {
+        const toolName = message.client_tool_call?.tool_name;
+        if (toolName) addTranscriptLine('Sistema', `[Tool solicitada por agente: ${toolName}]`);
+      }
+      if (message.type === 'agent_tool_response') {
+        const toolName = message.agent_tool_response_event?.tool_name || 'tool';
+        addTranscriptLine('Sistema', `[Tool ejecutada: ${toolName}]`);
       }
     },
     onError: (err) => {
@@ -382,11 +477,18 @@ const VoiceAgent = ({ onCallEnd }: VoiceAgentProps) => {
         connectionType: 'webrtc',
       });
 
-      // Inject Knowledge Hub as dynamic context for the voice agent
-      if (data.knowledgeContext) {
-        const contextMsg = `CONTEXTO IMPORTANTE - Base de conocimientos de ${data.companyName || 'la empresa'}:\n\nLos artículos marcados como "⚠️ CORRECCIÓN PRIORITARIA" son correcciones humanas y tienen máxima prioridad. Úsalos siempre como referencia principal cuando el usuario pregunte sobre esos temas.\n\n${data.knowledgeContext}`;
-        conversation.sendContextualUpdate(contextMsg);
-      }
+      // Inject strict scheduling instructions + Knowledge Hub as dynamic context for the voice agent
+      const toolRules = [
+        'REGLAS DE AGENDA: Si el usuario pide agendar, SIEMPRE usa check_availability primero y luego book_appointment para confirmar.',
+        'REGLAS DE AGENDA: Nunca digas "te contactaremos" ni "te contacto luego" si puedes resolver con herramientas.',
+        'REGLAS DE AGENDA: Para cancelar usa cancel_appointment y para mover cita usa reschedule_appointment.',
+      ].join('\n');
+
+      const contextMsg = data.knowledgeContext
+        ? `${toolRules}\n\nCONTEXTO IMPORTANTE - Base de conocimientos de ${data.companyName || 'la empresa'}:\n\nLos artículos marcados como "⚠️ CORRECCIÓN PRIORITARIA" son correcciones humanas y tienen máxima prioridad. Úsalos siempre como referencia principal cuando el usuario pregunte sobre esos temas.\n\n${data.knowledgeContext}`
+        : toolRules;
+
+      conversation.sendContextualUpdate(contextMsg);
 
       toast.success('Llamada conectada');
     } catch (err: any) {
