@@ -292,17 +292,20 @@ async function handleState(input: StateInput): Promise<StateResult> {
     reply = await getAIResponse(LOVABLE_API_KEY, tenantId, supabase, 'client', effectiveMessageBody, conv);
 
   } else if (botState === 'employee_mode') {
+    const isExpenseCaptureIntent =
+      /\b(registra|registrar|agrega|agregar|captura|capturar|sube|subir|guarda|guardar|carga|cargar)\b/i.test(msg) &&
+      /(gasto|comprobante|ticket|factura|recibo)/i.test(msg);
+
     if (mediaUrl) {
       reply = await processReceiptOCR(mediaUrl, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, LOVABLE_API_KEY, tenantId, newContext, supabase, effectiveMessageBody);
     } else if (msg.includes('credencial') || msg.includes('contraseña') || msg.includes('password') || msg.includes('usuario y contraseña') || msg.includes('acceso')) {
       reply = '🔐 Vamos a guardar una credencial compartida.\n\n¿De qué *plataforma o servicio* es? (Ej: Gmail, Hosting, CPanel, Facebook Ads...)';
       newState = 'credential_collect_platform';
-    } else if (msg.includes('gasto') || msg.includes('comprobante') || msg.includes('ticket') || msg.includes('factura') || msg.includes('recibo')) {
+    } else if (isExpenseCaptureIntent) {
       reply = '📸 Envíame la *foto del comprobante* y extraeré los datos automáticamente con OCR.\n\nTambién puedes escribir el gasto manualmente:\n_Ej: "Gasto $350 comida con cliente"_';
       newState = 'employee_expense';
     } else {
-      // Delegate scheduling/agenda/calendar intents to AI tools to avoid hardcoded "hoy" behavior
-      // and correctly support "mañana", ranges, reschedules, and bulk cancellations.
+      // Delegate scheduling/agenda/calendar/intents to AI tools.
       reply = await getAIResponse(LOVABLE_API_KEY, tenantId, supabase, 'employee', effectiveMessageBody, conv);
     }
 
@@ -350,17 +353,35 @@ async function handleState(input: StateInput): Promise<StateResult> {
       newState = 'employee_mode';
     } else {
       const amountMatch = effectiveMessageBody.match(/\$?([\d,]+\.?\d*)/);
-      if (amountMatch) {
-        const amount = parseFloat(amountMatch[1].replace(',', ''));
+      const parsedAmount = amountMatch ? parseFloat(amountMatch[1].replace(/,/g, '')) : NaN;
+
+      if (Number.isFinite(parsedAmount) && parsedAmount > 0) {
         const description = effectiveMessageBody.replace(/\$?[\d,]+\.?\d*/, '').replace(/gasto/i, '').trim() || 'Gasto sin descripción';
-        await supabase.from('expenses').insert({
-          tenant_id: tenantId, user_id: newContext.user_id as string,
-          amount, description, expense_date: new Date().toISOString().split('T')[0], status: 'pending',
+        const { error: insertError } = await supabase.from('expenses').insert({
+          tenant_id: tenantId,
+          user_id: newContext.user_id as string,
+          amount: parsedAmount,
+          description,
+          expense_date: new Date().toISOString().split('T')[0],
+          status: 'pending',
         });
-        reply = `✅ Gasto registrado:\n• Monto: $${amount.toFixed(2)} MXN\n• Descripción: ${description}\n• Fecha: ${new Date().toLocaleDateString('es-MX')}\n\n¿Algo más en lo que pueda ayudarte?`;
-        newState = 'employee_mode';
+
+        if (insertError) {
+          console.error('Expense insert error:', insertError);
+          reply = '❌ No pude guardar el gasto en este momento. Intenta nuevamente en unos segundos.';
+        } else {
+          reply = `✅ Gasto registrado:\n• Monto: $${parsedAmount.toFixed(2)} MXN\n• Descripción: ${description}\n• Fecha: ${new Date().toLocaleDateString('es-MX')}\n\n¿Algo más en lo que pueda ayudarte?`;
+          newState = 'employee_mode';
+        }
       } else {
-        reply = 'No pude detectar el monto. Por favor incluye la cantidad, ej: _"$350 comida con cliente"_';
+        const wantsOtherTask = /(temperatura|clima|agenda|cita|recordatorio|lista|listar|detalle|resumen|buscar|investiga|dime|qué|que|c[aá]l|cu[aá]nto|cancela|salir|regresa)/i.test(msg);
+
+        if (wantsOtherTask) {
+          reply = await getAIResponse(LOVABLE_API_KEY, tenantId, supabase, 'employee', effectiveMessageBody, conv);
+          newState = 'employee_mode';
+        } else {
+          reply = 'No pude detectar el monto. Por favor incluye la cantidad, ej: _"$350 comida con cliente"_';
+        }
       }
     }
   }
