@@ -633,9 +633,14 @@ const SettingsPage = () => {
       const token = session?.session?.access_token;
       if (!token) throw new Error('No autenticado');
 
-      const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      if (!supabaseUrl) throw new Error('Configuración de backend incompleta');
+
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), 15000);
+
       const res = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/google-calendar-auth`,
+        `${supabaseUrl}/functions/v1/google-calendar-auth`,
         {
           method: 'POST',
           headers: {
@@ -647,8 +652,11 @@ const SettingsPage = () => {
             calendar_email: emailToSync,
             app_origin: window.location.origin,
           }),
+          signal: controller.signal,
         },
       );
+
+      window.clearTimeout(timeoutId);
 
       const data = await res.json();
       if (!data.auth_url) {
@@ -736,9 +744,11 @@ const SettingsPage = () => {
       const token = session?.session?.access_token;
       if (!token) return false;
 
-      const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      if (!supabaseUrl) return false;
+
       const res = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/google-calendar-auth`,
+        `${supabaseUrl}/functions/v1/google-calendar-auth`,
         {
           method: 'GET',
           headers: { 'Authorization': `Bearer ${token}` },
@@ -764,9 +774,11 @@ const SettingsPage = () => {
       if (!token) throw new Error('No autenticado');
 
       const tenantId = await getTenantId();
-      const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      if (!supabaseUrl) throw new Error('Configuración de backend incompleta');
+
       const res = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/calendar-sync`,
+        `${supabaseUrl}/functions/v1/calendar-sync`,
         {
           method: 'POST',
           headers: {
