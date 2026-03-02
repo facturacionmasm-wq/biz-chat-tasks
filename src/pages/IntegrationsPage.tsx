@@ -144,7 +144,8 @@ const IntegrationsPage = () => {
         setWaConnected(false);
         toast.success('WhatsApp desconectado');
       } else if (id === 'voice-agent') {
-        const { error } = await supabase.functions.invoke('elevenlabs-twilio-setup', { body: { action: 'disconnect' } });
+        const { data, error } = await supabase.functions.invoke('elevenlabs-twilio-setup', { body: { action: 'remove' } });
+        if (data?.error) throw new Error(data.error);
         if (error) throw error;
         setVoiceAgentConnected(false);
         toast.success('Agente de voz desconectado');
