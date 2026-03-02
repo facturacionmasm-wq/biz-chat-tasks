@@ -92,10 +92,28 @@ serve(async (req) => {
     let newState = botState;
     let newContext = { ...botContext };
 
+    // ==================== GLOBAL COMMANDS ====================
+    const isResetCommand = /^(menu|menú|inicio|reiniciar|reset|salir|volver|empezar)$/i.test(msg);
+
+    // ==================== STALE CONVERSATION RESET ====================
+    // If conversation has been idle for 24+ hours AND is not in welcome/awaiting_role, auto-reset
+    let isStale = false;
+    if (!isSandbox && conv.updated_at) {
+      const lastActivity = new Date(conv.updated_at).getTime();
+      const hoursSinceActivity = (Date.now() - lastActivity) / (1000 * 60 * 60);
+      if (hoursSinceActivity > 24 && !['welcome', 'awaiting_role'].includes(botState)) {
+        isStale = true;
+        console.log(`Stale conversation detected (${hoursSinceActivity.toFixed(1)}h idle), state was: ${botState}`);
+      }
+    }
+
     // ==================== STATE MACHINE ====================
+    const effectiveBotState = (isResetCommand || isStale) ? 'welcome' : botState;
+    const effectiveContext = (isResetCommand || isStale) ? {} : { ...botContext };
+
     const stateResult = await handleState({
-      botState, msg, effectiveMessageBody, isSandbox, tenantId, contactPhone,
-      conversationId, conv, newContext, supabase, mediaUrl,
+      botState: effectiveBotState, msg: isResetCommand ? '' : msg, effectiveMessageBody, isSandbox, tenantId, contactPhone,
+      conversationId, conv, newContext: effectiveContext, supabase, mediaUrl,
       TWILIO_ACCOUNT_SID: TWILIO_ACCOUNT_SID!, TWILIO_AUTH_TOKEN: TWILIO_AUTH_TOKEN!,
       LOVABLE_API_KEY: LOVABLE_API_KEY!, SUPABASE_URL,
     });
@@ -374,16 +392,31 @@ async function handleState(input: StateInput): Promise<StateResult> {
           newState = 'employee_mode';
         }
       } else {
-        const wantsOtherTask = /(temperatura|clima|agenda|cita|recordatorio|lista|listar|detalle|resumen|buscar|investiga|dime|qué|que|c[aá]l|cu[aá]nto|cancela|salir|regresa)/i.test(msg);
+        // Escape: delegate to AI if the message looks like another intent
+        const wantsOtherTask = /(temperatura|clima|agenda|cita|recordatorio|lista|listar|detalle|resumen|buscar|investiga|dime|qué|que|c[aá]l|cu[aá]nto|cancela|salir|regresa|hola|ayuda|help)/i.test(msg);
 
         if (wantsOtherTask) {
           reply = await getAIResponse(LOVABLE_API_KEY, tenantId, supabase, 'employee', effectiveMessageBody, conv);
           newState = 'employee_mode';
         } else {
-          reply = 'No pude detectar el monto. Por favor incluye la cantidad, ej: _"$350 comida con cliente"_';
+          reply = 'No pude detectar el monto. Por favor incluye la cantidad, ej: _"$350 comida con cliente"_\n\n_Escribe *menu* para volver al inicio._';
         }
       }
     }
+
+  } else {
+    // ==================== UNKNOWN STATE FALLBACK ====================
+    console.error(`Unknown bot state: "${botState}", resetting to welcome`);
+    newState = 'welcome';
+    newContext = {};
+    reply = '¡Hola! 👋 Parece que tuvimos un pequeño desajuste. Empecemos de nuevo.\n\n¿Vienes como *cliente* o eres parte del equipo (*empleado*)?\n\n1️⃣ Soy cliente\n2️⃣ Soy empleado';
+    newState = 'awaiting_role';
+  }
+
+  // ==================== EMPTY REPLY GUARD ====================
+  if (!reply || reply.trim() === '') {
+    console.error(`Empty reply detected. State: ${botState} → ${newState}, msg: "${msg.substring(0, 50)}"`);
+    reply = 'Disculpa, no pude procesar tu mensaje. ¿Podrías intentarlo de nuevo? 🙏\n\n_Escribe *menu* para volver al inicio._';
   }
 
   return { reply, newState, newContext };
