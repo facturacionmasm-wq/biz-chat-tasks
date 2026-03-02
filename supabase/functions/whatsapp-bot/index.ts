@@ -137,21 +137,70 @@ serve(async (req) => {
       } catch (e) { console.error('Usage tracking (in) error:', e); }
 
       if (reply && TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && TWILIO_PHONE_NUMBER) {
-        const twilioResult = await sendTwilioMessage(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER, contactPhone, reply);
-        await supabase.from('whatsapp_messages').insert({
-          tenant_id: tenantId, conversation_id: conversationId,
-          direction: 'out', body: reply, status: 'sent',
-          metadata: { provider: 'bot', bot_state: newState },
-        });
-
         try {
-          await supabase.from('whatsapp_usage_events').insert({
-            tenant_id: tenantId, region: 'LATAM', provider: 'twilio',
-            provider_message_id: twilioResult?.sid || null,
-            event_type: 'message_out', units: 1,
-            metadata: { conversation_id: conversationId, bot_state: newState },
+          const twilioResult = await sendTwilioMessage(
+            TWILIO_ACCOUNT_SID,
+            TWILIO_AUTH_TOKEN,
+            TWILIO_PHONE_NUMBER,
+            contactPhone,
+            reply,
+          );
+
+          const twilioStatus = String(twilioResult?.status || '').toLowerCase();
+          const hasTwilioError = Boolean(twilioResult?.error_code);
+          const outboundStatus = hasTwilioError || twilioStatus === 'failed' || twilioStatus === 'undelivered'
+            ? 'failed'
+            : (twilioStatus || 'sent');
+
+          await supabase.from('whatsapp_messages').insert({
+            tenant_id: tenantId,
+            conversation_id: conversationId,
+            direction: 'out',
+            body: reply,
+            status: outboundStatus,
+            metadata: {
+              provider: 'bot',
+              bot_state: newState,
+              message_sid: twilioResult?.sid || null,
+              twilio_status: twilioResult?.status || null,
+              twilio_error_code: twilioResult?.error_code || null,
+              twilio_error_message: twilioResult?.error_message || null,
+            },
           });
-        } catch (e) { console.error('Usage tracking (out) error:', e); }
+
+          try {
+            await supabase.from('whatsapp_usage_events').insert({
+              tenant_id: tenantId, region: 'LATAM', provider: 'twilio',
+              provider_message_id: twilioResult?.sid || null,
+              event_type: 'message_out', units: 1,
+              metadata: { conversation_id: conversationId, bot_state: newState, twilio_status: twilioResult?.status || null },
+            });
+          } catch (e) { console.error('Usage tracking (out) error:', e); }
+        } catch (sendErr) {
+          console.error('Twilio send failed:', sendErr);
+          await supabase.from('whatsapp_messages').insert({
+            tenant_id: tenantId,
+            conversation_id: conversationId,
+            direction: 'out',
+            body: reply,
+            status: 'failed',
+            metadata: {
+              provider: 'bot',
+              bot_state: newState,
+              error: sendErr instanceof Error ? sendErr.message : 'Unknown send error',
+            },
+          });
+        }
+      } else if (reply) {
+        console.error('Twilio config missing: cannot send outbound WhatsApp reply');
+        await supabase.from('whatsapp_messages').insert({
+          tenant_id: tenantId,
+          conversation_id: conversationId,
+          direction: 'out',
+          body: reply,
+          status: 'failed',
+          metadata: { provider: 'bot', bot_state: newState, error: 'missing_twilio_config' },
+        });
       }
     }
 
