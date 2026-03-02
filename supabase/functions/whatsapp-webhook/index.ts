@@ -6,6 +6,22 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
+async function validateTwilioSignature(
+  authToken: string,
+  signature: string,
+  url: string,
+  params: Record<string, string>,
+): Promise<boolean> {
+  const sortedKeys = Object.keys(params).sort();
+  let data = url;
+  for (const key of sortedKeys) data += key + params[key];
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey('raw', encoder.encode(authToken), { name: 'HMAC', hash: 'SHA-1' }, false, ['sign']);
+  const sig = await crypto.subtle.sign('HMAC', key, encoder.encode(data));
+  const computed = btoa(String.fromCharCode(...new Uint8Array(sig)));
+  return computed === signature;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -13,7 +29,33 @@ serve(async (req) => {
 
   const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
   const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const TWILIO_AUTH_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN') || '';
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+  const logWebhook = async (input: {
+    tenantId?: string | null;
+    messageId?: string | null;
+    conversationId?: string | null;
+    stage: string;
+    status: 'ok' | 'error' | 'skip';
+    error?: string | null;
+    payload?: Record<string, unknown>;
+  }) => {
+    try {
+      await supabase.from('webhook_logs').insert({
+        tenant_id: input.tenantId ?? null,
+        provider: 'whatsapp',
+        message_id: input.messageId ?? null,
+        conversation_id: input.conversationId ?? null,
+        stage: input.stage,
+        status: input.status,
+        error: input.error ?? null,
+        payload: input.payload ?? {},
+      });
+    } catch (e) {
+      console.error('webhook_logs insert failed:', e);
+    }
+  };
 
   try {
     // WhatsApp Cloud API webhook verification (GET with hub.verify_token)
@@ -41,8 +83,29 @@ serve(async (req) => {
 
     if (contentType.includes('application/x-www-form-urlencoded')) {
       // ========== TWILIO FORMAT ==========
-      const formData = await req.text();
-      const params = new URLSearchParams(formData);
+      const rawFormData = await req.text();
+      const params = new URLSearchParams(rawFormData);
+      const paramsObj = Object.fromEntries(params.entries());
+
+      if (TWILIO_AUTH_TOKEN) {
+        const twilioSignature = req.headers.get('X-Twilio-Signature') || '';
+        if (twilioSignature) {
+          const webhookUrl = `${SUPABASE_URL}/functions/v1/whatsapp-webhook`;
+          const isValid = await validateTwilioSignature(TWILIO_AUTH_TOKEN, twilioSignature, webhookUrl, paramsObj);
+          if (!isValid) {
+            await logWebhook({
+              stage: 'twilio_signature_validation',
+              status: 'error',
+              error: 'invalid_signature',
+              payload: { has_signature: true },
+            });
+            return new Response('<Response></Response>', {
+              status: 403,
+              headers: { ...corsHeaders, 'Content-Type': 'text/xml' },
+            });
+          }
+        }
+      }
 
       const from = params.get('From') || '';       // e.g. "whatsapp:+5215512345678"
       const to = params.get('To') || '';           // e.g. "whatsapp:+12135132649"
@@ -112,6 +175,12 @@ serve(async (req) => {
             .eq('id', dbMessage.id);
         }
 
+        await logWebhook({
+          stage: 'delivery_callback',
+          status: 'ok',
+          messageId: messageSid,
+          payload: { message_status: messageStatus, normalized_status: normalizedStatus, error_code: errorCode || null },
+        });
         console.log(`Twilio delivery callback sid=${messageSid} status=${messageStatus} errorCode=${errorCode || 'none'}`);
         return new Response('<Response></Response>', {
           status: 200,
@@ -150,19 +219,15 @@ serve(async (req) => {
         }
       }
 
-      // Fallback to first tenant if none matched
       if (!tenantId) {
-        const { data: firstTenant } = await supabase
-          .from('tenants')
-          .select('id')
-          .limit(1)
-          .single();
-        tenantId = firstTenant?.id || null;
-      }
-
-      if (!tenantId) {
+        await logWebhook({
+          stage: 'tenant_resolution',
+          status: 'skip',
+          messageId: messageSid,
+          payload: { from: contactPhone, to: businessPhone, reason: 'tenant_not_found' },
+        });
         console.error('No tenant found for this WhatsApp number');
-        // Still return 200 to Twilio so it doesn't retry
+        // Always return 200 to prevent provider retries storm
         return new Response('<Response></Response>', {
           status: 200,
           headers: { ...corsHeaders, 'Content-Type': 'text/xml' },
@@ -231,6 +296,31 @@ serve(async (req) => {
       }
 
       if (conversation) {
+        // Idempotency: avoid duplicate inbound processing by provider message SID
+        if (messageSid) {
+          const { data: existingInbound } = await supabase
+            .from('whatsapp_messages')
+            .select('id')
+            .eq('conversation_id', conversation.id)
+            .eq('direction', 'in')
+            .contains('metadata', { message_sid: messageSid })
+            .maybeSingle();
+
+          if (existingInbound) {
+            await logWebhook({
+              tenantId,
+              conversationId: conversation.id,
+              messageId: messageSid,
+              stage: 'inbound_dedup',
+              status: 'skip',
+            });
+            return new Response('<Response></Response>', {
+              status: 200,
+              headers: { ...corsHeaders, 'Content-Type': 'text/xml' },
+            });
+          }
+        }
+
         await supabase.from('whatsapp_messages').insert({
           tenant_id: tenantId,
           conversation_id: conversation.id,
