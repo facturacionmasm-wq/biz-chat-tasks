@@ -9,6 +9,38 @@
 import { AI_GATEWAY_URL } from "./constants.ts";
 import { sendTwilioMessage } from "./helpers.ts";
 
+// Helper to resolve tenant's WhatsApp sender config (avoids 63007 errors)
+async function resolveTenantSender(
+  supabase: any,
+  tenantId: string,
+): Promise<{ fromNum: string; msgSvcSid: string | undefined }> {
+  const { data: tenantData } = await supabase
+    .from('tenants')
+    .select('whatsapp_config')
+    .eq('id', tenantId)
+    .single();
+
+  const waConfig = tenantData?.whatsapp_config as Record<string, any> | null;
+  let fromNum = '';
+  let msgSvcSid: string | undefined = undefined;
+
+  if (waConfig?.phone_number) {
+    fromNum = String(waConfig.phone_number).replace(/^whatsapp:/i, '');
+  }
+  if (waConfig?.messaging_service_sid) {
+    msgSvcSid = String(waConfig.messaging_service_sid).trim();
+  }
+
+  if (!fromNum) {
+    fromNum = Deno.env.get('TWILIO_PHONE_NUMBER') || '';
+  }
+  if (!msgSvcSid) {
+    msgSvcSid = Deno.env.get('TWILIO_MESSAGING_SERVICE_SID') || undefined;
+  }
+
+  return { fromNum, msgSvcSid };
+}
+
 // ==================== DRIVE UPLOAD HELPER ====================
 
 async function uploadToDrive(
@@ -390,14 +422,14 @@ export async function handleBudgetCollectApprover(
         approver_phone: phoneMatch[0],
       }).in('id', budgetIds);
       
-      // Send approval request to external number
+      // Send approval request to external number — use tenant sender config
       const TWILIO_ACCOUNT_SID = Deno.env.get('TWILIO_ACCOUNT_SID');
       const TWILIO_AUTH_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN');
-      const TWILIO_PHONE_NUMBER = Deno.env.get('TWILIO_PHONE_NUMBER');
-      
-      if (TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && TWILIO_PHONE_NUMBER) {
+
+      if (TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN) {
+        const { fromNum, msgSvcSid } = await resolveTenantSender(supabase, tenantId);
         const approvalMsg = `📋 *Solicitud de autorización*\n\nDe: ${userName}\nProveedor: ${budgetVendor}\nConcepto: ${budgetConcept}\nMonto: *$${budgetTotal.toFixed(2)} ${budgetCurrency}*\n\nResponde:\n✅ *APROBAR*\n❌ *RECHAZAR* (opcional: motivo)`;
-        await sendTwilioMessage(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER, phoneMatch[0], approvalMsg);
+        await sendTwilioMessage(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, fromNum, phoneMatch[0], approvalMsg, msgSvcSid);
       }
       
       const cleanContext = { ...context };
@@ -462,17 +494,17 @@ export async function handleBudgetCollectApprover(
     approver_phone: approver.whatsapp_number || approver.phone || null,
   }).in('id', budgetIds);
   
-  // Send approval request via WhatsApp
+  // Send approval request via WhatsApp — use tenant sender config
   const approverPhone = approver.whatsapp_number || approver.phone;
   const TWILIO_ACCOUNT_SID = Deno.env.get('TWILIO_ACCOUNT_SID');
   const TWILIO_AUTH_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN');
-  const TWILIO_PHONE_NUMBER = Deno.env.get('TWILIO_PHONE_NUMBER');
   
-  if (approverPhone && TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && TWILIO_PHONE_NUMBER) {
+  if (approverPhone && TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN) {
+    const { fromNum, msgSvcSid } = await resolveTenantSender(supabase, tenantId);
     const approvalMsg = `📋 *Solicitud de autorización*\n\nDe: ${userName}\nProveedor: ${budgetVendor}\nConcepto: ${budgetConcept}\nMonto: *$${budgetTotal.toFixed(2)} ${budgetCurrency}*\n\nResponde:\n✅ *APROBAR*\n❌ *RECHAZAR* (opcional: motivo)`;
     
     try {
-      await sendTwilioMessage(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER, approverPhone, approvalMsg);
+      await sendTwilioMessage(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, fromNum, approverPhone, approvalMsg, msgSvcSid);
       
       // Log outbound message
       const { data: approverConv } = await supabase
