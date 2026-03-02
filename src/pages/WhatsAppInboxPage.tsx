@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { MessageSquare, Search, Send, Paperclip, StickyNote, Phone, CalendarPlus, Circle, CheckCircle2, AlertCircle, Plus, Loader2, ArrowLeft } from 'lucide-react';
+import { MessageSquare, Search, Send, Paperclip, StickyNote, Phone, CalendarPlus, Circle, CheckCircle2, AlertCircle, Plus, Loader2, ArrowLeft, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -35,6 +35,9 @@ const WhatsAppInboxPage = () => {
   const [newConvPhone, setNewConvPhone] = useState('');
   const [newConvMessage, setNewConvMessage] = useState('');
   const [sending, setSending] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deletingConvId, setDeletingConvId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const isMobile = useIsMobile();
 
@@ -93,6 +96,23 @@ const WhatsAppInboxPage = () => {
 
   const handleCloseConversation = async () => { if (!selectedConvId) return; await supabase.from('whatsapp_conversations').update({ status: 'closed' }).eq('id', selectedConvId); };
   const handleReopenConversation = async () => { if (!selectedConvId) return; await supabase.from('whatsapp_conversations').update({ status: 'open' }).eq('id', selectedConvId); };
+
+  const handleDeleteConversation = async (convId: string) => {
+    setDeleting(true);
+    try {
+      // Delete messages first, then conversation
+      await supabase.from('whatsapp_messages').delete().eq('conversation_id', convId);
+      await supabase.from('whatsapp_conversations').delete().eq('id', convId);
+      if (selectedConvId === convId) setSelectedConvId(null);
+      setShowDeleteConfirm(false);
+      setDeletingConvId(null);
+      toast.success('Conversación eliminada');
+    } catch (err: any) {
+      toast.error(err.message || 'Error al eliminar conversación');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const filtered = conversations.filter(c =>
     (!statusFilter || c.status === statusFilter) &&
@@ -194,6 +214,9 @@ const WhatsAppInboxPage = () => {
           ) : (
             <button onClick={handleReopenConversation} className="flex items-center gap-1 px-2 py-1.5 rounded-md text-xs font-medium text-success hover:bg-success/10"><Circle size={14} /> <span className="hidden sm:inline">Reabrir</span></button>
           )}
+          <button onClick={() => { setDeletingConvId(selectedConvId); setShowDeleteConfirm(true); }} className="flex items-center gap-1 px-2 py-1.5 rounded-md text-xs font-medium text-destructive hover:bg-destructive/10" title="Eliminar chat">
+            <Trash2 size={14} /> <span className="hidden sm:inline">Eliminar</span>
+          </button>
           <button className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary hidden sm:block"><Phone size={16} /></button>
           <button className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary hidden sm:block"><CalendarPlus size={16} /></button>
           <button onClick={() => setShowNotes(!showNotes)} className={`p-2 rounded-md transition-colors hidden sm:block ${showNotes ? 'text-primary bg-primary/10' : 'text-muted-foreground hover:text-foreground hover:bg-secondary'}`}>
@@ -276,6 +299,24 @@ const WhatsAppInboxPage = () => {
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowNewConv(false)}>Cancelar</Button>
             <Button onClick={handleCreateConversation} disabled={!newConvName.trim() || !newConvPhone.trim()}>Iniciar conversación</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Eliminar conversación</DialogTitle>
+            <DialogDescription>
+              Se eliminarán todos los mensajes de esta conversación. Esta acción no se puede deshacer.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setShowDeleteConfirm(false); setDeletingConvId(null); }}>Cancelar</Button>
+            <Button variant="destructive" onClick={() => deletingConvId && handleDeleteConversation(deletingConvId)} disabled={deleting}>
+              {deleting ? <Loader2 size={14} className="animate-spin mr-1" /> : <Trash2 size={14} className="mr-1" />}
+              Eliminar
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
