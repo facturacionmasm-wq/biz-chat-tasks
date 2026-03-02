@@ -20,19 +20,19 @@ serve(async (req) => {
   }
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-  const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+  const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || Deno.env.get('SUPABASE_PUBLISHABLE_KEY')!;
   const anonClient = createClient(supabaseUrl, supabaseAnonKey, {
     global: { headers: { Authorization: authHeader } },
   });
 
-  const { data, error } = await anonClient.auth.getClaims(authHeader.replace('Bearer ', ''));
-  if (error || !data?.claims) {
+  const { data: { user }, error } = await anonClient.auth.getUser();
+  if (error || !user) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
 
-  const userId = data.claims.sub as string;
+  const userId = user.id;
 
   const ELEVENLABS_API_KEY = Deno.env.get('ELEVENLABS_API_KEY');
   const ELEVENLABS_AGENT_ID = Deno.env.get('ELEVENLABS_AGENT_ID');
