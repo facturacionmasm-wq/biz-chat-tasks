@@ -220,55 +220,54 @@ serve(async (req) => {
           });
         }
 
-        // Get current month usage
+        // Aggregate usage from whatsapp_usage_events for the current month
         const now = new Date();
-        const periodStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+        const periodStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01T00:00:00`;
 
-        const { data: usage } = await supabase
-          .from('tenant_usage_monthly')
-          .select('total_minutes')
+        const { data: events } = await supabase
+          .from('whatsapp_usage_events')
+          .select('units')
           .eq('tenant_id', tenant_id)
-          .eq('period_start', periodStart)
-          .maybeSingle();
+          .gte('occurred_at', periodStart);
 
-        const totalMinutes = Math.ceil(usage?.total_minutes || 0);
+        const totalUnits = (events || []).reduce((sum: number, e: any) => sum + Number(e.units), 0);
 
-        if (totalMinutes === 0) {
-          return new Response(JSON.stringify({ message: 'No usage to report' }), {
+        if (totalUnits === 0) {
+          return new Response(JSON.stringify({ message: 'No usage to report', units: 0 }), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           });
         }
 
-        // Report usage to Stripe
+        // Report usage to Stripe (set = absolute for the period)
         const usageRecord = await stripeRequest(
           `/subscription_items/${stripeCustomer.stripe_metered_item_id}/usage_records`,
           'POST',
           {
-            quantity: String(totalMinutes),
+            quantity: String(totalUnits),
             timestamp: String(Math.floor(Date.now() / 1000)),
-            action: 'set', // set = absolute, not incremental
+            action: 'set',
           },
           STRIPE_SECRET_KEY
         );
 
-        // Save record
+        // Save record for auditing
         const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
         await supabase.from('stripe_usage_records').insert({
           tenant_id,
           stripe_subscription_item_id: stripeCustomer.stripe_metered_item_id,
-          quantity: totalMinutes,
-          period_start: periodStart,
+          quantity: totalUnits,
+          period_start: periodStart.split('T')[0],
           period_end: `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, '0')}-01`,
           stripe_usage_record_id: usageRecord.id,
           status: 'reported',
           reported_at: new Date().toISOString(),
         });
 
-        console.log(`Reported ${totalMinutes} minutes for tenant ${tenant_id}`);
+        console.log(`Reported ${totalUnits} units for tenant ${tenant_id}`);
 
         return new Response(JSON.stringify({
           success: true,
-          minutes_reported: totalMinutes,
+          units_reported: totalUnits,
           stripe_usage_record_id: usageRecord.id,
         }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
@@ -283,16 +282,27 @@ serve(async (req) => {
           });
         }
 
+        const now = new Date();
+        const periodStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01T00:00:00`;
+
         const [customerRes, usageRes, marginRes] = await Promise.all([
           supabase.from('stripe_customers').select('*').eq('tenant_id', tenant_id).maybeSingle(),
-          supabase.from('tenant_usage_monthly').select('*').eq('tenant_id', tenant_id)
-            .order('period_start', { ascending: false }).limit(3),
+          supabase.from('whatsapp_usage_events').select('event_type, units, occurred_at')
+            .eq('tenant_id', tenant_id).gte('occurred_at', periodStart),
           supabase.from('realtime_margin_state').select('*').eq('tenant_id', tenant_id).maybeSingle(),
         ]);
 
+        // Aggregate usage
+        const usageEvents = usageRes.data || [];
+        const totalUnits = usageEvents.reduce((sum: number, e: any) => sum + Number(e.units), 0);
+        const byType: Record<string, number> = {};
+        for (const ev of usageEvents) {
+          byType[ev.event_type] = (byType[ev.event_type] || 0) + Number(ev.units);
+        }
+
         return new Response(JSON.stringify({
           customer: customerRes.data,
-          usage_history: usageRes.data,
+          current_month_usage: { total_units: totalUnits, by_type: byType, event_count: usageEvents.length },
           margin_state: marginRes.data,
         }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
