@@ -1765,6 +1765,54 @@ export type Database = {
           },
         ]
       }
+      service_packages: {
+        Row: {
+          active: boolean
+          created_at: string
+          currency: string
+          description: string | null
+          id: string
+          name: string
+          popular: boolean
+          price: number
+          service_type: string
+          sort_order: number
+          unit_label: string
+          units: number
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          currency?: string
+          description?: string | null
+          id?: string
+          name: string
+          popular?: boolean
+          price?: number
+          service_type?: string
+          sort_order?: number
+          unit_label?: string
+          units?: number
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          currency?: string
+          description?: string | null
+          id?: string
+          name?: string
+          popular?: boolean
+          price?: number
+          service_type?: string
+          sort_order?: number
+          unit_label?: string
+          units?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       shared_credentials: {
         Row: {
           created_at: string
@@ -2092,6 +2140,66 @@ export type Database = {
           },
           {
             foreignKeyName: "tenant_offer_history_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_package_balances: {
+        Row: {
+          created_at: string
+          expires_at: string | null
+          id: string
+          package_id: string
+          purchased_at: string
+          service_type: string
+          status: string
+          stripe_payment_intent_id: string | null
+          tenant_id: string
+          units_purchased: number
+          units_remaining: number | null
+          units_used: number
+        }
+        Insert: {
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          package_id: string
+          purchased_at?: string
+          service_type: string
+          status?: string
+          stripe_payment_intent_id?: string | null
+          tenant_id: string
+          units_purchased?: number
+          units_remaining?: number | null
+          units_used?: number
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          package_id?: string
+          purchased_at?: string
+          service_type?: string
+          status?: string
+          stripe_payment_intent_id?: string | null
+          tenant_id?: string
+          units_purchased?: number
+          units_remaining?: number | null
+          units_used?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_package_balances_package_id_fkey"
+            columns: ["package_id"]
+            isOneToOne: false
+            referencedRelation: "service_packages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tenant_package_balances_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
