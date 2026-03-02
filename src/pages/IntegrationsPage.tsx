@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Plug, MessageSquare, CalendarDays, Brain, Shield, ExternalLink, CheckCircle2, Circle, X, Save, Phone, Loader2 } from 'lucide-react';
+import { Plug, MessageSquare, CalendarDays, Brain, Shield, ExternalLink, CheckCircle2, Circle, X, Save, Phone, Loader2, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
@@ -51,6 +51,9 @@ const IntegrationsPage = () => {
   const [waConnected, setWaConnected] = useState(false);
   const [voiceAgentConnected, setVoiceAgentConnected] = useState(false);
   const [voiceAgentLoading, setVoiceAgentLoading] = useState(false);
+  const [voiceDialogOpen, setVoiceDialogOpen] = useState(false);
+  const [voicePhoneNumber, setVoicePhoneNumber] = useState('');
+  const [voiceCurrentNumber, setVoiceCurrentNumber] = useState('');
   const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-webhook`;
 
   const integrations = integrationsMeta.map(i => {
@@ -111,6 +114,7 @@ const IntegrationsPage = () => {
 
       if (!voiceError && !voiceData?.error) {
         setVoiceAgentConnected(Boolean(voiceData?.configured));
+        setVoiceCurrentNumber(voiceData?.phone_number || '');
       }
     } catch (error) {
       console.error('Error loading integration status:', error);
@@ -125,7 +129,7 @@ const IntegrationsPage = () => {
     if (id === 'whatsapp') {
       setWaDialogOpen(true);
     } else if (id === 'voice-agent') {
-      handleVoiceAgentSetup();
+      setVoiceDialogOpen(true);
     } else {
       toast.info('Configuración próximamente');
     }
@@ -155,27 +159,22 @@ const IntegrationsPage = () => {
     }
   };
 
-  const handleVoiceAgentSetup = async () => {
+  const handleVoiceAgentSetup = async (phoneNumber?: string) => {
     setVoiceAgentLoading(true);
     try {
-      if (voiceAgentConnected) {
-        // Check status
-        const { data, error } = await supabase.functions.invoke('elevenlabs-twilio-setup', {
-          body: { action: 'status' },
-        });
-        if (error) throw error;
-        setVoiceAgentConnected(Boolean(data?.configured));
-        toast.info(`Estado: ${data?.configured ? 'Conectado' : 'No conectado'} — Número: ${data?.phone_number}`);
-      } else {
-        // Setup
-        const { data, error } = await supabase.functions.invoke('elevenlabs-twilio-setup', {
-          body: { action: 'setup' },
-        });
-        if (error) throw error;
-        if (data?.error) throw new Error(data.error);
-        setVoiceAgentConnected(true);
-        toast.success('¡Agente de voz conectado! ElevenLabs ahora maneja las llamadas entrantes a tu número Twilio.');
-      }
+      const body: Record<string, string> = { action: 'setup' };
+      if (phoneNumber) body.phone_number = phoneNumber;
+
+      const { data, error } = await supabase.functions.invoke('elevenlabs-twilio-setup', {
+        body,
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      setVoiceAgentConnected(true);
+      setVoiceCurrentNumber(phoneNumber || data?.phone_number || '');
+      setVoiceDialogOpen(false);
+      setVoicePhoneNumber('');
+      toast.success('¡Agente de voz conectado! ElevenLabs ahora maneja las llamadas entrantes.');
     } catch (err: any) {
       toast.error(err.message || 'Error configurando agente de voz');
     } finally {
@@ -357,6 +356,68 @@ const IntegrationsPage = () => {
           </div>
         </div>
       </div>
+
+      {/* Voice Agent Config Dialog */}
+      <Dialog open={voiceDialogOpen} onOpenChange={setVoiceDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Phone size={18} className="text-primary" /> Configurar Agente de Voz
+            </DialogTitle>
+            <DialogDescription>
+              Ingresa el número de teléfono de Twilio que deseas conectar con el agente de voz IA.
+              Debe estar comprado como "Incoming Phone Number" en tu cuenta de Twilio.
+            </DialogDescription>
+          </DialogHeader>
+
+          {voiceCurrentNumber && voiceAgentConnected && (
+            <div className="bg-muted/50 rounded-lg p-3 text-sm">
+              <p className="text-muted-foreground">Número actual conectado:</p>
+              <p className="font-semibold text-foreground">{voiceCurrentNumber}</p>
+            </div>
+          )}
+
+          <div className="space-y-3 mt-2">
+            <div>
+              <label className="text-xs font-medium text-foreground block mb-1">
+                Número de teléfono Twilio *
+              </label>
+              <input
+                value={voicePhoneNumber}
+                onChange={e => setVoicePhoneNumber(e.target.value)}
+                placeholder="Ej: +1234567890"
+                className="w-full bg-secondary rounded-lg px-3 py-2 text-sm outline-none border border-border focus:border-primary"
+              />
+              <p className="text-[10px] text-muted-foreground mt-1">
+                Formato E.164 con código de país. Debe ser un número comprado en Twilio (no solo Verified Caller ID).
+              </p>
+            </div>
+          </div>
+
+          <div className="flex gap-2 mt-4">
+            <Button
+              onClick={() => {
+                if (!voicePhoneNumber.trim()) {
+                  toast.error('Ingresa un número de teléfono');
+                  return;
+                }
+                handleVoiceAgentSetup(voicePhoneNumber.trim());
+              }}
+              disabled={voiceAgentLoading}
+              className="flex-1"
+            >
+              {voiceAgentLoading ? (
+                <><Loader2 size={14} className="animate-spin mr-1" /> Conectando...</>
+              ) : (
+                <><Save size={14} className="mr-1" /> {voiceAgentConnected ? 'Cambiar número' : 'Conectar'}</>
+              )}
+            </Button>
+            <Button variant="outline" onClick={() => setVoiceDialogOpen(false)}>
+              Cancelar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* WhatsApp Config Dialog */}
       <Dialog open={waDialogOpen} onOpenChange={setWaDialogOpen}>
