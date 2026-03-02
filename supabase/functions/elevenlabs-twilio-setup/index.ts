@@ -123,7 +123,13 @@ serve(async (req) => {
         console.error(`[el-twilio] Import error [${importRes.status}]:`, errText);
 
         // If already exists, try to find it
-        if (importRes.status === 409 || importRes.status === 422 || errText.includes('already')) {
+        if (importRes.status === 404) {
+          throw new Error(
+            `El número ${TWILIO_PHONE_NUMBER} no se encontró en tu cuenta de Twilio. ` +
+            `Asegúrate de que esté comprado como "Incoming Phone Number" (no solo como Verified Caller ID) ` +
+            `en tu consola de Twilio antes de conectarlo.`
+          );
+        } else if (importRes.status === 409 || importRes.status === 422 || errText.includes('already')) {
           console.log('[el-twilio] Number may already be imported, checking...');
         } else {
           throw new Error(`Error importando número en ElevenLabs: ${errText}`);
