@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Building2, Users, CreditCard, Bell, Database, Brain, Globe, ChevronRight, User, KeyRound, Loader2, Palette, Save, Upload, Image, X, Mail, Phone as PhoneIcon, MessageSquare, Trash2, Settings2, ChevronDown, ChevronUp, RefreshCw, ArrowLeft, ArrowRight, CheckCircle, XCircle, CalendarDays, Link2, Unlink } from 'lucide-react';
+import { Building2, Users, CreditCard, Bell, Database, Brain, Globe, ChevronRight, User, KeyRound, Loader2, Palette, Save, Upload, Image, X, Mail, Phone as PhoneIcon, MessageSquare, Trash2, Settings2, ChevronDown, ChevronUp, RefreshCw, ArrowLeft, ArrowRight, CheckCircle, XCircle, CalendarDays, Link2, Unlink, Clock } from 'lucide-react';
 import BillingSection from '@/components/BillingSection';
 import AvailabilityWizard, { type AvailabilityRule, DEFAULT_RULES } from '@/components/AvailabilityWizard';
 import { teamMembers } from '@/data/mockData';
@@ -30,6 +30,7 @@ const settingsSections = [
   { id: 'general', label: 'General', icon: Building2 },
   { id: 'branding', label: 'Branding', icon: Palette },
   { id: 'team', label: 'Equipo', icon: Users },
+  { id: 'availability', label: 'Disponibilidad', icon: Clock },
   { id: 'billing', label: 'Suscripción', icon: CreditCard },
   { id: 'notifications', label: 'Notificaciones', icon: Bell },
   { id: 'data', label: 'Datos y privacidad', icon: Database },
@@ -87,6 +88,11 @@ const SettingsPage = () => {
   const [editingAvailabilityUserId, setEditingAvailabilityUserId] = useState<string | null>(null);
   const [editAvailabilityRules, setEditAvailabilityRules] = useState<AvailabilityRule[]>([]);
   const [savingAvailability, setSavingAvailability] = useState(false);
+  
+  // Own availability state
+  const [ownAvailabilityRules, setOwnAvailabilityRules] = useState<AvailabilityRule[]>(DEFAULT_RULES);
+  const [ownAvailabilityLoaded, setOwnAvailabilityLoaded] = useState(false);
+  const [savingOwnAvailability, setSavingOwnAvailability] = useState(false);
 
   // Calendar sync state
   const [calendarEmail, setCalendarEmail] = useState('');
@@ -223,6 +229,65 @@ const SettingsPage = () => {
     };
     loadTeam();
   }, [user, activeSection]);
+
+  // Load own availability rules
+  useEffect(() => {
+    if (!user || activeSection !== 'availability') return;
+    const loadOwn = async () => {
+      try {
+        const tenantId = await getTenantId();
+        const { data } = await supabase
+          .from('availability_rules')
+          .select('day_of_week, start_time, end_time, active, buffer_before, buffer_after, max_appointments')
+          .eq('tenant_id', tenantId)
+          .eq('user_id', user.id)
+          .order('day_of_week');
+        if (data && data.length > 0) {
+          setOwnAvailabilityRules(data.map(r => ({
+            day_of_week: r.day_of_week,
+            start_time: r.start_time.slice(0, 5),
+            end_time: r.end_time.slice(0, 5),
+            active: r.active ?? true,
+            buffer_before: r.buffer_before ?? 10,
+            buffer_after: r.buffer_after ?? 10,
+            max_appointments: r.max_appointments ?? 8,
+          })));
+        } else {
+          setOwnAvailabilityRules(DEFAULT_RULES);
+        }
+        setOwnAvailabilityLoaded(true);
+      } catch (err) {
+        console.error('Error loading availability:', err);
+      }
+    };
+    loadOwn();
+  }, [user, activeSection]);
+
+  const handleSaveOwnAvailability = async () => {
+    setSavingOwnAvailability(true);
+    try {
+      const tenantId = await getTenantId();
+      await supabase.from('availability_rules').delete().eq('user_id', user!.id).eq('tenant_id', tenantId);
+      const rules = ownAvailabilityRules.map(r => ({
+        tenant_id: tenantId,
+        user_id: user!.id,
+        day_of_week: r.day_of_week,
+        start_time: r.start_time,
+        end_time: r.end_time,
+        active: r.active,
+        buffer_before: r.buffer_before,
+        buffer_after: r.buffer_after,
+        max_appointments: r.max_appointments,
+      }));
+      const { error } = await supabase.from('availability_rules').insert(rules);
+      if (error) throw error;
+      toast.success('Reglas de disponibilidad guardadas');
+    } catch (err: any) {
+      toast.error(err.message || 'Error al guardar disponibilidad');
+    } finally {
+      setSavingOwnAvailability(false);
+    }
+  };
 
   const handleTogglePermission = async (targetUserId: string, moduleKey: string, currentValue: boolean) => {
     try {
@@ -1089,6 +1154,77 @@ const SettingsPage = () => {
                   </li>
                 </ul>
               </div>
+            </div>
+          </div>
+        )}
+
+        {activeSection === 'availability' && (
+          <div className="max-w-2xl">
+            <h3 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
+              <Clock size={20} className="text-primary" /> Reglas de Disponibilidad
+            </h3>
+            <p className="text-sm text-muted-foreground mb-6">
+              Define los horarios en que tus clientes pueden agendar citas contigo. Estos horarios se usan por el agente de voz, WhatsApp y la vista de agenda.
+            </p>
+
+            <div className="bg-card border border-border rounded-xl p-5">
+              {!ownAvailabilityLoaded ? (
+                <div className="flex items-center justify-center py-6">
+                  <Loader2 size={20} className="animate-spin text-muted-foreground" />
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <AvailabilityWizard value={ownAvailabilityRules} onChange={setOwnAvailabilityRules} />
+
+                  <div className="bg-card border border-border rounded-lg p-3">
+                    <label className="text-[10px] font-medium text-muted-foreground block mb-1">Máximo de citas por horario</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={50}
+                      value={ownAvailabilityRules[0]?.max_appointments ?? 8}
+                      onChange={e => {
+                        const val = parseInt(e.target.value) || 1;
+                        setOwnAvailabilityRules(prev => prev.map(r => ({ ...r, max_appointments: val })));
+                      }}
+                      className="w-full bg-secondary border border-border rounded px-2 py-1.5 text-xs outline-none focus:border-primary text-foreground"
+                    />
+                  </div>
+
+                  <button
+                    disabled={savingOwnAvailability}
+                    onClick={handleSaveOwnAvailability}
+                    className="bg-primary text-primary-foreground text-sm px-5 py-2.5 rounded-lg hover:opacity-90 disabled:opacity-40 flex items-center gap-2 font-medium mt-2"
+                  >
+                    {savingOwnAvailability ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                    Guardar reglas de disponibilidad
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="bg-muted/50 border border-border rounded-xl p-4 mt-4">
+              <h4 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
+                <Clock size={14} className="text-primary" /> ¿Cómo funciona?
+              </h4>
+              <ul className="text-xs text-muted-foreground space-y-1.5">
+                <li className="flex items-start gap-2">
+                  <span className="text-primary mt-0.5">•</span>
+                  Los días y horarios activos definen cuándo los clientes pueden agendar citas.
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-primary mt-0.5">•</span>
+                  El buffer antes/después reserva tiempo entre citas para preparación.
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-primary mt-0.5">•</span>
+                  El agente de voz y WhatsApp consultan estas reglas automáticamente al agendar.
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-primary mt-0.5">•</span>
+                  Si tienes empleados, puedes configurar su disponibilidad individual desde la sección Equipo.
+                </li>
+              </ul>
             </div>
           </div>
         )}
