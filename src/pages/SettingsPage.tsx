@@ -177,7 +177,7 @@ const SettingsPage = () => {
         setLogoUrl(settings.logo_url || '');
         setFaviconUrl(settings.favicon_url || '');
 
-        // Load calendar config from tenant (legacy) and check OAuth status
+        // Load calendar config from tenant (legacy) and always verify OAuth status
         const calConfig = (tenant.google_calendar_config || {}) as Record<string, any>;
         const userCalConfig = calConfig?.users?.[user!.id] || {};
         setCalendarEmail(userCalConfig.email || profile.email || user!.email || '');
@@ -186,6 +186,7 @@ const SettingsPage = () => {
         setCalendarSyncEnabled(userCalConfig.sync_enabled !== false);
         setCalendarAutoCreate(userCalConfig.auto_create !== false);
         setCalendarLoaded(true);
+        checkCalendarStatus();
       } else {
         // Staff users may not have access to tenants table (RLS).
         // Set defaults and use the edge function to check calendar status.
