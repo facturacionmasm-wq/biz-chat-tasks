@@ -69,12 +69,32 @@ serve(async (req) => {
     'Content-Type': 'application/json',
   };
 
+  const normalizeE164 = (value: string) => {
+    const trimmed = (value || '').trim();
+    if (!trimmed) return '';
+
+    const compact = trimmed.replace(/[\s\-().]/g, '');
+    if (compact.startsWith('00')) return `+${compact.slice(2).replace(/\D/g, '')}`;
+    if (compact.startsWith('+')) return `+${compact.slice(1).replace(/\D/g, '')}`;
+    return `+${compact.replace(/\D/g, '')}`;
+  };
+
+  const phoneDigits = (value: string) => value.replace(/\D/g, '');
+
   try {
     const { action, phone_number: requestPhoneNumber } = await req.json();
-    // Allow overriding the phone number from the request body
-    const PHONE_NUMBER = requestPhoneNumber || TWILIO_PHONE_NUMBER;
+    const PHONE_NUMBER = normalizeE164(requestPhoneNumber || TWILIO_PHONE_NUMBER || '');
+
     if (!PHONE_NUMBER) {
-      return new Response(JSON.stringify({ error: 'Se requiere un número de teléfono. Envíalo en el campo phone_number o configura TWILIO_PHONE_NUMBER.' }), {
+      return new Response(JSON.stringify({ error: 'Se requiere un número de teléfono. Envíalo en phone_number o configura TWILIO_PHONE_NUMBER.' }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (!/^\+[1-9]\d{7,14}$/.test(PHONE_NUMBER)) {
+      return new Response(JSON.stringify({
+        error: `Número inválido (${PHONE_NUMBER}). Usa formato internacional E.164, por ejemplo: +12135551234`,
+      }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
@@ -93,8 +113,7 @@ serve(async (req) => {
       const phoneNumbers = data.phone_numbers || data || [];
       const found = Array.isArray(phoneNumbers)
         ? phoneNumbers.find((p: any) =>
-            p.phone_number === PHONE_NUMBER ||
-            p.phone_number === PHONE_NUMBER.replace(/^\+/, '')
+            phoneDigits(p.phone_number || '') === phoneDigits(PHONE_NUMBER)
           )
         : null;
 
@@ -123,11 +142,17 @@ serve(async (req) => {
       );
       if (twilioListRes.ok) {
         const twilioData = await twilioListRes.json();
-        if (!twilioData.incoming_phone_numbers || twilioData.incoming_phone_numbers.length === 0) {
+        const incomingNumbers = Array.isArray(twilioData.incoming_phone_numbers)
+          ? twilioData.incoming_phone_numbers
+          : [];
+        const exactMatch = incomingNumbers.find((n: any) =>
+          phoneDigits(n.phone_number || '') === phoneDigits(PHONE_NUMBER)
+        );
+
+        if (!exactMatch) {
           return new Response(JSON.stringify({
-            error: `El número ${PHONE_NUMBER} NO está comprado en tu cuenta de Twilio. ` +
-              `Debes comprarlo en Twilio Console → Phone Numbers → Buy a Number, ` +
-              `o ingresar un número diferente.`,
+            error: `El número ${PHONE_NUMBER} no aparece como Incoming Phone Number en tu cuenta de Twilio. ` +
+              `Verifica que esté comprado y activo, en formato E.164 (ej: +12135551234).`,
           }), {
             status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           });
@@ -188,8 +213,7 @@ serve(async (req) => {
           const numbers = listData.phone_numbers || listData || [];
           const existing = Array.isArray(numbers)
             ? numbers.find((p: any) =>
-                p.phone_number === PHONE_NUMBER ||
-                p.phone_number === PHONE_NUMBER.replace(/^\+/, '')
+                phoneDigits(p.phone_number || '') === phoneDigits(PHONE_NUMBER)
               )
             : null;
           if (existing) {
@@ -294,8 +318,7 @@ serve(async (req) => {
       const numbers = listData.phone_numbers || listData || [];
       const existing = Array.isArray(numbers)
         ? numbers.find((p: any) =>
-            p.phone_number === PHONE_NUMBER ||
-            p.phone_number === PHONE_NUMBER.replace(/^\+/, '')
+            phoneDigits(p.phone_number || '') === phoneDigits(PHONE_NUMBER)
           )
         : null;
 
