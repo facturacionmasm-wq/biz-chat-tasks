@@ -500,6 +500,25 @@ serve(async (req) => {
               const botJson = JSON.parse(botResponseText);
               if (typeof botJson?.reply === 'string' && botJson.reply.trim()) {
                 twimlReply = botJson.reply.trim();
+
+                // Save the outbound message that TwiML will deliver
+                await supabase.from('whatsapp_messages').insert({
+                  tenant_id: tenantId,
+                  conversation_id: conversation.id,
+                  direction: 'out',
+                  body: twimlReply,
+                  status: 'sent',
+                  metadata: {
+                    provider: 'bot',
+                    bot_state: botJson.state || null,
+                    delivery_method: 'twiml',
+                  },
+                });
+
+                await supabase
+                  .from('whatsapp_conversations')
+                  .update({ last_message_at: new Date().toISOString() })
+                  .eq('id', conversation.id);
               }
             } catch (_parseErr) {
               // keep null twimlReply; fallback to empty TwiML response
