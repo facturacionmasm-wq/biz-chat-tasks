@@ -46,18 +46,31 @@ serve(async (req) => {
     // Get Twilio credentials from secrets
     const accountSid = Deno.env.get("TWILIO_ACCOUNT_SID");
     const authToken = Deno.env.get("TWILIO_AUTH_TOKEN");
+    const messagingServiceSid = Deno.env.get("TWILIO_MESSAGING_SERVICE_SID");
     const fromNumber = Deno.env.get("TWILIO_PHONE_NUMBER");
 
-    if (!accountSid || !authToken || !fromNumber) {
+    if (!accountSid || !authToken || (!messagingServiceSid && !fromNumber)) {
       return new Response(
         JSON.stringify({ ok: false, error: "Credenciales de Twilio no configuradas. Configúralas en el wizard de integración." }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Format numbers for Twilio WhatsApp
+    // Format destination for Twilio WhatsApp
     const toWhatsApp = to.startsWith("whatsapp:") ? to : `whatsapp:${to}`;
-    const fromWhatsApp = fromNumber.startsWith("whatsapp:") ? fromNumber : `whatsapp:${fromNumber}`;
+
+    // Build request params — prefer MessagingServiceSid over From number
+    const twilioParams: Record<string, string> = {
+      To: toWhatsApp,
+      Body: body,
+    };
+
+    if (messagingServiceSid) {
+      twilioParams.MessagingServiceSid = messagingServiceSid;
+    } else {
+      const fromWhatsApp = fromNumber!.startsWith("whatsapp:") ? fromNumber! : `whatsapp:${fromNumber}`;
+      twilioParams.From = fromWhatsApp;
+    }
 
     // Send via Twilio API
     const basicAuth = btoa(`${accountSid}:${authToken}`);
@@ -69,11 +82,7 @@ serve(async (req) => {
           Authorization: `Basic ${basicAuth}`,
           "Content-Type": "application/x-www-form-urlencoded",
         },
-        body: new URLSearchParams({
-          From: fromWhatsApp,
-          To: toWhatsApp,
-          Body: body,
-        }).toString(),
+        body: new URLSearchParams(twilioParams).toString(),
       }
     );
 
