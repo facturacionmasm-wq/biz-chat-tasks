@@ -22,6 +22,34 @@ async function validateTwilioSignature(
   return computed === signature;
 }
 
+async function sendTwilioWhatsAppMessage(input: {
+  accountSid: string;
+  authToken: string;
+  from: string;
+  to: string;
+  body: string;
+}) {
+  const fromWhatsApp = input.from.startsWith('whatsapp:') ? input.from : `whatsapp:${input.from}`;
+  const toWhatsApp = input.to.startsWith('whatsapp:') ? input.to : `whatsapp:${input.to}`;
+  const basicAuth = btoa(`${input.accountSid}:${input.authToken}`);
+
+  const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${input.accountSid}/Messages.json`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Basic ${basicAuth}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: new URLSearchParams({
+      From: fromWhatsApp,
+      To: toWhatsApp,
+      Body: input.body,
+    }).toString(),
+  });
+
+  const data = await res.json();
+  return { ok: res.ok, data };
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -29,7 +57,9 @@ serve(async (req) => {
 
   const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
   const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const TWILIO_ACCOUNT_SID = Deno.env.get('TWILIO_ACCOUNT_SID') || '';
   const TWILIO_AUTH_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN') || '';
+  const TWILIO_PHONE_NUMBER = Deno.env.get('TWILIO_PHONE_NUMBER') || '';
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
   const logWebhook = async (input: {
@@ -145,11 +175,13 @@ serve(async (req) => {
 
         const { data: dbMessage } = await supabase
           .from('whatsapp_messages')
-          .select('id, metadata')
+          .select('id, tenant_id, conversation_id, body, metadata')
           .contains('metadata', { message_sid: messageSid })
           .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle();
+
+        const normalizedErrorCode = String(errorCode || '');
 
         if (dbMessage) {
           const currentMeta = (dbMessage.metadata as Record<string, unknown> | null) || {};
@@ -166,6 +198,86 @@ serve(async (req) => {
               },
             })
             .eq('id', dbMessage.id);
+
+          // Auto-retry once for Twilio 63051 using global sender as fallback
+          const alreadyRetried = Boolean(currentMeta.twilio_retry_63051_attempted);
+          const currentFrom = String(currentMeta.from_number || '').replace(/^whatsapp:/i, '');
+          const fallbackFrom = String(TWILIO_PHONE_NUMBER || '').replace(/^whatsapp:/i, '');
+
+          if (
+            normalizedStatus === 'failed' &&
+            normalizedErrorCode === '63051' &&
+            !alreadyRetried &&
+            TWILIO_ACCOUNT_SID &&
+            TWILIO_AUTH_TOKEN &&
+            fallbackFrom &&
+            fallbackFrom !== currentFrom
+          ) {
+            const { data: convRow } = await supabase
+              .from('whatsapp_conversations')
+              .select('contact_phone')
+              .eq('id', dbMessage.conversation_id)
+              .maybeSingle();
+
+            if (convRow?.contact_phone && dbMessage.body) {
+              const retryResult = await sendTwilioWhatsAppMessage({
+                accountSid: TWILIO_ACCOUNT_SID,
+                authToken: TWILIO_AUTH_TOKEN,
+                from: fallbackFrom,
+                to: convRow.contact_phone,
+                body: dbMessage.body,
+              });
+
+              const retryStatus = String(retryResult.data?.status || (retryResult.ok ? 'queued' : 'failed')).toLowerCase();
+
+              await supabase.from('whatsapp_messages').insert({
+                tenant_id: dbMessage.tenant_id,
+                conversation_id: dbMessage.conversation_id,
+                direction: 'out',
+                body: dbMessage.body,
+                status: retryStatus === 'failed' ? 'failed' : 'sent',
+                metadata: {
+                  provider: 'bot_retry',
+                  retry_of_message_sid: messageSid,
+                  retry_reason: 'twilio_63051',
+                  message_sid: retryResult.data?.sid || null,
+                  twilio_status: retryResult.data?.status || null,
+                  twilio_error_code: retryResult.data?.error_code || null,
+                  twilio_error_message: retryResult.data?.error_message || null,
+                  from_number: fallbackFrom,
+                },
+              });
+
+              await supabase
+                .from('whatsapp_messages')
+                .update({
+                  metadata: {
+                    ...currentMeta,
+                    twilio_retry_63051_attempted: true,
+                    twilio_retry_63051_at: new Date().toISOString(),
+                    twilio_retry_63051_sid: retryResult.data?.sid || null,
+                    twilio_retry_63051_status: retryResult.data?.status || null,
+                    twilio_retry_63051_from: fallbackFrom,
+                  },
+                })
+                .eq('id', dbMessage.id);
+
+              await logWebhook({
+                tenantId: dbMessage.tenant_id,
+                conversationId: dbMessage.conversation_id,
+                messageId: messageSid,
+                stage: 'delivery_retry_63051',
+                status: retryResult.ok ? 'ok' : 'error',
+                error: retryResult.ok ? null : (retryResult.data?.message || 'retry_failed'),
+                payload: {
+                  original_from: currentFrom || null,
+                  fallback_from: fallbackFrom,
+                  retry_sid: retryResult.data?.sid || null,
+                  retry_status: retryResult.data?.status || null,
+                },
+              });
+            }
+          }
         }
 
         await logWebhook({
