@@ -95,3 +95,6 @@ verify_jwt = false
 
 [functions.elevenlabs-twilio-setup]
 verify_jwt = false
+
+[functions.elevenlabs-post-call]
+verify_jwt = false

@@ -174,6 +174,32 @@ serve(async (req) => {
         }),
       });
 
+      // Step 3: Configure post-call webhook on the agent so calls get registered
+      const webhookUrl = `${supabaseUrl}/functions/v1/elevenlabs-post-call`;
+      console.log(`[el-twilio] Configuring post-call webhook: ${webhookUrl}`);
+      try {
+        const agentRes = await fetch(`https://api.elevenlabs.io/v1/convai/agents/${ELEVENLABS_AGENT_ID}`, {
+          method: 'PATCH',
+          headers: elHeaders,
+          body: JSON.stringify({
+            platform_settings: {
+              webhook: {
+                url: webhookUrl,
+                events: ['call.ended', 'conversation.ended'],
+              },
+            },
+          }),
+        });
+        if (!agentRes.ok) {
+          const errText = await agentRes.text();
+          console.error(`[el-twilio] Webhook config error [${agentRes.status}]:`, errText);
+        } else {
+          console.log('[el-twilio] Post-call webhook configured on agent');
+        }
+      } catch (e) {
+        console.error('[el-twilio] Webhook config failed:', e);
+      }
+
       if (!assignRes.ok) {
         const errText = await assignRes.text();
         console.error(`[el-twilio] Assign error [${assignRes.status}]:`, errText);
