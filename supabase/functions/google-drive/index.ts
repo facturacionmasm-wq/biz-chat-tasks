@@ -128,14 +128,32 @@ serve(async (req) => {
       }
 
       // Create root folder: "Aria - {TenantName} - Finanzas"
-      const rootFolderId = await createFolder(accessToken, `Aria - ${tenantName} - Finanzas`, null);
-      if (!rootFolderId) {
+      const rootFolderResult = await createFolder(accessToken, `Aria - ${tenantName} - Finanzas`, null);
+      if (rootFolderResult.error === 'insufficient_scope') {
+        // Token was obtained before Drive scope was added — user must re-authorize
+        // Invalidate current token so re-auth is triggered
+        await supabase
+          .from('google_calendar_tokens')
+          .update({ status: 'requires_reauth', updated_at: new Date().toISOString() })
+          .eq('tenant_id', tenantId)
+          .eq('status', 'active');
+
+        return jsonResponse({
+          error: 'scope_missing',
+          message: 'Tu cuenta de Google necesita permisos adicionales para Google Drive. Ve a Configuración → Google Calendar y reconecta tu cuenta.',
+          action: 'reauth_required',
+        }, 403);
+      }
+      if (!rootFolderResult.id) {
         return jsonResponse({ error: 'No se pudo crear la carpeta en Google Drive. Verifica los permisos.' }, 500);
       }
+      const rootFolderId = rootFolderResult.id;
 
       // Create subfolders
-      const budgetsFolderId = await createFolder(accessToken, 'Presupuestos', rootFolderId);
-      const receiptsFolderId = await createFolder(accessToken, 'Comprobantes', rootFolderId);
+      const budgetsResult = await createFolder(accessToken, 'Presupuestos', rootFolderId);
+      const receiptsResult = await createFolder(accessToken, 'Comprobantes', rootFolderId);
+      const budgetsFolderId = budgetsResult.id;
+      const receiptsFolderId = receiptsResult.id;
 
       const rootUrl = `https://drive.google.com/drive/folders/${rootFolderId}`;
 
@@ -372,7 +390,7 @@ async function getValidAccessToken(
   return refreshData.access_token;
 }
 
-async function createFolder(accessToken: string, name: string, parentId: string | null): Promise<string | null> {
+async function createFolder(accessToken: string, name: string, parentId: string | null): Promise<{ id: string | null; error?: string }> {
   const metadata: any = {
     name,
     mimeType: 'application/vnd.google-apps.folder',
@@ -391,12 +409,16 @@ async function createFolder(accessToken: string, name: string, parentId: string 
   });
 
   if (!res.ok) {
-    console.error('Create folder error:', res.status, await res.text());
-    return null;
+    const errText = await res.text();
+    console.error('Create folder error:', res.status, errText);
+    if (res.status === 403 && errText.includes('ACCESS_TOKEN_SCOPE_INSUFFICIENT')) {
+      return { id: null, error: 'insufficient_scope' };
+    }
+    return { id: null };
   }
 
   const data = await res.json();
-  return data.id;
+  return { id: data.id };
 }
 
 async function checkAdminRole(supabase: any, userId: string, tenantId: string): Promise<boolean> {
