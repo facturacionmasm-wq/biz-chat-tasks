@@ -103,6 +103,33 @@ serve(async (req) => {
 
     // ═══════════ SETUP: Import number + assign agent ═══════════
     if (action === 'setup') {
+      // Step 0: Verify the number exists in Twilio as an Incoming Phone Number
+      console.log(`[el-twilio] Verifying ${TWILIO_PHONE_NUMBER} in Twilio account...`);
+      const encodedNumber = encodeURIComponent(TWILIO_PHONE_NUMBER);
+      const twilioListRes = await fetch(
+        `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/IncomingPhoneNumbers.json?PhoneNumber=${encodedNumber}`,
+        {
+          headers: {
+            'Authorization': 'Basic ' + btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`),
+          },
+        }
+      );
+      if (twilioListRes.ok) {
+        const twilioData = await twilioListRes.json();
+        if (!twilioData.incoming_phone_numbers || twilioData.incoming_phone_numbers.length === 0) {
+          return new Response(JSON.stringify({
+            error: `El número ${TWILIO_PHONE_NUMBER} NO está comprado en tu cuenta de Twilio. ` +
+              `Debes comprarlo en Twilio Console → Phone Numbers → Buy a Number, ` +
+              `o actualizar el secret TWILIO_PHONE_NUMBER con un número que ya tengas comprado.`,
+          }), {
+            status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+        console.log(`[el-twilio] ✓ Number verified in Twilio`);
+      } else {
+        console.warn(`[el-twilio] Could not verify number in Twilio (${twilioListRes.status}), proceeding anyway...`);
+      }
+
       // Step 1: Import the Twilio phone number into ElevenLabs
       console.log(`[el-twilio] Importing ${TWILIO_PHONE_NUMBER} into ElevenLabs...`);
 
