@@ -9,6 +9,65 @@
 import { AI_GATEWAY_URL } from "./constants.ts";
 import { sendTwilioMessage } from "./helpers.ts";
 
+// ==================== DRIVE UPLOAD HELPER ====================
+
+async function uploadToDrive(
+  supabase: any,
+  tenantId: string,
+  fileUrl: string | null,
+  folderType: 'budget' | 'receipt',
+  expenseId: string,
+  twilioSid?: string,
+  twilioToken?: string,
+): Promise<{ success: boolean; driveUrl?: string }> {
+  if (!fileUrl) return { success: false };
+
+  try {
+    // Check if Drive is configured
+    const { data: driveSettings } = await supabase
+      .from('tenant_drive_settings')
+      .select('drive_root_folder_id')
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
+
+    if (!driveSettings?.drive_root_folder_id) {
+      console.log('Drive not configured for tenant:', tenantId);
+      return { success: false };
+    }
+
+    const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/google-drive`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      },
+      body: JSON.stringify({
+        action: 'upload_file',
+        tenant_id: tenantId,
+        internal_caller: true,
+        file_url: fileUrl,
+        folder_type: folderType,
+        expense_id: expenseId,
+        twilio_sid: twilioSid || Deno.env.get('TWILIO_ACCOUNT_SID'),
+        twilio_token: twilioToken || Deno.env.get('TWILIO_AUTH_TOKEN'),
+      }),
+    });
+
+    const result = await res.json();
+    if (result.success) {
+      return { success: true, driveUrl: result.drive_file_url };
+    }
+    console.log('Drive upload result:', JSON.stringify(result));
+    return { success: false };
+  } catch (e) {
+    console.error('Drive upload error:', e);
+    return { success: false };
+  }
+}
+
 // ==================== CONSTANTS ====================
 
 const BUDGET_KEYWORDS = /\b(presupuesto|cotizaci[oó]n|quote|propuesta|estimado|por\s*pagar|pendiente|a\s*autorizaci[oó]n|cotizar)\b/i;
@@ -132,7 +191,7 @@ async function handlePaidExpense(
     ocr_data: e,
   }));
   
-  const { error: insertError } = await supabase.from('expenses').insert(rows);
+  const { error: insertError, data: insertedRows } = await supabase.from('expenses').insert(rows).select('id');
   
   if (insertError) {
     console.error('Expense insert error:', insertError);
@@ -142,17 +201,26 @@ async function handlePaidExpense(
       newContext: context,
     };
   }
+
+  // Upload to Google Drive (async, non-blocking for UX)
+  let driveMsg = '';
+  if (mediaUrl && insertedRows?.length > 0) {
+    const driveResult = await uploadToDrive(supabase, tenantId, mediaUrl, 'receipt', insertedRows[0].id);
+    if (driveResult.success) {
+      driveMsg = '\n📁 Documento guardado en Drive ✅';
+    }
+  }
   
   // Format reply
   if (expenses.length === 1) {
     const e = expenses[0];
     return {
-      reply: `✅ *Gasto registrado como PAGADO:*\n\n• 🏪 ${e.nombre_negocio || 'Proveedor no identificado'}\n• 📝 ${e.descripcion || 'Sin descripción'}\n• 💰 *$${e.monto.toFixed(2)} ${e.moneda || 'MXN'}*\n• 📅 ${e.fecha || today}\n${e.folio ? `• 🔖 Folio: ${e.folio}` : ''}\n${e.metodo_pago ? `• 💳 ${e.metodo_pago}` : ''}\n• 📂 ${e.categoria || 'Otro'}\n\n¿Deseas agregar categoría o notas? Si no, todo queda registrado ✅`,
+      reply: `✅ *Gasto registrado como PAGADO:*\n\n• 🏪 ${e.nombre_negocio || 'Proveedor no identificado'}\n• 📝 ${e.descripcion || 'Sin descripción'}\n• 💰 *$${e.monto.toFixed(2)} ${e.moneda || 'MXN'}*\n• 📅 ${e.fecha || today}\n${e.folio ? `• 🔖 Folio: ${e.folio}` : ''}\n${e.metodo_pago ? `• 💳 ${e.metodo_pago}` : ''}\n• 📂 ${e.categoria || 'Otro'}${driveMsg}\n\n¿Deseas agregar categoría o notas? Si no, todo queda registrado ✅`,
       newState: 'employee_mode',
       newContext: context,
     };
   }
-  
+
   const totalByCurrency: Record<string, number> = {};
   const lines = expenses.map((e, i) => {
     const cur = e.moneda || 'MXN';
@@ -162,7 +230,7 @@ async function handlePaidExpense(
   const totals = Object.entries(totalByCurrency).map(([cur, total]) => `$${total.toFixed(2)} ${cur}`).join(' + ');
   
   return {
-    reply: `✅ *${expenses.length} gastos registrados como PAGADOS:*\n\n${lines.join('\n')}\n\n💰 *Total: ${totals}*\n\n¿Todo correcto?`,
+    reply: `✅ *${expenses.length} gastos registrados como PAGADOS:*\n\n${lines.join('\n')}\n\n💰 *Total: ${totals}*${driveMsg}\n\n¿Todo correcto?`,
     newState: 'employee_mode',
     newContext: context,
   };
@@ -215,8 +283,17 @@ async function handleBudgetCreation(
     };
   }
   
-  // Store pending budget IDs in context for approval flow
+  // Upload budget document to Drive
   const budgetIds = inserted.map((r: any) => r.id);
+  let driveMsg = '';
+  if (mediaUrl && budgetIds.length > 0) {
+    const driveResult = await uploadToDrive(supabase, tenantId, mediaUrl, 'budget', budgetIds[0]);
+    if (driveResult.success) {
+      driveMsg = '\n📁 Presupuesto guardado en Drive ✅';
+    }
+  }
+  
+  // Store pending budget IDs in context for approval flow
   const totalAmount = expenses.reduce((sum, e) => sum + e.monto, 0);
   const currency = expenses[0]?.moneda || 'MXN';
   const vendor = expenses[0]?.nombre_negocio || 'Proveedor';
@@ -227,7 +304,7 @@ async function handleBudgetCreation(
     : expenses.map((e, i) => `${i+1}. $${e.monto.toFixed(2)} ${e.moneda || 'MXN'} — ${e.descripcion || e.nombre_negocio}`).join('\n');
   
   return {
-    reply: `📋 *Presupuesto registrado por autorizar:*\n\n${summary}\n\n¿Quién autoriza este pago? Puedes decirme:\n• El *nombre* del compañero\n• Su *número de WhatsApp*\n• O escribir *"yo"* si tú lo autorizas`,
+    reply: `📋 *Presupuesto registrado por autorizar:*\n\n${summary}${driveMsg}\n\n¿Quién autoriza este pago? Puedes decirme:\n• El *nombre* del compañero\n• Su *número de WhatsApp*\n• O escribir *"yo"* si tú lo autorizas`,
     newState: 'budget_collect_approver',
     newContext: {
       ...context,
@@ -581,8 +658,14 @@ export async function checkAndHandleReceiptUpload(
     status: 'paid',
     paid_at: new Date().toISOString(),
     receipt_url: mediaUrl,
-    document_payment_drive_file_id: null, // Will be set in Phase 2 (Drive)
   }).eq('id', budget.id);
+
+  // Upload receipt to Google Drive
+  let driveMsg = '';
+  const driveResult = await uploadToDrive(supabase, tenantId, mediaUrl, 'receipt', budget.id);
+  if (driveResult.success) {
+    driveMsg = '\n📁 Comprobante guardado en Drive ✅';
+  }
   
   // Notify approver (optional)
   if (budget.approver_user_id) {
@@ -612,7 +695,7 @@ export async function checkAndHandleReceiptUpload(
   
   return {
     handled: true,
-    reply: `✅ *Comprobante vinculado al presupuesto aprobado:*\n\n• ${budget.vendor_name || budget.description}\n• $${budget.amount} ${budget.currency || 'MXN'}\n• Estado: *PAGADO* ✅\n\n${approvedBudgets.length > 1 ? `📌 Tienes ${approvedBudgets.length - 1} presupuesto(s) más aprobado(s) pendiente(s) de comprobante.` : '¡Todo en orden! ¿Te ayudo con algo más?'}`,
+    reply: `✅ *Comprobante vinculado al presupuesto aprobado:*\n\n• ${budget.vendor_name || budget.description}\n• $${budget.amount} ${budget.currency || 'MXN'}\n• Estado: *PAGADO* ✅${driveMsg}\n\n${approvedBudgets.length > 1 ? `📌 Tienes ${approvedBudgets.length - 1} presupuesto(s) más aprobado(s) pendiente(s) de comprobante.` : '¡Todo en orden! ¿Te ayudo con algo más?'}`,
   };
 }
 

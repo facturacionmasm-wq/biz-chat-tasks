@@ -86,3 +86,6 @@ verify_jwt = false
 
 [functions.usage-tracking]
 verify_jwt = false
+
+[functions.google-drive]
+verify_jwt = false
