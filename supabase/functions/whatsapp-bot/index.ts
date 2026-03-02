@@ -413,6 +413,109 @@ async function handleState(input: StateInput): Promise<StateResult> {
     }
 
   } else if (botState === 'client_mode') {
+    // Check for appointment confirmation/cancellation responses
+    const confirmMatch = /^(confirmo|si confirmo|sí confirmo|confirmar|acepto|asistiré|asistire|si voy|sí voy)$/i.test(msg);
+    const cancelMatch = /^(cancelo|cancelar|no puedo|no voy|no asistiré|no asistire|no podré|no podre)$/i.test(msg);
+
+    if (confirmMatch || cancelMatch) {
+      const responseType = confirmMatch ? 'confirmed' : 'rejected';
+
+      // Find pending confirmation for this contact phone
+      const { data: pendingConfirm } = await supabase
+        .from('appointment_notifications')
+        .select('id, appointment_id, tenant_id')
+        .eq('tenant_id', tenantId)
+        .eq('target_phone', contactPhone)
+        .eq('notification_type', 'confirmation')
+        .is('response', null)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (pendingConfirm) {
+        // Update notification with response
+        await supabase.from('appointment_notifications').update({
+          response: responseType,
+          responded_at: new Date().toISOString(),
+        }).eq('id', pendingConfirm.id);
+
+        // Update appointment status
+        const newApptStatus = confirmMatch ? 'confirmed' : 'cancelled';
+        await supabase.from('appointments').update({
+          status: newApptStatus,
+        }).eq('id', pendingConfirm.appointment_id);
+
+        // Get appointment details to notify creator
+        const { data: appt } = await supabase
+          .from('appointments')
+          .select('contact_name, start_at, user_id, service_type, notes')
+          .eq('id', pendingConfirm.appointment_id)
+          .single();
+
+        if (appt?.user_id) {
+          // Get creator's WhatsApp number to notify them
+          const { data: creatorProfile } = await supabase
+            .from('profiles')
+            .select('whatsapp_number, phone, name')
+            .eq('user_id', appt.user_id)
+            .eq('tenant_id', tenantId)
+            .maybeSingle();
+
+          const creatorPhone = creatorProfile?.whatsapp_number || creatorProfile?.phone;
+          if (creatorPhone) {
+            const { data: tData } = await supabase.from('tenants').select('timezone').eq('id', tenantId).single();
+            const tz = tData?.timezone || 'America/Mexico_City';
+            const apptDate = new Date(appt.start_at).toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', timeZone: tz });
+            const apptTime = new Date(appt.start_at).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', timeZone: tz });
+
+            const statusEmoji = confirmMatch ? '✅' : '❌';
+            const statusText = confirmMatch ? 'CONFIRMÓ' : 'CANCELÓ';
+            const notifyMsg = `${statusEmoji} *Actualización de cita*\n\n*${appt.contact_name}* ${statusText} su cita:\n\n📆 ${apptDate}\n⏰ ${apptTime}\n${appt.service_type ? `📋 ${appt.service_type}\n` : ''}${appt.notes ? `📝 ${appt.notes}\n` : ''}\n${confirmMatch ? '¡Todo listo para la reunión! 🎉' : 'La cita ha sido cancelada por el contacto.'}`;
+
+            try {
+              const TWILIO_ACCOUNT_SID_VAL = Deno.env.get('TWILIO_ACCOUNT_SID')!;
+              const TWILIO_AUTH_TOKEN_VAL = Deno.env.get('TWILIO_AUTH_TOKEN')!;
+              const { sendTwilioMessage } = await import('./helpers.ts');
+              const { data: waConf } = await supabase.from('tenants').select('whatsapp_config').eq('id', tenantId).single();
+              const waCfg = waConf?.whatsapp_config as Record<string, any> | null;
+              const fromNum = waCfg?.phone_number ? String(waCfg.phone_number).replace(/^whatsapp:/i, '') : Deno.env.get('TWILIO_PHONE_NUMBER') || '';
+              const msgSvc = waCfg?.messaging_service_sid ? String(waCfg.messaging_service_sid).trim() : undefined;
+              await sendTwilioMessage(TWILIO_ACCOUNT_SID_VAL, TWILIO_AUTH_TOKEN_VAL, fromNum, creatorPhone, notifyMsg, msgSvc);
+
+              // Save confirmation status notification
+              await supabase.from('appointment_notifications').insert({
+                appointment_id: pendingConfirm.appointment_id,
+                tenant_id: tenantId,
+                target_user_id: appt.user_id,
+                notification_type: 'confirmation_status',
+                status: 'sent',
+                scheduled_at: new Date().toISOString(),
+                sent_at: new Date().toISOString(),
+                response: responseType,
+                message_body: notifyMsg,
+              });
+            } catch (notifyErr) {
+              console.error('[BOT] Error notifying creator:', notifyErr);
+            }
+          }
+        }
+
+        // Cancel pending reminders if appointment was cancelled
+        if (!confirmMatch) {
+          await supabase.from('appointment_notifications')
+            .update({ status: 'cancelled' })
+            .eq('appointment_id', pendingConfirm.appointment_id)
+            .in('notification_type', ['reminder_1h', 'reminder_15m'])
+            .eq('status', 'pending');
+        }
+
+        reply = confirmMatch
+          ? '✅ ¡Perfecto! Tu asistencia ha sido confirmada. ¡Te esperamos! 😊\n\nTe enviaremos un recordatorio antes de la cita.'
+          : '❌ Entendido, tu cita ha sido cancelada. Si necesitas reagendar, no dudes en escribirme. 🙏';
+        return { reply, newState, newContext };
+      }
+    }
+
     reply = await getAIResponse(LOVABLE_API_KEY, tenantId, supabase, 'client', effectiveMessageBody, conv);
 
   } else if (botState === 'employee_mode') {
