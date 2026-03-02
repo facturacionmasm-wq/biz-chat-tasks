@@ -2383,36 +2383,45 @@ export type Database = {
       }
       tenants: {
         Row: {
+          country_code: string
           created_at: string
+          currency: string
           elevenlabs_config: Json | null
           google_calendar_config: Json | null
           id: string
           name: string
           notification_rules: Json | null
+          region: string
           settings_json: Json | null
           timezone: string
           updated_at: string
           whatsapp_config: Json | null
         }
         Insert: {
+          country_code?: string
           created_at?: string
+          currency?: string
           elevenlabs_config?: Json | null
           google_calendar_config?: Json | null
           id?: string
           name: string
           notification_rules?: Json | null
+          region?: string
           settings_json?: Json | null
           timezone?: string
           updated_at?: string
           whatsapp_config?: Json | null
         }
         Update: {
+          country_code?: string
           created_at?: string
+          currency?: string
           elevenlabs_config?: Json | null
           google_calendar_config?: Json | null
           id?: string
           name?: string
           notification_rules?: Json | null
+          region?: string
           settings_json?: Json | null
           timezone?: string
           updated_at?: string
