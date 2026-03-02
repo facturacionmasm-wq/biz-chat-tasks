@@ -10,11 +10,24 @@ export const usePaymentGate = () => {
   const [loading, setLoading] = useState(true);
   const [redirecting, setRedirecting] = useState(false);
 
+  // The platform owner tenant has free access to all services
+  const OWNER_TENANT_ID = '00000000-0000-0000-0000-000000000001';
+  const [isOwnerTenant, setIsOwnerTenant] = useState(false);
+
   const checkAccess = useCallback(async () => {
     if (!user) { setLoading(false); return; }
     try {
       const { data: tenantId } = await supabase.rpc('get_user_tenant_id', { _user_id: user.id });
       if (!tenantId) { setHasPaymentMethod(false); setLoading(false); return; }
+
+      // Owner tenant gets free access to everything
+      if (tenantId === OWNER_TENANT_ID) {
+        setIsOwnerTenant(true);
+        setHasPaymentMethod(true);
+        setHasActivePackage({ voice: true, whatsapp: true });
+        setLoading(false);
+        return;
+      }
 
       // Check payment method
       const { data: pmData } = await supabase.functions.invoke('stripe-billing', {
@@ -109,5 +122,5 @@ export const usePaymentGate = () => {
     }
   }, [user]);
 
-  return { hasPaymentMethod, hasActivePackage, loading, redirecting, canUseService, purchasePackage, setupCard, refresh: checkAccess };
+  return { hasPaymentMethod, hasActivePackage, loading, redirecting, canUseService, purchasePackage, setupCard, refresh: checkAccess, isOwnerTenant };
 };
