@@ -155,7 +155,7 @@ serve(async (req) => {
       const errorMessage = params.get('ErrorMessage') || '';
       const numMedia = parseInt(params.get('NumMedia') || '0', 10);
       const profileName = params.get('ProfileName') || '';
-      let twimlReply: string | null = null;
+      
       const mediaContentType = params.get('MediaContentType0') || '';
 
       const contactPhone = from.replace('whatsapp:', '');
@@ -460,7 +460,7 @@ serve(async (req) => {
           status: 'ok',
         });
 
-        // Trigger AI bot and return TwiML reply directly to Twilio
+        // Trigger AI bot — bot sends reply via Twilio REST API (MessagingServiceSid)
         try {
           const botUrl = `${SUPABASE_URL}/functions/v1/whatsapp-bot`;
           console.log(`[WH] Triggering bot for conv=${conversation.id} tenant=${tenantId}`);
@@ -477,7 +477,6 @@ serve(async (req) => {
               tenantId: tenantId,
               mediaUrl: mediaUrl,
               mediaContentType: mediaContentType || undefined,
-              skipSend: true,
             }),
           });
 
@@ -493,30 +492,6 @@ serve(async (req) => {
               error: `HTTP ${botRes.status}: ${botResponseText.substring(0, 200)}`,
             });
           } else {
-            let parsed: Record<string, unknown> = {};
-            try {
-              parsed = botResponseText ? JSON.parse(botResponseText) : {};
-            } catch {
-              parsed = {};
-            }
-
-            const replyText = typeof parsed.reply === 'string' ? parsed.reply.trim() : '';
-            if (replyText) {
-              twimlReply = replyText;
-              await supabase.from('whatsapp_messages').insert({
-                tenant_id: tenantId,
-                conversation_id: conversation.id,
-                direction: 'out',
-                body: replyText,
-                status: 'queued',
-                metadata: {
-                  provider: 'bot_twiml',
-                  bot_state: parsed.state || null,
-                  transport: 'twiml_response',
-                },
-              });
-            }
-
             console.log(`[WH] Bot OK: ${botResponseText.substring(0, 200)}`);
             await logWebhook({
               tenantId,
@@ -524,7 +499,7 @@ serve(async (req) => {
               messageId: messageSid,
               stage: 'bot_invocation',
               status: 'ok',
-              payload: { response_length: botResponseText.length, has_reply: Boolean(replyText) },
+              payload: { response_length: botResponseText.length },
             });
           }
         } catch (botErr) {
@@ -538,15 +513,6 @@ serve(async (req) => {
             error: botErr instanceof Error ? botErr.message : 'Unknown bot error',
           });
         }
-      }
-
-      if (twimlReply) {
-        const twiml = `<Response><Message>${escapeXml(twimlReply)}</Message></Response>`;
-        console.log(`[WH] Returning TwiML reply (${twimlReply.length} chars): ${twiml.substring(0, 300)}`);
-        return new Response(twiml, {
-          status: 200,
-          headers: { ...corsHeaders, 'Content-Type': 'text/xml' },
-        });
       }
 
       return new Response('<Response></Response>', {

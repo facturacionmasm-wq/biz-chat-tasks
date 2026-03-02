@@ -21,6 +21,7 @@ serve(async (req) => {
   const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
   const TWILIO_ACCOUNT_SID = Deno.env.get('TWILIO_ACCOUNT_SID');
   const TWILIO_AUTH_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN');
+  const TWILIO_MESSAGING_SERVICE_SID = Deno.env.get('TWILIO_MESSAGING_SERVICE_SID');
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
@@ -169,7 +170,7 @@ serve(async (req) => {
       } catch (e) { console.error('[BOT] Usage tracking (in) error:', e); }
 
       if (!skipSend && reply && TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && fromNumber) {
-        // Send reply with retry
+        // Send reply with retry - prefer MessagingServiceSid for WhatsApp delivery
         let twilioResult: any = null;
         let sendSuccess = false;
 
@@ -181,6 +182,7 @@ serve(async (req) => {
               fromNumber,
               contactPhone,
               reply,
+              TWILIO_MESSAGING_SERVICE_SID || undefined,
             );
 
             const twilioStatus = String(twilioResult?.status || '').toLowerCase();
