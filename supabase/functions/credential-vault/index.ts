@@ -212,6 +212,14 @@ async function processAction(
     });
   }
 
+  // Backward compatibility: legacy callers used action='store' for service secrets.
+  // Secrets are now handled at infrastructure level, so accept and noop to avoid 4xx loops.
+  if (action === 'store') {
+    return new Response(JSON.stringify({ success: true, message: 'store action acknowledged (noop)' }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
   return new Response(JSON.stringify({ error: 'Unknown action' }), {
     status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
