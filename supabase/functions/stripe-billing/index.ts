@@ -43,7 +43,7 @@ serve(async (req) => {
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
   try {
-    const { action, tenant_id, email, name, plan_slug, currency: reqCurrency, package_id } = await req.json();
+    const { action, tenant_id, email, name, plan_slug, currency: reqCurrency, package_id, service_type } = await req.json();
 
     switch (action) {
       // ============================================
@@ -310,9 +310,8 @@ serve(async (req) => {
         }
 
         // Determine redirect based on service_type
-        const { service_type: setupServiceType } = await req.clone().json().catch(() => ({}));
         const origin = req.headers.get('origin') || 'https://biz-chat-tasks.lovable.app';
-        const setupRoute = setupServiceType === 'whatsapp' ? '/whatsapp' : '/calls';
+        const setupRoute = service_type === 'whatsapp' ? '/whatsapp' : '/calls';
 
         const session = await stripeRequest('/checkout/sessions', 'POST', {
           customer: customerId,
