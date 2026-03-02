@@ -3,7 +3,13 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
 import { corsHeaders } from "./constants.ts";
 import { sendTwilioMessage, transcribeVoiceMessage } from "./helpers.ts";
 import { getAIResponse } from "./ai-response.ts";
-import { processReceiptOCR } from "./ocr.ts";
+import {
+  processExpenseDocument,
+  classifyExpenseType,
+  handleBudgetCollectApprover,
+  checkAndHandleApprovalResponse,
+  checkAndHandleReceiptUpload,
+} from "./expense-handler.ts";
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -35,7 +41,6 @@ serve(async (req) => {
       const ELEVENLABS_API_KEY = Deno.env.get('ELEVENLABS_API_KEY');
 
       if (ELEVENLABS_API_KEY && TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN) {
-        // Send processing confirmation
         if (TWILIO_PHONE_NUMBER && contactPhone) {
           try {
             await sendTwilioMessage(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER, contactPhone, '🎤 Procesando tu mensaje de voz...');
@@ -88,15 +93,11 @@ serve(async (req) => {
     }
 
     const msg = effectiveMessageBody.trim().toLowerCase();
-    let reply = '';
-    let newState = botState;
-    let newContext = { ...botContext };
 
     // ==================== GLOBAL COMMANDS ====================
     const isResetCommand = /^(menu|menú|inicio|reiniciar|reset|salir|volver|empezar)$/i.test(msg);
 
     // ==================== STALE CONVERSATION RESET ====================
-    // If conversation has been idle for 24+ hours AND is not in welcome/awaiting_role, auto-reset
     let isStale = false;
     if (!isSandbox && conv.updated_at) {
       const lastActivity = new Date(conv.updated_at).getTime();
@@ -118,9 +119,9 @@ serve(async (req) => {
       LOVABLE_API_KEY: LOVABLE_API_KEY!, SUPABASE_URL,
     });
 
-    reply = stateResult.reply;
-    newState = stateResult.newState;
-    newContext = stateResult.newContext;
+    let reply = stateResult.reply;
+    const newState = stateResult.newState;
+    const newContext = stateResult.newContext;
 
     // ==================== PERSIST & REPLY ====================
     if (!isSandbox) {
@@ -129,11 +130,8 @@ serve(async (req) => {
       // Track inbound usage event
       try {
         await supabase.from('whatsapp_usage_events').insert({
-          tenant_id: tenantId,
-          region: 'LATAM',
-          provider: 'twilio',
-          event_type: 'message_in',
-          units: 1,
+          tenant_id: tenantId, region: 'LATAM', provider: 'twilio',
+          event_type: 'message_in', units: 1,
           metadata: { conversation_id: conversationId, bot_state: botState },
         });
       } catch (e) { console.error('Usage tracking (in) error:', e); }
@@ -146,15 +144,11 @@ serve(async (req) => {
           metadata: { provider: 'bot', bot_state: newState },
         });
 
-        // Track outbound usage event
         try {
           await supabase.from('whatsapp_usage_events').insert({
-            tenant_id: tenantId,
-            region: 'LATAM',
-            provider: 'twilio',
+            tenant_id: tenantId, region: 'LATAM', provider: 'twilio',
             provider_message_id: twilioResult?.sid || null,
-            event_type: 'message_out',
-            units: 1,
+            event_type: 'message_out', units: 1,
             metadata: { conversation_id: conversationId, bot_state: newState },
           });
         } catch (e) { console.error('Usage tracking (out) error:', e); }
@@ -220,7 +214,7 @@ async function handleState(input: StateInput): Promise<StateResult> {
         .maybeSingle();
 
       if (knownEmployee) {
-        reply = `¡Hola, *${knownEmployee.name}*! 👋 ¡Qué gusto verte de vuelta!\n\nSoy Aria, tu asistente personal. ¿En qué te ayudo hoy?\n\n• 📋 Pendientes y compromisos\n• 📅 Tu agenda del día\n• 📸 Registrar un gasto\n• 💬 Consultar información\n\nCuéntame 😊`;
+        reply = `¡Hola, *${knownEmployee.name}*! 👋 ¡Qué gusto verte de vuelta!\n\nSoy Aria, tu asistente personal. ¿En qué te ayudo hoy?\n\n• 📋 Pendientes y compromisos\n• 📅 Tu agenda del día\n• 📸 Registrar un gasto (envía foto)\n• 📋 Registrar un presupuesto\n• 💬 Consultar información\n\nCuéntame 😊`;
         newState = 'employee_mode';
         newContext = { role: 'employee', user_id: knownEmployee.user_id, user_name: knownEmployee.name, profile_id: knownEmployee.id };
         await supabase.from('whatsapp_conversations').update({ verified_user_id: knownEmployee.user_id }).eq('id', conversationId);
@@ -282,7 +276,7 @@ async function handleState(input: StateInput): Promise<StateResult> {
       newState = 'welcome';
       newContext = {};
     } else if (isSandbox) {
-      reply = `✅ ¡Bienvenido al modo empleado! 🎉 (Modo sandbox — autenticación simulada)\n\nSoy Aria, tu asistente personal. Estoy aquí para hacerte la vida más fácil:\n\n• 📋 Recordarte tus pendientes y compromisos\n• 📅 Revisar tu agenda del día\n• 📸 Registrar gastos — solo mándame la foto del ticket\n• 💬 Resolver dudas de la base de conocimientos\n• 📊 Darte un resumen de cómo va tu día\n\n¿Por dónde empezamos? 😊`;
+      reply = `✅ ¡Bienvenido al modo empleado! 🎉 (Modo sandbox — autenticación simulada)\n\nSoy Aria, tu asistente personal. Estoy aquí para hacerte la vida más fácil:\n\n• 📋 Recordarte tus pendientes y compromisos\n• 📅 Revisar tu agenda del día\n• 📸 Registrar gastos — solo mándame la foto del ticket\n• 📋 Registrar presupuestos por autorizar\n• 💬 Resolver dudas\n\n¿Por dónde empezamos? 😊`;
       newState = 'employee_mode';
       newContext = { role: 'employee', user_id: 'sandbox_user', user_name: 'Usuario Sandbox', profile_id: 'sandbox' };
     } else {
@@ -296,7 +290,7 @@ async function handleState(input: StateInput): Promise<StateResult> {
 
       if (profile) {
         await supabase.from('profiles').update({ whatsapp_number: contactPhone }).eq('id', profile.id);
-        reply = `✅ ¡Qué tal, *${profile.name}*! 🎉 Me da gusto verte por aquí.\n\nTe he registrado con este número para que la próxima vez te reconozca automáticamente, sin necesidad de PIN 🔓\n\nSoy Aria, tu asistente personal. Estoy para lo que necesites:\n\n• 📋 Recordarte tus pendientes y compromisos\n• 📅 Revisar tu agenda del día\n• 📸 Registrar gastos — solo mándame la foto del ticket\n• 💬 Resolver dudas de la base de conocimientos\n• 📊 Darte un resumen de cómo va tu día\n\n¿En qué te ayudo? 😊`;
+        reply = `✅ ¡Qué tal, *${profile.name}*! 🎉 Me da gusto verte por aquí.\n\nTe he registrado con este número para que la próxima vez te reconozca automáticamente 🔓\n\nSoy Aria, tu asistente personal:\n\n• 📸 Registrar gastos — mándame la foto\n• 📋 Presupuestos por autorizar\n• 📅 Revisar tu agenda\n• 💬 Consultar información\n\n¿En qué te ayudo? 😊`;
         newState = 'employee_mode';
         newContext = { role: 'employee', user_id: profile.user_id, user_name: profile.name, profile_id: profile.id };
         await supabase.from('whatsapp_conversations').update({ verified_user_id: profile.user_id }).eq('id', conversationId);
@@ -310,21 +304,105 @@ async function handleState(input: StateInput): Promise<StateResult> {
     reply = await getAIResponse(LOVABLE_API_KEY, tenantId, supabase, 'client', effectiveMessageBody, conv);
 
   } else if (botState === 'employee_mode') {
-    const isExpenseCaptureIntent =
+    const userId = newContext.user_id as string;
+    const userName = newContext.user_name as string || '';
+
+    // ---- 1. Check for approval responses (APROBAR/RECHAZAR) ----
+    if (userId) {
+      const approvalResult = await checkAndHandleApprovalResponse(msg, userId, userName, tenantId, supabase);
+      if (approvalResult.handled) {
+        reply = approvalResult.reply;
+        return { reply, newState, newContext };
+      }
+    }
+
+    // ---- 2. Check if image is a receipt for approved budget ----
+    if (mediaUrl && userId) {
+      const receiptResult = await checkAndHandleReceiptUpload(
+        mediaUrl, userId, tenantId, supabase,
+        TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, LOVABLE_API_KEY, effectiveMessageBody
+      );
+      if (receiptResult.handled) {
+        reply = receiptResult.reply;
+        return { reply, newState, newContext };
+      }
+    }
+
+    // ---- 3. Detect expense/budget intent ----
+    const isExpenseIntent =
       /\b(registra|registrar|agrega|agregar|captura|capturar|sube|subir|guarda|guardar|carga|cargar)\b/i.test(msg) &&
-      /(gasto|comprobante|ticket|factura|recibo)/i.test(msg);
+      /(gasto|comprobante|ticket|factura|recibo|presupuesto|cotizaci[oó]n|pago)/i.test(msg);
+
+    const isBudgetKeyword = /\b(presupuesto|cotizaci[oó]n|quote|propuesta|estimado|por\s*pagar|pendiente|a\s*autorizaci[oó]n)\b/i.test(msg);
 
     if (mediaUrl) {
-      reply = await processReceiptOCR(mediaUrl, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, LOVABLE_API_KEY, tenantId, newContext, supabase, effectiveMessageBody);
+      // Image received — process as expense document
+      const result = await processExpenseDocument(
+        mediaUrl, effectiveMessageBody, LOVABLE_API_KEY, tenantId, newContext, supabase,
+        TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN
+      );
+      reply = result.reply;
+      newState = result.newState;
+      newContext = result.newContext;
+
     } else if (msg.includes('credencial') || msg.includes('contraseña') || msg.includes('password') || msg.includes('usuario y contraseña') || msg.includes('acceso')) {
       reply = '🔐 Vamos a guardar una credencial compartida.\n\n¿De qué *plataforma o servicio* es? (Ej: Gmail, Hosting, CPanel, Facebook Ads...)';
       newState = 'credential_collect_platform';
-    } else if (isExpenseCaptureIntent) {
-      reply = '📸 Envíame la *foto del comprobante* y extraeré los datos automáticamente con OCR.\n\nTambién puedes escribir el gasto manualmente:\n_Ej: "Gasto $350 comida con cliente"_';
-      newState = 'employee_expense';
+
+    } else if (isExpenseIntent || isBudgetKeyword) {
+      // Text-based expense/budget
+      const result = await processExpenseDocument(
+        null, effectiveMessageBody, LOVABLE_API_KEY, tenantId, newContext, supabase,
+        TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN
+      );
+      reply = result.reply;
+      newState = result.newState;
+      newContext = result.newContext;
+
     } else {
-      // Delegate scheduling/agenda/calendar/intents to AI tools.
+      // Delegate to AI for all other intents
       reply = await getAIResponse(LOVABLE_API_KEY, tenantId, supabase, 'employee', effectiveMessageBody, conv);
+    }
+
+  } else if (botState === 'budget_collect_approver') {
+    // Collecting approver for a pending budget
+    const result = await handleBudgetCollectApprover(
+      msg, effectiveMessageBody, tenantId, newContext, supabase, conversationId
+    );
+    reply = result.reply;
+    newState = result.newState;
+    newContext = result.newContext;
+
+  } else if (botState === 'expense_classify') {
+    // User was asked: "¿Es gasto pagado o presupuesto?"
+    if (/pagado|gasto|ya\s*pag/i.test(msg) || msg === '1') {
+      const result = await processExpenseDocument(
+        newContext._pending_media_url as string || null,
+        newContext._pending_message as string || '',
+        LOVABLE_API_KEY, tenantId,
+        newContext, supabase, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN
+      );
+      reply = result.reply;
+      newState = result.newState;
+      newContext = result.newContext;
+      delete newContext._pending_media_url;
+      delete newContext._pending_message;
+    } else if (/presupuesto|cotizaci[oó]n|autorizar|pendiente/i.test(msg) || msg === '2') {
+      // Force budget classification
+      const originalMsg = (newContext._pending_message as string || '') + ' presupuesto';
+      const result = await processExpenseDocument(
+        newContext._pending_media_url as string || null,
+        originalMsg,
+        LOVABLE_API_KEY, tenantId,
+        newContext, supabase, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN
+      );
+      reply = result.reply;
+      newState = result.newState;
+      newContext = result.newContext;
+      delete newContext._pending_media_url;
+      delete newContext._pending_message;
+    } else {
+      reply = 'Por favor elige:\n\n1️⃣ Gasto ya pagado\n2️⃣ Presupuesto por autorizar';
     }
 
   } else if (botState === 'credential_collect_platform') {
@@ -366,42 +444,23 @@ async function handleState(input: StateInput): Promise<StateResult> {
     newState = 'employee_mode';
 
   } else if (botState === 'employee_expense') {
+    // Legacy state — redirect to employee_mode for processing
     if (mediaUrl) {
-      reply = await processReceiptOCR(mediaUrl, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, LOVABLE_API_KEY, tenantId, newContext, supabase, effectiveMessageBody);
-      newState = 'employee_mode';
+      const result = await processExpenseDocument(
+        mediaUrl, effectiveMessageBody, LOVABLE_API_KEY, tenantId, newContext, supabase,
+        TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN
+      );
+      reply = result.reply;
+      newState = result.newState;
+      newContext = result.newContext;
     } else {
-      const amountMatch = effectiveMessageBody.match(/\$?([\d,]+\.?\d*)/);
-      const parsedAmount = amountMatch ? parseFloat(amountMatch[1].replace(/,/g, '')) : NaN;
-
-      if (Number.isFinite(parsedAmount) && parsedAmount > 0) {
-        const description = effectiveMessageBody.replace(/\$?[\d,]+\.?\d*/, '').replace(/gasto/i, '').trim() || 'Gasto sin descripción';
-        const { error: insertError } = await supabase.from('expenses').insert({
-          tenant_id: tenantId,
-          user_id: newContext.user_id as string,
-          amount: parsedAmount,
-          description,
-          expense_date: new Date().toISOString().split('T')[0],
-          status: 'pending',
-        });
-
-        if (insertError) {
-          console.error('Expense insert error:', insertError);
-          reply = '❌ No pude guardar el gasto en este momento. Intenta nuevamente en unos segundos.';
-        } else {
-          reply = `✅ Gasto registrado:\n• Monto: $${parsedAmount.toFixed(2)} MXN\n• Descripción: ${description}\n• Fecha: ${new Date().toLocaleDateString('es-MX')}\n\n¿Algo más en lo que pueda ayudarte?`;
-          newState = 'employee_mode';
-        }
-      } else {
-        // Escape: delegate to AI if the message looks like another intent
-        const wantsOtherTask = /(temperatura|clima|agenda|cita|recordatorio|lista|listar|detalle|resumen|buscar|investiga|dime|qué|que|c[aá]l|cu[aá]nto|cancela|salir|regresa|hola|ayuda|help)/i.test(msg);
-
-        if (wantsOtherTask) {
-          reply = await getAIResponse(LOVABLE_API_KEY, tenantId, supabase, 'employee', effectiveMessageBody, conv);
-          newState = 'employee_mode';
-        } else {
-          reply = 'No pude detectar el monto. Por favor incluye la cantidad, ej: _"$350 comida con cliente"_\n\n_Escribe *menu* para volver al inicio._';
-        }
-      }
+      const result = await processExpenseDocument(
+        null, effectiveMessageBody, LOVABLE_API_KEY, tenantId, newContext, supabase,
+        TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN
+      );
+      reply = result.reply;
+      newState = result.newState;
+      newContext = result.newContext;
     }
 
   } else {

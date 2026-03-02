@@ -69,7 +69,21 @@ export const AI_TOOLS = [
     type: 'function',
     function: {
       name: 'get_pending_expenses',
-      description: 'Obtener gastos pendientes de aprobación del usuario.',
+      description: 'Obtener gastos pendientes del usuario. Incluye gastos pagados recientes y presupuestos en cualquier estado.',
+      parameters: {
+        type: 'object',
+        properties: {
+          filter: { type: 'string', enum: ['all', 'pending', 'approved_no_receipt', 'budgets'], description: 'Filtro: all=todos recientes, pending=pendientes de aprobación, approved_no_receipt=aprobados sin comprobante, budgets=solo presupuestos' },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_pending_approvals',
+      description: 'Obtener presupuestos pendientes de aprobación asignados al usuario actual. Usa cuando pregunten "qué tengo por aprobar", "presupuestos pendientes", "solicitudes de aprobación".',
       parameters: { type: 'object', properties: {}, required: [] },
     },
   },
