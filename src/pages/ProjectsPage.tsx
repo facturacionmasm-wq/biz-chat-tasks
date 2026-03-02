@@ -1,14 +1,23 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   Plus, FolderKanban, Calendar, Users, ArrowUpCircle, ArrowRightCircle, ArrowDownCircle,
   Circle, Clock, CheckCircle2, AlertOctagon, ArrowLeft, ChevronRight, X, BarChart3,
   Target, Milestone as MilestoneIcon, Edit3, Trash2, Timer, User
 } from 'lucide-react';
-import { projects as initialProjects, tasks as initialTasks, teamMembers } from '@/data/mockData';
+import { projects as initialProjects, tasks as initialTasks } from '@/data/mockData';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Task } from '@/types/app';
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
+
+interface RealTeamMember {
+  id: string;
+  name: string;
+  role: string;
+  email: string;
+}
 
 const statusLabels: Record<string, { label: string; className: string }> = {
   planning: { label: 'Planificación', className: 'bg-muted text-muted-foreground' },
@@ -48,6 +57,9 @@ interface TaskWithMeta extends Task {
 }
 
 const ProjectsPage = () => {
+  const { user } = useAuth();
+  const [teamMembers, setTeamMembers] = useState<RealTeamMember[]>([]);
+
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [view, setView] = useState<'list' | 'board'>('list');
   const [allTasks, setAllTasks] = useState<TaskWithMeta[]>(initialTasks.map(t => ({ ...t })));
@@ -76,6 +88,41 @@ const ProjectsPage = () => {
   const [showNewMilestone, setShowNewMilestone] = useState(false);
   const [newMilestoneName, setNewMilestoneName] = useState('');
   const [newMilestoneDate, setNewMilestoneDate] = useState('');
+
+  // Load real team members from DB
+  useEffect(() => {
+    if (!user) return;
+    const loadTeam = async () => {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('tenant_id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (!profile) return;
+
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('user_id, name, email')
+        .eq('tenant_id', profile.tenant_id);
+
+      const { data: roles } = await supabase
+        .from('user_roles')
+        .select('user_id, role')
+        .eq('tenant_id', profile.tenant_id);
+
+      const roleMap = new Map((roles || []).map(r => [r.user_id, r.role]));
+
+      setTeamMembers(
+        (profiles || []).map(p => ({
+          id: p.user_id,
+          name: p.name || p.email || 'Sin nombre',
+          role: roleMap.get(p.user_id) || 'staff',
+          email: p.email || '',
+        }))
+      );
+    };
+    loadTeam();
+  }, [user]);
 
   const handleCreateProject = () => {
     if (!newProjectName.trim()) {
@@ -119,7 +166,7 @@ const ProjectsPage = () => {
       status: 'todo',
       priority: newTaskPriority,
       assignee: member?.name || 'Sin asignar',
-      assigneeAvatar: member?.avatar || '',
+      assigneeAvatar: '',
       dueDate: newTaskDueDate ? new Date(newTaskDueDate) : undefined,
       projectId: selectedProjectId || undefined,
       estimatedHours: newTaskEstHours ? parseFloat(newTaskEstHours) : undefined,
