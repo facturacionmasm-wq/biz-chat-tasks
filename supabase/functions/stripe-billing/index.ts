@@ -43,7 +43,7 @@ serve(async (req) => {
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
   try {
-    const { action, tenant_id, email, name, plan_slug } = await req.json();
+    const { action, tenant_id, email, name, plan_slug, currency: reqCurrency } = await req.json();
 
     switch (action) {
       // ============================================
@@ -71,18 +71,44 @@ serve(async (req) => {
           }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
         }
 
+        // Get tenant info for currency/region
+        const { data: tenantInfo } = await supabase
+          .from('tenants')
+          .select('currency, country_code, region')
+          .eq('id', tenant_id)
+          .maybeSingle();
+
+        const tenantCurrency = (reqCurrency || tenantInfo?.currency || 'mxn').toLowerCase();
+        const tenantCountry = tenantInfo?.country_code || 'MX';
+        const tenantRegion = tenantInfo?.region || 'LATAM';
+
+        // Get localized pricing if available
+        const { data: localPricing } = await supabase
+          .from('global_plan_pricing')
+          .select('base_price, overage_price, currency')
+          .eq('country_code', tenantCountry)
+          .eq('active', true)
+          .limit(1)
+          .maybeSingle();
+
+        const basePriceAmount = localPricing ? Math.round(localPricing.base_price * 100) : 49900;
+        const overagePriceAmount = localPricing ? Math.round(localPricing.overage_price * 100) : 150;
+        const priceCurrency = localPricing?.currency?.toLowerCase() || tenantCurrency;
+
         // Create Stripe customer
         const customer = await stripeRequest('/customers', 'POST', {
           email,
           name: name || email,
           'metadata[tenant_id]': tenant_id,
+          'metadata[country]': tenantCountry,
+          'metadata[region]': tenantRegion,
           'metadata[source]': 'officehub_auto',
         }, STRIPE_SECRET_KEY);
 
-        console.log(`Created Stripe customer: ${customer.id} for tenant ${tenant_id}`);
+        console.log(`Created Stripe customer: ${customer.id} for tenant ${tenant_id} (${tenantCountry}/${priceCurrency})`);
 
-        // Get or create products and prices
-        const products = await ensureProductsExist(STRIPE_SECRET_KEY);
+        // Get or create products and prices for this currency
+        const products = await ensureProductsExist(STRIPE_SECRET_KEY, priceCurrency, basePriceAmount, overagePriceAmount);
 
         // Create subscription with base + metered items
         const subParams: Record<string, string> = {
@@ -90,6 +116,8 @@ serve(async (req) => {
           'items[0][price]': products.basePriceId,
           'items[1][price]': products.meteredPriceId,
           'metadata[tenant_id]': tenant_id,
+          'metadata[country]': tenantCountry,
+          'metadata[region]': tenantRegion,
           payment_behavior: 'default_incomplete',
           'payment_settings[save_default_payment_method]': 'on_subscription',
           'expand[0]': 'latest_invoice.payment_intent',
@@ -283,8 +311,8 @@ serve(async (req) => {
   }
 });
 
-// Ensure products and prices exist in Stripe
-async function ensureProductsExist(stripeKey: string) {
+// Ensure products and prices exist in Stripe (multi-currency aware)
+async function ensureProductsExist(stripeKey: string, currency = 'mxn', baseAmount = 49900, meteredAmount = 150) {
   // Search for existing products
   const products = await stripeRequest('/products?active=true&limit=100', 'GET', undefined, stripeKey);
 
@@ -303,37 +331,43 @@ async function ensureProductsExist(stripeKey: string) {
   // Create metered product if not exists
   if (!meteredProduct) {
     meteredProduct = await stripeRequest('/products', 'POST', {
-      name: 'OfficeHub - Uso por Minuto',
-      description: 'Cargo por minuto de llamada (voz + IA)',
+      name: 'OfficeHub - Uso por Unidad',
+      description: 'Cargo por unidad de consumo (mensajes, minutos)',
       'metadata[type]': 'officehub_metered',
     }, stripeKey);
   }
 
-  // Get or create prices
-  const prices = await stripeRequest(`/prices?active=true&product=${baseProduct.id}&limit=10`, 'GET', undefined, stripeKey);
-  let basePrice = prices.data.find((p: any) => p.recurring?.interval === 'month' && !p.recurring?.usage_type);
+  // Get or create prices for the specified currency
+  const prices = await stripeRequest(`/prices?active=true&product=${baseProduct.id}&limit=50`, 'GET', undefined, stripeKey);
+  let basePrice = prices.data.find((p: any) =>
+    p.recurring?.interval === 'month' && !p.recurring?.usage_type && p.currency === currency
+  );
 
   if (!basePrice) {
     basePrice = await stripeRequest('/prices', 'POST', {
       product: baseProduct.id,
-      unit_amount: '49900', // $499 MXN
-      currency: 'mxn',
+      unit_amount: String(baseAmount),
+      currency,
       'recurring[interval]': 'month',
     }, stripeKey);
+    console.log(`Created base price for ${currency}: ${basePrice.id}`);
   }
 
-  const meteredPrices = await stripeRequest(`/prices?active=true&product=${meteredProduct.id}&limit=10`, 'GET', undefined, stripeKey);
-  let meteredPrice = meteredPrices.data.find((p: any) => p.recurring?.usage_type === 'metered');
+  const meteredPrices = await stripeRequest(`/prices?active=true&product=${meteredProduct.id}&limit=50`, 'GET', undefined, stripeKey);
+  let meteredPrice = meteredPrices.data.find((p: any) =>
+    p.recurring?.usage_type === 'metered' && p.currency === currency
+  );
 
   if (!meteredPrice) {
     meteredPrice = await stripeRequest('/prices', 'POST', {
       product: meteredProduct.id,
-      unit_amount: '150', // $1.50 MXN per minute
-      currency: 'mxn',
+      unit_amount: String(meteredAmount),
+      currency,
       'recurring[interval]': 'month',
       'recurring[usage_type]': 'metered',
       'recurring[aggregate_usage]': 'last_during_period',
     }, stripeKey);
+    console.log(`Created metered price for ${currency}: ${meteredPrice.id}`);
   }
 
   return {
