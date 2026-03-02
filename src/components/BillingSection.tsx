@@ -59,7 +59,8 @@ const BillingSection = ({ user, isSuperAdmin, getTenantId, inputClass, userRole 
   }>>([]);
 
   const [isMasterTenant, setIsMasterTenant] = useState(false);
-  const isMasterAdmin = userRole === 'super_admin' || (userRole === 'owner' && isMasterTenant);
+  const [effectiveRole, setEffectiveRole] = useState<string | null>(userRole);
+  const isMasterAdmin = effectiveRole === 'super_admin' || (effectiveRole === 'owner' && isMasterTenant);
 
   useEffect(() => {
     if (!user) return;
@@ -77,8 +78,22 @@ const BillingSection = ({ user, isSuperAdmin, getTenantId, inputClass, userRole 
 
       setPlans((plansRes.data || []) as SubPlan[]);
       if (statusRes.data) setSubStatus(statusRes.data);
+
       const masterTenantId = '00000000-0000-0000-0000-000000000001';
-      setIsMasterTenant(tenantId === masterTenantId);
+      const isMasterTenantUser = tenantId === masterTenantId;
+      setIsMasterTenant(isMasterTenantUser);
+
+      const { data: roles } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', user!.id)
+        .eq('tenant_id', tenantId);
+
+      const rolePriority = ['super_admin', 'owner', 'admin', 'staff', 'moderator', 'user'];
+      const resolvedRole = rolePriority.find((role) => (roles || []).some((r: any) => r.role === role)) || (roles || [])[0]?.role || userRole || null;
+      setEffectiveRole(resolvedRole);
+
+      const isMasterAdminUser = resolvedRole === 'super_admin' || (resolvedRole === 'owner' && isMasterTenantUser);
 
       // Load current subscription
       const { data: sub } = await supabase
@@ -99,7 +114,7 @@ const BillingSection = ({ user, isSuperAdmin, getTenantId, inputClass, userRole 
       if (masterSettings.stripe_publishable_key) setStripePublishableKey(masterSettings.stripe_publishable_key);
 
       // Super admin: load all tenants with their subscription status
-      if (isMasterAdmin) {
+      if (isMasterAdminUser) {
         const { data: subs } = await supabase
           .from('tenant_subscriptions')
           .select('tenant_id, status, trial_ends_at, plan_id');

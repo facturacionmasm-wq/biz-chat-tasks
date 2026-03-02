@@ -85,12 +85,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const fetchUserData = async (userId: string) => {
-    const [roleResult, profileResult, subResult] = await Promise.all([
-      supabase.from('user_roles').select('role').eq('user_id', userId).maybeSingle(),
+    const { data: tenantId } = await supabase.rpc('get_user_tenant_id', { _user_id: userId });
+
+    const [rolesResult, profileResult, subResult] = await Promise.all([
+      tenantId
+        ? supabase.from('user_roles').select('role').eq('user_id', userId).eq('tenant_id', tenantId)
+        : Promise.resolve({ data: [] as Array<{ role: string }>, error: null }),
       supabase.from('profiles').select('onboarding_completed, status').eq('user_id', userId).maybeSingle(),
       supabase.rpc('get_tenant_subscription_status', { _user_id: userId }),
     ]);
-    setUserRole(roleResult.data?.role ?? null);
+
+    const roles = (rolesResult.data || []) as Array<{ role: string }>;
+    const rolePriority = ['super_admin', 'owner', 'admin', 'staff', 'moderator', 'user'];
+    const resolvedRole = rolePriority.find((role) => roles.some((r) => r.role === role)) || roles[0]?.role || null;
+
+    setUserRole(resolvedRole);
     setProfileStatus(profileResult.data?.status ?? null);
     setOnboardingCompleted(profileResult.data?.onboarding_completed ?? null);
 
