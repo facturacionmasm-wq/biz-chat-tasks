@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Receipt, DollarSign, Calendar, TrendingUp, Filter, Loader2 } from 'lucide-react';
+import { Receipt, DollarSign, Calendar, TrendingUp, Loader2, FileText, ExternalLink, CheckCircle, XCircle, Clock, AlertCircle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -7,21 +7,46 @@ import { es } from 'date-fns/locale';
 interface Expense {
   id: string;
   user_id: string;
+  type: string;
   category: string | null;
   description: string | null;
+  vendor_name: string | null;
+  concept: string | null;
   amount: number;
   currency: string;
   expense_date: string;
   status: string;
+  approval_required: boolean;
+  approver_user_id: string | null;
+  approved_at: string | null;
+  rejected_at: string | null;
+  rejection_reason: string | null;
+  paid_at: string | null;
+  folio: string | null;
+  payment_method: string | null;
+  document_budget_drive_url: string | null;
+  document_payment_drive_url: string | null;
+  source: string;
   created_at: string;
   user_name?: string;
+  approver_name?: string;
 }
+
+const STATUS_CONFIG: Record<string, { label: string; class: string; icon: React.ElementType }> = {
+  paid: { label: 'Pagado', class: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400', icon: CheckCircle },
+  pending: { label: 'Pendiente', class: 'bg-amber-500/10 text-amber-600 dark:text-amber-400', icon: Clock },
+  pending_approval: { label: 'Por aprobar', class: 'bg-blue-500/10 text-blue-600 dark:text-blue-400', icon: AlertCircle },
+  approved: { label: 'Aprobado', class: 'bg-violet-500/10 text-violet-600 dark:text-violet-400', icon: CheckCircle },
+  rejected: { label: 'Rechazado', class: 'bg-red-500/10 text-red-600 dark:text-red-400', icon: XCircle },
+};
 
 const ExpensesPage = () => {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'list' | 'by_user'>('list');
   const [periodFilter, setPeriodFilter] = useState<'day' | 'month' | 'year'>('month');
+  const [typeFilter, setTypeFilter] = useState<'all' | 'expense' | 'budget'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'paid' | 'pending_approval' | 'approved' | 'rejected'>('all');
 
   useEffect(() => {
     fetchExpenses();
@@ -31,20 +56,23 @@ const ExpensesPage = () => {
     setLoading(true);
     const { data, error } = await supabase
       .from('expenses')
-      .select('*')
+      .select('id, user_id, type, category, description, vendor_name, concept, amount, currency, expense_date, status, approval_required, approver_user_id, approved_at, rejected_at, rejection_reason, paid_at, folio, payment_method, document_budget_drive_url, document_payment_drive_url, source, created_at')
       .order('expense_date', { ascending: false })
-      .limit(200);
+      .limit(300);
 
     if (!error && data) {
-      // Fetch user names
-      const userIds = [...new Set(data.map(e => e.user_id))];
+      const userIds = [...new Set(data.map(e => e.user_id).concat(data.filter(e => e.approver_user_id).map(e => e.approver_user_id!)))];
       const { data: profiles } = await supabase
         .from('profiles_safe' as any)
         .select('user_id, name')
         .in('user_id', userIds) as { data: any[] | null };
 
       const nameMap = new Map(profiles?.map(p => [p.user_id, p.name]) || []);
-      setExpenses(data.map(e => ({ ...e, user_name: nameMap.get(e.user_id) || 'Desconocido' })));
+      setExpenses(data.map(e => ({
+        ...e,
+        user_name: nameMap.get(e.user_id) || 'Desconocido',
+        approver_name: e.approver_user_id ? nameMap.get(e.approver_user_id) || null : null,
+      })));
     }
     setLoading(false);
   };
@@ -52,12 +80,18 @@ const ExpensesPage = () => {
   const now = new Date();
   const filteredExpenses = expenses.filter(e => {
     const d = new Date(e.expense_date);
-    if (periodFilter === 'day') return d.toDateString() === now.toDateString();
-    if (periodFilter === 'month') return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-    return d.getFullYear() === now.getFullYear();
+    if (periodFilter === 'day' && d.toDateString() !== now.toDateString()) return false;
+    if (periodFilter === 'month' && (d.getMonth() !== now.getMonth() || d.getFullYear() !== now.getFullYear())) return false;
+    if (periodFilter === 'year' && d.getFullYear() !== now.getFullYear()) return false;
+    if (typeFilter !== 'all' && e.type !== typeFilter) return false;
+    if (statusFilter !== 'all' && e.status !== statusFilter) return false;
+    return true;
   });
 
   const totalAmount = filteredExpenses.reduce((s, e) => s + Number(e.amount), 0);
+  const budgetCount = filteredExpenses.filter(e => e.type === 'budget').length;
+  const paidCount = filteredExpenses.filter(e => e.status === 'paid').length;
+  const pendingApprovalCount = filteredExpenses.filter(e => e.status === 'pending_approval').length;
 
   const byUser = filteredExpenses.reduce((acc, e) => {
     const name = e.user_name || 'Desconocido';
@@ -68,6 +102,23 @@ const ExpensesPage = () => {
     return acc;
   }, {} as Record<string, { total: number; count: number; expenses: Expense[] }>);
 
+  const getStatusBadge = (status: string) => {
+    const config = STATUS_CONFIG[status] || { label: status, class: 'bg-muted text-muted-foreground', icon: Clock };
+    const Icon = config.icon;
+    return (
+      <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium ${config.class}`}>
+        <Icon size={12} />
+        {config.label}
+      </span>
+    );
+  };
+
+  const getTypeBadge = (type: string) => (
+    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${type === 'budget' ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400' : 'bg-muted text-muted-foreground'}`}>
+      {type === 'budget' ? '📋 Presupuesto' : '🧾 Gasto'}
+    </span>
+  );
+
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -77,13 +128,13 @@ const ExpensesPage = () => {
   }
 
   return (
-    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 max-w-6xl mx-auto">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 max-w-7xl mx-auto">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-            <Receipt size={24} className="text-primary" /> Control de Gastos
+            <Receipt size={24} className="text-primary" /> Control de Gastos y Presupuestos
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">Gastos registrados por empleados vía WhatsApp</p>
+          <p className="text-sm text-muted-foreground mt-1">Registros de gastos pagados y presupuestos por autorizar vía WhatsApp</p>
         </div>
         <div className="flex items-center gap-2">
           {(['day', 'month', 'year'] as const).map(p => (
@@ -99,68 +150,122 @@ const ExpensesPage = () => {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-muted-foreground">Total gastos</span>
-            <DollarSign size={18} className="text-primary" />
+            <span className="text-xs text-muted-foreground">Total</span>
+            <DollarSign size={16} className="text-primary" />
           </div>
-          <p className="text-2xl font-bold text-foreground">${totalAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</p>
+          <p className="text-xl font-bold text-foreground">${totalAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</p>
         </div>
         <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-muted-foreground">Registros</span>
-            <Receipt size={18} className="text-warning" />
+            <span className="text-xs text-muted-foreground">Pagados</span>
+            <CheckCircle size={16} className="text-emerald-500" />
           </div>
-          <p className="text-2xl font-bold text-foreground">{filteredExpenses.length}</p>
+          <p className="text-xl font-bold text-foreground">{paidCount}</p>
         </div>
         <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-muted-foreground">Empleados</span>
-            <TrendingUp size={18} className="text-success" />
+            <span className="text-xs text-muted-foreground">Presupuestos</span>
+            <FileText size={16} className="text-blue-500" />
           </div>
-          <p className="text-2xl font-bold text-foreground">{Object.keys(byUser).length}</p>
+          <p className="text-xl font-bold text-foreground">{budgetCount}</p>
+        </div>
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-muted-foreground">Por aprobar</span>
+            <AlertCircle size={16} className="text-amber-500" />
+          </div>
+          <p className="text-xl font-bold text-foreground">{pendingApprovalCount}</p>
         </div>
       </div>
 
-      {/* View toggle */}
-      <div className="flex items-center gap-2">
-        <button onClick={() => setViewMode('list')} className={`text-xs px-3 py-1.5 rounded-md font-medium ${viewMode === 'list' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-secondary'}`}>
-          Lista
-        </button>
-        <button onClick={() => setViewMode('by_user')} className={`text-xs px-3 py-1.5 rounded-md font-medium ${viewMode === 'by_user' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-secondary'}`}>
-          Por empleado
-        </button>
+      {/* Filters row */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-1 mr-2">
+          <button onClick={() => setViewMode('list')} className={`text-xs px-3 py-1.5 rounded-md font-medium ${viewMode === 'list' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-secondary'}`}>
+            Lista
+          </button>
+          <button onClick={() => setViewMode('by_user')} className={`text-xs px-3 py-1.5 rounded-md font-medium ${viewMode === 'by_user' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-secondary'}`}>
+            Por empleado
+          </button>
+        </div>
+        <div className="h-4 w-px bg-border" />
+        <div className="flex items-center gap-1">
+          {(['all', 'expense', 'budget'] as const).map(t => (
+            <button key={t} onClick={() => setTypeFilter(t)}
+              className={`text-xs px-2.5 py-1 rounded-md ${typeFilter === t ? 'bg-secondary text-foreground font-medium' : 'text-muted-foreground hover:bg-secondary/50'}`}>
+              {t === 'all' ? 'Todos' : t === 'expense' ? 'Gastos' : 'Presupuestos'}
+            </button>
+          ))}
+        </div>
+        <div className="h-4 w-px bg-border" />
+        <div className="flex items-center gap-1">
+          {(['all', 'paid', 'pending_approval', 'approved', 'rejected'] as const).map(s => (
+            <button key={s} onClick={() => setStatusFilter(s)}
+              className={`text-xs px-2.5 py-1 rounded-md ${statusFilter === s ? 'bg-secondary text-foreground font-medium' : 'text-muted-foreground hover:bg-secondary/50'}`}>
+              {s === 'all' ? 'Todos' : STATUS_CONFIG[s]?.label || s}
+            </button>
+          ))}
+        </div>
       </div>
 
       {viewMode === 'list' ? (
-        <div className="bg-card border border-border rounded-xl overflow-hidden">
+        <div className="bg-card border border-border rounded-xl overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border">
                 <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">Fecha</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">Tipo</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">Empleado</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">Proveedor</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">Descripción</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">Categoría</th>
                 <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">Monto</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">Estado</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">Docs</th>
               </tr>
             </thead>
             <tbody>
               {filteredExpenses.length === 0 && (
-                <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground text-xs">No hay gastos registrados en este periodo</td></tr>
+                <tr><td colSpan={9} className="px-4 py-8 text-center text-muted-foreground text-xs">No hay registros en este periodo</td></tr>
               )}
               {filteredExpenses.map(e => (
                 <tr key={e.id} className="border-b border-border last:border-b-0 hover:bg-secondary/30">
-                  <td className="px-4 py-3 text-muted-foreground">{format(new Date(e.expense_date), 'd MMM yyyy', { locale: es })}</td>
-                  <td className="px-4 py-3 font-medium text-foreground">{e.user_name}</td>
-                  <td className="px-4 py-3 text-foreground">{e.description || '—'}</td>
+                  <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{format(new Date(e.expense_date), 'd MMM yyyy', { locale: es })}</td>
+                  <td className="px-4 py-3">{getTypeBadge(e.type)}</td>
+                  <td className="px-4 py-3 font-medium text-foreground whitespace-nowrap">{e.user_name}</td>
+                  <td className="px-4 py-3 text-foreground">{e.vendor_name || '—'}</td>
+                  <td className="px-4 py-3 text-foreground max-w-[200px] truncate">{e.description || e.concept || '—'}</td>
                   <td className="px-4 py-3"><span className="text-xs bg-secondary px-2 py-0.5 rounded-full">{e.category || 'General'}</span></td>
-                  <td className="px-4 py-3 text-right font-semibold text-foreground">${Number(e.amount).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
+                  <td className="px-4 py-3 text-right font-semibold text-foreground whitespace-nowrap">${Number(e.amount).toLocaleString('es-MX', { minimumFractionDigits: 2 })} {e.currency}</td>
                   <td className="px-4 py-3">
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${e.status === 'approved' ? 'bg-success/10 text-success' : e.status === 'rejected' ? 'bg-destructive/10 text-destructive' : 'bg-warning/10 text-warning'}`}>
-                      {e.status === 'approved' ? 'Aprobado' : e.status === 'rejected' ? 'Rechazado' : 'Pendiente'}
-                    </span>
+                    <div className="space-y-1">
+                      {getStatusBadge(e.status)}
+                      {e.approver_name && (
+                        <p className="text-[10px] text-muted-foreground">Aprobador: {e.approver_name}</p>
+                      )}
+                      {e.rejection_reason && (
+                        <p className="text-[10px] text-red-500 truncate max-w-[120px]" title={e.rejection_reason}>💬 {e.rejection_reason}</p>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-1.5">
+                      {e.document_budget_drive_url && (
+                        <a href={e.document_budget_drive_url} target="_blank" rel="noopener noreferrer"
+                          className="text-blue-500 hover:text-blue-600" title="Presupuesto en Drive">
+                          <FileText size={14} />
+                        </a>
+                      )}
+                      {e.document_payment_drive_url && (
+                        <a href={e.document_payment_drive_url} target="_blank" rel="noopener noreferrer"
+                          className="text-emerald-500 hover:text-emerald-600" title="Comprobante en Drive">
+                          <ExternalLink size={14} />
+                        </a>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -178,24 +283,26 @@ const ExpensesPage = () => {
                   </div>
                   <div>
                     <p className="text-sm font-semibold text-foreground">{name}</p>
-                    <p className="text-xs text-muted-foreground">{data.count} gastos registrados</p>
+                    <p className="text-xs text-muted-foreground">{data.count} registros</p>
                   </div>
                 </div>
                 <p className="text-lg font-bold text-foreground">${data.total.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</p>
               </div>
               <div className="space-y-1">
-                {data.expenses.slice(0, 5).map(e => (
-                  <div key={e.id} className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-secondary/30 text-xs">
-                    <span className="text-muted-foreground">{format(new Date(e.expense_date), 'd MMM', { locale: es })}</span>
-                    <span className="text-foreground flex-1 mx-3">{e.description || '—'}</span>
-                    <span className="font-medium text-foreground">${Number(e.amount).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span>
+                {data.expenses.slice(0, 8).map(e => (
+                  <div key={e.id} className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-secondary/30 text-xs gap-2">
+                    <span className="text-muted-foreground whitespace-nowrap">{format(new Date(e.expense_date), 'd MMM', { locale: es })}</span>
+                    {getTypeBadge(e.type)}
+                    <span className="text-foreground flex-1 truncate">{e.vendor_name || e.description || '—'}</span>
+                    {getStatusBadge(e.status)}
+                    <span className="font-medium text-foreground whitespace-nowrap">${Number(e.amount).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span>
                   </div>
                 ))}
               </div>
             </div>
           ))}
           {Object.keys(byUser).length === 0 && (
-            <div className="text-center py-12 text-muted-foreground text-sm">No hay gastos registrados en este periodo</div>
+            <div className="text-center py-12 text-muted-foreground text-sm">No hay registros en este periodo</div>
           )}
         </div>
       )}
