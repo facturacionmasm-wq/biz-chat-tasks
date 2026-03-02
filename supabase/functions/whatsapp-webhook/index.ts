@@ -408,6 +408,8 @@ serve(async (req) => {
           .eq('id', conversation.id);
       }
 
+      let twimlReply: string | null = null;
+
       if (conversation) {
         // Idempotency check
         if (messageSid) {
@@ -470,14 +472,15 @@ serve(async (req) => {
               'Content-Type': 'application/json',
               'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
             },
-            body: JSON.stringify({
-              conversationId: conversation.id,
-              messageBody: body || (isVoiceMessage ? '' : body),
-              contactPhone: contactPhone,
-              tenantId: tenantId,
-              mediaUrl: mediaUrl,
-              mediaContentType: mediaContentType || undefined,
-            }),
+              body: JSON.stringify({
+                conversationId: conversation.id,
+                messageBody: body || (isVoiceMessage ? '' : body),
+                contactPhone: contactPhone,
+                tenantId: tenantId,
+                mediaUrl: mediaUrl,
+                mediaContentType: mediaContentType || undefined,
+                skipSend: true,
+              }),
           });
 
           const botResponseText = await botRes.text();
@@ -493,13 +496,22 @@ serve(async (req) => {
             });
           } else {
             console.log(`[WH] Bot OK: ${botResponseText.substring(0, 200)}`);
+            try {
+              const botJson = JSON.parse(botResponseText);
+              if (typeof botJson?.reply === 'string' && botJson.reply.trim()) {
+                twimlReply = botJson.reply.trim();
+              }
+            } catch (_parseErr) {
+              // keep null twimlReply; fallback to empty TwiML response
+            }
+
             await logWebhook({
               tenantId,
               conversationId: conversation.id,
               messageId: messageSid,
               stage: 'bot_invocation',
               status: 'ok',
-              payload: { response_length: botResponseText.length },
+              payload: { response_length: botResponseText.length, twiml_reply: Boolean(twimlReply) },
             });
           }
         } catch (botErr) {
@@ -515,7 +527,11 @@ serve(async (req) => {
         }
       }
 
-      return new Response('<Response></Response>', {
+      const twiml = twimlReply
+        ? `<Response><Message>${escapeXml(twimlReply)}</Message></Response>`
+        : '<Response></Response>';
+
+      return new Response(twiml, {
         status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'text/xml' },
       });
