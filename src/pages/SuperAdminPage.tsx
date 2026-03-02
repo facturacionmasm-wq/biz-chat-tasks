@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Navigate } from 'react-router-dom';
 import { useSuperAdminData, FinancialProjection } from '@/hooks/useSuperAdminData';
-import { useGlobalMetrics, GlobalMetric } from '@/hooks/useGlobalMetrics';
+import { useGlobalMetrics, GlobalMetric, UsageCostReconciled } from '@/hooks/useGlobalMetrics';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import {
@@ -504,6 +504,43 @@ const GlobalMetricsTab = ({ globalData }: { globalData: ReturnType<typeof useGlo
                 </p>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* WhatsApp Usage Costs - Global */}
+      {(globalData.usageCosts.data?.length ?? 0) > 0 && (
+        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+          <h3 className="font-semibold text-foreground flex items-center gap-2 mb-4">
+            <Repeat size={16} className="text-primary" /> Costos WhatsApp Reconciliados (Global)
+          </h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left">
+                  <th className="py-2 px-3 font-medium text-muted-foreground">Periodo</th>
+                  <th className="py-2 px-3 font-medium text-muted-foreground">Región</th>
+                  <th className="py-2 px-3 font-medium text-muted-foreground text-right">Unidades</th>
+                  <th className="py-2 px-3 font-medium text-muted-foreground text-right">Costo USD</th>
+                  <th className="py-2 px-3 font-medium text-muted-foreground text-right">Revenue USD</th>
+                  <th className="py-2 px-3 font-medium text-muted-foreground text-right">Margen %</th>
+                </tr>
+              </thead>
+              <tbody>
+                {globalData.usageCosts.data?.slice(0, 20).map(c => (
+                  <tr key={c.id} className="border-b border-border/50 hover:bg-secondary/30 transition-colors">
+                    <td className="py-2 px-3 text-foreground">{c.period_start}</td>
+                    <td className="py-2 px-3 text-muted-foreground">{c.region}</td>
+                    <td className="py-2 px-3 text-right text-muted-foreground">{c.total_units}</td>
+                    <td className="py-2 px-3 text-right text-foreground">{fmt(Number(c.real_cost_usd))}</td>
+                    <td className="py-2 px-3 text-right text-foreground">{fmt(Number(c.revenue_usd))}</td>
+                    <td className={`py-2 px-3 text-right font-semibold ${Number(c.margin_pct) >= 20 ? 'text-success' : 'text-warning'}`}>
+                      {fmtPct(Number(c.margin_pct))}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}

@@ -47,6 +47,20 @@ export interface RegionalTarget {
   active: boolean;
 }
 
+export interface UsageCostReconciled {
+  id: string;
+  tenant_id: string;
+  period_start: string;
+  region: string;
+  total_events: number;
+  total_units: number;
+  real_cost_usd: number;
+  revenue_usd: number;
+  margin_usd: number;
+  margin_pct: number;
+  currency: string;
+}
+
 export function useGlobalMetrics() {
   const { userRole } = useAuth();
   const queryClient = useQueryClient();
@@ -144,6 +158,20 @@ export function useGlobalMetrics() {
     },
   });
 
+  // WhatsApp usage costs reconciled (global view)
+  const usageCosts = useQuery({
+    queryKey: ['usage-costs-reconciled'],
+    enabled,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('usage_costs_reconciled')
+        .select('*')
+        .order('period_start', { ascending: false })
+        .limit(100);
+      return (data || []) as unknown as UsageCostReconciled[];
+    },
+  });
+
   // Generate metrics
   const generateMetrics = useMutation({
     mutationFn: async () => {
@@ -158,6 +186,7 @@ export function useGlobalMetrics() {
       queryClient.invalidateQueries({ queryKey: ['region-metrics'] });
       queryClient.invalidateQueries({ queryKey: ['country-metrics'] });
       queryClient.invalidateQueries({ queryKey: ['ltv-estimates'] });
+      queryClient.invalidateQueries({ queryKey: ['usage-costs-reconciled'] });
     },
     onError: (err: any) => {
       toast.error(`Error generando métricas: ${err.message}`);
@@ -173,6 +202,7 @@ export function useGlobalMetrics() {
     countryMetrics,
     ltvEstimates,
     regionalTargets,
+    usageCosts,
     generateMetrics,
     latest,
   };

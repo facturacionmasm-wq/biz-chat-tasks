@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { CreditCard, Loader2, CheckCircle, AlertTriangle, ExternalLink, Key, Zap, Shield, Building2, Users, Crown } from 'lucide-react';
+import { CreditCard, Loader2, CheckCircle, AlertTriangle, ExternalLink, Key, Zap, Shield, Building2, Users, Crown, BarChart3, ArrowUpRight, MessageSquare, DollarSign } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import type { User } from '@supabase/supabase-js';
+import { useTenantBilling } from '@/hooks/useTenantBilling';
 
 interface BillingSectionProps {
   user: User | null;
@@ -336,71 +337,16 @@ const BillingSection = ({ user, isSuperAdmin, getTenantId, inputClass, userRole 
     );
   }
 
-  // ── REGULAR TENANT OWNER View (read-only) ──
-  return (
-    <div className="max-w-4xl">
-      <h3 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
-        <CreditCard size={20} className="text-primary" /> Tu suscripción
-      </h3>
+  // ── REGULAR TENANT OWNER View with usage data ──
+  return <TenantBillingView
+    status={status}
+    subStatus={subStatus}
+    currentSub={currentSub}
+    currentPlanSlug={currentPlanSlug}
+    plans={plans}
+    getTenantId={getTenantId}
+  />;
 
-      {/* Current subscription status */}
-      <div className="bg-card border border-border rounded-xl p-5 mb-6">
-        <div>
-          <p className="text-sm text-muted-foreground">Estado actual</p>
-          <p className={`text-lg font-bold ${status.color}`}>{status.text}</p>
-          {(subStatus as any)?.plan_name && (
-            <p className="text-sm text-muted-foreground mt-1">
-              Plan: <span className="font-medium text-foreground">{(subStatus as any).plan_name}</span>
-            </p>
-          )}
-        </div>
-
-        {currentSub?.status === 'trialing' && (
-          <div className="mt-3 p-3 bg-amber-500/10 rounded-lg flex items-start gap-2">
-            <AlertTriangle size={16} className="text-amber-600 mt-0.5 shrink-0" />
-            <div>
-              <p className="text-sm font-medium text-amber-700">Periodo de prueba</p>
-              <p className="text-xs text-amber-600">
-                Tu prueba termina el {currentSub.trial_ends_at ? new Date(currentSub.trial_ends_at).toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' }) : '—'}.
-                Contacta al administrador para activar tu plan.
-              </p>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Plans (read-only) */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {plans.map(plan => {
-          const isCurrent = plan.slug === currentPlanSlug;
-          return (
-            <div key={plan.id} className={`bg-card border rounded-xl p-5 transition-all ${isCurrent ? 'border-primary ring-2 ring-primary/20' : 'border-border'}`}>
-              {isCurrent && <span className="text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded-full font-medium mb-3 inline-block">Tu plan</span>}
-              <h4 className="text-lg font-bold text-foreground">{plan.name}</h4>
-              <p className="text-2xl font-bold text-foreground mt-1">
-                {plan.price_monthly > 0 ? `$${plan.price_monthly}/mes` : 'Contactar'}
-              </p>
-              {plan.features && typeof plan.features === 'object' && (
-                <ul className="mt-4 space-y-2">
-                  {Object.entries(plan.features as Record<string, any>).map(([key, val]) => (
-                    <li key={key} className="text-sm text-muted-foreground flex items-center gap-2">
-                      <div className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
-                      {typeof val === 'string' ? val : key}
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {!isCurrent && (
-                <p className="text-xs text-muted-foreground mt-4 text-center">
-                  Contacta al administrador para cambiar de plan
-                </p>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
 
   function renderStripeWizard() {
     if (!showStripeWizard) return null;
@@ -548,6 +494,152 @@ const BillingSection = ({ user, isSuperAdmin, getTenantId, inputClass, userRole 
       </div>
     );
   }
+};
+
+// ── Tenant Billing View with Usage Data ──
+const TenantBillingView = ({ status, subStatus, currentSub, currentPlanSlug, plans, getTenantId }: {
+  status: { text: string; color: string };
+  subStatus: any;
+  currentSub: TenantSubRow | null;
+  currentPlanSlug: string;
+  plans: SubPlan[];
+  getTenantId: () => Promise<string>;
+}) => {
+  const [tenantId, setTenantId] = useState<string | null>(null);
+  useEffect(() => { getTenantId().then(setTenantId); }, []);
+  const { currentMonth, costHistory, fxRate, isLoading: usageLoading } = useTenantBilling(tenantId);
+
+  const fxInfo = fxRate.data;
+  const history = costHistory.data || [];
+
+  return (
+    <div className="max-w-4xl">
+      <h3 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
+        <CreditCard size={20} className="text-primary" /> Tu suscripción
+      </h3>
+
+      {/* Current subscription status */}
+      <div className="bg-card border border-border rounded-xl p-5 mb-6">
+        <div>
+          <p className="text-sm text-muted-foreground">Estado actual</p>
+          <p className={`text-lg font-bold ${status.color}`}>{status.text}</p>
+          {(subStatus as any)?.plan_name && (
+            <p className="text-sm text-muted-foreground mt-1">
+              Plan: <span className="font-medium text-foreground">{(subStatus as any).plan_name}</span>
+            </p>
+          )}
+        </div>
+
+        {currentSub?.status === 'trialing' && (
+          <div className="mt-3 p-3 bg-amber-500/10 rounded-lg flex items-start gap-2">
+            <AlertTriangle size={16} className="text-amber-600 mt-0.5 shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-amber-700">Periodo de prueba</p>
+              <p className="text-xs text-amber-600">
+                Tu prueba termina el {currentSub.trial_ends_at ? new Date(currentSub.trial_ends_at).toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' }) : '—'}.
+                Contacta al administrador para activar tu plan.
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Usage Summary - Current Month */}
+      <div className="bg-card border border-border rounded-xl p-5 mb-6">
+        <h4 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
+          <MessageSquare size={16} className="text-primary" /> Uso del mes actual
+        </h4>
+        {usageLoading ? (
+          <div className="flex justify-center py-4"><Loader2 size={18} className="animate-spin text-muted-foreground" /></div>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="p-3 rounded-lg border border-border">
+              <p className="text-xs text-muted-foreground">Mensajes totales</p>
+              <p className="text-xl font-bold text-foreground">{currentMonth.totalUnits}</p>
+            </div>
+            <div className="p-3 rounded-lg border border-border">
+              <p className="text-xs text-muted-foreground">Enviados</p>
+              <p className="text-xl font-bold text-foreground">{currentMonth.byType['message_out'] || 0}</p>
+            </div>
+            <div className="p-3 rounded-lg border border-border">
+              <p className="text-xs text-muted-foreground">Recibidos</p>
+              <p className="text-xl font-bold text-foreground">{currentMonth.byType['message_in'] || 0}</p>
+            </div>
+            <div className="p-3 rounded-lg border border-border">
+              <p className="text-xs text-muted-foreground">Tipo cambio USD/MXN</p>
+              <p className="text-xl font-bold text-foreground">{fxInfo?.rate?.toFixed(2) || '—'}</p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Cost History */}
+      {history.length > 0 && (
+        <div className="bg-card border border-border rounded-xl p-5 mb-6">
+          <h4 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
+            <DollarSign size={16} className="text-primary" /> Historial de costos
+          </h4>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left">
+                  <th className="py-2 px-3 font-medium text-muted-foreground">Periodo</th>
+                  <th className="py-2 px-3 font-medium text-muted-foreground text-right">Unidades</th>
+                  <th className="py-2 px-3 font-medium text-muted-foreground text-right">Costo ({history[0]?.currency || 'MXN'})</th>
+                  <th className="py-2 px-3 font-medium text-muted-foreground text-right">Costo (USD)</th>
+                  <th className="py-2 px-3 font-medium text-muted-foreground text-right">Margen</th>
+                  <th className="py-2 px-3 font-medium text-muted-foreground text-right">FX</th>
+                </tr>
+              </thead>
+              <tbody>
+                {history.map(h => (
+                  <tr key={h.id} className="border-b border-border/50 hover:bg-secondary/30 transition-colors">
+                    <td className="py-2 px-3 text-foreground">{h.period_start}</td>
+                    <td className="py-2 px-3 text-right text-muted-foreground">{h.total_units}</td>
+                    <td className="py-2 px-3 text-right text-foreground">${Number(h.real_cost_local_currency).toFixed(2)}</td>
+                    <td className="py-2 px-3 text-right text-muted-foreground">${Number(h.real_cost_usd).toFixed(2)}</td>
+                    <td className="py-2 px-3 text-right font-semibold text-foreground">{Number(h.margin_pct).toFixed(1)}%</td>
+                    <td className="py-2 px-3 text-right text-muted-foreground text-xs">{Number(h.fx_rate_used).toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Plans (read-only) */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {plans.map(plan => {
+          const isCurrent = plan.slug === currentPlanSlug;
+          return (
+            <div key={plan.id} className={`bg-card border rounded-xl p-5 transition-all ${isCurrent ? 'border-primary ring-2 ring-primary/20' : 'border-border'}`}>
+              {isCurrent && <span className="text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded-full font-medium mb-3 inline-block">Tu plan</span>}
+              <h4 className="text-lg font-bold text-foreground">{plan.name}</h4>
+              <p className="text-2xl font-bold text-foreground mt-1">
+                {plan.price_monthly > 0 ? `$${plan.price_monthly}/mes` : 'Contactar'}
+              </p>
+              {plan.features && typeof plan.features === 'object' && (
+                <ul className="mt-4 space-y-2">
+                  {Object.entries(plan.features as Record<string, any>).map(([key, val]) => (
+                    <li key={key} className="text-sm text-muted-foreground flex items-center gap-2">
+                      <div className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
+                      {typeof val === 'string' ? val : key}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {!isCurrent && (
+                <p className="text-xs text-muted-foreground mt-4 text-center">
+                  Contacta al administrador para cambiar de plan
+                </p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 };
 
 export default BillingSection;
