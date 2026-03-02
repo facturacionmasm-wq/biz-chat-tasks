@@ -869,6 +869,78 @@ export type Database = {
         }
         Relationships: []
       }
+      global_metrics_daily: {
+        Row: {
+          active_tenants: number
+          arpu: number
+          arr: number
+          cac: number
+          churn_rate_pct: number
+          churned_tenants: number
+          country_code: string
+          created_at: string
+          expansion_revenue: number
+          gross_margin_pct: number
+          id: string
+          ltv_avg: number
+          ltv_cac_ratio: number
+          metric_date: string
+          mrr: number
+          net_revenue_retention_pct: number
+          new_tenants: number
+          region: string
+          total_cost_usd: number
+          total_revenue_usd: number
+          total_tenants: number
+        }
+        Insert: {
+          active_tenants?: number
+          arpu?: number
+          arr?: number
+          cac?: number
+          churn_rate_pct?: number
+          churned_tenants?: number
+          country_code?: string
+          created_at?: string
+          expansion_revenue?: number
+          gross_margin_pct?: number
+          id?: string
+          ltv_avg?: number
+          ltv_cac_ratio?: number
+          metric_date?: string
+          mrr?: number
+          net_revenue_retention_pct?: number
+          new_tenants?: number
+          region?: string
+          total_cost_usd?: number
+          total_revenue_usd?: number
+          total_tenants?: number
+        }
+        Update: {
+          active_tenants?: number
+          arpu?: number
+          arr?: number
+          cac?: number
+          churn_rate_pct?: number
+          churned_tenants?: number
+          country_code?: string
+          created_at?: string
+          expansion_revenue?: number
+          gross_margin_pct?: number
+          id?: string
+          ltv_avg?: number
+          ltv_cac_ratio?: number
+          metric_date?: string
+          mrr?: number
+          net_revenue_retention_pct?: number
+          new_tenants?: number
+          region?: string
+          total_cost_usd?: number
+          total_revenue_usd?: number
+          total_tenants?: number
+        }
+        Relationships: []
+      }
       google_calendar_tokens: {
         Row: {
           access_token: string
@@ -1477,6 +1549,39 @@ export type Database = {
           },
         ]
       }
+      regional_margin_targets: {
+        Row: {
+          active: boolean
+          country_risk_multiplier: number
+          created_at: string
+          id: string
+          max_price_change_pct: number
+          region: string
+          target_gross_margin_pct: number
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          country_risk_multiplier?: number
+          created_at?: string
+          id?: string
+          max_price_change_pct?: number
+          region: string
+          target_gross_margin_pct?: number
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          country_risk_multiplier?: number
+          created_at?: string
+          id?: string
+          max_price_change_pct?: number
+          region?: string
+          target_gross_margin_pct?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       reminders: {
         Row: {
           created_at: string
@@ -1800,6 +1905,59 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "tenant_churn_scores_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_ltv_estimates: {
+        Row: {
+          avg_monthly_revenue: number
+          calculated_at: string
+          churn_probability: number
+          country_risk_factor: number
+          created_at: string
+          estimated_lifetime_months: number
+          estimated_ltv_local: number
+          estimated_ltv_usd: number
+          fx_instability_factor: number
+          id: string
+          model_version: string
+          tenant_id: string
+        }
+        Insert: {
+          avg_monthly_revenue?: number
+          calculated_at?: string
+          churn_probability?: number
+          country_risk_factor?: number
+          created_at?: string
+          estimated_lifetime_months?: number
+          estimated_ltv_local?: number
+          estimated_ltv_usd?: number
+          fx_instability_factor?: number
+          id?: string
+          model_version?: string
+          tenant_id: string
+        }
+        Update: {
+          avg_monthly_revenue?: number
+          calculated_at?: string
+          churn_probability?: number
+          country_risk_factor?: number
+          created_at?: string
+          estimated_lifetime_months?: number
+          estimated_ltv_local?: number
+          estimated_ltv_usd?: number
+          fx_instability_factor?: number
+          id?: string
+          model_version?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_ltv_estimates_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
