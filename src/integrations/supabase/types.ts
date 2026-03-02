@@ -670,54 +670,162 @@ export type Database = {
           },
         ]
       }
+      expense_reminders: {
+        Row: {
+          created_at: string
+          error_message: string | null
+          expense_id: string
+          id: string
+          recipient_phone: string | null
+          recipient_user_id: string
+          reminder_date: string
+          sent_at: string | null
+          status: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          error_message?: string | null
+          expense_id: string
+          id?: string
+          recipient_phone?: string | null
+          recipient_user_id: string
+          reminder_date?: string
+          sent_at?: string | null
+          status?: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          error_message?: string | null
+          expense_id?: string
+          id?: string
+          recipient_phone?: string | null
+          recipient_user_id?: string
+          reminder_date?: string
+          sent_at?: string | null
+          status?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expense_reminders_expense_id_fkey"
+            columns: ["expense_id"]
+            isOneToOne: false
+            referencedRelation: "expenses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expense_reminders_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       expenses: {
         Row: {
           amount: number
+          approval_required: boolean
+          approved_at: string | null
+          approver_phone: string | null
+          approver_user_id: string | null
           category: string | null
+          concept: string | null
           created_at: string
           currency: string
           description: string | null
+          document_budget_drive_file_id: string | null
+          document_budget_drive_url: string | null
+          document_payment_drive_file_id: string | null
+          document_payment_drive_url: string | null
+          drive_folder_id: string | null
           expense_date: string
+          folio: string | null
           id: string
           notes: string | null
           ocr_data: Json | null
+          paid_at: string | null
+          payment_method: string | null
           receipt_url: string | null
+          rejected_at: string | null
+          rejection_reason: string | null
+          source: string
           status: string
           tenant_id: string
+          type: string
           updated_at: string
           user_id: string
+          vendor_name: string | null
         }
         Insert: {
           amount?: number
+          approval_required?: boolean
+          approved_at?: string | null
+          approver_phone?: string | null
+          approver_user_id?: string | null
           category?: string | null
+          concept?: string | null
           created_at?: string
           currency?: string
           description?: string | null
+          document_budget_drive_file_id?: string | null
+          document_budget_drive_url?: string | null
+          document_payment_drive_file_id?: string | null
+          document_payment_drive_url?: string | null
+          drive_folder_id?: string | null
           expense_date?: string
+          folio?: string | null
           id?: string
           notes?: string | null
           ocr_data?: Json | null
+          paid_at?: string | null
+          payment_method?: string | null
           receipt_url?: string | null
+          rejected_at?: string | null
+          rejection_reason?: string | null
+          source?: string
           status?: string
           tenant_id: string
+          type?: string
           updated_at?: string
           user_id: string
+          vendor_name?: string | null
         }
         Update: {
           amount?: number
+          approval_required?: boolean
+          approved_at?: string | null
+          approver_phone?: string | null
+          approver_user_id?: string | null
           category?: string | null
+          concept?: string | null
           created_at?: string
           currency?: string
           description?: string | null
+          document_budget_drive_file_id?: string | null
+          document_budget_drive_url?: string | null
+          document_payment_drive_file_id?: string | null
+          document_payment_drive_url?: string | null
+          drive_folder_id?: string | null
           expense_date?: string
+          folio?: string | null
           id?: string
           notes?: string | null
           ocr_data?: Json | null
+          paid_at?: string | null
+          payment_method?: string | null
           receipt_url?: string | null
+          rejected_at?: string | null
+          rejection_reason?: string | null
+          source?: string
           status?: string
           tenant_id?: string
+          type?: string
           updated_at?: string
           user_id?: string
+          vendor_name?: string | null
         }
         Relationships: [
           {
@@ -2032,6 +2140,50 @@ export type Database = {
             foreignKeyName: "tenant_churn_scores_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_drive_settings: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          drive_provider: string
+          drive_root_folder_id: string | null
+          drive_root_folder_url: string | null
+          drive_structure_version: number
+          tenant_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          drive_provider?: string
+          drive_root_folder_id?: string | null
+          drive_root_folder_url?: string | null
+          drive_structure_version?: number
+          tenant_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          drive_provider?: string
+          drive_root_folder_id?: string | null
+          drive_root_folder_url?: string | null
+          drive_structure_version?: number
+          tenant_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_drive_settings_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
             referencedRelation: "tenants"
             referencedColumns: ["id"]
           },

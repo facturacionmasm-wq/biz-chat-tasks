@@ -29,7 +29,11 @@ export async function executeTool(
   }
 
   if (toolName === 'get_pending_expenses') {
-    return await executeGetPendingExpenses(supabase, userId);
+    return await executeGetPendingExpenses(supabase, userId, args);
+  }
+
+  if (toolName === 'get_pending_approvals') {
+    return await executeGetPendingApprovals(supabase, userId, tenantId);
   }
 
   if (toolName === 'save_bot_instruction') {
@@ -354,25 +358,92 @@ async function executeGetTodayAgenda(
 async function executeGetPendingExpenses(
   supabase: any,
   userId: string | null,
+  args?: any,
 ): Promise<string> {
   if (!userId) return JSON.stringify({ expenses: [], count: 0 });
 
-  const { data: expenses } = await supabase
+  const filter = args?.filter || 'all';
+  let query = supabase
     .from('expenses')
-    .select('amount, description, category, expense_date, status')
+    .select('amount, description, category, expense_date, status, type, vendor_name, currency, approval_required, paid_at')
     .eq('user_id', userId)
-    .eq('status', 'pending')
     .order('expense_date', { ascending: false })
-    .limit(10);
+    .limit(15);
+
+  if (filter === 'pending') {
+    query = query.eq('status', 'pending_approval');
+  } else if (filter === 'approved_no_receipt') {
+    query = query.eq('status', 'approved').is('paid_at', null);
+  } else if (filter === 'budgets') {
+    query = query.eq('type', 'budget');
+  } else {
+    // 'all' - recent items
+    query = query.in('status', ['pending', 'pending_approval', 'approved', 'paid']);
+  }
+
+  const { data: expenses } = await query;
 
   return JSON.stringify({
     expenses: (expenses || []).map((e: any) => ({
       amount: e.amount,
+      currency: e.currency || 'MXN',
       description: e.description,
+      vendor: e.vendor_name,
       category: e.category,
       date: e.expense_date,
+      type: e.type || 'expense',
+      status: e.status,
+      paid: !!e.paid_at,
     })),
     count: (expenses || []).length,
+    filter,
+  });
+}
+
+async function executeGetPendingApprovals(
+  supabase: any,
+  userId: string | null,
+  tenantId: string,
+): Promise<string> {
+  if (!userId) return JSON.stringify({ approvals: [], count: 0 });
+
+  const { data: pending } = await supabase
+    .from('expenses')
+    .select('id, amount, currency, vendor_name, description, concept, user_id, created_at')
+    .eq('tenant_id', tenantId)
+    .eq('approver_user_id', userId)
+    .eq('status', 'pending_approval')
+    .eq('type', 'budget')
+    .order('created_at', { ascending: false })
+    .limit(10);
+
+  // Get requester names
+  const approvals = [];
+  for (const p of (pending || [])) {
+    const { data: requester } = await supabase
+      .from('profiles')
+      .select('name')
+      .eq('user_id', p.user_id)
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
+
+    approvals.push({
+      id: p.id,
+      amount: p.amount,
+      currency: p.currency || 'MXN',
+      vendor: p.vendor_name,
+      description: p.description || p.concept,
+      requester: requester?.name || 'Desconocido',
+      created: p.created_at,
+    });
+  }
+
+  return JSON.stringify({
+    approvals,
+    count: approvals.length,
+    message: approvals.length > 0
+      ? `Tienes ${approvals.length} presupuesto(s) pendiente(s) de aprobación. Responde APROBAR o RECHAZAR para procesarlos.`
+      : 'No tienes presupuestos pendientes de aprobación.',
   });
 }
 
