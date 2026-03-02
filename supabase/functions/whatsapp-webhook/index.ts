@@ -411,6 +411,28 @@ serve(async (req) => {
       let twimlReply: string | null = null;
 
       if (conversation) {
+        const persistOutboundTwiml = async (replyText: string, metadata: Record<string, unknown>) => {
+          try {
+            await supabase.from('whatsapp_messages').insert({
+              tenant_id: tenantId,
+              conversation_id: conversation.id,
+              direction: 'out',
+              body: replyText,
+              status: 'sent',
+              metadata,
+            });
+
+            await supabase
+              .from('whatsapp_conversations')
+              .update({ last_message_at: new Date().toISOString() })
+              .eq('id', conversation.id);
+          } catch (persistErr) {
+            console.error('[WH] Failed to persist TwiML outbound message:', persistErr);
+          }
+        };
+
+        const fallbackReply = 'Perdón, tuve un problema técnico momentáneo. ¿Me lo repites en un mensaje corto? 🙏';
+
         // Idempotency check
         if (messageSid) {
           const { data: existingInbound } = await supabase
@@ -486,6 +508,14 @@ serve(async (req) => {
           const botResponseText = await botRes.text();
           if (!botRes.ok) {
             console.error(`[WH] Bot error (${botRes.status}): ${botResponseText.substring(0, 300)}`);
+            twimlReply = fallbackReply;
+            await persistOutboundTwiml(twimlReply, {
+              provider: 'bot_fallback',
+              delivery_method: 'twiml',
+              reason: 'bot_http_error',
+              http_status: botRes.status,
+            });
+
             await logWebhook({
               tenantId,
               conversationId: conversation.id,
@@ -500,28 +530,23 @@ serve(async (req) => {
               const botJson = JSON.parse(botResponseText);
               if (typeof botJson?.reply === 'string' && botJson.reply.trim()) {
                 twimlReply = botJson.reply.trim();
-
-                // Save the outbound message that TwiML will deliver
-                await supabase.from('whatsapp_messages').insert({
-                  tenant_id: tenantId,
-                  conversation_id: conversation.id,
-                  direction: 'out',
-                  body: twimlReply,
-                  status: 'sent',
-                  metadata: {
-                    provider: 'bot',
-                    bot_state: botJson.state || null,
-                    delivery_method: 'twiml',
-                  },
+                await persistOutboundTwiml(twimlReply, {
+                  provider: 'bot',
+                  bot_state: botJson.state || null,
+                  delivery_method: 'twiml',
                 });
-
-                await supabase
-                  .from('whatsapp_conversations')
-                  .update({ last_message_at: new Date().toISOString() })
-                  .eq('id', conversation.id);
               }
-            } catch (_parseErr) {
-              // keep null twimlReply; fallback to empty TwiML response
+            } catch (parseErr) {
+              console.error('[WH] Bot response parse error:', parseErr);
+            }
+
+            if (!twimlReply) {
+              twimlReply = fallbackReply;
+              await persistOutboundTwiml(twimlReply, {
+                provider: 'bot_fallback',
+                delivery_method: 'twiml',
+                reason: 'empty_or_unparseable_bot_reply',
+              });
             }
 
             await logWebhook({
@@ -535,6 +560,13 @@ serve(async (req) => {
           }
         } catch (botErr) {
           console.error('[WH] Bot trigger exception:', botErr);
+          twimlReply = fallbackReply;
+          await persistOutboundTwiml(twimlReply, {
+            provider: 'bot_fallback',
+            delivery_method: 'twiml',
+            reason: 'bot_trigger_exception',
+          });
+
           await logWebhook({
             tenantId,
             conversationId: conversation.id,
