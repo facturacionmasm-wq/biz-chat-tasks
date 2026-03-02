@@ -43,9 +43,26 @@ serve(async (req) => {
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
   try {
-    const { action, tenant_id, email, name, plan_slug, currency: reqCurrency, package_id, service_type } = await req.json();
+    const { action, tenant_id, email, name, plan_slug, currency: reqCurrency, package_id, service_type, secret_key } = await req.json();
 
     switch (action) {
+      // ============================================
+      // 0. VALIDATE STRIPE KEY (backward compatibility)
+      // ============================================
+      case 'validate_key': {
+        const providedKey = typeof secret_key === 'string' && secret_key.trim().length > 0
+          ? secret_key.trim()
+          : STRIPE_SECRET_KEY;
+
+        const looksValid = providedKey.startsWith('sk_') || providedKey.startsWith('rk_');
+
+        return new Response(JSON.stringify({
+          success: looksValid,
+          key_type: providedKey.startsWith('rk_') ? 'restricted' : 'secret',
+          message: looksValid ? 'Key format accepted' : 'Invalid Stripe key format',
+        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+
       // ============================================
       // 1. CREATE CUSTOMER + SUBSCRIPTION
       // ============================================
