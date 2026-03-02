@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Building2, Users, CreditCard, Bell, Database, Brain, Globe, ChevronRight, User, KeyRound, Loader2, Palette, Save, Upload, Image, X, Mail, Phone as PhoneIcon, MessageSquare, Trash2, Settings2, ChevronDown, ChevronUp, RefreshCw, ArrowLeft, ArrowRight, CheckCircle, XCircle, CalendarDays, Link2, Unlink, Clock } from 'lucide-react';
+import { Building2, Users, CreditCard, Bell, Database, Brain, Globe, ChevronRight, User, KeyRound, Loader2, Palette, Save, Upload, Image, X, Mail, Phone as PhoneIcon, MessageSquare, Trash2, Settings2, ChevronDown, ChevronUp, RefreshCw, ArrowLeft, ArrowRight, CheckCircle, XCircle, CalendarDays, Link2, Unlink, Clock, HardDrive } from 'lucide-react';
 import BillingSection from '@/components/BillingSection';
 import AvailabilityWizard, { type AvailabilityRule, DEFAULT_RULES } from '@/components/AvailabilityWizard';
 import { teamMembers } from '@/data/mockData';
@@ -27,6 +27,7 @@ const MODULE_PERMISSIONS = [
 const settingsSections = [
   { id: 'profile', label: 'Mi Perfil', icon: User },
   { id: 'calendar', label: 'Calendario', icon: CalendarDays },
+  { id: 'drive', label: 'Google Drive', icon: HardDrive },
   { id: 'general', label: 'General', icon: Building2 },
   { id: 'branding', label: 'Branding', icon: Palette },
   { id: 'team', label: 'Equipo', icon: Users },
@@ -104,6 +105,12 @@ const SettingsPage = () => {
   const [calendarOAuthConnected, setCalendarOAuthConnected] = useState(false);
   const [calendarHealthy, setCalendarHealthy] = useState<boolean | null>(null);
   const [checkingHealth, setCheckingHealth] = useState(false);
+
+  // Google Drive state
+  const [driveConfigured, setDriveConfigured] = useState(false);
+  const [driveFolderUrl, setDriveFolderUrl] = useState('');
+  const [driveLoading, setDriveLoading] = useState(false);
+  const [driveChecked, setDriveChecked] = useState(false);
 
   // Handle redirect back from Google OAuth (same-window flow)
   useEffect(() => {
@@ -862,6 +869,54 @@ const SettingsPage = () => {
     }
   };
 
+  // Google Drive: check status & setup
+  useEffect(() => {
+    if (!user || activeSection !== 'drive') return;
+    const checkDrive = async () => {
+      setDriveLoading(true);
+      try {
+        const tenantId = await getTenantId();
+        const { data: session } = await supabase.auth.getSession();
+        const token = session?.session?.access_token;
+        if (!token) return;
+        const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+        const res = await fetch(`https://${projectId}.supabase.co/functions/v1/google-drive`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ action: 'get_status', tenant_id: tenantId }),
+        });
+        const data = await res.json();
+        setDriveConfigured(!!data.configured);
+        setDriveFolderUrl(data.drive_root_folder_url || '');
+        setDriveChecked(true);
+      } catch { /* ignore */ } finally { setDriveLoading(false); }
+    };
+    checkDrive();
+  }, [user, activeSection]);
+
+  const handleSetupDrive = async () => {
+    setDriveLoading(true);
+    try {
+      const tenantId = await getTenantId();
+      const { data: session } = await supabase.auth.getSession();
+      const token = session?.session?.access_token;
+      if (!token) throw new Error('No autenticado');
+      const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+      const res = await fetch(`https://${projectId}.supabase.co/functions/v1/google-drive`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ action: 'setup_folder', tenant_id: tenantId }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setDriveConfigured(true);
+      setDriveFolderUrl(data.drive_root_folder_url || '');
+      toast.success('Google Drive configurado correctamente');
+    } catch (err: any) {
+      toast.error(err.message || 'Error al configurar Google Drive');
+    } finally { setDriveLoading(false); }
+  };
+
   const inputClass = "w-full bg-secondary rounded-lg px-3 py-2 text-sm outline-none border border-border focus:border-primary text-foreground placeholder:text-muted-foreground";
 
   return (
@@ -1224,6 +1279,77 @@ const SettingsPage = () => {
                   <span className="text-primary mt-0.5">•</span>
                   Si tienes empleados, puedes configurar su disponibilidad individual desde la sección Equipo.
                 </li>
+              </ul>
+            </div>
+          </div>
+        )}
+
+        {activeSection === 'drive' && (
+          <div className="max-w-2xl">
+            <h3 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
+              <HardDrive size={20} className="text-primary" /> Google Drive
+            </h3>
+            <p className="text-sm text-muted-foreground mb-6">
+              Conecta Google Drive para almacenar automáticamente presupuestos y comprobantes de pago en una carpeta organizada por tu empresa.
+            </p>
+
+            <div className="bg-card border border-border rounded-xl p-5">
+              {driveLoading && !driveChecked ? (
+                <div className="flex items-center justify-center py-6">
+                  <Loader2 size={20} className="animate-spin text-muted-foreground" />
+                </div>
+              ) : driveConfigured ? (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 text-primary">
+                    <CheckCircle size={16} />
+                    <span className="text-sm font-semibold">Google Drive configurado</span>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Los presupuestos y comprobantes se guardan automáticamente en tu carpeta de Google Drive.
+                  </p>
+                  {driveFolderUrl && (
+                    <a
+                      href={driveFolderUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 text-sm text-primary hover:underline"
+                    >
+                      <Link2 size={14} />
+                      Abrir carpeta en Google Drive
+                    </a>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <p className="text-sm text-muted-foreground">
+                    {calendarOAuthConnected
+                      ? 'Tu cuenta de Google ya está conectada. Haz clic para crear la carpeta de finanzas en Google Drive.'
+                      : 'Primero debes conectar tu cuenta de Google en la sección de Calendario. Luego podrás activar Google Drive.'}
+                  </p>
+                  <button
+                    disabled={driveLoading || !calendarOAuthConnected}
+                    onClick={handleSetupDrive}
+                    className="bg-primary text-primary-foreground text-sm px-5 py-2.5 rounded-lg hover:opacity-90 disabled:opacity-40 flex items-center gap-2 font-medium w-full justify-center"
+                  >
+                    {driveLoading ? <Loader2 size={14} className="animate-spin" /> : <HardDrive size={14} />}
+                    Crear carpeta en Google Drive
+                  </button>
+                  {!calendarOAuthConnected && (
+                    <p className="text-xs text-destructive">
+                      ⚠️ Conecta Google Calendar primero para habilitar esta opción.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="mt-4 bg-card border border-border rounded-xl p-5">
+              <h4 className="text-sm font-semibold text-foreground mb-2">ℹ️ ¿Cómo funciona?</h4>
+              <ul className="text-xs text-muted-foreground space-y-1.5 list-disc list-inside">
+                <li>Se crea una carpeta <strong>"Aria - [Tu Empresa] - Finanzas"</strong> en el Drive de tu cuenta Google</li>
+                <li>Dentro se organizan subcarpetas: <strong>Presupuestos</strong> y <strong>Comprobantes</strong></li>
+                <li>Cada gasto o presupuesto procesado por WhatsApp se sube automáticamente</li>
+                <li>Solo administradores pueden crear o modificar la estructura de carpetas</li>
               </ul>
             </div>
           </div>

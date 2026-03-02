@@ -1,0 +1,418 @@
+/**
+ * Google Drive Edge Function
+ * 
+ * Actions:
+ * - setup_folder: Create root folder + subfolders for a tenant
+ * - upload_file: Upload a file to a specific subfolder
+ * - get_status: Check if tenant has Drive configured
+ * - refresh_token: Internal helper to refresh OAuth token
+ */
+
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
+const DRIVE_API = 'https://www.googleapis.com/drive/v3';
+const DRIVE_UPLOAD_API = 'https://www.googleapis.com/upload/drive/v3';
+
+serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
+  const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const GOOGLE_CLIENT_ID = Deno.env.get('GOOGLE_CLIENT_ID')!;
+  const GOOGLE_CLIENT_SECRET = Deno.env.get('GOOGLE_CLIENT_SECRET')!;
+
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+  try {
+    const body = await req.json();
+    const { action } = body;
+
+    // ─── AUTH: Validate caller ───
+    // For internal calls (from whatsapp-bot), accept service_role auth
+    // For UI calls, validate JWT
+    let callerUserId: string | null = null;
+    const authHeader = req.headers.get('Authorization') || '';
+
+    if (body.internal_caller && authHeader.includes(SUPABASE_SERVICE_ROLE_KEY)) {
+      callerUserId = body.user_id || null;
+    } else {
+      const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') || Deno.env.get('SUPABASE_PUBLISHABLE_KEY') || '';
+      const authSupabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const token = authHeader.replace('Bearer ', '');
+      const { data: claimsData, error: claimsErr } = await authSupabase.auth.getClaims(token);
+      if (claimsErr || !claimsData?.claims?.sub) {
+        return jsonResponse({ error: 'Unauthorized' }, 401);
+      }
+      callerUserId = claimsData.claims.sub as string;
+    }
+
+    const tenantId = body.tenant_id;
+    if (!tenantId) {
+      return jsonResponse({ error: 'tenant_id required' }, 400);
+    }
+
+    // ─── GET STATUS ───
+    if (action === 'get_status') {
+      const { data: settings } = await supabase
+        .from('tenant_drive_settings')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
+
+      return jsonResponse({
+        configured: !!settings,
+        drive_root_folder_id: settings?.drive_root_folder_id || null,
+        drive_root_folder_url: settings?.drive_root_folder_url || null,
+        drive_budgets_folder_id: settings?.drive_budgets_folder_id || null,
+        drive_receipts_folder_id: settings?.drive_receipts_folder_id || null,
+      });
+    }
+
+    // ─── SETUP FOLDER ───
+    if (action === 'setup_folder') {
+      // Only owner/admin/super_admin can set up folders
+      if (callerUserId) {
+        const isAuthorized = await checkAdminRole(supabase, callerUserId, tenantId);
+        if (!isAuthorized) {
+          return jsonResponse({ error: 'Solo administradores pueden configurar Google Drive' }, 403);
+        }
+      }
+
+      // Get OAuth token for this tenant (from the admin who connected)
+      const accessToken = await getValidAccessToken(supabase, tenantId, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET);
+      if (!accessToken) {
+        return jsonResponse({ error: 'No hay cuenta de Google conectada. Conecta Google Calendar primero.' }, 400);
+      }
+
+      // Get tenant name
+      const { data: tenant } = await supabase
+        .from('tenants')
+        .select('name')
+        .eq('id', tenantId)
+        .single();
+      const tenantName = tenant?.name || 'Empresa';
+
+      // Check if already configured
+      const { data: existing } = await supabase
+        .from('tenant_drive_settings')
+        .select('drive_root_folder_id')
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
+
+      if (existing?.drive_root_folder_id) {
+        // Verify folder still exists
+        const checkRes = await fetch(`${DRIVE_API}/files/${existing.drive_root_folder_id}?fields=id,name,trashed`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        if (checkRes.ok) {
+          const folderData = await checkRes.json();
+          if (!folderData.trashed) {
+            return jsonResponse({
+              success: true,
+              already_configured: true,
+              drive_root_folder_id: existing.drive_root_folder_id,
+            });
+          }
+        }
+      }
+
+      // Create root folder: "Aria - {TenantName} - Finanzas"
+      const rootFolderId = await createFolder(accessToken, `Aria - ${tenantName} - Finanzas`, null);
+      if (!rootFolderId) {
+        return jsonResponse({ error: 'No se pudo crear la carpeta en Google Drive. Verifica los permisos.' }, 500);
+      }
+
+      // Create subfolders
+      const budgetsFolderId = await createFolder(accessToken, 'Presupuestos', rootFolderId);
+      const receiptsFolderId = await createFolder(accessToken, 'Comprobantes', rootFolderId);
+
+      const rootUrl = `https://drive.google.com/drive/folders/${rootFolderId}`;
+
+      // Save settings
+      await supabase.from('tenant_drive_settings').upsert({
+        tenant_id: tenantId,
+        drive_root_folder_id: rootFolderId,
+        drive_root_folder_url: rootUrl,
+        drive_budgets_folder_id: budgetsFolderId,
+        drive_receipts_folder_id: receiptsFolderId,
+        drive_structure_version: 1,
+        drive_provider: 'google',
+        created_by: callerUserId,
+        updated_by: callerUserId,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'tenant_id' });
+
+      // Audit log
+      await supabase.from('drive_audit_log').insert({
+        tenant_id: tenantId,
+        user_id: callerUserId,
+        action: 'folder_created',
+        resource_type: 'folder',
+        resource_id: rootFolderId,
+        resource_name: `Aria - ${tenantName} - Finanzas`,
+        metadata: { budgets_folder: budgetsFolderId, receipts_folder: receiptsFolderId },
+      });
+
+      return jsonResponse({
+        success: true,
+        drive_root_folder_id: rootFolderId,
+        drive_root_folder_url: rootUrl,
+        drive_budgets_folder_id: budgetsFolderId,
+        drive_receipts_folder_id: receiptsFolderId,
+      });
+    }
+
+    // ─── UPLOAD FILE ───
+    if (action === 'upload_file') {
+      const { file_url, file_name, folder_type, expense_id, twilio_sid, twilio_token } = body;
+
+      if (!file_url) {
+        return jsonResponse({ error: 'file_url required' }, 400);
+      }
+
+      // Get Drive settings
+      const { data: driveSettings } = await supabase
+        .from('tenant_drive_settings')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
+
+      if (!driveSettings) {
+        return jsonResponse({ error: 'drive_not_configured', message: 'Google Drive no está configurado para esta empresa.' }, 400);
+      }
+
+      const accessToken = await getValidAccessToken(supabase, tenantId, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET);
+      if (!accessToken) {
+        return jsonResponse({ error: 'No se pudo obtener acceso a Google Drive.' }, 500);
+      }
+
+      // Determine target folder
+      const parentFolderId = folder_type === 'budget'
+        ? driveSettings.drive_budgets_folder_id
+        : driveSettings.drive_receipts_folder_id;
+
+      if (!parentFolderId) {
+        return jsonResponse({ error: 'Carpeta de destino no encontrada en Drive.' }, 500);
+      }
+
+      // Download the file (from Twilio or direct URL)
+      let fileBuffer: ArrayBuffer;
+      let contentType = 'image/jpeg';
+      try {
+        const fetchHeaders: Record<string, string> = {};
+        if (twilio_sid && twilio_token) {
+          fetchHeaders['Authorization'] = `Basic ${btoa(`${twilio_sid}:${twilio_token}`)}`;
+        }
+        const fileRes = await fetch(file_url, { headers: fetchHeaders });
+        if (!fileRes.ok) throw new Error(`Download failed: ${fileRes.status}`);
+        contentType = fileRes.headers.get('content-type') || 'image/jpeg';
+        fileBuffer = await fileRes.arrayBuffer();
+      } catch (e) {
+        console.error('File download error:', e);
+        return jsonResponse({ error: 'No se pudo descargar el archivo.' }, 500);
+      }
+
+      // Generate filename with date
+      const now = new Date();
+      const dateStr = now.toISOString().split('T')[0];
+      const timeStr = now.toISOString().split('T')[1].replace(/[:.]/g, '').slice(0, 6);
+      const ext = contentType.includes('pdf') ? 'pdf' : contentType.includes('png') ? 'png' : 'jpg';
+      const finalName = file_name || `${folder_type === 'budget' ? 'presupuesto' : 'comprobante'}_${dateStr}_${timeStr}.${ext}`;
+
+      // Upload to Drive
+      const metadata = {
+        name: finalName,
+        parents: [parentFolderId],
+      };
+
+      const boundary = 'boundary_' + Date.now();
+      const metadataStr = JSON.stringify(metadata);
+
+      // Build multipart body
+      const encoder = new TextEncoder();
+      const metaPart = encoder.encode(
+        `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadataStr}\r\n`
+      );
+      const filePart = encoder.encode(`--${boundary}\r\nContent-Type: ${contentType}\r\n\r\n`);
+      const endPart = encoder.encode(`\r\n--${boundary}--`);
+      const fileBytes = new Uint8Array(fileBuffer);
+
+      const totalLength = metaPart.length + filePart.length + fileBytes.length + endPart.length;
+      const combined = new Uint8Array(totalLength);
+      let offset = 0;
+      combined.set(metaPart, offset); offset += metaPart.length;
+      combined.set(filePart, offset); offset += filePart.length;
+      combined.set(fileBytes, offset); offset += fileBytes.length;
+      combined.set(endPart, offset);
+
+      const uploadRes = await fetch(`${DRIVE_UPLOAD_API}/files?uploadType=multipart&fields=id,webViewLink`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': `multipart/related; boundary=${boundary}`,
+        },
+        body: combined,
+      });
+
+      if (!uploadRes.ok) {
+        const errText = await uploadRes.text();
+        console.error('Drive upload error:', uploadRes.status, errText);
+        return jsonResponse({ error: 'No se pudo subir el archivo a Google Drive.' }, 500);
+      }
+
+      const uploadData = await uploadRes.json();
+      const driveFileId = uploadData.id;
+      const driveFileUrl = uploadData.webViewLink || `https://drive.google.com/file/d/${driveFileId}/view`;
+
+      // Update expense record if expense_id provided
+      if (expense_id) {
+        const updateFields: Record<string, any> = {
+          drive_folder_id: driveSettings.drive_root_folder_id,
+        };
+        if (folder_type === 'budget') {
+          updateFields.document_budget_drive_file_id = driveFileId;
+          updateFields.document_budget_drive_url = driveFileUrl;
+        } else {
+          updateFields.document_payment_drive_file_id = driveFileId;
+          updateFields.document_payment_drive_url = driveFileUrl;
+        }
+        await supabase.from('expenses').update(updateFields).eq('id', expense_id);
+      }
+
+      // Audit log
+      await supabase.from('drive_audit_log').insert({
+        tenant_id: tenantId,
+        user_id: callerUserId,
+        action: 'file_uploaded',
+        resource_type: 'file',
+        resource_id: driveFileId,
+        resource_name: finalName,
+        metadata: { folder_type, expense_id, content_type: contentType },
+      });
+
+      return jsonResponse({
+        success: true,
+        drive_file_id: driveFileId,
+        drive_file_url: driveFileUrl,
+      });
+    }
+
+    return jsonResponse({ error: 'Unknown action' }, 400);
+  } catch (err) {
+    console.error('Google Drive function error:', err);
+    return jsonResponse({ error: err instanceof Error ? err.message : 'Internal error' }, 500);
+  }
+});
+
+// ==================== HELPERS ====================
+
+async function getValidAccessToken(
+  supabase: any,
+  tenantId: string,
+  clientId: string,
+  clientSecret: string,
+): Promise<string | null> {
+  // Find the most recent active token for this tenant (from any admin who connected)
+  const { data: tokenRow } = await supabase
+    .from('google_calendar_tokens')
+    .select('id, user_id, access_token, refresh_token, token_expires_at')
+    .eq('tenant_id', tenantId)
+    .eq('status', 'active')
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!tokenRow) return null;
+
+  // Check if token is expired (5 min buffer)
+  const expiresAt = new Date(tokenRow.token_expires_at).getTime();
+  if (Date.now() < expiresAt - 300_000) {
+    return tokenRow.access_token;
+  }
+
+  // Refresh token
+  if (!tokenRow.refresh_token) return null;
+
+  const refreshRes = await fetch(GOOGLE_TOKEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: tokenRow.refresh_token,
+      grant_type: 'refresh_token',
+    }),
+  });
+
+  const refreshData = await refreshRes.json();
+  if (!refreshRes.ok || !refreshData.access_token) {
+    console.error('Token refresh failed:', JSON.stringify(refreshData));
+    return null;
+  }
+
+  // Update token in DB
+  const newExpiresAt = new Date(Date.now() + (refreshData.expires_in || 3600) * 1000).toISOString();
+  await supabase.from('google_calendar_tokens').update({
+    access_token: refreshData.access_token,
+    token_expires_at: newExpiresAt,
+    updated_at: new Date().toISOString(),
+  }).eq('id', tokenRow.id);
+
+  return refreshData.access_token;
+}
+
+async function createFolder(accessToken: string, name: string, parentId: string | null): Promise<string | null> {
+  const metadata: any = {
+    name,
+    mimeType: 'application/vnd.google-apps.folder',
+  };
+  if (parentId) {
+    metadata.parents = [parentId];
+  }
+
+  const res = await fetch(`${DRIVE_API}/files?fields=id`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(metadata),
+  });
+
+  if (!res.ok) {
+    console.error('Create folder error:', res.status, await res.text());
+    return null;
+  }
+
+  const data = await res.json();
+  return data.id;
+}
+
+async function checkAdminRole(supabase: any, userId: string, tenantId: string): Promise<boolean> {
+  const { data } = await supabase
+    .from('user_roles')
+    .select('role')
+    .eq('user_id', userId)
+    .eq('tenant_id', tenantId)
+    .in('role', ['super_admin', 'owner', 'admin'])
+    .maybeSingle();
+  return !!data;
+}
+
+function jsonResponse(data: any, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}

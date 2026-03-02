@@ -670,6 +670,50 @@ export type Database = {
           },
         ]
       }
+      drive_audit_log: {
+        Row: {
+          action: string
+          created_at: string
+          id: string
+          metadata: Json | null
+          resource_id: string | null
+          resource_name: string | null
+          resource_type: string
+          tenant_id: string
+          user_id: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          resource_id?: string | null
+          resource_name?: string | null
+          resource_type?: string
+          tenant_id: string
+          user_id?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          resource_id?: string | null
+          resource_name?: string | null
+          resource_type?: string
+          tenant_id?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "drive_audit_log_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       expense_reminders: {
         Row: {
           created_at: string
@@ -2149,7 +2193,9 @@ export type Database = {
         Row: {
           created_at: string
           created_by: string | null
+          drive_budgets_folder_id: string | null
           drive_provider: string
+          drive_receipts_folder_id: string | null
           drive_root_folder_id: string | null
           drive_root_folder_url: string | null
           drive_structure_version: number
@@ -2160,7 +2206,9 @@ export type Database = {
         Insert: {
           created_at?: string
           created_by?: string | null
+          drive_budgets_folder_id?: string | null
           drive_provider?: string
+          drive_receipts_folder_id?: string | null
           drive_root_folder_id?: string | null
           drive_root_folder_url?: string | null
           drive_structure_version?: number
@@ -2171,7 +2219,9 @@ export type Database = {
         Update: {
           created_at?: string
           created_by?: string | null
+          drive_budgets_folder_id?: string | null
           drive_provider?: string
+          drive_receipts_folder_id?: string | null
           drive_root_folder_id?: string | null
           drive_root_folder_url?: string | null
           drive_structure_version?: number
