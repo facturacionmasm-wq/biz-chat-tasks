@@ -107,8 +107,8 @@ serve(async (req) => {
         }
       }
 
-      const from = params.get('From') || '';       // e.g. "whatsapp:+5215512345678"
-      const to = params.get('To') || '';           // e.g. "whatsapp:+12135132649"
+      const from = params.get('From') || '';
+      const to = params.get('To') || '';
       const body = params.get('Body') || '';
       const messageSid = params.get('MessageSid') || params.get('SmsSid') || '';
       const messageStatus = params.get('MessageStatus') || params.get('SmsStatus') || '';
@@ -118,20 +118,13 @@ serve(async (req) => {
       const profileName = params.get('ProfileName') || '';
       const mediaContentType = params.get('MediaContentType0') || '';
 
-      // Clean phone numbers (remove "whatsapp:" prefix)
       const contactPhone = from.replace('whatsapp:', '');
       const businessPhone = to.replace('whatsapp:', '');
       const contactName = profileName || contactPhone;
 
       const isDeliveryCallback = Boolean(messageStatus) && !body && numMedia === 0;
       const isVoiceMessage = numMedia > 0 && mediaContentType.startsWith('audio/');
-      console.log(`Twilio webhook from ${contactPhone} to ${businessPhone} status=${messageStatus || 'n/a'} body_len=${body.length} media=${numMedia} type=${mediaContentType}`);
-
-      if (!body && numMedia === 0) {
-        const payload = Object.fromEntries(params.entries());
-        console.log(`Twilio empty-body callback keys=${Object.keys(payload).join(',')}`);
-        console.log(`Twilio empty-body callback flags: SmsStatus=${params.get('SmsStatus') || ''} MessageStatus=${params.get('MessageStatus') || ''} EventType=${params.get('EventType') || ''} MessageSid=${params.get('MessageSid') || ''} SmsSid=${params.get('SmsSid') || ''}`);
-      }
+      console.log(`[WH] from=${contactPhone} to=${businessPhone} status=${messageStatus || 'n/a'} body_len=${body.length} media=${numMedia}`);
 
       // Get media URL if present
       let mediaUrl: string | null = null;
@@ -139,7 +132,7 @@ serve(async (req) => {
         mediaUrl = params.get('MediaUrl0') || null;
       }
 
-      // Delivery status callback for outbound messages (do not create inbound conversations)
+      // Delivery status callback for outbound messages
       if (isDeliveryCallback && messageSid) {
         const normalizedStatus = (
           messageStatus === 'delivered' ? 'delivered' :
@@ -181,15 +174,15 @@ serve(async (req) => {
           messageId: messageSid,
           payload: { message_status: messageStatus, normalized_status: normalizedStatus, error_code: errorCode || null },
         });
-        console.log(`Twilio delivery callback sid=${messageSid} status=${messageStatus} errorCode=${errorCode || 'none'}`);
         return new Response('<Response></Response>', {
           status: 200,
           headers: { ...corsHeaders, 'Content-Type': 'text/xml' },
         });
       }
 
-      // Resolve tenant by matching business phone in either direction
+      // Resolve tenant by matching business phone
       let tenantId: string | null = null;
+      let tenantFromNumber: string | null = null;
       let callbackFromBusinessNumber = false;
 
       const { data: tenants } = await supabase
@@ -204,15 +197,15 @@ serve(async (req) => {
 
           const configPhone = String(config.phone_number).replace('whatsapp:', '');
 
-          // Normal inbound message: customer -> business
           if (configPhone === businessPhone) {
             tenantId = t.id;
+            tenantFromNumber = configPhone;
             break;
           }
 
-          // Outbound callback: business -> customer (empty body usually)
           if (configPhone === contactPhone) {
             tenantId = t.id;
+            tenantFromNumber = configPhone;
             callbackFromBusinessNumber = true;
             break;
           }
@@ -226,15 +219,14 @@ serve(async (req) => {
           messageId: messageSid,
           payload: { from: contactPhone, to: businessPhone, reason: 'tenant_not_found' },
         });
-        console.error('No tenant found for this WhatsApp number');
-        // Always return 200 to prevent provider retries storm
+        console.error('[WH] No tenant found for phone', businessPhone);
         return new Response('<Response></Response>', {
           status: 200,
           headers: { ...corsHeaders, 'Content-Type': 'text/xml' },
         });
       }
 
-      // Twilio can send callbacks without MessageStatus; prevent false inbound inserts
+      // Callback without body from business number
       if (callbackFromBusinessNumber && !body && messageSid) {
         const { data: dbMessage } = await supabase
           .from('whatsapp_messages')
@@ -258,7 +250,6 @@ serve(async (req) => {
             .eq('id', dbMessage.id);
         }
 
-        console.log(`Twilio callback without status sid=${messageSid} from business number`);
         return new Response('<Response></Response>', {
           status: 200,
           headers: { ...corsHeaders, 'Content-Type': 'text/xml' },
@@ -296,7 +287,7 @@ serve(async (req) => {
       }
 
       if (conversation) {
-        // Idempotency: avoid duplicate inbound processing by provider message SID
+        // Idempotency check
         if (messageSid) {
           const { data: existingInbound } = await supabase
             .from('whatsapp_messages')
@@ -339,17 +330,23 @@ serve(async (req) => {
           payload: { from: contactPhone, provider: 'twilio', preview: body ? body.substring(0, 100) : (isVoiceMessage ? '[Mensaje de voz]' : ''), is_voice: isVoiceMessage },
         });
 
-        console.log(`Message saved: conv=${conversation.id}`);
+        await logWebhook({
+          tenantId,
+          conversationId: conversation.id,
+          messageId: messageSid,
+          stage: 'inbound_saved',
+          status: 'ok',
+        });
 
-        // Trigger AI bot auto-reply (awaited to avoid serverless shutdown before dispatch)
+        // Trigger AI bot using SERVICE_ROLE_KEY (not anon key) to bypass JWT verification
         try {
           const botUrl = `${SUPABASE_URL}/functions/v1/whatsapp-bot`;
-          const anonKey = Deno.env.get('SUPABASE_ANON_KEY') || '';
+          console.log(`[WH] Triggering bot for conv=${conversation.id} tenant=${tenantId}`);
           const botRes = await fetch(botUrl, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${anonKey}`,
+              'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
             },
             body: JSON.stringify({
               conversationId: conversation.id,
@@ -361,16 +358,41 @@ serve(async (req) => {
             }),
           });
 
+          const botResponseText = await botRes.text();
           if (!botRes.ok) {
-            const botErr = await botRes.text();
-            console.error(`Bot trigger failed (${botRes.status}): ${botErr}`);
+            console.error(`[WH] Bot error (${botRes.status}): ${botResponseText.substring(0, 300)}`);
+            await logWebhook({
+              tenantId,
+              conversationId: conversation.id,
+              messageId: messageSid,
+              stage: 'bot_invocation',
+              status: 'error',
+              error: `HTTP ${botRes.status}: ${botResponseText.substring(0, 200)}`,
+            });
+          } else {
+            console.log(`[WH] Bot OK: ${botResponseText.substring(0, 200)}`);
+            await logWebhook({
+              tenantId,
+              conversationId: conversation.id,
+              messageId: messageSid,
+              stage: 'bot_invocation',
+              status: 'ok',
+              payload: { response_length: botResponseText.length },
+            });
           }
         } catch (botErr) {
-          console.error('Failed to trigger bot:', botErr);
+          console.error('[WH] Bot trigger exception:', botErr);
+          await logWebhook({
+            tenantId,
+            conversationId: conversation.id,
+            messageId: messageSid,
+            stage: 'bot_invocation',
+            status: 'error',
+            error: botErr instanceof Error ? botErr.message : 'Unknown bot error',
+          });
         }
       }
 
-      // Return TwiML empty response (Twilio expects XML)
       return new Response('<Response></Response>', {
         status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'text/xml' },
@@ -402,7 +424,7 @@ serve(async (req) => {
             const messageBody = msg.text?.body || msg.caption || '';
             const mediaUrl = msg.image?.id || msg.document?.id || null;
 
-            // Resolve tenant from phone_number_id
+            // Resolve tenant from phone_number_id (strict — NO fallback)
             const phoneNumberId = value.metadata?.phone_number_id;
             let tenantId: string | null = null;
 
@@ -422,15 +444,15 @@ serve(async (req) => {
             }
 
             if (!tenantId) {
-              const { data: firstTenant } = await supabase
-                .from('tenants')
-                .select('id')
-                .limit(1)
-                .single();
-              tenantId = firstTenant?.id || null;
+              console.error(`[WH-Meta] No tenant for phone_number_id=${phoneNumberId}`);
+              await logWebhook({
+                stage: 'meta_tenant_resolution',
+                status: 'skip',
+                messageId: msg.id,
+                payload: { phone_number_id: phoneNumberId, reason: 'tenant_not_found' },
+              });
+              continue;
             }
-
-            if (!tenantId) continue;
 
             let { data: conversation } = await supabase
               .from('whatsapp_conversations')
@@ -480,15 +502,14 @@ serve(async (req) => {
                 payload: { from: contactPhone, provider: 'meta', preview: messageBody.substring(0, 100) },
               });
 
-              // Trigger AI bot auto-reply (awaited to avoid serverless shutdown before dispatch)
+              // Trigger AI bot with SERVICE_ROLE_KEY
               try {
                 const botUrl = `${SUPABASE_URL}/functions/v1/whatsapp-bot`;
-                const anonKey = Deno.env.get('SUPABASE_ANON_KEY') || '';
                 const botRes = await fetch(botUrl, {
                   method: 'POST',
                   headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${anonKey}`,
+                    'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
                   },
                   body: JSON.stringify({
                     conversationId: conversation.id,
@@ -501,10 +522,10 @@ serve(async (req) => {
 
                 if (!botRes.ok) {
                   const botErr = await botRes.text();
-                  console.error(`Bot trigger failed (${botRes.status}): ${botErr}`);
+                  console.error(`[WH-Meta] Bot error (${botRes.status}): ${botErr.substring(0, 200)}`);
                 }
               } catch (botErr) {
-                console.error('Failed to trigger bot:', botErr);
+                console.error('[WH-Meta] Bot trigger failed:', botErr);
               }
             }
           }
@@ -517,9 +538,10 @@ serve(async (req) => {
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error('WhatsApp webhook error:', errorMessage);
-    return new Response(JSON.stringify({ error: errorMessage }), {
-      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    console.error('[WH] Fatal error:', errorMessage);
+    // Always return 200 for webhooks to prevent retry storms
+    return new Response('<Response></Response>', {
+      status: 200, headers: { ...corsHeaders, 'Content-Type': 'text/xml' },
     });
   }
 });

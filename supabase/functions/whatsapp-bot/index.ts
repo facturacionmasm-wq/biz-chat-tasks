@@ -21,12 +21,36 @@ serve(async (req) => {
   const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
   const TWILIO_ACCOUNT_SID = Deno.env.get('TWILIO_ACCOUNT_SID');
   const TWILIO_AUTH_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN');
-  const TWILIO_PHONE_NUMBER = Deno.env.get('TWILIO_PHONE_NUMBER');
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
   try {
     const { conversationId, messageBody, contactPhone, tenantId, mediaUrl, mediaContentType, sandboxMode, sandboxState, sandboxContext } = await req.json();
+
+    console.log(`[BOT] Processing conv=${conversationId} tenant=${tenantId} body_len=${(messageBody || '').length}`);
+
+    // ==================== RESOLVE TENANT FROM-NUMBER ====================
+    // Use tenant's configured WhatsApp number instead of global env var
+    let fromNumber: string | null = null;
+    if (tenantId) {
+      const { data: tenantData } = await supabase
+        .from('tenants')
+        .select('whatsapp_config')
+        .eq('id', tenantId)
+        .single();
+
+      const waConfig = tenantData?.whatsapp_config as Record<string, any> | null;
+      if (waConfig?.phone_number) {
+        fromNumber = String(waConfig.phone_number).replace(/^whatsapp:/i, '');
+        console.log(`[BOT] Using tenant from-number: ${fromNumber}`);
+      }
+    }
+
+    // Fallback to global env var only if tenant has no configured number
+    if (!fromNumber) {
+      fromNumber = Deno.env.get('TWILIO_PHONE_NUMBER') || null;
+      if (fromNumber) console.log(`[BOT] Fallback to global TWILIO_PHONE_NUMBER`);
+    }
 
     // ==================== VOICE TRANSCRIPTION ====================
     const isVoiceMessage = mediaUrl && (
@@ -37,21 +61,21 @@ serve(async (req) => {
     let effectiveMessageBody = messageBody;
 
     if (isVoiceMessage) {
-      console.log(`Voice message detected: ${mediaContentType || 'unknown type'}`);
+      console.log(`[BOT] Voice message detected: ${mediaContentType || 'unknown type'}`);
       const ELEVENLABS_API_KEY = Deno.env.get('ELEVENLABS_API_KEY');
 
       if (ELEVENLABS_API_KEY && TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN) {
-        if (TWILIO_PHONE_NUMBER && contactPhone) {
+        if (fromNumber && contactPhone) {
           try {
-            await sendTwilioMessage(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER, contactPhone, '🎤 Procesando tu mensaje de voz...');
+            await sendTwilioMessage(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, fromNumber, contactPhone, '🎤 Procesando tu mensaje de voz...');
           } catch (e) {
-            console.error('Failed to send voice processing confirmation:', e);
+            console.error('[BOT] Voice processing confirmation failed:', e);
           }
         }
         try {
           effectiveMessageBody = await transcribeVoiceMessage(mediaUrl, mediaContentType, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, ELEVENLABS_API_KEY);
         } catch (err) {
-          console.error('Voice transcription error:', err);
+          console.error('[BOT] Voice transcription error:', err);
           effectiveMessageBody = '[Error procesando mensaje de voz]';
         }
       } else {
@@ -81,9 +105,13 @@ serve(async (req) => {
           status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
-      const { data } = await supabase.from('whatsapp_conversations').select('*').eq('id', conversationId).single();
+      const { data, error: convError } = await supabase.from('whatsapp_conversations').select('*').eq('id', conversationId).single();
+      if (convError) {
+        console.error(`[BOT] Conversation fetch error: ${convError.message}`);
+      }
       conv = data;
       if (!conv) {
+        console.error(`[BOT] Conversation not found: ${conversationId}`);
         return new Response(JSON.stringify({ error: 'Conversation not found' }), {
           status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
@@ -104,13 +132,15 @@ serve(async (req) => {
       const hoursSinceActivity = (Date.now() - lastActivity) / (1000 * 60 * 60);
       if (hoursSinceActivity > 24 && !['welcome', 'awaiting_role'].includes(botState)) {
         isStale = true;
-        console.log(`Stale conversation detected (${hoursSinceActivity.toFixed(1)}h idle), state was: ${botState}`);
+        console.log(`[BOT] Stale conversation (${hoursSinceActivity.toFixed(1)}h idle), was: ${botState}`);
       }
     }
 
     // ==================== STATE MACHINE ====================
     const effectiveBotState = (isResetCommand || isStale) ? 'welcome' : botState;
     const effectiveContext = (isResetCommand || isStale) ? {} : { ...botContext };
+
+    console.log(`[BOT] State: ${botState} → effective: ${effectiveBotState}, msg: "${msg.substring(0, 50)}"`);
 
     const stateResult = await handleState({
       botState: effectiveBotState, msg: isResetCommand ? '' : msg, effectiveMessageBody, isSandbox, tenantId, contactPhone,
@@ -123,6 +153,8 @@ serve(async (req) => {
     const newState = stateResult.newState;
     const newContext = stateResult.newContext;
 
+    console.log(`[BOT] Result: state=${newState}, reply_len=${(reply || '').length}`);
+
     // ==================== PERSIST & REPLY ====================
     if (!isSandbox) {
       await supabase.from('whatsapp_conversations').update({ bot_state: newState, bot_context: newContext }).eq('id', conversationId);
@@ -134,65 +166,77 @@ serve(async (req) => {
           event_type: 'message_in', units: 1,
           metadata: { conversation_id: conversationId, bot_state: botState },
         });
-      } catch (e) { console.error('Usage tracking (in) error:', e); }
+      } catch (e) { console.error('[BOT] Usage tracking (in) error:', e); }
 
-      if (reply && TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && TWILIO_PHONE_NUMBER) {
-        try {
-          const twilioResult = await sendTwilioMessage(
-            TWILIO_ACCOUNT_SID,
-            TWILIO_AUTH_TOKEN,
-            TWILIO_PHONE_NUMBER,
-            contactPhone,
-            reply,
-          );
+      if (reply && TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && fromNumber) {
+        // Send reply with retry
+        let twilioResult: any = null;
+        let sendSuccess = false;
 
-          const twilioStatus = String(twilioResult?.status || '').toLowerCase();
-          const hasTwilioError = Boolean(twilioResult?.error_code);
-          const outboundStatus = hasTwilioError || twilioStatus === 'failed' || twilioStatus === 'undelivered'
-            ? 'failed'
-            : (twilioStatus || 'sent');
-
-          await supabase.from('whatsapp_messages').insert({
-            tenant_id: tenantId,
-            conversation_id: conversationId,
-            direction: 'out',
-            body: reply,
-            status: outboundStatus,
-            metadata: {
-              provider: 'bot',
-              bot_state: newState,
-              message_sid: twilioResult?.sid || null,
-              twilio_status: twilioResult?.status || null,
-              twilio_error_code: twilioResult?.error_code || null,
-              twilio_error_message: twilioResult?.error_message || null,
-            },
-          });
-
+        for (let attempt = 0; attempt < 2; attempt++) {
           try {
-            await supabase.from('whatsapp_usage_events').insert({
-              tenant_id: tenantId, region: 'LATAM', provider: 'twilio',
-              provider_message_id: twilioResult?.sid || null,
-              event_type: 'message_out', units: 1,
-              metadata: { conversation_id: conversationId, bot_state: newState, twilio_status: twilioResult?.status || null },
-            });
-          } catch (e) { console.error('Usage tracking (out) error:', e); }
-        } catch (sendErr) {
-          console.error('Twilio send failed:', sendErr);
-          await supabase.from('whatsapp_messages').insert({
-            tenant_id: tenantId,
-            conversation_id: conversationId,
-            direction: 'out',
-            body: reply,
-            status: 'failed',
-            metadata: {
-              provider: 'bot',
-              bot_state: newState,
-              error: sendErr instanceof Error ? sendErr.message : 'Unknown send error',
-            },
-          });
+            twilioResult = await sendTwilioMessage(
+              TWILIO_ACCOUNT_SID,
+              TWILIO_AUTH_TOKEN,
+              fromNumber,
+              contactPhone,
+              reply,
+            );
+
+            const twilioStatus = String(twilioResult?.status || '').toLowerCase();
+            const hasTwilioError = Boolean(twilioResult?.error_code);
+
+            if (!hasTwilioError && twilioStatus !== 'failed') {
+              sendSuccess = true;
+              break;
+            }
+
+            console.error(`[BOT] Send attempt ${attempt + 1} failed: status=${twilioStatus} error=${twilioResult?.error_code} msg=${twilioResult?.error_message}`);
+
+            // Don't retry for auth/config errors
+            if (twilioResult?.error_code && [20003, 20404, 21608].includes(Number(twilioResult.error_code))) {
+              break;
+            }
+
+            if (attempt < 1) {
+              await new Promise(r => setTimeout(r, 1000)); // 1s delay before retry
+            }
+          } catch (sendErr) {
+            console.error(`[BOT] Send attempt ${attempt + 1} exception:`, sendErr);
+            if (attempt < 1) await new Promise(r => setTimeout(r, 1000));
+          }
         }
+
+        const outboundStatus = sendSuccess ? (String(twilioResult?.status || 'sent').toLowerCase()) : 'failed';
+
+        await supabase.from('whatsapp_messages').insert({
+          tenant_id: tenantId,
+          conversation_id: conversationId,
+          direction: 'out',
+          body: reply,
+          status: outboundStatus,
+          metadata: {
+            provider: 'bot',
+            bot_state: newState,
+            message_sid: twilioResult?.sid || null,
+            twilio_status: twilioResult?.status || null,
+            twilio_error_code: twilioResult?.error_code || null,
+            twilio_error_message: twilioResult?.error_message || null,
+            from_number: fromNumber,
+          },
+        });
+
+        try {
+          await supabase.from('whatsapp_usage_events').insert({
+            tenant_id: tenantId, region: 'LATAM', provider: 'twilio',
+            provider_message_id: twilioResult?.sid || null,
+            event_type: 'message_out', units: 1,
+            metadata: { conversation_id: conversationId, bot_state: newState, twilio_status: twilioResult?.status || null },
+          });
+        } catch (e) { console.error('[BOT] Usage tracking (out) error:', e); }
+
       } else if (reply) {
-        console.error('Twilio config missing: cannot send outbound WhatsApp reply');
+        console.error(`[BOT] Cannot send: missing config (SID=${!!TWILIO_ACCOUNT_SID} AUTH=${!!TWILIO_AUTH_TOKEN} FROM=${fromNumber})`);
         await supabase.from('whatsapp_messages').insert({
           tenant_id: tenantId,
           conversation_id: conversationId,
@@ -209,7 +253,7 @@ serve(async (req) => {
     });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error('WhatsApp bot error:', errorMessage);
+    console.error('[BOT] Fatal error:', errorMessage);
     return new Response(JSON.stringify({ error: errorMessage }), {
       status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
@@ -385,7 +429,6 @@ async function handleState(input: StateInput): Promise<StateResult> {
     const isBudgetKeyword = /\b(presupuesto|cotizaci[oó]n|quote|propuesta|estimado|por\s*pagar|pendiente|a\s*autorizaci[oó]n)\b/i.test(msg);
 
     if (mediaUrl) {
-      // Image received — process as expense document
       const result = await processExpenseDocument(
         mediaUrl, effectiveMessageBody, LOVABLE_API_KEY, tenantId, newContext, supabase,
         TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN
@@ -399,7 +442,6 @@ async function handleState(input: StateInput): Promise<StateResult> {
       newState = 'credential_collect_platform';
 
     } else if (isExpenseIntent || isBudgetKeyword) {
-      // Text-based expense/budget
       const result = await processExpenseDocument(
         null, effectiveMessageBody, LOVABLE_API_KEY, tenantId, newContext, supabase,
         TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN
@@ -409,12 +451,10 @@ async function handleState(input: StateInput): Promise<StateResult> {
       newContext = result.newContext;
 
     } else {
-      // Delegate to AI for all other intents
       reply = await getAIResponse(LOVABLE_API_KEY, tenantId, supabase, 'employee', effectiveMessageBody, conv);
     }
 
   } else if (botState === 'budget_collect_approver') {
-    // Collecting approver for a pending budget
     const result = await handleBudgetCollectApprover(
       msg, effectiveMessageBody, tenantId, newContext, supabase, conversationId
     );
@@ -423,7 +463,6 @@ async function handleState(input: StateInput): Promise<StateResult> {
     newContext = result.newContext;
 
   } else if (botState === 'expense_classify') {
-    // User was asked: "¿Es gasto pagado o presupuesto?"
     if (/pagado|gasto|ya\s*pag/i.test(msg) || msg === '1') {
       const result = await processExpenseDocument(
         newContext._pending_media_url as string || null,
@@ -437,7 +476,6 @@ async function handleState(input: StateInput): Promise<StateResult> {
       delete newContext._pending_media_url;
       delete newContext._pending_message;
     } else if (/presupuesto|cotizaci[oó]n|autorizar|pendiente/i.test(msg) || msg === '2') {
-      // Force budget classification
       const originalMsg = (newContext._pending_message as string || '') + ' presupuesto';
       const result = await processExpenseDocument(
         newContext._pending_media_url as string || null,
@@ -479,11 +517,11 @@ async function handleState(input: StateInput): Promise<StateResult> {
           body: JSON.stringify({ action: 'encrypt_save', tenant_id: tenantId, user_id: newContext.user_id as string || null, platform_name: platform, username, password, notes: 'Agregada vía WhatsApp bot' }),
         });
         if (!vaultResponse.ok) {
-          console.error('Credential vault failed, saving directly');
+          console.error('[BOT] Credential vault failed, saving directly');
           await supabase.from('shared_credentials').insert({ tenant_id: tenantId, platform_name: platform, username, password_encrypted: password, notes: 'Agregada vía WhatsApp bot', created_by: newContext.user_id as string || null });
         }
       } catch (vaultErr) {
-        console.error('Credential vault error:', vaultErr);
+        console.error('[BOT] Credential vault error:', vaultErr);
         await supabase.from('shared_credentials').insert({ tenant_id: tenantId, platform_name: platform, username, password_encrypted: password, notes: 'Agregada vía WhatsApp bot', created_by: newContext.user_id as string || null });
       }
     }
@@ -493,7 +531,6 @@ async function handleState(input: StateInput): Promise<StateResult> {
     newState = 'employee_mode';
 
   } else if (botState === 'employee_expense') {
-    // Legacy state — redirect to employee_mode for processing
     if (mediaUrl) {
       const result = await processExpenseDocument(
         mediaUrl, effectiveMessageBody, LOVABLE_API_KEY, tenantId, newContext, supabase,
@@ -514,7 +551,7 @@ async function handleState(input: StateInput): Promise<StateResult> {
 
   } else {
     // ==================== UNKNOWN STATE FALLBACK ====================
-    console.error(`Unknown bot state: "${botState}", resetting to welcome`);
+    console.error(`[BOT] Unknown state: "${botState}", resetting`);
     newState = 'welcome';
     newContext = {};
     reply = '¡Hola! 👋 Parece que tuvimos un pequeño desajuste. Empecemos de nuevo.\n\n¿Vienes como *cliente* o eres parte del equipo (*empleado*)?\n\n1️⃣ Soy cliente\n2️⃣ Soy empleado';
@@ -523,7 +560,7 @@ async function handleState(input: StateInput): Promise<StateResult> {
 
   // ==================== EMPTY REPLY GUARD ====================
   if (!reply || reply.trim() === '') {
-    console.error(`Empty reply detected. State: ${botState} → ${newState}, msg: "${msg.substring(0, 50)}"`);
+    console.error(`[BOT] Empty reply. State: ${botState} → ${newState}, msg: "${msg.substring(0, 50)}"`);
     reply = 'Disculpa, no pude procesar tu mensaje. ¿Podrías intentarlo de nuevo? 🙏\n\n_Escribe *menu* para volver al inicio._';
   }
 
