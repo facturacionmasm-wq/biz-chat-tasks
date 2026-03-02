@@ -11,11 +11,26 @@ export async function sendTwilioMessage(
   authToken: string,
   fromNumber: string,
   toNumber: string,
-  body: string
+  body: string,
+  messagingServiceSid?: string,
 ) {
-  const fromWhatsApp = fromNumber.startsWith('whatsapp:') ? fromNumber : `whatsapp:${fromNumber}`;
   const toWhatsApp = toNumber.startsWith('whatsapp:') ? toNumber : `whatsapp:${toNumber}`;
   const basicAuth = btoa(`${accountSid}:${authToken}`);
+
+  const params: Record<string, string> = {
+    To: toWhatsApp,
+    Body: body,
+  };
+
+  if (messagingServiceSid) {
+    // Use Messaging Service instead of From number for better delivery
+    params.MessagingServiceSid = messagingServiceSid;
+    console.log(`[TWILIO] Sending via MessagingServiceSid=${messagingServiceSid} to=${toWhatsApp}`);
+  } else {
+    const fromWhatsApp = fromNumber.startsWith('whatsapp:') ? fromNumber : `whatsapp:${fromNumber}`;
+    params.From = fromWhatsApp;
+    console.log(`[TWILIO] Sending via From=${fromWhatsApp} to=${toWhatsApp}`);
+  }
 
   const res = await fetch(
     `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
@@ -25,11 +40,7 @@ export async function sendTwilioMessage(
         Authorization: `Basic ${basicAuth}`,
         'Content-Type': 'application/x-www-form-urlencoded',
       },
-      body: new URLSearchParams({
-        From: fromWhatsApp,
-        To: toWhatsApp,
-        Body: body,
-      }).toString(),
+      body: new URLSearchParams(params).toString(),
     }
   );
 
