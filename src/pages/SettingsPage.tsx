@@ -182,6 +182,13 @@ const SettingsPage = () => {
         setCalendarSyncEnabled(userCalConfig.sync_enabled !== false);
         setCalendarAutoCreate(userCalConfig.auto_create !== false);
         setCalendarLoaded(true);
+      } else {
+        // Staff users may not have access to tenants table (RLS).
+        // Set defaults and use the edge function to check calendar status.
+        setCalendarEmail(profile.email || user!.email || '');
+        setCalendarLoaded(true);
+        // Check calendar status via backend (bypasses RLS)
+        checkCalendarStatus();
       }
     };
     load();
