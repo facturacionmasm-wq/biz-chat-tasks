@@ -126,7 +126,12 @@ Responde SOLO con JSON válido, sin markdown ni texto adicional.`
       ocr_data: e,
     }));
 
-    await supabase.from('expenses').insert(rows);
+    const { error: insertError } = await supabase.from('expenses').insert(rows);
+
+    if (insertError) {
+      console.error('OCR expense insert error:', insertError);
+      return `❌ Detecté ${validExpenses.length} gasto(s) en la imagen pero no pude guardarlos en la base de datos. Intenta de nuevo.\n\n_Escribe *menu* para volver al inicio._`;
+    }
 
     // Format reply
     if (validExpenses.length === 1) {
