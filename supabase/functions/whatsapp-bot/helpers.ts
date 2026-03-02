@@ -17,38 +17,73 @@ export async function sendTwilioMessage(
   const toWhatsApp = toNumber.startsWith('whatsapp:') ? toNumber : `whatsapp:${toNumber}`;
   const basicAuth = btoa(`${accountSid}:${authToken}`);
 
-  const params: Record<string, string> = {
-    To: toWhatsApp,
-    Body: body,
+  const send = async (params: Record<string, string>) => {
+    const res = await fetch(
+      `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Basic ${basicAuth}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams(params).toString(),
+      }
+    );
+
+    const data = await res.json();
+    return { res, data };
   };
 
-  if (messagingServiceSid) {
-    // Use Messaging Service instead of From number for better delivery
-    params.MessagingServiceSid = messagingServiceSid;
-    console.log(`[TWILIO] Sending via MessagingServiceSid=${messagingServiceSid} to=${toWhatsApp}`);
-  } else {
-    const fromWhatsApp = fromNumber.startsWith('whatsapp:') ? fromNumber : `whatsapp:${fromNumber}`;
-    params.From = fromWhatsApp;
-    console.log(`[TWILIO] Sending via From=${fromWhatsApp} to=${toWhatsApp}`);
-  }
+  const configuredMsgSvcSid = messagingServiceSid?.trim() || Deno.env.get('TWILIO_MESSAGING_SERVICE_SID')?.trim();
 
-  const res = await fetch(
-    `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Basic ${basicAuth}`,
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams(params).toString(),
+  // Prefer Messaging Service to avoid sender/channel mismatches on WhatsApp.
+  if (configuredMsgSvcSid) {
+    const msgSvcParams: Record<string, string> = {
+      To: toWhatsApp,
+      Body: body,
+      MessagingServiceSid: configuredMsgSvcSid,
+    };
+    console.log(`[TWILIO] Sending via MessagingServiceSid=${configuredMsgSvcSid} to=${toWhatsApp}`);
+    const { res, data } = await send(msgSvcParams);
+    if (!res.ok) {
+      console.error('Twilio send error:', JSON.stringify(data));
     }
-  );
-
-  const data = await res.json();
-  if (!res.ok) {
-    console.error('Twilio send error:', JSON.stringify(data));
+    return data;
   }
-  return data;
+
+  const fromWhatsApp = fromNumber.startsWith('whatsapp:') ? fromNumber : `whatsapp:${fromNumber}`;
+  const fromParams: Record<string, string> = {
+    To: toWhatsApp,
+    Body: body,
+    From: fromWhatsApp,
+  };
+
+  console.log(`[TWILIO] Sending via From=${fromWhatsApp} to=${toWhatsApp}`);
+  const { res: firstRes, data: firstData } = await send(fromParams);
+
+  if (!firstRes.ok) {
+    // Resilience fallback for Twilio 63007 sender-channel mismatch.
+    if (firstData?.code === 63007) {
+      const fallbackMsgSvcSid = Deno.env.get('TWILIO_MESSAGING_SERVICE_SID')?.trim();
+      if (fallbackMsgSvcSid) {
+        console.warn(`[TWILIO] 63007 with From. Retrying with MessagingServiceSid=${fallbackMsgSvcSid} to=${toWhatsApp}`);
+        const retryParams: Record<string, string> = {
+          To: toWhatsApp,
+          Body: body,
+          MessagingServiceSid: fallbackMsgSvcSid,
+        };
+        const { res: retryRes, data: retryData } = await send(retryParams);
+        if (!retryRes.ok) {
+          console.error('Twilio retry send error:', JSON.stringify(retryData));
+        }
+        return retryData;
+      }
+    }
+
+    console.error('Twilio send error:', JSON.stringify(firstData));
+  }
+
+  return firstData;
 }
 
 export async function transcribeVoiceMessage(
