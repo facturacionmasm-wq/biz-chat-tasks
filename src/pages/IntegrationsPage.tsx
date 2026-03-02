@@ -131,6 +131,29 @@ const IntegrationsPage = () => {
     }
   };
 
+  const handleDisconnect = async (id: string) => {
+    if (!confirm('¿Estás seguro de que deseas desconectar esta integración?')) return;
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Sesión no válida');
+      const { data: profile } = await supabase.from('profiles').select('tenant_id').eq('user_id', user.id).maybeSingle();
+      if (!profile?.tenant_id) throw new Error('No se encontró tenant');
+
+      if (id === 'whatsapp') {
+        await supabase.from('tenants').update({ whatsapp_config: null }).eq('id', profile.tenant_id);
+        setWaConnected(false);
+        toast.success('WhatsApp desconectado');
+      } else if (id === 'voice-agent') {
+        const { error } = await supabase.functions.invoke('elevenlabs-twilio-setup', { body: { action: 'disconnect' } });
+        if (error) throw error;
+        setVoiceAgentConnected(false);
+        toast.success('Agente de voz desconectado');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Error al desconectar');
+    }
+  };
+
   const handleVoiceAgentSetup = async () => {
     setVoiceAgentLoading(true);
     try {
@@ -257,19 +280,29 @@ const IntegrationsPage = () => {
               )}
             </div>
             <p className="text-sm text-muted-foreground mb-4">{int.description}</p>
-            <button
-              onClick={() => handleIntegrationClick(int.id)}
-              disabled={int.id === 'voice-agent' && voiceAgentLoading}
-              className={`text-xs font-medium px-4 py-2 rounded-lg flex items-center gap-1.5 transition-colors disabled:opacity-50 ${
-                int.connected ? 'bg-secondary text-secondary-foreground hover:bg-secondary/80' : 'bg-primary text-primary-foreground hover:opacity-90'
-              }`}
-            >
-              {int.id === 'voice-agent' && voiceAgentLoading ? (
-                <><Loader2 size={12} className="animate-spin" /> Configurando...</>
-              ) : (
-                <>{int.connected ? 'Configurar' : 'Conectar'} <ExternalLink size={12} /></>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => handleIntegrationClick(int.id)}
+                disabled={int.id === 'voice-agent' && voiceAgentLoading}
+                className={`text-xs font-medium px-4 py-2 rounded-lg flex items-center gap-1.5 transition-colors disabled:opacity-50 ${
+                  int.connected ? 'bg-secondary text-secondary-foreground hover:bg-secondary/80' : 'bg-primary text-primary-foreground hover:opacity-90'
+                }`}
+              >
+                {int.id === 'voice-agent' && voiceAgentLoading ? (
+                  <><Loader2 size={12} className="animate-spin" /> Configurando...</>
+                ) : (
+                  <>{int.connected ? 'Configurar' : 'Conectar'} <ExternalLink size={12} /></>
+                )}
+              </button>
+              {int.connected && (int.id === 'whatsapp' || int.id === 'voice-agent') && (
+                <button
+                  onClick={() => handleDisconnect(int.id)}
+                  className="text-xs font-medium px-3 py-2 rounded-lg border border-destructive/30 text-destructive hover:bg-destructive/10 transition-colors flex items-center gap-1.5"
+                >
+                  <X size={12} /> Desconectar
+                </button>
               )}
-            </button>
+            </div>
           </div>
         ))}
       </div>
