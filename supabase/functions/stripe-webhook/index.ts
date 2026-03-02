@@ -66,6 +66,57 @@ async function resolveTenantByCustomer(client: any, customerId: string) {
 // ---- Event Handlers ----
 async function handleCheckoutCompleted(client: any, session: any) {
   const tenantId = session.metadata?.tenant_id;
+
+  // ===== PACKAGE PURCHASE (mode: payment) =====
+  if (session.mode === 'payment' && session.metadata?.package_id) {
+    const packageId = session.metadata.package_id;
+    const paymentIntentId = session.payment_intent;
+
+    // Activate the pending balance
+    const { error } = await client
+      .from('tenant_package_balances')
+      .update({ status: 'active' })
+      .eq('tenant_id', tenantId)
+      .eq('package_id', packageId)
+      .eq('status', 'pending_payment');
+
+    if (error) {
+      console.error('Error activating package balance:', error);
+    } else {
+      console.log(`Package ${packageId} activated for tenant ${tenantId}`);
+    }
+
+    await logAudit(client, tenantId, 'billing.package_activated', {
+      package_id: packageId,
+      service_type: session.metadata.service_type,
+      units: session.metadata.units,
+      payment_intent_id: paymentIntentId,
+      session_id: session.id,
+    });
+    return;
+  }
+
+  // ===== CARD SETUP ONLY (mode: setup, pay-as-you-go) =====
+  if (session.mode === 'setup') {
+    if (tenantId) {
+      await client.from('stripe_customers').upsert({
+        tenant_id: tenantId,
+        stripe_customer_id: session.customer,
+        email: session.customer_email || null,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'tenant_id' });
+
+      await logAudit(client, tenantId, 'billing.card_registered', {
+        mode: session.metadata?.mode || 'setup',
+        session_id: session.id,
+        stripe_customer_id: session.customer,
+      });
+      console.log(`Card registered for tenant ${tenantId} (pay-as-you-go)`);
+    }
+    return;
+  }
+
+  // ===== SUBSCRIPTION CHECKOUT (mode: subscription) =====
   const planSlug = session.metadata?.plan_slug;
   if (!tenantId || !planSlug) {
     console.error('Missing metadata in checkout session', session.id);
@@ -108,7 +159,6 @@ async function handleCheckoutCompleted(client: any, session: any) {
       stripe_customer_id: session.customer,
     });
 
-    // Also update stripe_customers table
     await client.from('stripe_customers').upsert({
       tenant_id: tenantId,
       stripe_customer_id: session.customer,
