@@ -37,6 +37,7 @@ export async function sendTwilioMessage(
   const configuredMsgSvcSid = messagingServiceSid?.trim() || Deno.env.get('TWILIO_MESSAGING_SERVICE_SID')?.trim();
 
   // Prefer Messaging Service to avoid sender/channel mismatches on WhatsApp.
+  // If it fails, fallback to explicit From number when available.
   if (configuredMsgSvcSid) {
     const msgSvcParams: Record<string, string> = {
       To: toWhatsApp,
@@ -45,9 +46,29 @@ export async function sendTwilioMessage(
     };
     console.log(`[TWILIO] Sending via MessagingServiceSid=${configuredMsgSvcSid} to=${toWhatsApp}`);
     const { res, data } = await send(msgSvcParams);
+
     if (!res.ok) {
-      console.error('Twilio send error:', JSON.stringify(data));
+      console.error('Twilio send error (MessagingServiceSid):', JSON.stringify(data));
+
+      const fallbackFrom = fromNumber?.trim();
+      if (fallbackFrom) {
+        const fallbackFromWhatsApp = fallbackFrom.startsWith('whatsapp:') ? fallbackFrom : `whatsapp:${fallbackFrom}`;
+        console.warn(`[TWILIO] MessagingServiceSid failed. Retrying with From=${fallbackFromWhatsApp} to=${toWhatsApp}`);
+
+        const retryParams: Record<string, string> = {
+          To: toWhatsApp,
+          Body: body,
+          From: fallbackFromWhatsApp,
+        };
+
+        const { res: retryRes, data: retryData } = await send(retryParams);
+        if (!retryRes.ok) {
+          console.error('Twilio retry send error (From fallback):', JSON.stringify(retryData));
+        }
+        return retryData;
+      }
     }
+
     return data;
   }
 
