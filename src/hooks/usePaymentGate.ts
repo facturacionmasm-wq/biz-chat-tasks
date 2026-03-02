@@ -80,5 +80,34 @@ export const usePaymentGate = () => {
     }
   }, [user]);
 
-  return { hasPaymentMethod, hasActivePackage, loading, redirecting, canUseService, purchasePackage, refresh: checkAccess };
+  const setupCard = useCallback(async (serviceType: 'voice' | 'whatsapp') => {
+    if (!user) return;
+    setRedirecting(true);
+    try {
+      const { data: tenantId } = await supabase.rpc('get_user_tenant_id', { _user_id: user.id });
+      if (!tenantId) throw new Error('Tenant no encontrado');
+
+      const { data, error } = await supabase.functions.invoke('stripe-billing', {
+        body: {
+          action: 'create_setup_session',
+          tenant_id: tenantId,
+          email: user.email,
+          name: user.user_metadata?.name || user.email,
+          service_type: serviceType,
+        },
+      });
+
+      if (error) throw error;
+      if (data?.checkout_url) {
+        window.location.href = data.checkout_url;
+      } else {
+        throw new Error('No se recibió URL de checkout');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Error al registrar tarjeta');
+      setRedirecting(false);
+    }
+  }, [user]);
+
+  return { hasPaymentMethod, hasActivePackage, loading, redirecting, canUseService, purchasePackage, setupCard, refresh: checkAccess };
 };

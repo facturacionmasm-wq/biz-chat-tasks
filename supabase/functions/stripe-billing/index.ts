@@ -309,15 +309,19 @@ serve(async (req) => {
           }, { onConflict: 'tenant_id' });
         }
 
-        // Create Checkout Session in setup mode
+        // Determine redirect based on service_type
+        const { service_type: setupServiceType } = await req.clone().json().catch(() => ({}));
         const origin = req.headers.get('origin') || 'https://biz-chat-tasks.lovable.app';
+        const setupRoute = setupServiceType === 'whatsapp' ? '/whatsapp' : '/calls';
+
         const session = await stripeRequest('/checkout/sessions', 'POST', {
           customer: customerId,
           mode: 'setup',
           'payment_method_types[0]': 'card',
-          success_url: `${origin}/calls?setup=success`,
-          cancel_url: `${origin}/calls?setup=cancel`,
+          success_url: `${origin}${setupRoute}?setup=success`,
+          cancel_url: `${origin}${setupRoute}?setup=cancel`,
           'metadata[tenant_id]': tenant_id,
+          'metadata[mode]': 'pay_as_you_go',
         }, STRIPE_SECRET_KEY);
 
         // Audit
