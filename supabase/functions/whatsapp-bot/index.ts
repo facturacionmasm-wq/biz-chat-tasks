@@ -25,7 +25,7 @@ serve(async (req) => {
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
   try {
-    const { conversationId, messageBody, contactPhone, tenantId, mediaUrl, mediaContentType, sandboxMode, sandboxState, sandboxContext } = await req.json();
+    const { conversationId, messageBody, contactPhone, tenantId, mediaUrl, mediaContentType, sandboxMode, sandboxState, sandboxContext, skipSend } = await req.json();
 
     console.log(`[BOT] Processing conv=${conversationId} tenant=${tenantId} body_len=${(messageBody || '').length}`);
 
@@ -168,7 +168,7 @@ serve(async (req) => {
         });
       } catch (e) { console.error('[BOT] Usage tracking (in) error:', e); }
 
-      if (reply && TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && fromNumber) {
+      if (!skipSend && reply && TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && fromNumber) {
         // Send reply with retry
         let twilioResult: any = null;
         let sendSuccess = false;
@@ -235,7 +235,7 @@ serve(async (req) => {
           });
         } catch (e) { console.error('[BOT] Usage tracking (out) error:', e); }
 
-      } else if (reply) {
+      } else if (!skipSend && reply) {
         console.error(`[BOT] Cannot send: missing config (SID=${!!TWILIO_ACCOUNT_SID} AUTH=${!!TWILIO_AUTH_TOKEN} FROM=${fromNumber})`);
         await supabase.from('whatsapp_messages').insert({
           tenant_id: tenantId,
