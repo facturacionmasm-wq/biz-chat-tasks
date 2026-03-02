@@ -47,6 +47,32 @@ const ProjectsPage = () => {
   const [allTasks, setAllTasks] = useState<TaskWithMeta[]>(initialTasks.map(t => ({ ...t })));
   const [selectedTask, setSelectedTask] = useState<TaskWithMeta | null>(null);
   const [allProjects, setAllProjects] = useState(() => initialProjects.map(p => ({ ...p, milestones: p.milestones.map(m => ({ ...m })) })));
+  const [showNewProject, setShowNewProject] = useState(false);
+  const [newProjectName, setNewProjectName] = useState('');
+  const [newProjectDesc, setNewProjectDesc] = useState('');
+
+  const handleCreateProject = () => {
+    if (!newProjectName.trim()) {
+      toast.error('El nombre del proyecto es obligatorio');
+      return;
+    }
+    const newProject = {
+      id: `proj-${Date.now()}`,
+      name: newProjectName.trim(),
+      description: newProjectDesc.trim() || 'Sin descripción',
+      status: 'planning' as const,
+      progress: 0,
+      teamIds: [],
+      startDate: new Date(),
+      endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      milestones: [],
+    };
+    setAllProjects(prev => [newProject, ...prev]);
+    setNewProjectName('');
+    setNewProjectDesc('');
+    setShowNewProject(false);
+    toast.success(`Proyecto "${newProject.name}" creado 🎉`);
+  };
 
   const selectedProject = allProjects.find(p => p.id === selectedProjectId);
   const projectTasks = selectedProjectId ? allTasks.filter(t => t.projectId === selectedProjectId) : allTasks;
@@ -450,10 +476,58 @@ const ProjectsPage = () => {
     <div className="p-4 sm:p-6 max-w-7xl mx-auto">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
         <h1 className="text-xl font-bold text-foreground">Proyectos</h1>
-        <button className="flex items-center gap-1.5 bg-primary text-primary-foreground text-sm font-medium px-4 py-2 rounded-lg hover:opacity-90 w-fit">
+        <button
+          onClick={() => setShowNewProject(true)}
+          className="flex items-center gap-1.5 bg-primary text-primary-foreground text-sm font-medium px-4 py-2 rounded-lg hover:opacity-90 w-fit"
+        >
           <Plus size={16} /> Nuevo Proyecto
         </button>
       </div>
+
+      {/* Modal para nuevo proyecto */}
+      {showNewProject && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowNewProject(false)}>
+          <div className="bg-card border border-border rounded-2xl w-full max-w-md p-6 shadow-lg animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-foreground">Nuevo Proyecto</h3>
+              <button onClick={() => setShowNewProject(false)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium text-foreground mb-1.5 block">Nombre *</label>
+                <input
+                  autoFocus
+                  value={newProjectName}
+                  onChange={e => setNewProjectName(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleCreateProject()}
+                  placeholder="Ej: Rediseño del sitio web"
+                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-foreground mb-1.5 block">Descripción</label>
+                <textarea
+                  value={newProjectDesc}
+                  onChange={e => setNewProjectDesc(e.target.value)}
+                  placeholder="Describe brevemente el proyecto..."
+                  rows={3}
+                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+                />
+              </div>
+              <div className="flex gap-2 justify-end">
+                <button onClick={() => setShowNewProject(false)} className="px-4 py-2 text-sm rounded-lg border border-border text-muted-foreground hover:bg-muted">
+                  Cancelar
+                </button>
+                <button onClick={handleCreateProject} className="px-4 py-2 text-sm rounded-lg bg-primary text-primary-foreground font-medium hover:opacity-90">
+                  Crear Proyecto
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {allProjects.map(proj => {
