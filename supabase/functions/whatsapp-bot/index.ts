@@ -33,6 +33,7 @@ serve(async (req) => {
     // ==================== RESOLVE TENANT FROM-NUMBER ====================
     // Use tenant's configured WhatsApp number instead of global env var
     let fromNumber: string | null = null;
+    let tenantMessagingServiceSid: string | null = null;
     if (tenantId) {
       const { data: tenantData } = await supabase
         .from('tenants')
@@ -45,6 +46,11 @@ serve(async (req) => {
         fromNumber = String(waConfig.phone_number).replace(/^whatsapp:/i, '');
         console.log(`[BOT] Using tenant from-number: ${fromNumber}`);
       }
+
+      if (waConfig?.messaging_service_sid) {
+        tenantMessagingServiceSid = String(waConfig.messaging_service_sid).trim();
+        console.log(`[BOT] Using tenant messaging service SID`);
+      }
     }
 
     // Fallback to global env var only if tenant has no configured number
@@ -52,6 +58,8 @@ serve(async (req) => {
       fromNumber = Deno.env.get('TWILIO_PHONE_NUMBER') || null;
       if (fromNumber) console.log(`[BOT] Fallback to global TWILIO_PHONE_NUMBER`);
     }
+
+    const effectiveMessagingServiceSid = tenantMessagingServiceSid || TWILIO_MESSAGING_SERVICE_SID || undefined;
 
     // ==================== VOICE TRANSCRIPTION ====================
     const isVoiceMessage = mediaUrl && (
@@ -176,13 +184,22 @@ serve(async (req) => {
 
         for (let attempt = 0; attempt < 2; attempt++) {
           try {
+            const useMessagingService = Boolean(effectiveMessagingServiceSid) && attempt === 0;
+            const messagingSidForAttempt = useMessagingService ? effectiveMessagingServiceSid : undefined;
+
+            if (useMessagingService) {
+              console.log(`[BOT] Outbound attempt ${attempt + 1}: MessagingServiceSid`);
+            } else if (effectiveMessagingServiceSid) {
+              console.log(`[BOT] Outbound attempt ${attempt + 1}: fallback to From number`);
+            }
+
             twilioResult = await sendTwilioMessage(
               TWILIO_ACCOUNT_SID,
               TWILIO_AUTH_TOKEN,
               fromNumber,
               contactPhone,
               reply,
-              TWILIO_MESSAGING_SERVICE_SID || undefined,
+              messagingSidForAttempt,
             );
 
             const twilioStatus = String(twilioResult?.status || '').toLowerCase();
@@ -196,7 +213,7 @@ serve(async (req) => {
             console.error(`[BOT] Send attempt ${attempt + 1} failed: status=${twilioStatus} error=${twilioResult?.error_code} msg=${twilioResult?.error_message}`);
 
             // Don't retry for auth/config errors
-            if (twilioResult?.error_code && [20003, 20404, 21608].includes(Number(twilioResult.error_code))) {
+            if (twilioResult?.error_code && [20003, 21608].includes(Number(twilioResult.error_code))) {
               break;
             }
 
