@@ -23,7 +23,7 @@ const TwilioWizard = ({ onComplete, onCancel }: TwilioWizardProps) => {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [loading, setLoading] = useState(false);
   const [verifyResult, setVerifyResult] = useState<{ ok: boolean; friendlyName?: string; error?: string } | null>(null);
-  const [webhookResult, setWebhookResult] = useState<{ ok: boolean; error?: string } | null>(null);
+  const [webhookResult, setWebhookResult] = useState<{ ok: boolean; error?: string; method?: string; note?: string; messagingServiceSid?: string } | null>(null);
 
   const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-webhook`;
 
@@ -100,6 +100,7 @@ const TwilioWizard = ({ onComplete, onCancel }: TwilioWizardProps) => {
                   phone_number: normalizedPhone,
                   webhook_url: webhookUrl,
                   configured_at: new Date().toISOString(),
+                  ...(data?.messagingServiceSid ? { messaging_service_sid: data.messagingServiceSid } : {}),
                 },
               })
               .eq('id', profile.tenant_id);
@@ -110,7 +111,7 @@ const TwilioWizard = ({ onComplete, onCancel }: TwilioWizardProps) => {
           }
         }
 
-        setWebhookResult({ ok: true });
+        setWebhookResult({ ok: true, method: data?.method, note: data?.note, messagingServiceSid: data?.messagingServiceSid });
         setStep(3);
       } else {
         setWebhookResult({ ok: false, error: data?.error || 'No se pudo configurar el webhook' });

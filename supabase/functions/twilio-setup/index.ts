@@ -34,20 +34,23 @@ serve(async (req) => {
   }
 
   try {
-    const { action, accountSid, authToken, phoneNumber, webhookUrl } = await req.json();
+    const { action, accountSid, authToken, phoneNumber, webhookUrl, messagingServiceSid } = await req.json();
 
-    if (!accountSid || !authToken) {
+    const resolvedAccountSid = (accountSid || Deno.env.get("TWILIO_ACCOUNT_SID") || "").trim();
+    const resolvedAuthToken = (authToken || Deno.env.get("TWILIO_AUTH_TOKEN") || "").trim();
+
+    if (!resolvedAccountSid || !resolvedAuthToken) {
       return new Response(
-        JSON.stringify({ ok: false, error: "Account SID y Auth Token son obligatorios" }),
+        JSON.stringify({ ok: false, error: "Faltan credenciales de Twilio (Account SID/Auth Token)" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
       );
     }
 
-    const basicAuth = btoa(`${accountSid}:${authToken}`);
+    const basicAuth = btoa(`${resolvedAccountSid}:${resolvedAuthToken}`);
 
     if (action === "verify") {
       // Step 1: Verify account by fetching account info
-      const accountRes = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}.json`, {
+      const accountRes = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${resolvedAccountSid}.json`, {
         headers: { Authorization: `Basic ${basicAuth}` },
       });
 
@@ -81,7 +84,7 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({
           ok: true,
-          friendlyName: accountData.friendly_name || accountSid,
+          friendlyName: accountData.friendly_name || resolvedAccountSid,
           accountStatus: accountData.status,
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -96,20 +99,25 @@ serve(async (req) => {
         );
       }
 
-      // Try to find the phone number SID
       const cleanNumber = phoneNumber.replace("whatsapp:", "");
+      let numberSid: string | null = null;
+      let configuredIncoming = false;
+      let configuredMessagingService = false;
+      let resolvedMessagingServiceSid: string | null = null;
+
+      // 1) Try to configure Incoming Phone Number webhook
       const numbersRes = await fetch(
-        `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/IncomingPhoneNumbers.json?PhoneNumber=${encodeURIComponent(cleanNumber)}`,
+        `https://api.twilio.com/2010-04-01/Accounts/${resolvedAccountSid}/IncomingPhoneNumbers.json?PhoneNumber=${encodeURIComponent(cleanNumber)}`,
         { headers: { Authorization: `Basic ${basicAuth}` } }
       );
 
       if (numbersRes.ok) {
         const numbersData = await numbersRes.json();
         if (numbersData.incoming_phone_numbers && numbersData.incoming_phone_numbers.length > 0) {
-          const numberSid = numbersData.incoming_phone_numbers[0].sid;
-          // Update the SMS URL (Twilio uses sms_url for WhatsApp messages too)
+          numberSid = numbersData.incoming_phone_numbers[0].sid;
+
           const updateRes = await fetch(
-            `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/IncomingPhoneNumbers/${numberSid}.json`,
+            `https://api.twilio.com/2010-04-01/Accounts/${resolvedAccountSid}/IncomingPhoneNumbers/${numberSid}.json`,
             {
               method: "POST",
               headers: {
@@ -123,27 +131,58 @@ serve(async (req) => {
             }
           );
 
-          if (!updateRes.ok) {
-            const errText = await updateRes.text();
-            console.error("Twilio webhook update error:", errText);
-            return new Response(
-              JSON.stringify({ ok: false, error: "No se pudo actualizar el webhook en Twilio. Configúralo manualmente." }),
-              { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-            );
+          if (updateRes.ok) {
+            configuredIncoming = true;
+          } else {
+            console.error("Twilio incoming number webhook update failed:", await updateRes.text());
           }
-
-          return new Response(
-            JSON.stringify({ ok: true, method: "incoming_number" }),
-            { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
         }
       }
 
-      // If not found as incoming number, try sandbox configuration
-      // For sandbox, users need to configure manually, but we'll try the messaging service
-      try {
-        const sandboxRes = await fetch(
-          `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Sandbox.json`,
+      // 2) Resolve Messaging Service SID (explicit param → auto-detect by number → env fallback)
+      const bodyMessagingSid = typeof messagingServiceSid === "string"
+        ? messagingServiceSid.trim()
+        : "";
+
+      if (bodyMessagingSid) {
+        resolvedMessagingServiceSid = bodyMessagingSid;
+      }
+
+      if (!resolvedMessagingServiceSid && numberSid) {
+        const servicesRes = await fetch(
+          `https://api.twilio.com/2010-04-01/Accounts/${resolvedAccountSid}/Messages/Services.json?PageSize=50`,
+          { headers: { Authorization: `Basic ${basicAuth}` } }
+        );
+
+        if (servicesRes.ok) {
+          const servicesData = await servicesRes.json();
+          const services = servicesData.services || [];
+
+          for (const service of services) {
+            const phoneListRes = await fetch(
+              `https://api.twilio.com/2010-04-01/Accounts/${resolvedAccountSid}/Messages/Services/${service.sid}/PhoneNumbers.json?PageSize=50`,
+              { headers: { Authorization: `Basic ${basicAuth}` } }
+            );
+
+            if (!phoneListRes.ok) continue;
+            const phoneListData = await phoneListRes.json();
+            const hasNumber = (phoneListData.phone_numbers || []).some((p: any) => p.phone_number_sid === numberSid);
+            if (hasNumber) {
+              resolvedMessagingServiceSid = service.sid;
+              break;
+            }
+          }
+        }
+      }
+
+      if (!resolvedMessagingServiceSid) {
+        resolvedMessagingServiceSid = Deno.env.get("TWILIO_MESSAGING_SERVICE_SID") || null;
+      }
+
+      // 3) Configure inbound webhook in Messaging Service (critical for WhatsApp sender routing)
+      if (resolvedMessagingServiceSid) {
+        const serviceUpdateRes = await fetch(
+          `https://api.twilio.com/2010-04-01/Accounts/${resolvedAccountSid}/Messages/Services/${resolvedMessagingServiceSid}.json`,
           {
             method: "POST",
             headers: {
@@ -151,28 +190,40 @@ serve(async (req) => {
               "Content-Type": "application/x-www-form-urlencoded",
             },
             body: new URLSearchParams({
-              SmsUrl: webhookUrl,
-              SmsMethod: "POST",
+              InboundRequestUrl: webhookUrl,
+              InboundMethod: "POST",
             }).toString(),
           }
         );
 
-        if (sandboxRes.ok) {
-          return new Response(
-            JSON.stringify({ ok: true, method: "sandbox" }),
-            { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
+        if (serviceUpdateRes.ok) {
+          configuredMessagingService = true;
+        } else {
+          console.error("Twilio messaging service webhook update failed:", await serviceUpdateRes.text());
         }
-      } catch {
-        // Sandbox might not be available
       }
 
-      // Fallback: credentials are valid, webhook will need manual setup for sandbox
+      if (configuredIncoming || configuredMessagingService) {
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            method: configuredIncoming && configuredMessagingService
+              ? "incoming_number_and_messaging_service"
+              : configuredIncoming
+                ? "incoming_number"
+                : "messaging_service",
+            messagingServiceSid: resolvedMessagingServiceSid,
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
       return new Response(
         JSON.stringify({
           ok: true,
           method: "manual_note",
-          note: "Credenciales guardadas. Si usas Sandbox, configura el webhook manualmente en Twilio Console.",
+          messagingServiceSid: resolvedMessagingServiceSid,
+          note: "No se encontró el número o servicio automáticamente. Verifica en Twilio Sender/Service que el webhook apunte a esta URL.",
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
