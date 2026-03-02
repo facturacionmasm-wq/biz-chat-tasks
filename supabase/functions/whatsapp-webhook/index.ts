@@ -251,11 +251,11 @@ serve(async (req) => {
 
         console.log(`Message saved: conv=${conversation.id}`);
 
-        // Trigger AI bot auto-reply
+        // Trigger AI bot auto-reply (awaited to avoid serverless shutdown before dispatch)
         try {
           const botUrl = `${SUPABASE_URL}/functions/v1/whatsapp-bot`;
           const anonKey = Deno.env.get('SUPABASE_ANON_KEY') || '';
-          fetch(botUrl, {
+          const botRes = await fetch(botUrl, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -269,7 +269,12 @@ serve(async (req) => {
               mediaUrl: mediaUrl,
               mediaContentType: mediaContentType || undefined,
             }),
-          }).catch(err => console.error('Bot trigger error:', err));
+          });
+
+          if (!botRes.ok) {
+            const botErr = await botRes.text();
+            console.error(`Bot trigger failed (${botRes.status}): ${botErr}`);
+          }
         } catch (botErr) {
           console.error('Failed to trigger bot:', botErr);
         }
@@ -385,11 +390,11 @@ serve(async (req) => {
                 payload: { from: contactPhone, provider: 'meta', preview: messageBody.substring(0, 100) },
               });
 
-              // Trigger AI bot auto-reply
+              // Trigger AI bot auto-reply (awaited to avoid serverless shutdown before dispatch)
               try {
                 const botUrl = `${SUPABASE_URL}/functions/v1/whatsapp-bot`;
                 const anonKey = Deno.env.get('SUPABASE_ANON_KEY') || '';
-                fetch(botUrl, {
+                const botRes = await fetch(botUrl, {
                   method: 'POST',
                   headers: {
                     'Content-Type': 'application/json',
@@ -402,7 +407,12 @@ serve(async (req) => {
                     tenantId: tenantId,
                     mediaUrl: mediaUrl,
                   }),
-                }).catch(err => console.error('Bot trigger error:', err));
+                });
+
+                if (!botRes.ok) {
+                  const botErr = await botRes.text();
+                  console.error(`Bot trigger failed (${botRes.status}): ${botErr}`);
+                }
               } catch (botErr) {
                 console.error('Failed to trigger bot:', botErr);
               }
