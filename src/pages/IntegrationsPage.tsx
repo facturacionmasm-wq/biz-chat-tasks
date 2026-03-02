@@ -381,8 +381,9 @@ const IntegrationsPage = () => {
               <Phone size={18} className="text-primary" /> Configurar Agente de Voz
             </DialogTitle>
             <DialogDescription>
-              Ingresa el número de teléfono de Twilio que deseas conectar con el agente de voz IA.
-              Debe estar comprado como "Incoming Phone Number" en tu cuenta de Twilio.
+              Ingresa el número de teléfono de Twilio (formato E.164) que deseas conectar.
+              Ejemplo para EE.UU.: <strong>+1</strong> + 10 dígitos = <strong>+12135551234</strong>.
+              El número debe estar comprado como "Incoming Phone Number" en Twilio.
             </DialogDescription>
           </DialogHeader>
 
@@ -401,11 +402,24 @@ const IntegrationsPage = () => {
               <input
                 value={voicePhoneNumber}
                 onChange={e => setVoicePhoneNumber(e.target.value)}
-                placeholder="Ej: +1234567890"
-                className="w-full bg-secondary rounded-lg px-3 py-2 text-sm outline-none border border-border focus:border-primary"
+                placeholder="Ej: +12135551234"
+                className="w-full bg-secondary rounded-lg px-3 py-2 text-sm outline-none border border-border focus:border-primary font-mono"
               />
+              {voicePhoneNumber && (() => {
+                const normalized = normalizeE164(voicePhoneNumber);
+                const valid = isValidE164(normalized);
+                const digitCount = normalized.replace(/\D/g, '').length;
+                return (
+                  <div className={`text-[10px] mt-1 ${valid ? 'text-green-600' : 'text-destructive'}`}>
+                    {valid
+                      ? `✓ Formato válido: ${normalized}`
+                      : `✗ Formato inválido (${digitCount} dígitos detectados, se requieren 8-15). Resultado: ${normalized || '—'}`
+                    }
+                  </div>
+                );
+              })()}
               <p className="text-[10px] text-muted-foreground mt-1">
-                Formato E.164 con código de país. Debe ser un número comprado en Twilio (no solo Verified Caller ID).
+                Para EE.UU.: +1 + código de área (3 dígitos) + número (7 dígitos) = 11 dígitos total.
               </p>
             </div>
           </div>
