@@ -61,7 +61,8 @@ const AvailabilityWizard = ({ value, onChange }: AvailabilityWizardProps) => {
 
       <div className="space-y-1.5">
         {DAYS.map(day => {
-          const rule = rules.find(r => r.day_of_week === day.value)!;
+          const rule = rules.find(r => r.day_of_week === day.value);
+          if (!rule) return null;
           return (
             <div
               key={day.value}
