@@ -3016,6 +3016,45 @@ export type Database = {
         }
         Relationships: []
       }
+      webhook_logs: {
+        Row: {
+          conversation_id: string | null
+          created_at: string
+          error: string | null
+          id: string
+          message_id: string | null
+          payload: Json
+          provider: string
+          stage: string
+          status: string
+          tenant_id: string | null
+        }
+        Insert: {
+          conversation_id?: string | null
+          created_at?: string
+          error?: string | null
+          id?: string
+          message_id?: string | null
+          payload?: Json
+          provider?: string
+          stage: string
+          status: string
+          tenant_id?: string | null
+        }
+        Update: {
+          conversation_id?: string | null
+          created_at?: string
+          error?: string | null
+          id?: string
+          message_id?: string | null
+          payload?: Json
+          provider?: string
+          stage?: string
+          status?: string
+          tenant_id?: string | null
+        }
+        Relationships: []
+      }
       whatsapp_conversations: {
         Row: {
           assigned_user_id: string | null
