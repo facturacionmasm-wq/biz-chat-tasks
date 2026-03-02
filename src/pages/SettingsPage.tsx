@@ -146,7 +146,11 @@ const SettingsPage = () => {
         .select('tenant_id, name, email, phone, whatsapp_number, avatar_url')
         .eq('user_id', user.id)
         .maybeSingle();
-      if (!profile) return;
+      if (!profile) {
+        setCalendarEmail(user.email || '');
+        setCalendarLoaded(true);
+        return;
+      }
 
       setProfileName(profile.name || '');
       setProfileEmail(profile.email || user.email || '');
@@ -746,6 +750,7 @@ const SettingsPage = () => {
   };
 
   const checkCalendarStatus = async () => {
+    let connected = false;
     try {
       const { data: session } = await supabase.auth.getSession();
       const token = session?.session?.access_token;
@@ -754,22 +759,30 @@ const SettingsPage = () => {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       if (!supabaseUrl) return false;
 
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), 15000);
+
       const res = await fetch(
         `${supabaseUrl}/functions/v1/google-calendar-auth`,
         {
           method: 'GET',
           headers: { 'Authorization': `Bearer ${token}` },
+          signal: controller.signal,
         },
       );
+
+      window.clearTimeout(timeoutId);
+
       const data = await res.json();
-      const connected = !!data.connected;
+      connected = !!data.connected;
       setCalendarOAuthConnected(connected);
       setCalendarConnected(connected);
       if (data.email) setCalendarEmail(data.email);
-      setCalendarLoaded(true);
       return connected;
     } catch {
       return false;
+    } finally {
+      setCalendarLoaded(true);
     }
   };
 
