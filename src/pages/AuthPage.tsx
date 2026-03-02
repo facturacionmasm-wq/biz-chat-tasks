@@ -193,8 +193,8 @@ const AuthPage = () => {
     </div>
   );
 
-  const PasswordInput = ({ value, onChange, placeholder = "••••••••", label }: {
-    value: string; onChange: (v: string) => void; placeholder?: string; label: string;
+  const PasswordInput = ({ value, onChange, placeholder = "••••••••", label, autoComplete = "current-password" }: {
+    value: string; onChange: (v: string) => void; placeholder?: string; label: string; autoComplete?: string;
   }) => (
     <div>
       <label className="text-sm font-medium text-foreground block mb-1">{label}</label>
@@ -206,10 +206,12 @@ const AuthPage = () => {
           required
           minLength={6}
           placeholder={placeholder}
+          autoComplete={autoComplete}
           className="w-full bg-secondary rounded-lg px-3 py-2.5 text-sm outline-none border border-border focus:border-primary text-foreground placeholder:text-muted-foreground pr-10"
         />
         <button
           type="button"
+          onMouseDown={e => e.preventDefault()}
           onClick={() => setShowPassword(!showPassword)}
           className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
           tabIndex={-1}
@@ -244,6 +246,7 @@ const AuthPage = () => {
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 required
+                autoComplete="email"
                 placeholder="tu@email.com"
                 className="w-full bg-secondary rounded-lg px-3 py-2.5 text-sm outline-none border border-border focus:border-primary text-foreground placeholder:text-muted-foreground"
               />
@@ -301,6 +304,7 @@ const AuthPage = () => {
                   value={email}
                   onChange={e => setEmail(e.target.value)}
                   required
+                  autoComplete="email"
                   placeholder="tu@email.com"
                   className="w-full bg-secondary rounded-lg px-3 py-2.5 text-sm outline-none border border-border focus:border-primary text-foreground placeholder:text-muted-foreground"
                 />
@@ -337,6 +341,7 @@ const AuthPage = () => {
                   type="text"
                   value={name}
                   onChange={e => setName(e.target.value)}
+                  autoComplete="name"
                   placeholder="Tu nombre (opcional)"
                   className="w-full bg-secondary rounded-lg px-3 py-2.5 text-sm outline-none border border-border focus:border-primary text-foreground placeholder:text-muted-foreground"
                 />
@@ -348,12 +353,13 @@ const AuthPage = () => {
                   value={email}
                   onChange={e => setEmail(e.target.value)}
                   required
+                  autoComplete="email"
                   placeholder="tu@email.com"
                   className="w-full bg-secondary rounded-lg px-3 py-2.5 text-sm outline-none border border-border focus:border-primary text-foreground placeholder:text-muted-foreground"
                 />
               </div>
-              <PasswordInput value={password} onChange={setPassword} label="Contraseña" />
-              <PasswordInput value={confirmPassword} onChange={setConfirmPassword} label="Confirmar contraseña" />
+              <PasswordInput value={password} onChange={setPassword} label="Contraseña" autoComplete="new-password" />
+              <PasswordInput value={confirmPassword} onChange={setConfirmPassword} label="Confirmar contraseña" autoComplete="new-password" />
               <button
                 type="submit"
                 disabled={loading}
