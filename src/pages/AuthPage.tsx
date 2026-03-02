@@ -168,10 +168,19 @@ const AuthPage = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [name, setName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(() => {
+    return localStorage.getItem('rybix_remember_me') !== 'false';
+  });
   const [loading, setLoading] = useState(false);
   const [oauthLoading, setOauthLoading] = useState<string | null>(null);
   const [forgotMode, setForgotMode] = useState(false);
   const branding = useBranding();
+
+  // Persist remember-me preference
+  const handleRememberMe = useCallback((checked: boolean) => {
+    setRememberMe(checked);
+    localStorage.setItem('rybix_remember_me', String(checked));
+  }, []);
 
   const toggleShowPassword = useCallback(() => setShowPassword(prev => !prev), []);
 
@@ -322,15 +331,24 @@ const AuthPage = () => {
             </div>
             <PasswordInput id="login-password" name="password" value={password} onChange={setPassword} label="Contraseña"
               autoComplete="current-password" showPassword={showPassword} onToggleShow={toggleShowPassword} />
+            <div className="flex items-center justify-between">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={e => handleRememberMe(e.target.checked)}
+                  className="w-4 h-4 rounded border-border text-primary focus:ring-primary accent-primary"
+                />
+                <span className="text-xs text-muted-foreground">Recordarme</span>
+              </label>
+              <button type="button" onClick={() => setForgotMode(true)}
+                className="text-xs text-primary hover:underline font-medium">¿Olvidaste tu contraseña?</button>
+            </div>
             <button type="submit" disabled={loading}
               className="w-full bg-primary text-primary-foreground font-medium text-sm px-4 py-2.5 rounded-lg hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2">
               {loading && <Loader2 size={16} className="animate-spin" />}
               Iniciar sesión
             </button>
-            <div className="text-center">
-              <button type="button" onClick={() => setForgotMode(true)}
-                className="text-xs text-primary hover:underline font-medium">¿Olvidaste tu contraseña?</button>
-            </div>
           </form>
         </div>
 
