@@ -72,6 +72,44 @@ const TwilioWizard = ({ onComplete, onCancel }: TwilioWizardProps) => {
       });
       if (error) throw error;
       if (data?.ok) {
+        // Persist tenant WhatsApp config so integration status survives refresh/restarts
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('tenant_id')
+            .eq('user_id', user.id)
+            .maybeSingle();
+
+          if (profile?.tenant_id) {
+            const { data: tenant } = await supabase
+              .from('tenants')
+              .select('whatsapp_config')
+              .eq('id', profile.tenant_id)
+              .maybeSingle();
+
+            const existing = (tenant?.whatsapp_config as Record<string, any> | null) || {};
+            const normalizedPhone = phoneNumber.trim().replace(/^whatsapp:/i, '');
+
+            const { error: updateError } = await supabase
+              .from('tenants')
+              .update({
+                whatsapp_config: {
+                  ...existing,
+                  provider: 'twilio',
+                  phone_number: normalizedPhone,
+                  webhook_url: webhookUrl,
+                  configured_at: new Date().toISOString(),
+                },
+              })
+              .eq('id', profile.tenant_id);
+
+            if (updateError) {
+              console.error('Error persisting Twilio WhatsApp config:', updateError);
+            }
+          }
+        }
+
         setWebhookResult({ ok: true });
         setStep(3);
       } else {

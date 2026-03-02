@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Plug, MessageSquare, CalendarDays, Brain, Shield, ExternalLink, CheckCircle2, Circle, X, Save, Phone, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -51,12 +51,75 @@ const IntegrationsPage = () => {
   const [waConnected, setWaConnected] = useState(false);
   const [voiceAgentConnected, setVoiceAgentConnected] = useState(false);
   const [voiceAgentLoading, setVoiceAgentLoading] = useState(false);
+  const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-webhook`;
 
   const integrations = integrationsMeta.map(i => {
     if (i.id === 'whatsapp') return { ...i, connected: waConnected };
     if (i.id === 'voice-agent') return { ...i, connected: voiceAgentConnected };
     return i;
   });
+
+  const loadIntegrationStatus = useCallback(async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('tenant_id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (profile?.tenant_id) {
+        const { data: tenant } = await supabase
+          .from('tenants')
+          .select('whatsapp_config')
+          .eq('id', profile.tenant_id)
+          .maybeSingle();
+
+        const config = (tenant?.whatsapp_config as Record<string, any> | null) || null;
+        if (config) {
+          const provider: WaProvider = config.provider === 'twilio' ? 'twilio' : 'meta';
+          setWaProvider(provider);
+          setWaConnected(
+            provider === 'twilio' ? Boolean(config.phone_number) : Boolean(config.phone_number_id)
+          );
+
+          setWaConfig((prev) => ({
+            ...prev,
+            phoneNumberId: config.phone_number_id || '',
+            businessAccountId: config.business_account_id || '',
+            verifyToken: config.verify_token || '',
+            webhookUrl: config.webhook_url || webhookUrl,
+          }));
+
+          const storedPhone = config.phone_number || '';
+          setTwilioConfig((prev) => ({
+            ...prev,
+            phoneNumber: storedPhone
+              ? (String(storedPhone).startsWith('whatsapp:') ? String(storedPhone) : `whatsapp:${storedPhone}`)
+              : prev.phoneNumber,
+          }));
+        } else {
+          setWaConnected(false);
+        }
+      }
+
+      const { data: voiceData, error: voiceError } = await supabase.functions.invoke('elevenlabs-twilio-setup', {
+        body: { action: 'status' },
+      });
+
+      if (!voiceError && !voiceData?.error) {
+        setVoiceAgentConnected(Boolean(voiceData?.configured));
+      }
+    } catch (error) {
+      console.error('Error loading integration status:', error);
+    }
+  }, [webhookUrl]);
+
+  useEffect(() => {
+    loadIntegrationStatus();
+  }, [loadIntegrationStatus]);
 
   const handleIntegrationClick = (id: string) => {
     if (id === 'whatsapp') {
@@ -77,6 +140,7 @@ const IntegrationsPage = () => {
           body: { action: 'status' },
         });
         if (error) throw error;
+        setVoiceAgentConnected(Boolean(data?.configured));
         toast.info(`Estado: ${data?.configured ? 'Conectado' : 'No conectado'} — Número: ${data?.phone_number}`);
       } else {
         // Setup
@@ -104,19 +168,65 @@ const IntegrationsPage = () => {
       toast.error('Account SID, Auth Token y Phone Number son obligatorios');
       return;
     }
+
     setSaving(true);
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Sesión no válida');
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('tenant_id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (!profile?.tenant_id) throw new Error('No se encontró tenant asociado');
+
+      const { data: tenant } = await supabase
+        .from('tenants')
+        .select('whatsapp_config')
+        .eq('id', profile.tenant_id)
+        .maybeSingle();
+
+      const existing = (tenant?.whatsapp_config as Record<string, any> | null) || {};
+      const normalizedPhone = twilioConfig.phoneNumber.trim().replace(/^whatsapp:/i, '');
+
+      const nextConfig = waProvider === 'meta'
+        ? {
+            ...existing,
+            provider: 'meta',
+            phone_number_id: waConfig.phoneNumberId.trim(),
+            business_account_id: waConfig.businessAccountId.trim() || null,
+            verify_token: waConfig.verifyToken.trim() || null,
+            webhook_url: webhookUrl,
+            configured_at: new Date().toISOString(),
+          }
+        : {
+            ...existing,
+            provider: 'twilio',
+            phone_number: normalizedPhone,
+            webhook_url: webhookUrl,
+            configured_at: new Date().toISOString(),
+          };
+
+      const { error: updateError } = await supabase
+        .from('tenants')
+        .update({ whatsapp_config: nextConfig })
+        .eq('id', profile.tenant_id);
+
+      if (updateError) throw updateError;
+
       toast.success(`Configuración de WhatsApp (${waProvider === 'meta' ? 'Meta Cloud API' : 'Twilio'}) guardada correctamente`);
       setWaConnected(true);
       setWaDialogOpen(false);
-    } catch {
-      toast.error('Error al guardar la configuración');
+      await loadIntegrationStatus();
+    } catch (err: any) {
+      toast.error(err?.message || 'Error al guardar la configuración');
     } finally {
       setSaving(false);
     }
   };
 
-  const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-webhook`;
 
   return (
     <div className="p-4 sm:p-6 max-w-5xl mx-auto">
@@ -352,7 +462,7 @@ const IntegrationsPage = () => {
             </DialogDescription>
           </DialogHeader>
           <TwilioWizard
-            onComplete={() => { setTwilioWizardOpen(false); setWaConnected(true); toast.success('Twilio configurado correctamente'); }}
+            onComplete={async () => { setTwilioWizardOpen(false); await loadIntegrationStatus(); toast.success('Twilio configurado correctamente'); }}
             onCancel={() => setTwilioWizardOpen(false)}
           />
         </DialogContent>
