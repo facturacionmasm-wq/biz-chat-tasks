@@ -280,17 +280,25 @@ serve(async (req) => {
 
     if (routingMethod === 'stream' && signedUrl) {
       // Route to ElevenLabs via Twilio <Connect><Stream>
+      // NOTE: We intentionally avoid a trailing <Say> here because when the
+      // stream closes unexpectedly, Twilio would immediately speak "gracias"
+      // and hang up, which masks the real stream failure.
       twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say voice="Polly.Mia-Neural" language="es-MX">${greeting}</Say>
   <Connect>
-    <Stream url="${escapeXml(signedUrl)}">
+    <Stream
+      url="${escapeXml(signedUrl)}"
+      statusCallback="${escapeXml(statusCallbackUrl)}"
+      statusCallbackMethod="POST"
+      name="elevenlabs_stream"
+      track="inbound_track"
+    >
       <Parameter name="tenant_id" value="${escapeXml(tenantId)}" />
       <Parameter name="call_record_id" value="${escapeXml(callRecordId || '')}" />
       <Parameter name="call_sid" value="${escapeXml(callSid)}" />
     </Stream>
   </Connect>
-  <Say voice="Polly.Mia-Neural" language="es-MX">Gracias por su llamada. Hasta pronto.</Say>
 </Response>`;
     } else if (sessionState === 'failed_routing') {
       // 8. FALLBACK: ElevenLabs unavailable
