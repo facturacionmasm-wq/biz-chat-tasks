@@ -20,6 +20,41 @@ async function validateTwilioSignature(
   return computed === signature;
 }
 
+function parseRequestParams(contentType: string, rawBody: string): Record<string, string> {
+  const body = (rawBody || '').trim();
+  if (!body) return {};
+
+  const looksLikeForm = contentType.includes('application/x-www-form-urlencoded') ||
+    (!contentType.includes('application/json') && body.includes('='));
+
+  if (looksLikeForm) {
+    const params: Record<string, string> = {};
+    const search = new URLSearchParams(body);
+    search.forEach((value, key) => {
+      params[key] = value;
+    });
+    return params;
+  }
+
+  try {
+    const parsed = JSON.parse(body);
+    if (parsed && typeof parsed === 'object') {
+      return Object.fromEntries(
+        Object.entries(parsed).map(([key, value]) => [key, String(value ?? '')])
+      );
+    }
+  } catch {
+    const params: Record<string, string> = {};
+    const search = new URLSearchParams(body);
+    search.forEach((value, key) => {
+      params[key] = value;
+    });
+    return params;
+  }
+
+  return {};
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -33,13 +68,8 @@ serve(async (req) => {
   try {
     // ═══════════ PARSE PARAMS ═══════════
     const contentType = req.headers.get('content-type') || '';
-    let params: Record<string, string> = {};
-    if (contentType.includes('application/x-www-form-urlencoded')) {
-      const formData = await req.formData();
-      formData.forEach((value, key) => { params[key] = String(value); });
-    } else {
-      params = await req.json();
-    }
+    const rawBody = await req.text();
+    const params: Record<string, string> = parseRequestParams(contentType, rawBody);
 
     const callSid = params.CallSid || params.call_sid || '';
     const callStatus = params.CallStatus || params.status || '';

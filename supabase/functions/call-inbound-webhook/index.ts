@@ -220,7 +220,7 @@ serve(async (req) => {
       ? `Hola, bienvenido a ${escapeXml(companyName)}.`
       : 'Hola, bienvenido.';
 
-    // ═══════════ 6–7. ROUTE TO ELEVENLABS VIA REGISTER-CALL API ═══════════
+    // ═══════════ 6–7. ROUTE TO ELEVENLABS (PRIORITY: SIGNED-URL STREAM) ═══════════
     let routingMethod = 'record';
     let sessionState = 'fallback_recording';
     let twiml: string | null = null;
@@ -228,77 +228,8 @@ serve(async (req) => {
     const statusCallbackUrl = `${SUPABASE_URL}/functions/v1/call-status-webhook`;
 
     if (ELEVENLABS_API_KEY && ELEVENLABS_AGENT_ID) {
-      // Primary path: ElevenLabs Twilio register-call API (native TwiML for Twilio)
+      // Primary path: signed-url stream (más estable en producción para inbound continuo)
       for (let attempt = 0; attempt < 2; attempt++) {
-        try {
-          const registerBody: Record<string, any> = {
-            agent_id: ELEVENLABS_AGENT_ID,
-            from_number: from,
-            to_number: to,
-            direction: 'inbound',
-            conversation_initiation_client_data: {
-              dynamic_variables: {
-                tenant_id: tenantId,
-                call_record_id: callRecordId || '',
-                call_sid: callSid,
-                company_name: companyName || 'la empresa',
-              },
-            },
-          };
-
-          const elRes = await fetch(
-            'https://api.elevenlabs.io/v1/convai/twilio/register-call',
-            {
-              method: 'POST',
-              headers: {
-                'xi-api-key': ELEVENLABS_API_KEY,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify(registerBody),
-            }
-          );
-
-          if (elRes.ok) {
-            const contentType = elRes.headers.get('content-type') || '';
-            let twimlContent: string | null = null;
-
-            if (contentType.includes('application/json')) {
-              const elData = await elRes.json();
-              twimlContent = elData.twiml || null;
-            } else {
-              // API may return TwiML directly as XML
-              twimlContent = await elRes.text();
-            }
-
-            if (twimlContent && twimlContent.includes('<Response>')) {
-              const resilientRegisterCallTwiml = twimlContent
-                .replace(
-                  '<Response>',
-                  `<Response>\n  <Say voice="Polly.Mia-Neural" language="es-MX">${greeting}</Say>`
-                )
-                .replace(
-                  '</Response>',
-                  `\n  <Say voice="Polly.Mia-Neural" language="es-MX">Tuvimos una desconexión con el asistente. Por favor deje su mensaje después del tono.</Say>\n  <Record\n    maxLength="120"\n    recordingStatusCallback="${escapeXml(statusCallbackUrl)}"\n    recordingStatusCallbackEvent="completed"\n    transcribe="false"\n    playBeep="true"\n    trim="trim-silence"\n  />\n  <Say voice="Polly.Mia-Neural" language="es-MX">Gracias por su llamada. Hasta pronto.</Say>\n</Response>`
-                );
-              routingMethod = 'register_call';
-              sessionState = 'connected_to_agent';
-              twiml = resilientRegisterCallTwiml;
-              console.log(`[inbound] ElevenLabs register-call TwiML obtained (attempt ${attempt + 1})`);
-              break;
-            } else {
-              console.error(`[inbound] ElevenLabs register-call: no valid TwiML in response (attempt ${attempt + 1}), body: ${String(twimlContent).substring(0, 200)}`);
-            }
-          } else {
-            const errText = await elRes.text();
-            console.error(`[inbound] ElevenLabs register-call error: ${elRes.status} ${errText} (attempt ${attempt + 1})`);
-          }
-        } catch (e) {
-          console.error(`[inbound] ElevenLabs register-call fetch error (attempt ${attempt + 1}):`, e);
-        }
-      }
-
-      // Secondary path: if register-call fails, fallback to signed-url stream
-      if (routingMethod !== 'register_call') {
         try {
           const signedUrlRes = await fetch(
             `https://api.elevenlabs.io/v1/convai/conversation/get-signed-url?agent_id=${encodeURIComponent(ELEVENLABS_AGENT_ID)}`,
@@ -326,22 +257,85 @@ serve(async (req) => {
               targetUrl = signedUrl;
               routingMethod = 'signed_url_stream';
               sessionState = 'connected_to_agent';
-              console.log('[inbound] ElevenLabs signed-url stream fallback enabled');
+              console.log(`[inbound] ElevenLabs signed-url stream enabled (attempt ${attempt + 1})`);
+              break;
             } else {
-              console.error('[inbound] ElevenLabs signed-url invalid response');
+              console.error(`[inbound] ElevenLabs signed-url invalid response (attempt ${attempt + 1})`);
             }
           } else {
             const errText = await signedUrlRes.text();
-            console.error(`[inbound] ElevenLabs signed-url error: ${signedUrlRes.status} ${errText}`);
+            console.error(`[inbound] ElevenLabs signed-url error: ${signedUrlRes.status} ${errText} (attempt ${attempt + 1})`);
           }
         } catch (e) {
-          console.error('[inbound] ElevenLabs signed-url fetch error:', e);
+          console.error(`[inbound] ElevenLabs signed-url fetch error (attempt ${attempt + 1}):`, e);
         }
       }
 
-      if (routingMethod !== 'register_call' && routingMethod !== 'signed_url_stream') {
+      // Secondary path: register-call API as fallback
+      if (!twiml) {
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            const registerBody: Record<string, any> = {
+              agent_id: ELEVENLABS_AGENT_ID,
+              from_number: from,
+              to_number: to,
+              direction: 'inbound',
+              conversation_initiation_client_data: {
+                dynamic_variables: {
+                  tenant_id: tenantId,
+                  call_record_id: callRecordId || '',
+                  call_sid: callSid,
+                  company_name: companyName || 'la empresa',
+                },
+              },
+            };
+
+            const elRes = await fetch(
+              'https://api.elevenlabs.io/v1/convai/twilio/register-call',
+              {
+                method: 'POST',
+                headers: {
+                  'xi-api-key': ELEVENLABS_API_KEY,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(registerBody),
+              }
+            );
+
+            if (elRes.ok) {
+              const contentType = elRes.headers.get('content-type') || '';
+              let twimlContent: string | null = null;
+
+              if (contentType.includes('application/json')) {
+                const elData = await elRes.json();
+                twimlContent = elData.twiml || null;
+              } else {
+                twimlContent = await elRes.text();
+              }
+
+              if (twimlContent && twimlContent.includes('<Response')) {
+                // Mantener TwiML nativo de ElevenLabs para evitar incompatibilidades de sesión.
+                twiml = twimlContent;
+                routingMethod = 'register_call';
+                sessionState = 'connected_to_agent';
+                console.log(`[inbound] ElevenLabs register-call TwiML obtained (attempt ${attempt + 1})`);
+                break;
+              } else {
+                console.error(`[inbound] ElevenLabs register-call: no valid TwiML in response (attempt ${attempt + 1})`);
+              }
+            } else {
+              const errText = await elRes.text();
+              console.error(`[inbound] ElevenLabs register-call error: ${elRes.status} ${errText} (attempt ${attempt + 1})`);
+            }
+          } catch (e) {
+            console.error(`[inbound] ElevenLabs register-call fetch error (attempt ${attempt + 1}):`, e);
+          }
+        }
+      }
+
+      if (!twiml) {
         sessionState = 'failed_routing';
-        console.error(`[inbound] ElevenLabs routing FAILED after register-call + signed-url fallback`);
+        console.error(`[inbound] ElevenLabs routing FAILED after signed-url + register-call fallback`);
       }
     } else {
       console.warn(`[inbound] ElevenLabs not configured, using recording fallback`);
@@ -359,7 +353,7 @@ serve(async (req) => {
         routing_method: routingMethod,
         target_url: targetUrl,
         state: sessionState,
-        retry_count: routingMethod === 'register_call' ? 0 : 1,
+        retry_count: routingMethod === 'record' ? 1 : 0,
       }, { onConflict: 'call_sid' });
 
       if (sessionState === 'failed_routing') {
