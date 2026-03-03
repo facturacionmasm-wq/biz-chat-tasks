@@ -213,6 +213,7 @@ serve(async (req) => {
     let routingMethod = 'record';
     let sessionState = 'fallback_recording';
     let twiml: string | null = null;
+    let elevenlabsConversationId: string | null = null;
     const statusCallbackUrl = `${SUPABASE_URL}/functions/v1/call-status-webhook`;
 
     if (ELEVENLABS_API_KEY && ELEVENLABS_AGENT_ID) {
@@ -254,6 +255,7 @@ serve(async (req) => {
             if (contentType.includes('application/json')) {
               const elData = await elRes.json();
               twimlContent = elData.twiml || null;
+              elevenlabsConversationId = elData.conversation_id || null;
             } else {
               // API may return TwiML directly as XML
               twimlContent = await elRes.text();
@@ -299,6 +301,14 @@ serve(async (req) => {
         state: sessionState,
         retry_count: routingMethod === 'register_call' ? 0 : 1,
       }, { onConflict: 'call_sid' });
+
+      // Store ElevenLabs conversation_id for later transcript retrieval
+      if (elevenlabsConversationId) {
+        await supabase.from('call_records').update({
+          extracted_data: { direction: 'inbound', callerCity, callerState, callerCountry, accountSid, elevenlabs_conversation_id: elevenlabsConversationId },
+        }).eq('id', callRecordId);
+        console.log(`[inbound] Stored elevenlabs_conversation_id=${elevenlabsConversationId}`);
+      }
 
       if (sessionState === 'failed_routing') {
         await supabase.from('call_records').update({ status: 'failed' }).eq('id', callRecordId);
