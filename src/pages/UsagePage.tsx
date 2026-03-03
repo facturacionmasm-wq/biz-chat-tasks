@@ -122,7 +122,7 @@ const UsagePage = () => {
       ) : (
         <>
           {/* ── KPI Cards ── */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
             {/* WhatsApp */}
             <KpiCard
               icon={MessageSquare}
@@ -131,13 +131,21 @@ const UsagePage = () => {
               value={currentMonth.totalUnits}
               sub={`${currentMonth.byType['message_out'] || 0} enviados · ${currentMonth.byType['message_in'] || 0} recibidos`}
             />
+            {/* WhatsApp Cost */}
+            <KpiCard
+              icon={DollarSign}
+              iconColor="text-green-600"
+              label="Costo WhatsApp"
+              value={history.length > 0 ? `$${Number(history[0].real_cost_usd).toFixed(2)}` : '$0.00'}
+              sub={history.length > 0 ? `${Number(history[0].revenue_usd).toFixed(2)} USD cobrado` : 'Sin datos'}
+            />
             {/* Voice */}
             <KpiCard
               icon={Phone}
               iconColor="text-blue-600"
               label="Llamadas Voice AI"
               value={voiceSummary.callCount}
-              sub={`${voiceSummary.totalMinutes.toFixed(1)} min`}
+              sub={`${voiceSummary.totalMinutes.toFixed(1)} min · $${voiceSummary.totalCost.toFixed(2)} USD`}
             />
             {/* AI Tokens */}
             <KpiCard
@@ -280,11 +288,12 @@ const UsagePage = () => {
             <h2 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
               <MessageSquare size={16} className="text-primary" /> Detalle WhatsApp — Mes actual
             </h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
               <MetricBox label="Total mensajes" value={currentMonth.totalUnits} />
               <MetricBox label="Enviados" value={currentMonth.byType['message_out'] || 0} />
               <MetricBox label="Recibidos" value={currentMonth.byType['message_in'] || 0} />
               <MetricBox label="Eventos" value={currentMonth.eventCount} />
+              <MetricBox label="Costo estimado" value={history.length > 0 ? `$${Number(history[0].real_cost_usd).toFixed(2)} USD` : '$0.00 USD'} />
             </div>
           </div>
 
