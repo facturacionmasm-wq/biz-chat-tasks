@@ -53,6 +53,11 @@ serve(async (req) => {
 
     console.log(`[status] CallSid=${callSid} Status=${callStatus} From=${from} To=${to}`);
 
+    // Stream status callbacks (from <Connect><Stream>) may not include CallStatus.
+    // Avoid overwriting call state with empty status values.
+    const streamEvent = params.StreamEvent || params.stream_event || '';
+    const streamSid = params.StreamSid || params.stream_sid || '';
+
     // ═══════════ TWILIO SIGNATURE VALIDATION ═══════════
     if (TWILIO_AUTH_TOKEN) {
       const twilioSignature = req.headers.get('X-Twilio-Signature') || '';
@@ -72,6 +77,14 @@ serve(async (req) => {
     if (!callSid) {
       return new Response(JSON.stringify({ error: 'Missing CallSid' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // If this is a stream lifecycle callback, only track telemetry and exit.
+    if (!callStatus && streamEvent) {
+      console.log(`[status] StreamEvent=${streamEvent} CallSid=${callSid} StreamSid=${streamSid}`);
+      return new Response('<Response></Response>', {
+        headers: { ...corsHeaders, 'Content-Type': 'text/xml' },
       });
     }
 
