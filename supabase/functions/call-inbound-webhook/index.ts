@@ -67,23 +67,24 @@ function parseRequestBody(contentType: string, rawBody: string): Record<string, 
 function buildTwimlWithElevenLabs(elTwiml: string, statusCallbackUrl: string, companyName: string): string {
   console.log(`[inbound] Raw ElevenLabs TwiML: ${elTwiml}`);
 
-  // CRITICAL: Return the ElevenLabs TwiML EXACTLY as-is.
-  // Any modification (adding <Say>, restructuring <Connect>) can cause
-  // the WebSocket stream to close immediately, making Twilio fall through
-  // to fallback verbs and the caller only hears "la conversación ha terminado".
-  //
-  // ElevenLabs designs their TwiML to work directly with Twilio.
-  // When the conversation ends naturally, the stream closes and the call ends.
+  // Keep ElevenLabs TwiML untouched, but append a safe fallback message.
+  // If the WebSocket closes early, Twilio will continue with this <Say>
+  // instead of ending the call abruptly.
   if (elTwiml.includes('<Response')) {
+    const fallback = `<Say voice="Polly.Mia-Neural" language="es-MX">Tuvimos una desconexión con el asistente. Por favor intente de nuevo en unos segundos.</Say>`;
+    if (elTwiml.includes('</Response>')) {
+      return elTwiml.replace('</Response>', `${fallback}</Response>`);
+    }
     return elTwiml;
   }
 
-  // Only wrap if it's not already a complete TwiML response
+  // Safety fallback only when ElevenLabs doesn't return full TwiML
   return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Connect>
     <Stream url="${elTwiml}"/>
   </Connect>
+  <Say voice="Polly.Mia-Neural" language="es-MX">Tuvimos una desconexión con el asistente. Por favor intente de nuevo en unos segundos.</Say>
 </Response>`;
 }
 
