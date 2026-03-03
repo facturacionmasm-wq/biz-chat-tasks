@@ -213,11 +213,11 @@ serve(async (req) => {
     let routingMethod = 'record';
     let sessionState = 'fallback_recording';
     let twiml: string | null = null;
+    let targetUrl: string | null = null;
     const statusCallbackUrl = `${SUPABASE_URL}/functions/v1/call-status-webhook`;
 
     if (ELEVENLABS_API_KEY && ELEVENLABS_AGENT_ID) {
-      // Use the ElevenLabs Register Call API which returns ready-to-use TwiML
-      // This is the correct integration path for Twilio ↔ ElevenLabs
+      // Primary path: ElevenLabs Twilio register-call API (native TwiML for Twilio)
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
           const registerBody: Record<string, any> = {
@@ -280,9 +280,51 @@ serve(async (req) => {
         }
       }
 
+      // Secondary path: if register-call fails, fallback to signed-url stream
       if (routingMethod !== 'register_call') {
+        try {
+          const signedUrlRes = await fetch(
+            `https://api.elevenlabs.io/v1/convai/conversation/get-signed-url?agent_id=${encodeURIComponent(ELEVENLABS_AGENT_ID)}`,
+            {
+              headers: {
+                'xi-api-key': ELEVENLABS_API_KEY,
+              },
+            }
+          );
+
+          if (signedUrlRes.ok) {
+            const signedUrlData = await signedUrlRes.json();
+            const signedUrl = signedUrlData?.signed_url as string | undefined;
+
+            if (signedUrl && signedUrl.startsWith('wss://')) {
+              twiml = buildSignedUrlFallbackTwiml({
+                signedUrl,
+                greeting,
+                statusCallbackUrl,
+                tenantId,
+                callRecordId: callRecordId || '',
+                callSid,
+                companyName,
+              });
+              targetUrl = signedUrl;
+              routingMethod = 'signed_url_stream';
+              sessionState = 'connected_to_agent';
+              console.log('[inbound] ElevenLabs signed-url stream fallback enabled');
+            } else {
+              console.error('[inbound] ElevenLabs signed-url invalid response');
+            }
+          } else {
+            const errText = await signedUrlRes.text();
+            console.error(`[inbound] ElevenLabs signed-url error: ${signedUrlRes.status} ${errText}`);
+          }
+        } catch (e) {
+          console.error('[inbound] ElevenLabs signed-url fetch error:', e);
+        }
+      }
+
+      if (routingMethod !== 'register_call' && routingMethod !== 'signed_url_stream') {
         sessionState = 'failed_routing';
-        console.error(`[inbound] ElevenLabs routing FAILED after retries`);
+        console.error(`[inbound] ElevenLabs routing FAILED after register-call + signed-url fallback`);
       }
     } else {
       console.warn(`[inbound] ElevenLabs not configured, using recording fallback`);
@@ -298,7 +340,7 @@ serve(async (req) => {
         elevenlabs_agent_id: ELEVENLABS_AGENT_ID || null,
         language: 'es',
         routing_method: routingMethod,
-        target_url: null,
+        target_url: targetUrl,
         state: sessionState,
         retry_count: routingMethod === 'register_call' ? 0 : 1,
       }, { onConflict: 'call_sid' });
@@ -354,6 +396,40 @@ serve(async (req) => {
     });
   }
 });
+
+function buildSignedUrlFallbackTwiml(params: {
+  signedUrl: string;
+  greeting: string;
+  statusCallbackUrl: string;
+  tenantId: string;
+  callRecordId: string;
+  callSid: string;
+  companyName: string;
+}): string {
+  const { signedUrl, greeting, statusCallbackUrl, tenantId, callRecordId, callSid, companyName } = params;
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="Polly.Mia-Neural" language="es-MX">${greeting} Lo conectamos con nuestro asistente.</Say>
+  <Connect>
+    <Stream url="${escapeXml(signedUrl)}">
+      <Parameter name="tenant_id" value="${escapeXml(tenantId)}" />
+      <Parameter name="call_record_id" value="${escapeXml(callRecordId)}" />
+      <Parameter name="call_sid" value="${escapeXml(callSid)}" />
+      <Parameter name="company_name" value="${escapeXml(companyName || 'la empresa')}" />
+    </Stream>
+  </Connect>
+  <Say voice="Polly.Mia-Neural" language="es-MX">Tuvimos una desconexión con el asistente. Por favor deje su mensaje después del tono.</Say>
+  <Record
+    maxLength="120"
+    recordingStatusCallback="${escapeXml(statusCallbackUrl)}"
+    recordingStatusCallbackEvent="completed"
+    transcribe="false"
+    playBeep="true"
+    trim="trim-silence"
+  />
+  <Say voice="Polly.Mia-Neural" language="es-MX">Gracias por su llamada. Hasta pronto.</Say>
+</Response>`;
+}
 
 function twimlSay(message: string): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
