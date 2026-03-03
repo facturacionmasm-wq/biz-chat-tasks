@@ -229,10 +229,9 @@ serve(async (req) => {
       .from('tenants').select('name, settings_json').eq('id', tenantId).single();
     const companyName = tenant?.name || '';
 
-    // ═══════════ 5. ROUTE TO ELEVENLABS VIA REGISTER-CALL API ═══════════
-    // CRITICAL: Only register-call produces Twilio-compatible TwiML.
-    // The signed-url/conversation endpoint uses WebRTC audio and is NOT
-    // compatible with Twilio's <Stream> which sends μ-law 8kHz audio.
+    // ═══════════ 5. ROUTE TO ELEVENLABS VIA REGISTER-CALL + BRIDGE ═══════════
+    // We still use register-call to get Twilio-compatible TwiML/session wiring,
+    // then rewrite the <Stream url="..."> to our secure intermediary bridge.
     let routingMethod = 'record';
     let sessionState = 'fallback_recording';
     let twiml: string | null = null;
@@ -280,12 +279,16 @@ serve(async (req) => {
             }
 
             if (twimlContent && twimlContent.includes('<Response')) {
-              // Use the TwiML AS-IS from ElevenLabs — do NOT modify it.
-              // ElevenLabs embeds session tokens/URLs that are sensitive to changes.
-              twiml = twimlContent;
-              routingMethod = 'register_call';
+              twiml = await rewriteTwimlStreamToBridge(twimlContent, {
+                supabaseUrl: SUPABASE_URL,
+                callSid,
+                tenantId,
+                authToken: TWILIO_AUTH_TOKEN || undefined,
+              });
+
+              routingMethod = 'register_call_bridge';
               sessionState = 'connected_to_agent';
-              console.log(`[inbound] ElevenLabs register-call TwiML OK (attempt ${attempt + 1})`);
+              console.log(`[inbound] ElevenLabs register-call TwiML bridged OK (attempt ${attempt + 1})`);
               break;
             } else {
               console.error(`[inbound] register-call: invalid TwiML (attempt ${attempt + 1}), body: ${String(twimlContent).substring(0, 200)}`);
@@ -387,6 +390,73 @@ serve(async (req) => {
     });
   }
 });
+
+async function rewriteTwimlStreamToBridge(
+  twiml: string,
+  context: { supabaseUrl: string; callSid: string; tenantId: string; authToken?: string }
+): Promise<string> {
+  const streamMatch = twiml.match(/<Stream\b[^>]*\burl="([^"]+)"/i);
+  if (!streamMatch?.[1]) {
+    console.warn('[inbound] No <Stream url="..."> found in TwiML, returning original');
+    return twiml;
+  }
+
+  const originalUrl = streamMatch[1];
+  const bridgeUrl = await buildBridgeWsUrl({
+    supabaseUrl: context.supabaseUrl,
+    targetUrl: originalUrl,
+    callSid: context.callSid,
+    tenantId: context.tenantId,
+    authToken: context.authToken,
+  });
+
+  return twiml.replace(originalUrl, escapeXml(bridgeUrl));
+}
+
+async function buildBridgeWsUrl(params: {
+  supabaseUrl: string;
+  targetUrl: string;
+  callSid: string;
+  tenantId: string;
+  authToken?: string;
+}): Promise<string> {
+  const baseWs = params.supabaseUrl
+    .replace(/^https:\/\//i, 'wss://')
+    .replace(/^http:\/\//i, 'ws://');
+
+  const exp = Math.floor(Date.now() / 1000) + 300;
+  const search = new URLSearchParams({
+    target: params.targetUrl,
+    callSid: params.callSid,
+    tenantId: params.tenantId,
+    exp: String(exp),
+  });
+
+  if (params.authToken) {
+    const sig = await signBridgeToken(params.authToken, `${params.callSid}.${params.tenantId}.${exp}.${params.targetUrl}`);
+    search.set('sig', sig);
+  }
+
+  return `${baseWs}/functions/v1/elevenlabs-bridge?${search.toString()}`;
+}
+
+async function signBridgeToken(secret: string, payload: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+
+  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(payload));
+  return toBase64Url(new Uint8Array(signature));
+}
+
+function toBase64Url(bytes: Uint8Array): string {
+  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
 
 function twimlSay(message: string): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
