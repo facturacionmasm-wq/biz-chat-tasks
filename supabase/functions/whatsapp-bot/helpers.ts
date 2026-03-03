@@ -36,75 +36,58 @@ export async function sendTwilioMessage(
 
   const configuredMsgSvcSid = messagingServiceSid?.trim() || Deno.env.get('TWILIO_MESSAGING_SERVICE_SID')?.trim();
 
-  // Prefer Messaging Service to avoid sender/channel mismatches on WhatsApp.
-  // If it fails, fallback to explicit From number when available.
-  if (configuredMsgSvcSid) {
+  // Prefer explicit From number first for WhatsApp; fallback to Messaging Service on sender/channel mismatch.
+  const fallbackMsgSvcSid = configuredMsgSvcSid;
+
+  if (fromNumber?.trim()) {
+    const fromWhatsApp = fromNumber.startsWith('whatsapp:') ? fromNumber : `whatsapp:${fromNumber}`;
+    const fromParams: Record<string, string> = {
+      To: toWhatsApp,
+      Body: body,
+      From: fromWhatsApp,
+    };
+
+    console.log(`[TWILIO] Sending via From=${fromWhatsApp} to=${toWhatsApp}`);
+    const { res: firstRes, data: firstData } = await send(fromParams);
+
+    if (firstRes.ok) return firstData;
+
+    console.error('Twilio send error (From):', JSON.stringify(firstData));
+
+    // Resilience fallback for sender/channel mismatches.
+    if ((firstData?.code === 63007 || firstData?.code === 21612) && fallbackMsgSvcSid) {
+      console.warn(`[TWILIO] From failed (${firstData?.code}). Retrying with MessagingServiceSid=${fallbackMsgSvcSid} to=${toWhatsApp}`);
+      const retryParams: Record<string, string> = {
+        To: toWhatsApp,
+        Body: body,
+        MessagingServiceSid: fallbackMsgSvcSid,
+      };
+      const { res: retryRes, data: retryData } = await send(retryParams);
+      if (!retryRes.ok) {
+        console.error('Twilio retry send error (MessagingServiceSid fallback):', JSON.stringify(retryData));
+      }
+      return retryData;
+    }
+
+    return firstData;
+  }
+
+  if (fallbackMsgSvcSid) {
     const msgSvcParams: Record<string, string> = {
       To: toWhatsApp,
       Body: body,
-      MessagingServiceSid: configuredMsgSvcSid,
+      MessagingServiceSid: fallbackMsgSvcSid,
     };
-    console.log(`[TWILIO] Sending via MessagingServiceSid=${configuredMsgSvcSid} to=${toWhatsApp}`);
-    const { res, data } = await send(msgSvcParams);
 
+    console.log(`[TWILIO] Sending via MessagingServiceSid=${fallbackMsgSvcSid} to=${toWhatsApp}`);
+    const { res, data } = await send(msgSvcParams);
     if (!res.ok) {
       console.error('Twilio send error (MessagingServiceSid):', JSON.stringify(data));
-
-      const fallbackFrom = fromNumber?.trim();
-      if (fallbackFrom) {
-        const fallbackFromWhatsApp = fallbackFrom.startsWith('whatsapp:') ? fallbackFrom : `whatsapp:${fallbackFrom}`;
-        console.warn(`[TWILIO] MessagingServiceSid failed. Retrying with From=${fallbackFromWhatsApp} to=${toWhatsApp}`);
-
-        const retryParams: Record<string, string> = {
-          To: toWhatsApp,
-          Body: body,
-          From: fallbackFromWhatsApp,
-        };
-
-        const { res: retryRes, data: retryData } = await send(retryParams);
-        if (!retryRes.ok) {
-          console.error('Twilio retry send error (From fallback):', JSON.stringify(retryData));
-        }
-        return retryData;
-      }
     }
-
     return data;
   }
 
-  const fromWhatsApp = fromNumber.startsWith('whatsapp:') ? fromNumber : `whatsapp:${fromNumber}`;
-  const fromParams: Record<string, string> = {
-    To: toWhatsApp,
-    Body: body,
-    From: fromWhatsApp,
-  };
-
-  console.log(`[TWILIO] Sending via From=${fromWhatsApp} to=${toWhatsApp}`);
-  const { res: firstRes, data: firstData } = await send(fromParams);
-
-  if (!firstRes.ok) {
-    // Resilience fallback for Twilio 63007 sender-channel mismatch.
-    if (firstData?.code === 63007) {
-      const fallbackMsgSvcSid = Deno.env.get('TWILIO_MESSAGING_SERVICE_SID')?.trim();
-      if (fallbackMsgSvcSid) {
-        console.warn(`[TWILIO] 63007 with From. Retrying with MessagingServiceSid=${fallbackMsgSvcSid} to=${toWhatsApp}`);
-        const retryParams: Record<string, string> = {
-          To: toWhatsApp,
-          Body: body,
-          MessagingServiceSid: fallbackMsgSvcSid,
-        };
-        const { res: retryRes, data: retryData } = await send(retryParams);
-        if (!retryRes.ok) {
-          console.error('Twilio retry send error:', JSON.stringify(retryData));
-        }
-        return retryData;
-      }
-    }
-
-    console.error('Twilio send error:', JSON.stringify(firstData));
-  }
-
-  return firstData;
+  throw new Error('Missing Twilio sender configuration (From number or MessagingServiceSid)');
 }
 
 export async function transcribeVoiceMessage(

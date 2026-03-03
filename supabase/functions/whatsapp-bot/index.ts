@@ -178,52 +178,30 @@ serve(async (req) => {
       } catch (e) { console.error('[BOT] Usage tracking (in) error:', e); }
 
       if (!skipSend && reply && TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && fromNumber) {
-        // Send reply with retry - prefer MessagingServiceSid for WhatsApp delivery
+        // Send reply (From first, MessagingServiceSid fallback is handled in helper)
         let twilioResult: any = null;
         let sendSuccess = false;
 
-        for (let attempt = 0; attempt < 2; attempt++) {
-          try {
-            const useMessagingService = Boolean(effectiveMessagingServiceSid) && attempt === 0;
-            const messagingSidForAttempt = useMessagingService ? effectiveMessagingServiceSid : undefined;
+        try {
+          twilioResult = await sendTwilioMessage(
+            TWILIO_ACCOUNT_SID,
+            TWILIO_AUTH_TOKEN,
+            fromNumber,
+            contactPhone,
+            reply,
+            effectiveMessagingServiceSid,
+          );
 
-            if (useMessagingService) {
-              console.log(`[BOT] Outbound attempt ${attempt + 1}: MessagingServiceSid`);
-            } else if (effectiveMessagingServiceSid) {
-              console.log(`[BOT] Outbound attempt ${attempt + 1}: fallback to From number`);
-            }
+          const twilioStatus = String(twilioResult?.status || '').toLowerCase();
+          const hasTwilioError = Boolean(twilioResult?.error_code);
 
-            twilioResult = await sendTwilioMessage(
-              TWILIO_ACCOUNT_SID,
-              TWILIO_AUTH_TOKEN,
-              fromNumber,
-              contactPhone,
-              reply,
-              messagingSidForAttempt,
-            );
-
-            const twilioStatus = String(twilioResult?.status || '').toLowerCase();
-            const hasTwilioError = Boolean(twilioResult?.error_code);
-
-            if (!hasTwilioError && twilioStatus !== 'failed') {
-              sendSuccess = true;
-              break;
-            }
-
-            console.error(`[BOT] Send attempt ${attempt + 1} failed: status=${twilioStatus} error=${twilioResult?.error_code} msg=${twilioResult?.error_message}`);
-
-            // Don't retry for auth/config errors
-            if (twilioResult?.error_code && [20003, 21608].includes(Number(twilioResult.error_code))) {
-              break;
-            }
-
-            if (attempt < 1) {
-              await new Promise(r => setTimeout(r, 1000)); // 1s delay before retry
-            }
-          } catch (sendErr) {
-            console.error(`[BOT] Send attempt ${attempt + 1} exception:`, sendErr);
-            if (attempt < 1) await new Promise(r => setTimeout(r, 1000));
+          if (!hasTwilioError && twilioStatus !== 'failed' && twilioStatus !== 'undelivered') {
+            sendSuccess = true;
+          } else {
+            console.error(`[BOT] Send failed: status=${twilioStatus} error=${twilioResult?.error_code} msg=${twilioResult?.error_message}`);
           }
+        } catch (sendErr) {
+          console.error('[BOT] Send exception:', sendErr);
         }
 
         const outboundStatus = sendSuccess ? (String(twilioResult?.status || 'sent').toLowerCase()) : 'failed';
