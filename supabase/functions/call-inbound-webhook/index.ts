@@ -65,6 +65,20 @@ serve(async (req) => {
   const ELEVENLABS_AGENT_ID = Deno.env.get('ELEVENLABS_AGENT_ID');
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
+  // Structured voice log helper (fire-and-forget)
+  const voiceLog = (callSidVal: string, tenantIdVal: string | null, stage: string, errorCode?: string, errorMsg?: string, meta?: Record<string, unknown>) => {
+    supabase.from('voice_call_logs').insert({
+      call_sid: callSidVal,
+      tenant_id: tenantIdVal,
+      stage,
+      error_code: errorCode || null,
+      error_message: errorMsg || null,
+      metadata: meta || {},
+    }).then(({ error }) => {
+      if (error) console.error(`[inbound] voiceLog error: ${error.message}`);
+    });
+  };
+
   try {
     // ═══════════ 1. PARSE TWILIO PARAMS ═══════════
     const contentType = req.headers.get('content-type') || '';
@@ -90,6 +104,7 @@ serve(async (req) => {
         const isValid = await validateTwilioSignature(TWILIO_AUTH_TOKEN, twilioSignature, webhookUrl, params);
         if (!isValid) {
           console.error(`[inbound] INVALID Twilio signature for CallSid=${callSid}`);
+          voiceLog(callSid, null, 'signature_invalid', 'HMAC_FAIL', 'Twilio signature validation failed');
           return new Response(twimlSay('Solicitud no autorizada.'), {
             status: 403, headers: { ...corsHeaders, 'Content-Type': 'text/xml' },
           });
@@ -289,6 +304,7 @@ serve(async (req) => {
               routingMethod = 'register_call_bridge';
               sessionState = 'connected_to_agent';
               console.log(`[inbound] ElevenLabs register-call TwiML bridged OK (attempt ${attempt + 1})`);
+              voiceLog(callSid, tenantId, 'routing_ok', undefined, undefined, { method: 'register_call_bridge', attempt: attempt + 1 });
               break;
             } else {
               console.error(`[inbound] register-call: invalid TwiML (attempt ${attempt + 1}), body: ${String(twimlContent).substring(0, 200)}`);
@@ -305,6 +321,7 @@ serve(async (req) => {
       if (!twiml) {
         sessionState = 'failed_routing';
         console.error(`[inbound] ElevenLabs routing FAILED after 2 attempts`);
+        voiceLog(callSid, tenantId, 'routing_failed', 'ELEVENLABS_UNAVAILABLE', 'Register-call failed after 2 attempts');
       }
     } else {
       console.warn(`[inbound] ElevenLabs not configured, using recording fallback`);

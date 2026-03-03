@@ -3040,6 +3040,47 @@ export type Database = {
           },
         ]
       }
+      voice_call_logs: {
+        Row: {
+          call_sid: string
+          created_at: string
+          error_code: string | null
+          error_message: string | null
+          id: string
+          metadata: Json | null
+          stage: string
+          tenant_id: string | null
+        }
+        Insert: {
+          call_sid: string
+          created_at?: string
+          error_code?: string | null
+          error_message?: string | null
+          id?: string
+          metadata?: Json | null
+          stage: string
+          tenant_id?: string | null
+        }
+        Update: {
+          call_sid?: string
+          created_at?: string
+          error_code?: string | null
+          error_message?: string | null
+          id?: string
+          metadata?: Json | null
+          stage?: string
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voice_call_logs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       volume_tiers: {
         Row: {
           active: boolean
