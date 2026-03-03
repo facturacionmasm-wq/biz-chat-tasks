@@ -88,13 +88,65 @@ serve(async (req) => {
       });
     }
 
+    // Recording callbacks may arrive without CallStatus. Handle them explicitly to avoid
+    // overwriting call status with empty values and to close stale active calls safely.
+    const recordingStatus = params.RecordingStatus || params.recording_status || '';
+    if (!callStatus && (recordingSid || recordingUrl || recordingStatus)) {
+      const { data: rec } = await supabase
+        .from('call_records')
+        .select('id, tenant_id, status')
+        .eq('external_call_id', callSid)
+        .maybeSingle();
+
+      if (rec) {
+        const recordingUpdate: Record<string, any> = {
+          recording_status: 'ready',
+        };
+
+        if (recordingUrl) {
+          recordingUpdate.audio_url = recordingUrl.endsWith('.mp3') ? recordingUrl : `${recordingUrl}.mp3`;
+        }
+
+        // If still active, close as completed using recording callback as terminal evidence.
+        if (['initiated', 'ringing', 'in_progress'].includes(rec.status || '')) {
+          recordingUpdate.status = 'completed';
+          recordingUpdate.ended_at = new Date().toISOString();
+          if (recordingDuration > 0) recordingUpdate.duration = recordingDuration;
+
+          await supabase.from('call_sessions')
+            .update({ state: 'completed' })
+            .eq('call_sid', callSid);
+        }
+
+        await supabase.from('call_records').update(recordingUpdate).eq('id', rec.id);
+
+        await supabase.from('call_events').insert({
+          call_record_id: rec.id,
+          tenant_id: rec.tenant_id,
+          event_type: 'recording_ready',
+          twilio_call_sid: callSid,
+          event_data: {
+            recording_status: recordingStatus || 'completed',
+            recording_sid: recordingSid || undefined,
+            recording_url: recordingUrl || undefined,
+            recording_duration: recordingDuration || undefined,
+            timestamp: new Date().toISOString(),
+          },
+        });
+      }
+
+      return new Response('<Response></Response>', {
+        headers: { ...corsHeaders, 'Content-Type': 'text/xml' },
+      });
+    }
+
     const direction = params.Direction || params.direction || '';
     const statusMap: Record<string, string> = {
       'initiated': 'initiated', 'queued': 'initiated', 'ringing': 'ringing',
       'in-progress': 'in_progress', 'completed': 'completed', 'busy': 'busy',
       'failed': 'failed', 'no-answer': 'no_answer', 'canceled': 'canceled',
     };
-    const mappedStatus = statusMap[callStatus] || callStatus;
+    const mappedStatus = statusMap[callStatus] || null;
 
     // ═══════════ RESOLVE TENANT ═══════════
     let resolvedTenantId: string | null = null;
@@ -167,41 +219,45 @@ serve(async (req) => {
     }
 
     // ═══════════ PERSIST EVENT (AUDIT) ═══════════
-    await supabase.from('call_events').insert({
-      call_record_id: callRecord.id,
-      tenant_id: callRecord.tenant_id,
-      event_type: mappedStatus,
-      twilio_call_sid: callSid,
-      event_data: {
-        raw_status: callStatus, from, to, duration,
-        recording_url: recordingUrl || undefined,
-        recording_sid: recordingSid || undefined,
-        recording_duration: recordingDuration || undefined,
-        timestamp: new Date().toISOString(),
-      },
-    });
+    if (mappedStatus) {
+      await supabase.from('call_events').insert({
+        call_record_id: callRecord.id,
+        tenant_id: callRecord.tenant_id,
+        event_type: mappedStatus,
+        twilio_call_sid: callSid,
+        event_data: {
+          raw_status: callStatus, from, to, duration,
+          recording_url: recordingUrl || undefined,
+          recording_sid: recordingSid || undefined,
+          recording_duration: recordingDuration || undefined,
+          timestamp: new Date().toISOString(),
+        },
+      });
+    }
 
     // ═══════════ UPDATE CALL RECORD ═══════════
-    const updateData: Record<string, any> = { status: mappedStatus };
-    if (['completed', 'busy', 'failed', 'no_answer', 'canceled'].includes(mappedStatus)) {
-      updateData.ended_at = new Date().toISOString();
-      if (duration > 0) updateData.duration = duration;
-    }
-    if (recordingUrl) {
-      updateData.audio_url = recordingUrl + '.mp3';
-      updateData.recording_status = 'ready';
-    }
-    await supabase.from('call_records').update(updateData).eq('id', callRecord.id);
+    if (mappedStatus) {
+      const updateData: Record<string, any> = { status: mappedStatus };
+      if (['completed', 'busy', 'failed', 'no_answer', 'canceled'].includes(mappedStatus)) {
+        updateData.ended_at = new Date().toISOString();
+        if (duration > 0) updateData.duration = duration;
+      }
+      if (recordingUrl) {
+        updateData.audio_url = recordingUrl + '.mp3';
+        updateData.recording_status = 'ready';
+      }
+      await supabase.from('call_records').update(updateData).eq('id', callRecord.id);
 
-    // ═══════════ UPDATE CALL SESSION STATE ═══════════
-    if (['completed', 'failed', 'no_answer', 'canceled', 'busy'].includes(mappedStatus)) {
-      await supabase.from('call_sessions')
-        .update({ state: mappedStatus === 'completed' ? 'completed' : 'ended_' + mappedStatus })
-        .eq('call_sid', callSid);
-    } else if (mappedStatus === 'in_progress') {
-      await supabase.from('call_sessions')
-        .update({ state: 'in_progress' })
-        .eq('call_sid', callSid);
+      // ═══════════ UPDATE CALL SESSION STATE ═══════════
+      if (['completed', 'failed', 'no_answer', 'canceled', 'busy'].includes(mappedStatus)) {
+        await supabase.from('call_sessions')
+          .update({ state: mappedStatus === 'completed' ? 'completed' : 'ended_' + mappedStatus })
+          .eq('call_sid', callSid);
+      } else if (mappedStatus === 'in_progress') {
+        await supabase.from('call_sessions')
+          .update({ state: 'in_progress' })
+          .eq('call_sid', callSid);
+      }
     }
 
     // ═══════════ POST-COMPLETION PIPELINE ═══════════
