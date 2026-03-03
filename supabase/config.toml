@@ -98,3 +98,6 @@ verify_jwt = false
 
 [functions.elevenlabs-post-call]
 verify_jwt = false
+
+[functions.elevenlabs-bridge]
+verify_jwt = false
