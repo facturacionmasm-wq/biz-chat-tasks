@@ -213,7 +213,6 @@ serve(async (req) => {
     let routingMethod = 'record';
     let sessionState = 'fallback_recording';
     let twiml: string | null = null;
-    let elevenlabsConversationId: string | null = null;
     const statusCallbackUrl = `${SUPABASE_URL}/functions/v1/call-status-webhook`;
 
     if (ELEVENLABS_API_KEY && ELEVENLABS_AGENT_ID) {
@@ -255,17 +254,18 @@ serve(async (req) => {
             if (contentType.includes('application/json')) {
               const elData = await elRes.json();
               twimlContent = elData.twiml || null;
-              elevenlabsConversationId = elData.conversation_id || null;
             } else {
               // API may return TwiML directly as XML
               twimlContent = await elRes.text();
-              elevenlabsConversationId = extractConversationIdFromTwiml(twimlContent);
             }
 
             if (twimlContent && twimlContent.includes('<Response>')) {
               routingMethod = 'register_call';
               sessionState = 'connected_to_agent';
-              twiml = addPostStreamFallback(twimlContent, statusCallbackUrl);
+              twiml = twimlContent.replace(
+                '<Response>',
+                `<Response>\n  <Say voice="Polly.Mia-Neural" language="es-MX">${greeting}</Say>`
+              );
               console.log(`[inbound] ElevenLabs register-call TwiML obtained (attempt ${attempt + 1})`);
               break;
             } else {
@@ -302,14 +302,6 @@ serve(async (req) => {
         state: sessionState,
         retry_count: routingMethod === 'register_call' ? 0 : 1,
       }, { onConflict: 'call_sid' });
-
-      // Store ElevenLabs conversation_id for later transcript retrieval
-      if (elevenlabsConversationId) {
-        await supabase.from('call_records').update({
-          extracted_data: { direction: 'inbound', callerCity, callerState, callerCountry, accountSid, elevenlabs_conversation_id: elevenlabsConversationId },
-        }).eq('id', callRecordId);
-        console.log(`[inbound] Stored elevenlabs_conversation_id=${elevenlabsConversationId}`);
-      }
 
       if (sessionState === 'failed_routing') {
         await supabase.from('call_records').update({ status: 'failed' }).eq('id', callRecordId);
@@ -362,36 +354,6 @@ serve(async (req) => {
     });
   }
 });
-
-function addPostStreamFallback(twiml: string, statusCallbackUrl: string): string {
-  if (!twiml.includes('<Connect>') || !twiml.includes('</Connect>')) return twiml;
-
-  const connectBlockMatch = twiml.match(/<Connect>[\s\S]*?<\/Connect>/i);
-  const connectBlock = connectBlockMatch?.[0] || '';
-
-  return twiml.replace(
-    '</Connect>',
-    `</Connect>
-  <Say voice="Polly.Mia-Neural" language="es-MX">Estamos reconectando con el asistente. Un momento por favor.</Say>
-  <Pause length="1"/>
-  ${connectBlock}
-  <Say voice="Polly.Mia-Neural" language="es-MX">Tuvimos una desconexión con el asistente. Por favor deja tu mensaje después del tono.</Say>
-  <Pause length="1"/>
-  <Record
-    maxLength="180"
-    recordingStatusCallback="${escapeXml(statusCallbackUrl)}"
-    recordingStatusCallbackEvent="completed"
-    transcribe="false"
-    playBeep="true"
-    trim="trim-silence"
-  />`
-  );
-}
-
-function extractConversationIdFromTwiml(twiml: string): string | null {
-  const match = twiml.match(/<Parameter\s+name=["']conversation_id["']\s+value=["']([^"']+)["']/i);
-  return match?.[1] || null;
-}
 
 function twimlSay(message: string): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
