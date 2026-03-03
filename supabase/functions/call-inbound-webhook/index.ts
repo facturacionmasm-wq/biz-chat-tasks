@@ -10,11 +10,11 @@ const corsHeaders = {
  * Inbound Call Webhook — Production-grade
  *
  * Twilio → this webhook → registers call in DB → resolves tenant →
- * calls ElevenLabs register-call API → returns native TwiML AS-IS.
+ * calls ElevenLabs register-call API → returns TwiML with fallback.
  *
- * CRITICAL: The register-call API returns TwiML with <Connect><Stream>
- * pointing to ElevenLabs' own infrastructure, which IS compatible with
- * Twilio Media Streams. DO NOT rewrite the Stream URL.
+ * The register-call API returns TwiML with <Connect><Stream> pointing
+ * to ElevenLabs' WebSocket. We wrap it with a fallback <Say> so the
+ * call never dies silently if the stream fails.
  */
 
 // ═══════════ Twilio HMAC-SHA1 Signature Validation ═══════════
@@ -51,6 +51,50 @@ function parseRequestBody(contentType: string, rawBody: string): Record<string, 
     return params;
   }
   return {};
+}
+
+/**
+ * Wraps ElevenLabs TwiML with a fallback <Say> after <Connect>.
+ * If <Connect><Stream> fails, Twilio falls through to the next verb.
+ */
+function wrapTwimlWithFallback(elTwiml: string, statusCallbackUrl: string, companyName: string): string {
+  // Log the raw TwiML for debugging
+  console.log(`[inbound] Raw ElevenLabs TwiML: ${elTwiml}`);
+
+  // Extract the <Stream> element from the ElevenLabs response
+  const streamMatch = elTwiml.match(/<Stream\b[^>]*>[\s\S]*?<\/Stream>/i) || 
+                       elTwiml.match(/<Stream\b[^\/]*\/>/i);
+  
+  if (!streamMatch) {
+    console.error(`[inbound] No <Stream> element found in ElevenLabs TwiML`);
+    return elTwiml; // Return as-is if we can't parse
+  }
+
+  const streamElement = streamMatch[0];
+  const greeting = companyName
+    ? `Hola, bienvenido a ${escapeXml(companyName)}.`
+    : 'Hola, bienvenido.';
+
+  // Build TwiML with proper structure:
+  // 1. <Connect> with statusCallback for diagnostics
+  // 2. Fallback <Say> if stream connection fails
+  // 3. Fallback <Record> as voicemail
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Connect action="${escapeXml(statusCallbackUrl)}">
+    ${streamElement}
+  </Connect>
+  <Say voice="Polly.Mia-Neural" language="es-MX">${greeting} Nuestro asistente no está disponible en este momento. Por favor deje su mensaje después del tono.</Say>
+  <Record
+    maxLength="120"
+    recordingStatusCallback="${escapeXml(statusCallbackUrl)}"
+    recordingStatusCallbackEvent="completed"
+    transcribe="false"
+    playBeep="true"
+    trim="trim-silence"
+  />
+  <Say voice="Polly.Mia-Neural" language="es-MX">Gracias por su mensaje. Le responderemos pronto.</Say>
+</Response>`;
 }
 
 serve(async (req) => {
@@ -243,10 +287,7 @@ serve(async (req) => {
       .from('tenants').select('name, settings_json').eq('id', tenantId).single();
     const companyName = tenant?.name || '';
 
-    // ═══════════ 5. ROUTE TO ELEVENLABS VIA REGISTER-CALL (NATIVE TwiML) ═══════════
-    // register-call returns TwiML with <Connect><Stream> pointing to ElevenLabs'
-    // own WebSocket infrastructure. This is DIRECTLY compatible with Twilio.
-    // DO NOT rewrite the Stream URL — use it AS-IS.
+    // ═══════════ 5. ROUTE TO ELEVENLABS VIA REGISTER-CALL ═══════════
     let routingMethod = 'record';
     let sessionState = 'fallback_recording';
     let twiml: string | null = null;
@@ -270,6 +311,8 @@ serve(async (req) => {
             },
           };
 
+          console.log(`[inbound] Calling register-call (attempt ${attempt + 1})...`);
+
           const elRes = await fetch(
             'https://api.elevenlabs.io/v1/convai/twilio/register-call',
             {
@@ -282,34 +325,46 @@ serve(async (req) => {
             }
           );
 
+          console.log(`[inbound] register-call response: status=${elRes.status} content-type=${elRes.headers.get('content-type')}`);
+
           if (elRes.ok) {
             const elContentType = elRes.headers.get('content-type') || '';
             let twimlContent: string | null = null;
 
             if (elContentType.includes('application/json')) {
               const elData = await elRes.json();
+              console.log(`[inbound] register-call JSON keys: ${Object.keys(elData).join(', ')}`);
               twimlContent = elData.twiml || null;
             } else {
               twimlContent = await elRes.text();
             }
 
             if (twimlContent && twimlContent.includes('<Response')) {
-              // USE THE TwiML AS-IS — ElevenLabs' infrastructure handles the WebSocket
-              twiml = twimlContent;
+              // Wrap with fallback so call never dies silently
+              twiml = wrapTwimlWithFallback(twimlContent, statusCallbackUrl, companyName);
               routingMethod = 'register_call_native';
               sessionState = 'connected_to_agent';
-              console.log(`[inbound] ElevenLabs register-call TwiML OK (attempt ${attempt + 1}) — using native stream`);
-              voiceLog(callSid, tenantId, 'routing_ok', undefined, undefined, { method: 'register_call_native', attempt: attempt + 1 });
+              console.log(`[inbound] ElevenLabs TwiML OK (attempt ${attempt + 1})`);
+              voiceLog(callSid, tenantId, 'routing_ok', undefined, undefined, { 
+                method: 'register_call_native', 
+                attempt: attempt + 1,
+                raw_twiml_length: twimlContent.length,
+              });
               break;
             } else {
-              console.error(`[inbound] register-call: invalid TwiML (attempt ${attempt + 1}), body: ${String(twimlContent).substring(0, 200)}`);
+              const preview = String(twimlContent).substring(0, 300);
+              console.error(`[inbound] Invalid TwiML (attempt ${attempt + 1}): ${preview}`);
+              voiceLog(callSid, tenantId, 'routing_invalid_twiml', 'INVALID_TWIML', preview);
             }
           } else {
             const errText = await elRes.text();
-            console.error(`[inbound] register-call error: ${elRes.status} ${errText.substring(0, 200)} (attempt ${attempt + 1})`);
+            console.error(`[inbound] register-call error: ${elRes.status} ${errText.substring(0, 300)} (attempt ${attempt + 1})`);
+            voiceLog(callSid, tenantId, 'routing_api_error', `HTTP_${elRes.status}`, errText.substring(0, 300));
           }
         } catch (e) {
-          console.error(`[inbound] register-call fetch error (attempt ${attempt + 1}):`, e);
+          const errMsg = e instanceof Error ? e.message : String(e);
+          console.error(`[inbound] register-call fetch error (attempt ${attempt + 1}): ${errMsg}`);
+          voiceLog(callSid, tenantId, 'routing_fetch_error', 'FETCH_ERROR', errMsg);
         }
       }
 
@@ -388,6 +443,8 @@ serve(async (req) => {
       }
     }
 
+    // Log the final TwiML being returned (first 500 chars)
+    console.log(`[inbound] FINAL TwiML (${twiml.length} chars): ${twiml.substring(0, 500)}`);
     console.log(`[inbound] Response: routing=${routingMethod} state=${sessionState} callRecordId=${callRecordId}`);
 
     return new Response(twiml, {
