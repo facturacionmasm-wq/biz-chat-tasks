@@ -7,15 +7,14 @@ const corsHeaders = {
 };
 
 /**
- * Inbound Call Webhook — Professional Flow
+ * Inbound Call Webhook — Production-grade
  *
  * Twilio → this webhook → registers call in DB → resolves tenant →
- * routes to ElevenLabs via <Connect><Stream> → fallback if unavailable.
+ * routes to ElevenLabs via register-call API → fallback to voicemail.
  *
- * Configure in Twilio Console:
- *   Phone Number → Voice → "A Call Comes In" → Webhook POST
- *   URL: https://<project>.supabase.co/functions/v1/call-inbound-webhook
- *   Status Callback URL: https://<project>.supabase.co/functions/v1/call-status-webhook
+ * IMPORTANT: Only the register-call API produces Twilio-compatible TwiML.
+ * The signed-url/conversation endpoint uses WebRTC audio format and is
+ * NOT compatible with Twilio's <Stream> (μ-law 8kHz).
  */
 
 // ═══════════ Twilio HMAC-SHA1 Signature Validation ═══════════
@@ -30,6 +29,28 @@ async function validateTwilioSignature(
   const sig = await crypto.subtle.sign('HMAC', key, encoder.encode(data));
   const computed = btoa(String.fromCharCode(...new Uint8Array(sig)));
   return computed === signature;
+}
+
+function parseRequestBody(contentType: string, rawBody: string): Record<string, string> {
+  const body = (rawBody || '').trim();
+  if (!body) return {};
+  if (contentType.includes('application/x-www-form-urlencoded') ||
+      (!contentType.includes('application/json') && body.includes('='))) {
+    const params: Record<string, string> = {};
+    new URLSearchParams(body).forEach((v, k) => { params[k] = v; });
+    return params;
+  }
+  try {
+    const parsed = JSON.parse(body);
+    if (parsed && typeof parsed === 'object') {
+      return Object.fromEntries(Object.entries(parsed).map(([k, v]) => [k, String(v ?? '')]));
+    }
+  } catch {
+    const params: Record<string, string> = {};
+    new URLSearchParams(body).forEach((v, k) => { params[k] = v; });
+    return params;
+  }
+  return {};
 }
 
 serve(async (req) => {
@@ -47,13 +68,8 @@ serve(async (req) => {
   try {
     // ═══════════ 1. PARSE TWILIO PARAMS ═══════════
     const contentType = req.headers.get('content-type') || '';
-    let params: Record<string, string> = {};
-    if (contentType.includes('application/x-www-form-urlencoded')) {
-      const formData = await req.formData();
-      formData.forEach((value, key) => { params[key] = String(value); });
-    } else {
-      params = await req.json();
-    }
+    const rawBody = await req.text();
+    const params = parseRequestBody(contentType, rawBody);
 
     const callSid = params.CallSid || '';
     const from = params.From || '';
@@ -90,7 +106,7 @@ serve(async (req) => {
       });
     }
 
-    // ═══════════ 3. RESOLVE TENANT (multi-tenant) ═══════════
+    // ═══════════ 3. RESOLVE TENANT ═══════════
     let tenantId: string | null = null;
 
     for (const phone of [to, from].filter(Boolean)) {
@@ -107,7 +123,6 @@ serve(async (req) => {
       }
     }
 
-    // Fallback: match by configured TWILIO_PHONE_NUMBER
     if (!tenantId) {
       const twilioPhone = Deno.env.get('TWILIO_PHONE_NUMBER') || '';
       if (twilioPhone && (to === twilioPhone || to === `+${twilioPhone.replace(/^\+/, '')}`)) {
@@ -127,7 +142,6 @@ serve(async (req) => {
     }
 
     // ═══════════ SOFT CLEANUP: CLOSE STALE ACTIVE CALLS ═══════════
-    // Prevent old calls from remaining indefinitely active in the panel.
     const staleThreshold = new Date(Date.now() - 15 * 60 * 1000).toISOString();
     await supabase
       .from('call_records')
@@ -150,7 +164,7 @@ serve(async (req) => {
       }
     }
 
-    // ═══════════ 4. IDEMPOTENCY: Check existing record by CallSid ═══════════
+    // ═══════════ 4. IDEMPOTENCY ═══════════
     let callRecordId: string | null = null;
 
     const { data: existing } = await supabase
@@ -160,7 +174,6 @@ serve(async (req) => {
       callRecordId = existing.id;
       console.log(`[inbound] Idempotent hit: existing record ${callRecordId}`);
     } else {
-      // ═══════════ 5. CREATE CALL RECORD ═══════════
       const { data: newRecord, error: insertError } = await supabase
         .from('call_records')
         .insert({
@@ -182,7 +195,6 @@ serve(async (req) => {
 
       if (insertError) {
         console.error('[inbound] Insert error:', insertError);
-        // Race condition on unique index — retry lookup
         const { data: retry } = await supabase
           .from('call_records').select('id').eq('external_call_id', callSid).maybeSingle();
         callRecordId = retry?.id || null;
@@ -192,9 +204,9 @@ serve(async (req) => {
       }
     }
 
-    // Record initial events
+    // Record initial events (fire-and-forget, don't block TwiML response)
     if (callRecordId) {
-      await Promise.all([
+      Promise.all([
         supabase.from('call_events').insert({
           call_record_id: callRecordId,
           tenant_id: tenantId,
@@ -209,141 +221,95 @@ serve(async (req) => {
           resource_id: callRecordId,
           payload: { call_sid: callSid, from, to },
         }),
-      ]);
+      ]).catch(e => console.error('[inbound] Event insert error:', e));
     }
 
     // ═══════════ LOAD TENANT SETTINGS ═══════════
     const { data: tenant } = await supabase
       .from('tenants').select('name, settings_json').eq('id', tenantId).single();
     const companyName = tenant?.name || '';
-    const greeting = companyName
-      ? `Hola, bienvenido a ${escapeXml(companyName)}.`
-      : 'Hola, bienvenido.';
 
-    // ═══════════ 6–7. ROUTE TO ELEVENLABS (PRIORITY: SIGNED-URL STREAM) ═══════════
+    // ═══════════ 5. ROUTE TO ELEVENLABS VIA REGISTER-CALL API ═══════════
+    // CRITICAL: Only register-call produces Twilio-compatible TwiML.
+    // The signed-url/conversation endpoint uses WebRTC audio and is NOT
+    // compatible with Twilio's <Stream> which sends μ-law 8kHz audio.
     let routingMethod = 'record';
     let sessionState = 'fallback_recording';
     let twiml: string | null = null;
-    let targetUrl: string | null = null;
     const statusCallbackUrl = `${SUPABASE_URL}/functions/v1/call-status-webhook`;
 
     if (ELEVENLABS_API_KEY && ELEVENLABS_AGENT_ID) {
-      // Primary path: signed-url stream (más estable en producción para inbound continuo)
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
-          const signedUrlRes = await fetch(
-            `https://api.elevenlabs.io/v1/convai/conversation/get-signed-url?agent_id=${encodeURIComponent(ELEVENLABS_AGENT_ID)}`,
+          const registerBody = {
+            agent_id: ELEVENLABS_AGENT_ID,
+            from_number: from,
+            to_number: to,
+            direction: 'inbound',
+            conversation_initiation_client_data: {
+              dynamic_variables: {
+                tenant_id: tenantId,
+                call_record_id: callRecordId || '',
+                call_sid: callSid,
+                company_name: companyName || 'la empresa',
+              },
+            },
+          };
+
+          const elRes = await fetch(
+            'https://api.elevenlabs.io/v1/convai/twilio/register-call',
             {
+              method: 'POST',
               headers: {
                 'xi-api-key': ELEVENLABS_API_KEY,
+                'Content-Type': 'application/json',
               },
+              body: JSON.stringify(registerBody),
             }
           );
 
-          if (signedUrlRes.ok) {
-            const signedUrlData = await signedUrlRes.json();
-            const signedUrl = signedUrlData?.signed_url as string | undefined;
+          if (elRes.ok) {
+            const elContentType = elRes.headers.get('content-type') || '';
+            let twimlContent: string | null = null;
 
-            if (signedUrl && signedUrl.startsWith('wss://')) {
-              twiml = buildSignedUrlFallbackTwiml({
-                signedUrl,
-                greeting,
-                statusCallbackUrl,
-                tenantId,
-                callRecordId: callRecordId || '',
-                callSid,
-                companyName,
-              });
-              targetUrl = signedUrl;
-              routingMethod = 'signed_url_stream';
+            if (elContentType.includes('application/json')) {
+              const elData = await elRes.json();
+              twimlContent = elData.twiml || null;
+            } else {
+              twimlContent = await elRes.text();
+            }
+
+            if (twimlContent && twimlContent.includes('<Response')) {
+              // Use the TwiML AS-IS from ElevenLabs — do NOT modify it.
+              // ElevenLabs embeds session tokens/URLs that are sensitive to changes.
+              twiml = twimlContent;
+              routingMethod = 'register_call';
               sessionState = 'connected_to_agent';
-              console.log(`[inbound] ElevenLabs signed-url stream enabled (attempt ${attempt + 1})`);
+              console.log(`[inbound] ElevenLabs register-call TwiML OK (attempt ${attempt + 1})`);
               break;
             } else {
-              console.error(`[inbound] ElevenLabs signed-url invalid response (attempt ${attempt + 1})`);
+              console.error(`[inbound] register-call: invalid TwiML (attempt ${attempt + 1}), body: ${String(twimlContent).substring(0, 200)}`);
             }
           } else {
-            const errText = await signedUrlRes.text();
-            console.error(`[inbound] ElevenLabs signed-url error: ${signedUrlRes.status} ${errText} (attempt ${attempt + 1})`);
+            const errText = await elRes.text();
+            console.error(`[inbound] register-call error: ${elRes.status} ${errText.substring(0, 200)} (attempt ${attempt + 1})`);
           }
         } catch (e) {
-          console.error(`[inbound] ElevenLabs signed-url fetch error (attempt ${attempt + 1}):`, e);
-        }
-      }
-
-      // Secondary path: register-call API as fallback
-      if (!twiml) {
-        for (let attempt = 0; attempt < 2; attempt++) {
-          try {
-            const registerBody: Record<string, any> = {
-              agent_id: ELEVENLABS_AGENT_ID,
-              from_number: from,
-              to_number: to,
-              direction: 'inbound',
-              conversation_initiation_client_data: {
-                dynamic_variables: {
-                  tenant_id: tenantId,
-                  call_record_id: callRecordId || '',
-                  call_sid: callSid,
-                  company_name: companyName || 'la empresa',
-                },
-              },
-            };
-
-            const elRes = await fetch(
-              'https://api.elevenlabs.io/v1/convai/twilio/register-call',
-              {
-                method: 'POST',
-                headers: {
-                  'xi-api-key': ELEVENLABS_API_KEY,
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(registerBody),
-              }
-            );
-
-            if (elRes.ok) {
-              const contentType = elRes.headers.get('content-type') || '';
-              let twimlContent: string | null = null;
-
-              if (contentType.includes('application/json')) {
-                const elData = await elRes.json();
-                twimlContent = elData.twiml || null;
-              } else {
-                twimlContent = await elRes.text();
-              }
-
-              if (twimlContent && twimlContent.includes('<Response')) {
-                // Mantener TwiML nativo de ElevenLabs para evitar incompatibilidades de sesión.
-                twiml = twimlContent;
-                routingMethod = 'register_call';
-                sessionState = 'connected_to_agent';
-                console.log(`[inbound] ElevenLabs register-call TwiML obtained (attempt ${attempt + 1})`);
-                break;
-              } else {
-                console.error(`[inbound] ElevenLabs register-call: no valid TwiML in response (attempt ${attempt + 1})`);
-              }
-            } else {
-              const errText = await elRes.text();
-              console.error(`[inbound] ElevenLabs register-call error: ${elRes.status} ${errText} (attempt ${attempt + 1})`);
-            }
-          } catch (e) {
-            console.error(`[inbound] ElevenLabs register-call fetch error (attempt ${attempt + 1}):`, e);
-          }
+          console.error(`[inbound] register-call fetch error (attempt ${attempt + 1}):`, e);
         }
       }
 
       if (!twiml) {
         sessionState = 'failed_routing';
-        console.error(`[inbound] ElevenLabs routing FAILED after signed-url + register-call fallback`);
+        console.error(`[inbound] ElevenLabs routing FAILED after 2 attempts`);
       }
     } else {
       console.warn(`[inbound] ElevenLabs not configured, using recording fallback`);
     }
 
-    // ═══════════ CREATE CALL SESSION ═══════════
+    // ═══════════ CREATE CALL SESSION (fire-and-forget) ═══════════
     if (callRecordId) {
-      await supabase.from('call_sessions').upsert({
+      supabase.from('call_sessions').upsert({
         tenant_id: tenantId,
         call_record_id: callRecordId,
         call_sid: callSid,
@@ -351,32 +317,46 @@ serve(async (req) => {
         elevenlabs_agent_id: ELEVENLABS_AGENT_ID || null,
         language: 'es',
         routing_method: routingMethod,
-        target_url: targetUrl,
         state: sessionState,
-        retry_count: routingMethod === 'record' ? 1 : 0,
-      }, { onConflict: 'call_sid' });
+        retry_count: routingMethod === 'register_call' ? 0 : 1,
+      }, { onConflict: 'call_sid' }).then(({ error }) => {
+        if (error) console.error('[inbound] Session upsert error:', error);
+      });
 
       if (sessionState === 'failed_routing') {
-        await supabase.from('call_records').update({ status: 'failed' }).eq('id', callRecordId);
-        await supabase.from('call_events').insert({
-          call_record_id: callRecordId,
-          tenant_id: tenantId,
-          event_type: 'failed_routing',
-          twilio_call_sid: callSid,
-          event_data: { reason: 'elevenlabs_unavailable', timestamp: new Date().toISOString() },
-        });
+        supabase.from('call_records').update({ status: 'failed' }).eq('id', callRecordId)
+          .then(() => supabase.from('call_events').insert({
+            call_record_id: callRecordId!,
+            tenant_id: tenantId!,
+            event_type: 'failed_routing',
+            twilio_call_sid: callSid,
+            event_data: { reason: 'elevenlabs_unavailable', timestamp: new Date().toISOString() },
+          })).catch(e => console.error('[inbound] Failed routing event error:', e));
       }
     }
 
     // ═══════════ GENERATE TwiML RESPONSE (fallback cases) ═══════════
     if (!twiml) {
+      const greeting = companyName
+        ? `Hola, bienvenido a ${escapeXml(companyName)}.`
+        : 'Hola, bienvenido.';
+
       if (sessionState === 'failed_routing') {
+        // Voicemail fallback — record message instead of hanging up
         twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="Polly.Mia-Neural" language="es-MX">Lo sentimos, nuestro asistente no está disponible en este momento. Por favor intente más tarde.</Say>
+  <Say voice="Polly.Mia-Neural" language="es-MX">${greeting} Nuestro asistente no está disponible en este momento. Por favor deje su mensaje después del tono.</Say>
+  <Record
+    maxLength="120"
+    recordingStatusCallback="${escapeXml(statusCallbackUrl)}"
+    recordingStatusCallbackEvent="completed"
+    transcribe="false"
+    playBeep="true"
+    trim="trim-silence"
+  />
+  <Say voice="Polly.Mia-Neural" language="es-MX">Gracias por su llamada. Hasta pronto.</Say>
 </Response>`;
       } else {
-        // Fallback: Record mode (ElevenLabs not configured)
         twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say voice="Polly.Mia-Neural" language="es-MX">${greeting} Por favor espere mientras lo conectamos.</Say>
@@ -407,40 +387,6 @@ serve(async (req) => {
     });
   }
 });
-
-function buildSignedUrlFallbackTwiml(params: {
-  signedUrl: string;
-  greeting: string;
-  statusCallbackUrl: string;
-  tenantId: string;
-  callRecordId: string;
-  callSid: string;
-  companyName: string;
-}): string {
-  const { signedUrl, greeting, statusCallbackUrl, tenantId, callRecordId, callSid, companyName } = params;
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Say voice="Polly.Mia-Neural" language="es-MX">${greeting} Lo conectamos con nuestro asistente.</Say>
-  <Connect>
-    <Stream url="${escapeXml(signedUrl)}">
-      <Parameter name="tenant_id" value="${escapeXml(tenantId)}" />
-      <Parameter name="call_record_id" value="${escapeXml(callRecordId)}" />
-      <Parameter name="call_sid" value="${escapeXml(callSid)}" />
-      <Parameter name="company_name" value="${escapeXml(companyName || 'la empresa')}" />
-    </Stream>
-  </Connect>
-  <Say voice="Polly.Mia-Neural" language="es-MX">Tuvimos una desconexión con el asistente. Por favor deje su mensaje después del tono.</Say>
-  <Record
-    maxLength="120"
-    recordingStatusCallback="${escapeXml(statusCallbackUrl)}"
-    recordingStatusCallbackEvent="completed"
-    transcribe="false"
-    playBeep="true"
-    trim="trim-silence"
-  />
-  <Say voice="Polly.Mia-Neural" language="es-MX">Gracias por su llamada. Hasta pronto.</Say>
-</Response>`;
-}
 
 function twimlSay(message: string): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
