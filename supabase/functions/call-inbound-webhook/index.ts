@@ -262,10 +262,7 @@ serve(async (req) => {
             if (twimlContent && twimlContent.includes('<Response>')) {
               routingMethod = 'register_call';
               sessionState = 'connected_to_agent';
-              twiml = twimlContent.replace(
-                '<Response>',
-                `<Response>\n  <Say voice="Polly.Mia-Neural" language="es-MX">${greeting}</Say>`
-              );
+              twiml = twimlContent;
               console.log(`[inbound] ElevenLabs register-call TwiML obtained (attempt ${attempt + 1})`);
               break;
             } else {
