@@ -99,29 +99,39 @@ serve(async (req) => {
       });
     }
 
-    // ═══════════ STATUS: List imported numbers ═══════════
+    // ═══════════ STATUS: Check configuration ═══════════
     if (action === 'status') {
-      const res = await fetch('https://api.elevenlabs.io/v1/convai/phone-numbers', {
-        headers: elHeaders,
-      });
-      if (!res.ok) {
-        const err = await res.text();
-        throw new Error(`Error listando números: ${err}`);
+      // The voice agent is considered configured when all required
+      // secrets are present and a phone number is available.
+      // We no longer require the number to be imported into ElevenLabs,
+      // because the backend (call-inbound-webhook) acts as intermediary.
+      const hasRequiredConfig = !!(ELEVENLABS_API_KEY && ELEVENLABS_AGENT_ID && TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && PHONE_NUMBER);
+
+      // Optionally check ElevenLabs for extra details (non-blocking)
+      let elDetails: any = null;
+      try {
+        const res = await fetch('https://api.elevenlabs.io/v1/convai/phone-numbers', {
+          headers: elHeaders,
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const phoneNumbers = data.phone_numbers || data || [];
+          elDetails = Array.isArray(phoneNumbers)
+            ? phoneNumbers.find((p: any) =>
+                phoneDigits(p.phone_number || '') === phoneDigits(PHONE_NUMBER)
+              ) || null
+            : null;
+        }
+      } catch (_e) {
+        // Non-blocking — status still works without ElevenLabs list
       }
-      const data = await res.json();
-      // Find our number
-      const phoneNumbers = data.phone_numbers || data || [];
-      const found = Array.isArray(phoneNumbers)
-        ? phoneNumbers.find((p: any) =>
-            phoneDigits(p.phone_number || '') === phoneDigits(PHONE_NUMBER)
-          )
-        : null;
 
       return new Response(JSON.stringify({
-        configured: !!found,
+        configured: hasRequiredConfig,
         phone_number: PHONE_NUMBER,
         agent_id: ELEVENLABS_AGENT_ID,
-        details: found || null,
+        native_import: !!elDetails,
+        details: elDetails,
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
