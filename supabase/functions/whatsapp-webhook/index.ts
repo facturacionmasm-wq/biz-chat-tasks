@@ -501,7 +501,7 @@ serve(async (req) => {
                 tenantId: tenantId,
                 mediaUrl: mediaUrl,
                 mediaContentType: mediaContentType || undefined,
-                skipSend: true,
+                skipSend: false,
               }),
           });
 
@@ -526,28 +526,8 @@ serve(async (req) => {
             });
           } else {
             console.log(`[WH] Bot OK: ${botResponseText.substring(0, 200)}`);
-            try {
-              const botJson = JSON.parse(botResponseText);
-              if (typeof botJson?.reply === 'string' && botJson.reply.trim()) {
-                twimlReply = botJson.reply.trim();
-                await persistOutboundTwiml(twimlReply, {
-                  provider: 'bot',
-                  bot_state: botJson.state || null,
-                  delivery_method: 'twiml',
-                });
-              }
-            } catch (parseErr) {
-              console.error('[WH] Bot response parse error:', parseErr);
-            }
-
-            if (!twimlReply) {
-              twimlReply = fallbackReply;
-              await persistOutboundTwiml(twimlReply, {
-                provider: 'bot_fallback',
-                delivery_method: 'twiml',
-                reason: 'empty_or_unparseable_bot_reply',
-              });
-            }
+            // Bot now sends the reply directly via Twilio REST API (skipSend=false)
+            // No need to use TwiML response for delivery
 
             await logWebhook({
               tenantId,
@@ -555,7 +535,7 @@ serve(async (req) => {
               messageId: messageSid,
               stage: 'bot_invocation',
               status: 'ok',
-              payload: { response_length: botResponseText.length, twiml_reply: Boolean(twimlReply) },
+              payload: { response_length: botResponseText.length, delivery_method: 'rest_api' },
             });
           }
         } catch (botErr) {
@@ -578,9 +558,8 @@ serve(async (req) => {
         }
       }
 
-      const twiml = twimlReply
-        ? `<Response><Message>${escapeXml(twimlReply)}</Message></Response>`
-        : '<Response></Response>';
+      // Always return empty TwiML — bot sends reply via REST API
+      const twiml = '<Response></Response>';
 
       return new Response(twiml, {
         status: 200,
