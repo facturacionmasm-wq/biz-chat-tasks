@@ -126,6 +126,17 @@ serve(async (req) => {
       });
     }
 
+    // ═══════════ SOFT CLEANUP: CLOSE STALE ACTIVE CALLS ═══════════
+    // Prevent old calls from remaining indefinitely active in the panel.
+    const staleThreshold = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+    await supabase
+      .from('call_records')
+      .update({ status: 'failed', ended_at: new Date().toISOString() })
+      .eq('tenant_id', tenantId)
+      .is('ended_at', null)
+      .in('status', ['initiated', 'ringing', 'in_progress'])
+      .lt('started_at', staleThreshold);
+
     // ═══════════ RATE LIMIT CHECK ═══════════
     const { data: rateLimit } = await supabase
       .from('tenant_rate_limits').select('is_blocked, blocked_until').eq('tenant_id', tenantId).maybeSingle();
@@ -260,12 +271,18 @@ serve(async (req) => {
             }
 
             if (twimlContent && twimlContent.includes('<Response>')) {
+              const resilientRegisterCallTwiml = twimlContent
+                .replace(
+                  '<Response>',
+                  `<Response>\n  <Say voice="Polly.Mia-Neural" language="es-MX">${greeting}</Say>`
+                )
+                .replace(
+                  '</Response>',
+                  `\n  <Say voice="Polly.Mia-Neural" language="es-MX">Tuvimos una desconexión con el asistente. Por favor deje su mensaje después del tono.</Say>\n  <Record\n    maxLength="120"\n    recordingStatusCallback="${escapeXml(statusCallbackUrl)}"\n    recordingStatusCallbackEvent="completed"\n    transcribe="false"\n    playBeep="true"\n    trim="trim-silence"\n  />\n  <Say voice="Polly.Mia-Neural" language="es-MX">Gracias por su llamada. Hasta pronto.</Say>\n</Response>`
+                );
               routingMethod = 'register_call';
               sessionState = 'connected_to_agent';
-              twiml = twimlContent.replace(
-                '<Response>',
-                `<Response>\n  <Say voice="Polly.Mia-Neural" language="es-MX">${greeting}</Say>`
-              );
+              twiml = resilientRegisterCallTwiml;
               console.log(`[inbound] ElevenLabs register-call TwiML obtained (attempt ${attempt + 1})`);
               break;
             } else {
