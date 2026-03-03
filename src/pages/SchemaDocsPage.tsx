@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { Database, Shield, Zap, FileCode, Copy, Check, ChevronDown, ChevronRight, Search, FileDown } from 'lucide-react';
+import { Database, Shield, Zap, FileCode, Copy, Check, ChevronDown, ChevronRight, Search, FileDown, Server, Eye, Terminal, RefreshCw, HardDrive, Radio, Lock } from 'lucide-react';
 import { toast } from 'sonner';
 
 /* ─────────────────────────────── DATA ─────────────────────────────── */
@@ -611,6 +611,31 @@ const SchemaDocsPage = () => {
         />
       </div>
 
+      {/* Architecture Summary */}
+      <div className="bg-card border border-border rounded-xl p-5 print-break-avoid">
+        <h2 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+          <Server size={16} className="text-primary" /> Resumen de Arquitectura
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-muted-foreground">
+          <div className="p-3 rounded-lg border border-border bg-background">
+            <p className="font-semibold text-foreground mb-1">Multi-Tenancy</p>
+            <p>Aislamiento estricto por <code className="bg-secondary px-1 rounded">tenant_id</code>. Cada organización opera en su silo de datos con RLS en todas las tablas.</p>
+          </div>
+          <div className="p-3 rounded-lg border border-border bg-background">
+            <p className="font-semibold text-foreground mb-1">RBAC Granular</p>
+            <p>Roles en tabla separada <code className="bg-secondary px-1 rounded">user_roles</code>. Jerarquía: super_admin &gt; owner &gt; admin &gt; moderator &gt; user.</p>
+          </div>
+          <div className="p-3 rounded-lg border border-border bg-background">
+            <p className="font-semibold text-foreground mb-1">Multi-Región / Multi-Moneda</p>
+            <p>Tasas FX diarias (<code className="bg-secondary px-1 rounded">fx_rates</code>), precios localizados (<code className="bg-secondary px-1 rounded">global_plan_pricing</code>), y métricas SaaS por región.</p>
+          </div>
+          <div className="p-3 rounded-lg border border-border bg-background">
+            <p className="font-semibold text-foreground mb-1">Stack Tecnológico</p>
+            <p>React + Vite + Tailwind (frontend). Postgres + Edge Functions + Realtime (backend). Stripe, Twilio, ElevenLabs, Google Calendar (integraciones).</p>
+          </div>
+        </div>
+      </div>
+
       {/* Security Patterns */}
       <div className="bg-card border border-border rounded-xl p-5">
         <h2 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
@@ -654,6 +679,169 @@ const SchemaDocsPage = () => {
             </div>
           ))}
         </div>
+      </div>
+
+      {/* RPC Functions */}
+      <div className="bg-card border border-border rounded-xl p-5 print-break-avoid">
+        <h2 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
+          <Terminal size={16} className="text-primary" /> Funciones RPC
+        </h2>
+        <div className="space-y-3">
+          {[
+            { name: 'get_tenant_branding', signature: 'get_tenant_branding(_tenant_id uuid) → json', security: 'SECURITY DEFINER', description: 'Retorna nombre, ID y settings_json del tenant. Usada por el frontend para branding dinámico.' },
+            { name: 'get_tenant_subscription_status', signature: 'get_tenant_subscription_status(_user_id uuid) → jsonb', security: 'SECURITY DEFINER', description: 'Evalúa estado de suscripción: plan, trial, bloqueo, días restantes. Retorna objeto completo para el guard de rutas.' },
+            { name: 'block_expired_trials', signature: 'block_expired_trials() → void', security: 'SECURITY DEFINER', description: 'Marca como "blocked" todas las suscripciones en trial vencido. Ejecutada por cron job.' },
+            { name: 'calculate_next_retry', signature: 'calculate_next_retry(_retry_count int, _base_delay_minutes int) → timestamptz', security: 'IMMUTABLE', description: 'Calcula timestamp del siguiente reintento con backoff exponencial (base * 2^n).' },
+          ].map(fn => (
+            <div key={fn.name} className="p-3 rounded-lg border border-border bg-background">
+              <div className="flex items-center gap-2 flex-wrap">
+                <code className="text-sm font-semibold text-foreground">{fn.name}</code>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium">{fn.security}</span>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">{fn.description}</p>
+              <code className="text-[11px] text-muted-foreground block mt-1">{fn.signature}</code>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Triggers */}
+      <div className="bg-card border border-border rounded-xl p-5 print-break-avoid">
+        <h2 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
+          <RefreshCw size={16} className="text-primary" /> Triggers
+        </h2>
+        <div className="space-y-3">
+          {[
+            { name: 'on_auth_user_created', table: 'auth.users', event: 'AFTER INSERT', fn: 'handle_new_user()', description: 'Crea tenant + profile + user_role automáticamente al registrarse. Super admin se asigna al email configurado en vault.' },
+            { name: 'update_updated_at_*', table: 'Múltiples tablas', event: 'BEFORE UPDATE', fn: 'update_updated_at_column()', description: 'Actualiza automáticamente el campo updated_at en cada UPDATE. Aplicado a: profiles, contacts, expenses, call_records, knowledge_items, etc.' },
+          ].map(t => (
+            <div key={t.name} className="p-3 rounded-lg border border-border bg-background">
+              <div className="flex items-center gap-2 flex-wrap">
+                <code className="text-sm font-semibold text-foreground">{t.name}</code>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-warning/20 text-warning font-medium">{t.event}</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">ON {t.table}</span>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">{t.description}</p>
+              <code className="text-[11px] text-muted-foreground block mt-1">→ {t.fn}</code>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Views */}
+      <div className="bg-card border border-border rounded-xl p-5 print-break-avoid">
+        <h2 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+          <Eye size={16} className="text-primary" /> Vistas
+        </h2>
+        <div className="text-xs text-muted-foreground space-y-2">
+          <p>El sistema no utiliza vistas SQL personalizadas. Todo el acceso a datos se realiza mediante:</p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mt-2">
+            <div className="p-2 rounded border border-border bg-background text-center">
+              <p className="font-semibold text-foreground">Queries directas</p>
+              <p>via Supabase SDK + RLS</p>
+            </div>
+            <div className="p-2 rounded border border-border bg-background text-center">
+              <p className="font-semibold text-foreground">Funciones RPC</p>
+              <p>SECURITY DEFINER para agregaciones</p>
+            </div>
+            <div className="p-2 rounded border border-border bg-background text-center">
+              <p className="font-semibold text-foreground">Edge Functions</p>
+              <p>Para lógica compleja con service_role</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Storage Buckets */}
+      <div className="bg-card border border-border rounded-xl p-5 print-break-avoid">
+        <h2 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
+          <HardDrive size={16} className="text-primary" /> Storage Buckets
+        </h2>
+        <div className="space-y-3">
+          {[
+            { name: 'branding', public: true, description: 'Logos y assets de marca por tenant. Acceso público para renderizado en UI sin autenticación.', policies: 'Autenticados pueden subir a su carpeta tenant_id/. Lectura pública.' },
+            { name: 'call-recordings', public: false, description: 'Grabaciones de llamadas (audio). Acceso restringido por tenant_id.', policies: 'Solo usuarios del mismo tenant pueden leer. Escritura solo via service_role (Edge Functions).' },
+          ].map(b => (
+            <div key={b.name} className="p-3 rounded-lg border border-border bg-background">
+              <div className="flex items-center gap-2 flex-wrap">
+                <code className="text-sm font-semibold text-foreground">{b.name}</code>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${b.public ? 'bg-success/20 text-success' : 'bg-destructive/20 text-destructive'}`}>
+                  {b.public ? 'PÚBLICO' : 'PRIVADO'}
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">{b.description}</p>
+              <p className="text-[11px] text-muted-foreground mt-1 font-mono">Políticas: {b.policies}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Realtime */}
+      <div className="bg-card border border-border rounded-xl p-5 print-break-avoid">
+        <h2 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+          <Radio size={16} className="text-primary" /> Realtime
+        </h2>
+        <div className="text-xs text-muted-foreground space-y-2">
+          <p>Tablas habilitadas para Postgres Changes (supabase_realtime publication):</p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
+            {['internal_messages', 'message_read_receipts', 'call_records', 'appointments', 'assistant_messages', 'whatsapp_messages'].map(t => (
+              <div key={t} className="p-2 rounded border border-border bg-background text-center">
+                <code className="text-foreground text-[11px]">{t}</code>
+              </div>
+            ))}
+          </div>
+          <p className="mt-2">Protocolo: <code className="bg-secondary px-1 rounded">supabase.channel().on('postgres_changes', ...)</code>. RLS aplica automáticamente — los usuarios solo reciben eventos de su tenant.</p>
+        </div>
+      </div>
+
+      {/* RBAC Matrix */}
+      <div className="bg-card border border-border rounded-xl p-5">
+        <h2 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
+          <Lock size={16} className="text-primary" /> Matriz RBAC
+        </h2>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-border text-left">
+                <th className="py-2 px-2 font-medium text-muted-foreground">Módulo</th>
+                <th className="py-2 px-1 font-medium text-muted-foreground text-center">user</th>
+                <th className="py-2 px-1 font-medium text-muted-foreground text-center">moderator</th>
+                <th className="py-2 px-1 font-medium text-muted-foreground text-center">admin</th>
+                <th className="py-2 px-1 font-medium text-muted-foreground text-center">owner</th>
+                <th className="py-2 px-1 font-medium text-muted-foreground text-center">super_admin</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[
+                { module: 'Dashboard', user: 'R', mod: 'R', admin: 'R', owner: 'R', super: 'R+Global' },
+                { module: 'Llamadas', user: 'R', mod: 'R', admin: 'CRUD', owner: 'CRUD', super: 'CRUD+Cross' },
+                { module: 'WhatsApp', user: 'R', mod: 'RW', admin: 'CRUD', owner: 'CRUD', super: 'CRUD' },
+                { module: 'Agenda/Citas', user: 'CR', mod: 'CRU', admin: 'CRUD', owner: 'CRUD', super: 'CRUD' },
+                { module: 'Chat Interno', user: 'CR', mod: 'CR', admin: 'CR', owner: 'CR', super: 'CR' },
+                { module: 'Knowledge', user: 'R', mod: 'R', admin: 'CRUD', owner: 'CRUD', super: 'CRUD' },
+                { module: 'Gastos', user: 'CR(own)', mod: 'CR(own)', admin: 'CRUD(tenant)', owner: 'CRUD', super: 'CRUD' },
+                { module: 'Credenciales', user: '—', mod: '—', admin: 'CRUD', owner: 'CRUD', super: 'CRUD' },
+                { module: 'Auditoría', user: '—', mod: '—', admin: 'R', owner: 'R', super: 'R+Cross' },
+                { module: 'Integraciones', user: '—', mod: '—', admin: 'RW', owner: 'CRUD', super: 'CRUD' },
+                { module: 'Configuración', user: '—', mod: '—', admin: 'RW', owner: 'CRUD', super: 'CRUD' },
+                { module: 'Gestión Equipo', user: '—', mod: '—', admin: '—', owner: 'CRUD', super: 'CRUD' },
+                { module: 'Billing/Consumo', user: '—', mod: '—', admin: 'R', owner: 'CRUD', super: 'CRUD+Global' },
+                { module: 'SuperAdmin Panel', user: '—', mod: '—', admin: '—', owner: '—', super: 'CRUD' },
+                { module: 'Fraude/Churn', user: '—', mod: '—', admin: '—', owner: '—', super: 'CRUD' },
+              ].map(row => (
+                <tr key={row.module} className="border-b border-border/50">
+                  <td className="py-1.5 px-2 font-medium text-foreground">{row.module}</td>
+                  <td className="py-1.5 px-1 text-center text-muted-foreground">{row.user}</td>
+                  <td className="py-1.5 px-1 text-center text-muted-foreground">{row.mod}</td>
+                  <td className="py-1.5 px-1 text-center text-muted-foreground">{row.admin}</td>
+                  <td className="py-1.5 px-1 text-center text-muted-foreground">{row.owner}</td>
+                  <td className="py-1.5 px-1 text-center font-medium text-primary">{row.super}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="text-[10px] text-muted-foreground mt-3">C=Create R=Read U=Update D=Delete. "(own)" = solo registros propios. "Cross" = acceso cross-tenant.</p>
       </div>
 
       {/* Tables */}
