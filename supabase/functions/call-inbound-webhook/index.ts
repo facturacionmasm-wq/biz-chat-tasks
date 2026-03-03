@@ -67,30 +67,23 @@ function parseRequestBody(contentType: string, rawBody: string): Record<string, 
 function buildTwimlWithElevenLabs(elTwiml: string, statusCallbackUrl: string, companyName: string): string {
   console.log(`[inbound] Raw ElevenLabs TwiML: ${elTwiml}`);
 
-  // Extract the <Stream> element from the ElevenLabs response
-  const streamMatch = elTwiml.match(/<Stream\b[^>]*>[\s\S]*?<\/Stream>/i) || 
-                       elTwiml.match(/<Stream\b[^\/]*\/>/i);
-  
-  if (!streamMatch) {
-    console.error(`[inbound] No <Stream> element found in ElevenLabs TwiML`);
-    // If we can't parse, return the original TwiML from ElevenLabs as-is
+  // CRITICAL: Return the ElevenLabs TwiML EXACTLY as-is.
+  // Any modification (adding <Say>, restructuring <Connect>) can cause
+  // the WebSocket stream to close immediately, making Twilio fall through
+  // to fallback verbs and the caller only hears "la conversación ha terminado".
+  //
+  // ElevenLabs designs their TwiML to work directly with Twilio.
+  // When the conversation ends naturally, the stream closes and the call ends.
+  if (elTwiml.includes('<Response')) {
     return elTwiml;
   }
 
-  const streamElement = streamMatch[0];
-  const greeting = companyName
-    ? `Hola, bienvenido a ${escapeXml(companyName)}.`
-    : 'Hola, bienvenido.';
-
-  // Build TwiML WITHOUT action on <Connect>
-  // When the stream ends normally, Twilio falls through to the <Say> below.
-  // The statusCallback is set separately for tracking (does not affect call flow).
+  // Only wrap if it's not already a complete TwiML response
   return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Connect>
-    ${streamElement}
+    <Stream url="${elTwiml}"/>
   </Connect>
-  <Say voice="Polly.Mia-Neural" language="es-MX">${greeting} La conversación ha terminado. Si necesita algo más, vuelva a llamar.</Say>
 </Response>`;
 }
 
