@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import TwilioWizard from '@/components/TwilioWizard';
+import VoiceAgentWizard from '@/components/VoiceAgentWizard';
 
 const integrationsMeta = [
   {
@@ -53,7 +54,6 @@ const IntegrationsPage = () => {
   const [voiceAgentConnected, setVoiceAgentConnected] = useState(false);
   const [voiceAgentLoading, setVoiceAgentLoading] = useState(false);
   const [voiceDialogOpen, setVoiceDialogOpen] = useState(false);
-  const [voicePhoneNumber, setVoicePhoneNumber] = useState('');
   const [voiceCurrentNumber, setVoiceCurrentNumber] = useState('');
   const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-webhook`;
 
@@ -224,32 +224,8 @@ const IntegrationsPage = () => {
 
   const isValidE164 = (value: string) => /^\+[1-9]\d{7,14}$/.test(value);
 
-  const handleVoiceAgentSetup = async (phoneNumber?: string) => {
-    setVoiceAgentLoading(true);
-    try {
-      const body: Record<string, string> = { action: 'setup' };
-      if (phoneNumber) body.phone_number = phoneNumber;
 
-      const { data, error } = await supabase.functions.invoke('elevenlabs-twilio-setup', {
-        body,
-      });
 
-      if (error) {
-        const contextError = (error as any)?.context?.error || (error as any)?.context?.json?.error;
-        throw new Error(contextError || error.message || 'Error configurando agente de voz');
-      }
-      if (data?.error) throw new Error(data.error);
-      setVoiceAgentConnected(true);
-      setVoiceCurrentNumber(phoneNumber || data?.phone_number || '');
-      setVoiceDialogOpen(false);
-      setVoicePhoneNumber('');
-      toast.success('¡Agente de voz conectado! ElevenLabs ahora maneja las llamadas entrantes.');
-    } catch (err: any) {
-      toast.error(err.message || 'Error configurando agente de voz');
-    } finally {
-      setVoiceAgentLoading(false);
-    }
-  };
 
   const handleSaveWaConfig = async () => {
     if (waProvider === 'meta' && (!waConfig.phoneNumberId || !waConfig.accessToken)) {
@@ -426,80 +402,27 @@ const IntegrationsPage = () => {
         </div>
       </div>
 
-      {/* Voice Agent Config Dialog */}
+      {/* Voice Agent Wizard Dialog */}
       <Dialog open={voiceDialogOpen} onOpenChange={setVoiceDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Phone size={18} className="text-primary" /> Configurar Agente de Voz
             </DialogTitle>
             <DialogDescription>
-              Ingresa el número de teléfono de Twilio (formato E.164) que deseas conectar.
-              Ejemplo para EE.UU.: <strong>+1</strong> + 10 dígitos = <strong>+12135551234</strong>.
-              El número debe estar comprado como "Incoming Phone Number" en Twilio.
+              Sigue el asistente paso a paso para conectar tu número de Twilio con ElevenLabs.
             </DialogDescription>
           </DialogHeader>
-
-          {voiceCurrentNumber && voiceAgentConnected && (
-            <div className="bg-muted/50 rounded-lg p-3 text-sm">
-              <p className="text-muted-foreground">Número actual conectado:</p>
-              <p className="font-semibold text-foreground">{voiceCurrentNumber}</p>
-            </div>
-          )}
-
-          <div className="space-y-3 mt-2">
-            <div>
-              <label className="text-xs font-medium text-foreground block mb-1">
-                Número de teléfono Twilio *
-              </label>
-              <input
-                value={voicePhoneNumber}
-                onChange={e => setVoicePhoneNumber(e.target.value)}
-                placeholder="Ej: +12135551234"
-                className="w-full bg-secondary rounded-lg px-3 py-2 text-sm outline-none border border-border focus:border-primary font-mono"
-              />
-              {voicePhoneNumber && (() => {
-                const normalized = normalizeE164(voicePhoneNumber);
-                const valid = isValidE164(normalized);
-                const digitCount = normalized.replace(/\D/g, '').length;
-                return (
-                  <div className={`text-[10px] mt-1 ${valid ? 'text-green-600' : 'text-destructive'}`}>
-                    {valid
-                      ? `✓ Formato válido: ${normalized}`
-                      : `✗ Formato inválido (${digitCount} dígitos detectados, se requieren 8-15). Resultado: ${normalized || '—'}`
-                    }
-                  </div>
-                );
-              })()}
-              <p className="text-[10px] text-muted-foreground mt-1">
-                Para EE.UU.: +1 + código de área (3 dígitos) + número (7 dígitos) = 11 dígitos total.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex gap-2 mt-4">
-            <Button
-              onClick={() => {
-                const normalized = normalizeE164(voicePhoneNumber);
-                if (!normalized || !isValidE164(normalized)) {
-                  toast.error('Número inválido. Usa formato internacional E.164, por ejemplo: +12135551234');
-                  return;
-                }
-                handleVoiceAgentSetup(normalized);
-              }}
-              disabled={voiceAgentLoading}
-              className="flex-1"
-            >
-              {voiceAgentLoading ? (
-                <><Loader2 size={14} className="animate-spin mr-1" /> Conectando...</>
-              ) : (
-                <><Save size={14} className="mr-1" /> {voiceAgentConnected ? 'Cambiar número' : 'Conectar'}</>
-              )}
-            </Button>
-            <Button variant="outline" onClick={() => setVoiceDialogOpen(false)}>
-              Cancelar
-            </Button>
-          </div>
+          <VoiceAgentWizard
+            currentNumber={voiceCurrentNumber}
+            isConnected={voiceAgentConnected}
+            onComplete={async () => {
+              setVoiceDialogOpen(false);
+              await loadIntegrationStatus();
+              toast.success('¡Agente de voz configurado correctamente!');
+            }}
+            onCancel={() => setVoiceDialogOpen(false)}
+          />
         </DialogContent>
       </Dialog>
 
