@@ -15,15 +15,13 @@ const STEPS = [
   { title: 'Bienvenida', description: 'Resumen del flujo', icon: Zap },
   { title: 'Webhook Backend', description: 'URL para Twilio', icon: Settings },
   { title: 'Twilio Config', description: 'Configura tu número', icon: Phone },
-  { title: 'ElevenLabs Webhook', description: 'Conecta el webhook', icon: ExternalLink },
-  { title: 'Vincular Agente', description: 'Conecta el agente IA', icon: Mic },
+  { title: 'ElevenLabs', description: 'Conecta el agente IA', icon: Mic },
   { title: '¡Listo!', description: 'Todo configurado', icon: CheckCircle2 },
 ];
 
 const VoiceAgentWizard = ({ onComplete, onCancel, currentNumber, isConnected }: VoiceAgentWizardProps) => {
   const [step, setStep] = useState(0);
   const [phoneNumber, setPhoneNumber] = useState(currentNumber || '');
-  const [elevenlabsWebhookUrl, setElevenlabsWebhookUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [setupResult, setSetupResult] = useState<{ ok: boolean; error?: string } | null>(null);
 
@@ -68,7 +66,7 @@ const VoiceAgentWizard = ({ onComplete, onCancel, currentNumber, isConnected }: 
       if (data?.error) throw new Error(data.error);
 
       setSetupResult({ ok: true });
-      setStep(5);
+      setStep(4);
     } catch (err: any) {
       setSetupResult({ ok: false, error: err.message || 'Error de configuración' });
     } finally {
@@ -305,8 +303,8 @@ const VoiceAgentWizard = ({ onComplete, onCancel, currentNumber, isConnected }: 
         </div>
       )}
 
-      {/* Step 4: Connect Agent + Phone Number */}
-      {step === 4 && (
+      {/* Step 3: ElevenLabs + Phone Number */}
+      {step === 3 && (
         <div className="space-y-4 animate-fade-in">
           <div className="bg-primary/5 border border-primary/20 rounded-xl p-4">
             <h3 className="text-sm font-bold text-foreground mb-2 flex items-center gap-2">
@@ -382,7 +380,7 @@ const VoiceAgentWizard = ({ onComplete, onCancel, currentNumber, isConnected }: 
           )}
 
           <div className="flex gap-2 pt-2">
-            <Button variant="outline" onClick={() => setStep(3)} className="flex-1 gap-1">
+            <Button variant="outline" onClick={() => setStep(2)} className="flex-1 gap-1">
               <ArrowLeft size={14} /> Atrás
             </Button>
             <Button
@@ -400,8 +398,8 @@ const VoiceAgentWizard = ({ onComplete, onCancel, currentNumber, isConnected }: 
         </div>
       )}
 
-      {/* Step 5: Done */}
-      {step === 5 && (
+      {/* Step 4: Done */}
+      {step === 4 && (
         <div className="space-y-4 animate-fade-in text-center py-4">
           <div className="w-16 h-16 rounded-full bg-success/10 flex items-center justify-center mx-auto">
             <CheckCircle2 size={32} className="text-success" />
