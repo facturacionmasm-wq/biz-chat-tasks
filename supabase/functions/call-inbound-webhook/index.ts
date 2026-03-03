@@ -366,9 +366,15 @@ serve(async (req) => {
 function addPostStreamFallback(twiml: string, statusCallbackUrl: string): string {
   if (!twiml.includes('<Connect>') || !twiml.includes('</Connect>')) return twiml;
 
+  const connectBlockMatch = twiml.match(/<Connect>[\s\S]*?<\/Connect>/i);
+  const connectBlock = connectBlockMatch?.[0] || '';
+
   return twiml.replace(
     '</Connect>',
     `</Connect>
+  <Say voice="Polly.Mia-Neural" language="es-MX">Estamos reconectando con el asistente. Un momento por favor.</Say>
+  <Pause length="1"/>
+  ${connectBlock}
   <Say voice="Polly.Mia-Neural" language="es-MX">Tuvimos una desconexión con el asistente. Por favor deja tu mensaje después del tono.</Say>
   <Pause length="1"/>
   <Record
