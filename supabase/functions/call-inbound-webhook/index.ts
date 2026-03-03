@@ -54,11 +54,17 @@ function parseRequestBody(contentType: string, rawBody: string): Record<string, 
 }
 
 /**
- * Wraps ElevenLabs TwiML with a fallback <Say> after <Connect>.
- * If <Connect><Stream> fails, Twilio falls through to the next verb.
+ * Uses ElevenLabs TwiML AS-IS without wrapping.
+ * 
+ * CRITICAL: Do NOT add an `action` attribute to <Connect>.
+ * When `action` is present, Twilio POSTs to that URL when the stream ends
+ * and uses the response as the next TwiML. If that URL returns empty TwiML,
+ * the call hangs up immediately — causing the "connects but cuts off" bug.
+ * 
+ * Without `action`, Twilio naturally falls through to the next verb
+ * after <Connect> in the same TwiML document.
  */
-function wrapTwimlWithFallback(elTwiml: string, statusCallbackUrl: string, companyName: string): string {
-  // Log the raw TwiML for debugging
+function buildTwimlWithElevenLabs(elTwiml: string, statusCallbackUrl: string, companyName: string): string {
   console.log(`[inbound] Raw ElevenLabs TwiML: ${elTwiml}`);
 
   // Extract the <Stream> element from the ElevenLabs response
@@ -67,7 +73,8 @@ function wrapTwimlWithFallback(elTwiml: string, statusCallbackUrl: string, compa
   
   if (!streamMatch) {
     console.error(`[inbound] No <Stream> element found in ElevenLabs TwiML`);
-    return elTwiml; // Return as-is if we can't parse
+    // If we can't parse, return the original TwiML from ElevenLabs as-is
+    return elTwiml;
   }
 
   const streamElement = streamMatch[0];
@@ -75,25 +82,15 @@ function wrapTwimlWithFallback(elTwiml: string, statusCallbackUrl: string, compa
     ? `Hola, bienvenido a ${escapeXml(companyName)}.`
     : 'Hola, bienvenido.';
 
-  // Build TwiML with proper structure:
-  // 1. <Connect> with statusCallback for diagnostics
-  // 2. Fallback <Say> if stream connection fails
-  // 3. Fallback <Record> as voicemail
+  // Build TwiML WITHOUT action on <Connect>
+  // When the stream ends normally, Twilio falls through to the <Say> below.
+  // The statusCallback is set separately for tracking (does not affect call flow).
   return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Connect action="${escapeXml(statusCallbackUrl)}">
+  <Connect>
     ${streamElement}
   </Connect>
-  <Say voice="Polly.Mia-Neural" language="es-MX">${greeting} Nuestro asistente no está disponible en este momento. Por favor deje su mensaje después del tono.</Say>
-  <Record
-    maxLength="120"
-    recordingStatusCallback="${escapeXml(statusCallbackUrl)}"
-    recordingStatusCallbackEvent="completed"
-    transcribe="false"
-    playBeep="true"
-    trim="trim-silence"
-  />
-  <Say voice="Polly.Mia-Neural" language="es-MX">Gracias por su mensaje. Le responderemos pronto.</Say>
+  <Say voice="Polly.Mia-Neural" language="es-MX">${greeting} La conversación ha terminado. Si necesita algo más, vuelva a llamar.</Say>
 </Response>`;
 }
 
@@ -341,7 +338,7 @@ serve(async (req) => {
 
             if (twimlContent && twimlContent.includes('<Response')) {
               // Wrap with fallback so call never dies silently
-              twiml = wrapTwimlWithFallback(twimlContent, statusCallbackUrl, companyName);
+              twiml = buildTwimlWithElevenLabs(twimlContent, statusCallbackUrl, companyName);
               routingMethod = 'register_call_native';
               sessionState = 'connected_to_agent';
               console.log(`[inbound] ElevenLabs TwiML OK (attempt ${attempt + 1})`);
