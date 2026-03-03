@@ -1578,6 +1578,48 @@ export type Database = {
           },
         ]
       }
+      package_catalog: {
+        Row: {
+          active: boolean
+          created_at: string
+          id: string
+          included_messages: number
+          included_minutes: number
+          name: string
+          package_type: string
+          price_mxn: number
+          price_usd: number
+          sort_order: number
+          validity_days: number
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          included_messages?: number
+          included_minutes?: number
+          name: string
+          package_type?: string
+          price_mxn?: number
+          price_usd?: number
+          sort_order?: number
+          validity_days?: number
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          included_messages?: number
+          included_minutes?: number
+          name?: string
+          package_type?: string
+          price_mxn?: number
+          price_usd?: number
+          sort_order?: number
+          validity_days?: number
+        }
+        Relationships: []
+      }
       plan_change_history: {
         Row: {
           applied_by: string
@@ -2998,6 +3040,71 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "usage_costs_reconciled_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      usage_packages: {
+        Row: {
+          created_at: string
+          currency: string
+          expires_at: string | null
+          id: string
+          included_messages: number
+          included_minutes: number
+          package_name: string
+          package_type: string
+          price_local: number
+          price_usd: number
+          purchased_at: string
+          status: string
+          tenant_id: string
+          updated_at: string
+          used_messages: number
+          used_minutes: number
+        }
+        Insert: {
+          created_at?: string
+          currency?: string
+          expires_at?: string | null
+          id?: string
+          included_messages?: number
+          included_minutes?: number
+          package_name: string
+          package_type?: string
+          price_local?: number
+          price_usd?: number
+          purchased_at?: string
+          status?: string
+          tenant_id: string
+          updated_at?: string
+          used_messages?: number
+          used_minutes?: number
+        }
+        Update: {
+          created_at?: string
+          currency?: string
+          expires_at?: string | null
+          id?: string
+          included_messages?: number
+          included_minutes?: number
+          package_name?: string
+          package_type?: string
+          price_local?: number
+          price_usd?: number
+          purchased_at?: string
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+          used_messages?: number
+          used_minutes?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "usage_packages_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
