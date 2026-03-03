@@ -248,21 +248,28 @@ serve(async (req) => {
           );
 
           if (elRes.ok) {
-            const elData = await elRes.json();
-            if (elData.twiml) {
+            const contentType = elRes.headers.get('content-type') || '';
+            let twimlContent: string | null = null;
+
+            if (contentType.includes('application/json')) {
+              const elData = await elRes.json();
+              twimlContent = elData.twiml || null;
+            } else {
+              // API may return TwiML directly as XML
+              twimlContent = await elRes.text();
+            }
+
+            if (twimlContent && twimlContent.includes('<Response>')) {
               routingMethod = 'register_call';
               sessionState = 'connected_to_agent';
-              // Prepend greeting before ElevenLabs TwiML
-              // The register-call API returns a <Response>...</Response> block,
-              // so we inject our <Say> greeting before the <Connect> element.
-              twiml = elData.twiml.replace(
+              twiml = twimlContent.replace(
                 '<Response>',
                 `<Response>\n  <Say voice="Polly.Mia-Neural" language="es-MX">${greeting}</Say>`
               );
               console.log(`[inbound] ElevenLabs register-call TwiML obtained (attempt ${attempt + 1})`);
               break;
             } else {
-              console.error(`[inbound] ElevenLabs register-call: no twiml in response (attempt ${attempt + 1})`);
+              console.error(`[inbound] ElevenLabs register-call: no valid TwiML in response (attempt ${attempt + 1}), body: ${String(twimlContent).substring(0, 200)}`);
             }
           } else {
             const errText = await elRes.text();
