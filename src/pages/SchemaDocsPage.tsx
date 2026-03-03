@@ -548,17 +548,32 @@ const SchemaDocsPage = () => {
       {/* Print styles */}
       <style>{`
         @media print {
+          /* Remove layout constraints */
+          html, body { height: auto !important; overflow: visible !important; }
+          body { background: white !important; color: black !important; font-size: 9px !important; }
+          
+          /* Hide chrome */
           nav, aside, header, [data-sidebar], .no-print, [role="banner"] { display: none !important; }
-          body { background: white !important; color: black !important; font-size: 10px !important; }
-          #schema-docs { padding: 0 !important; max-width: 100% !important; }
-          .bg-card, .bg-background, .bg-secondary\\/20 { background: white !important; border-color: #ddd !important; }
-          code { background: #f3f4f6 !important; }
-          .text-foreground { color: black !important; }
-          .text-muted-foreground { color: #666 !important; }
-          .text-primary { color: #2563eb !important; }
+          
+          /* Fix the flex layout that clips content */
+          .flex.h-screen { height: auto !important; overflow: visible !important; display: block !important; }
+          .flex-1.min-h-0.overflow-auto { height: auto !important; overflow: visible !important; min-height: 0 !important; }
+          .flex-1.flex.flex-col.min-w-0 { height: auto !important; overflow: visible !important; display: block !important; }
+          main { height: auto !important; overflow: visible !important; }
+          
+          #schema-docs { padding: 0.5cm !important; max-width: 100% !important; }
+          .bg-card, .bg-background, [class*="bg-secondary"] { background: white !important; border-color: #ccc !important; }
+          code { background: #f0f0f0 !important; color: #333 !important; }
+          .text-foreground, h1, h2, h3, h4, span, p, td, th { color: black !important; }
+          .text-muted-foreground { color: #555 !important; }
+          .text-primary { color: #1d4ed8 !important; }
           button { display: none !important; }
-          @page { margin: 1cm; size: A4; }
-          .print\\:break-inside-avoid { break-inside: avoid; }
+          input { display: none !important; }
+          .relative:has(input) { display: none !important; }
+          
+          @page { margin: 0.8cm; size: A4; }
+          .print-break-avoid { break-inside: avoid; }
+          .print-page-break { break-before: page; }
         }
       `}</style>
 
@@ -649,7 +664,7 @@ const SchemaDocsPage = () => {
         {filtered.map(table => {
           const isOpen = expanded[table.name];
           return (
-            <div key={table.name} className="bg-card border border-border rounded-xl overflow-hidden print:break-inside-avoid">
+            <div key={table.name} className="bg-card border border-border rounded-xl overflow-hidden print-break-avoid">
               <button
                 onClick={() => toggle(table.name)}
                 className="w-full flex items-center gap-3 p-4 text-left hover:bg-secondary/30 transition-colors"
@@ -735,6 +750,103 @@ const SchemaDocsPage = () => {
             </div>
           );
         })}
+      </div>
+
+      {/* Entity Relationship Diagram */}
+      <div className="bg-card border border-border rounded-xl p-5 print-page-break">
+        <h2 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
+          <Database size={16} className="text-primary" /> Diagrama de Relación de Entidades (ERD)
+        </h2>
+        <div className="text-xs font-mono text-muted-foreground space-y-1 leading-relaxed">
+          <p className="font-semibold text-foreground text-sm mb-3">Relaciones principales:</p>
+          
+          <div className="space-y-4">
+            <div>
+              <p className="font-semibold text-foreground mb-1">Core</p>
+              <p>tenants ──┬── profiles (tenant_id) → miembros</p>
+              <p>{"         "}├── user_roles (tenant_id) → RBAC</p>
+              <p>{"         "}├── tenant_settings (tenant_id) → config</p>
+              <p>{"         "}└── audit_events (tenant_id) → trazabilidad</p>
+            </div>
+
+            <div>
+              <p className="font-semibold text-foreground mb-1">Comunicación</p>
+              <p>tenants ──┬── call_records (tenant_id)</p>
+              <p>{"         "}│{"    "}├── call_costs (call_record_id) → costos 1:1</p>
+              <p>{"         "}│{"    "}├── call_events (call_record_id) → timeline</p>
+              <p>{"         "}│{"    "}├── call_sessions (call_record_id) → sesiones</p>
+              <p>{"         "}│{"    "}├── call_jobs (call_id) → async jobs</p>
+              <p>{"         "}│{"    "}└── appointments (call_record_id) → citas</p>
+              <p>{"         "}├── whatsapp_conversations (tenant_id)</p>
+              <p>{"         "}│{"    "}└── whatsapp_messages (conversation_id)</p>
+              <p>{"         "}├── contacts (tenant_id) → directorio</p>
+              <p>{"         "}└── internal_messages (tenant_id)</p>
+              <p>{"              "}└── message_read_receipts (message_id)</p>
+            </div>
+
+            <div>
+              <p className="font-semibold text-foreground mb-1">Agenda</p>
+              <p>tenants ──┬── appointments (tenant_id)</p>
+              <p>{"         "}│{"    "}└── appointment_notifications (appointment_id)</p>
+              <p>{"         "}├── availability_rules (tenant_id)</p>
+              <p>{"         "}└── google_calendar_tokens (tenant_id)</p>
+            </div>
+
+            <div>
+              <p className="font-semibold text-foreground mb-1">Billing y Consumo</p>
+              <p>tenants ──┬── stripe_customers (tenant_id)</p>
+              <p>{"         "}├── tenant_subscriptions (tenant_id)</p>
+              <p>{"         "}│{"    "}└── subscription_plans (plan_id)</p>
+              <p>{"         "}│{"         "}└── global_plan_pricing (plan_id)</p>
+              <p>{"         "}├── usage_packages (tenant_id)</p>
+              <p>{"         "}│{"    "}└── package_catalog (catalog_id)</p>
+              <p>{"         "}├── usage_daily (tenant_id) → métricas diarias</p>
+              <p>{"         "}├── realtime_margin_state (tenant_id) → margen live</p>
+              <p>{"         "}├── margin_metrics (tenant_id)</p>
+              <p>{"         "}└── pricing_evaluations (tenant_id)</p>
+              <p>{"              "}└── plan_change_history (evaluation_id)</p>
+            </div>
+
+            <div>
+              <p className="font-semibold text-foreground mb-1">IA y Knowledge</p>
+              <p>tenants ──┬── assistant_conversations (tenant_id)</p>
+              <p>{"         "}│{"    "}└── assistant_messages (conversation_id)</p>
+              <p>{"         "}├── assistant_settings (tenant_id) → 1:1</p>
+              <p>{"         "}├── knowledge_items (tenant_id)</p>
+              <p>{"         "}└── voice_agent_configs (tenant_id)</p>
+            </div>
+
+            <div>
+              <p className="font-semibold text-foreground mb-1">Operaciones</p>
+              <p>tenants ──┬── expenses (tenant_id)</p>
+              <p>{"         "}│{"    "}└── expense_reminders (expense_id)</p>
+              <p>{"         "}├── reminders (tenant_id)</p>
+              <p>{"         "}├── shared_credentials (tenant_id)</p>
+              <p>{"         "}├── drive_audit_log (tenant_id)</p>
+              <p>{"         "}└── push_subscriptions (tenant_id)</p>
+            </div>
+
+            <div>
+              <p className="font-semibold text-foreground mb-1">Seguridad y Anti-fraude</p>
+              <p>tenants ──┬── fraud_detection_logs (tenant_id)</p>
+              <p>{"         "}├── otp_challenges (tenant_id)</p>
+              <p>{"         "}└── churn_evaluations (tenant_id)</p>
+              <p>{"              "}└── retention_offers (tenant_id)</p>
+            </div>
+
+            <div>
+              <p className="font-semibold text-foreground mb-1">Tablas Globales (sin tenant)</p>
+              <p>fraud_thresholds → umbrales globales</p>
+              <p>pricing_rules → reglas de pricing</p>
+              <p>fx_rates → tipos de cambio</p>
+              <p>global_metrics_daily → métricas SaaS</p>
+              <p>financial_projections → proyecciones IA</p>
+              <p>churn_model_metrics → rendimiento modelo churn</p>
+              <p>regional_margin_targets → objetivos por región</p>
+              <p>service_packages → catálogo público</p>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
