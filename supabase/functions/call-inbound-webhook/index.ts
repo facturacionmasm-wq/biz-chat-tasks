@@ -259,12 +259,13 @@ serve(async (req) => {
             } else {
               // API may return TwiML directly as XML
               twimlContent = await elRes.text();
+              elevenlabsConversationId = extractConversationIdFromTwiml(twimlContent);
             }
 
             if (twimlContent && twimlContent.includes('<Response>')) {
               routingMethod = 'register_call';
               sessionState = 'connected_to_agent';
-              twiml = twimlContent;
+              twiml = addPostStreamFallback(twimlContent, statusCallbackUrl);
               console.log(`[inbound] ElevenLabs register-call TwiML obtained (attempt ${attempt + 1})`);
               break;
             } else {
@@ -361,6 +362,30 @@ serve(async (req) => {
     });
   }
 });
+
+function addPostStreamFallback(twiml: string, statusCallbackUrl: string): string {
+  if (!twiml.includes('<Connect>') || !twiml.includes('</Connect>')) return twiml;
+
+  return twiml.replace(
+    '</Connect>',
+    `</Connect>
+  <Say voice="Polly.Mia-Neural" language="es-MX">Tuvimos una desconexión con el asistente. Por favor deja tu mensaje después del tono.</Say>
+  <Pause length="1"/>
+  <Record
+    maxLength="180"
+    recordingStatusCallback="${escapeXml(statusCallbackUrl)}"
+    recordingStatusCallbackEvent="completed"
+    transcribe="false"
+    playBeep="true"
+    trim="trim-silence"
+  />`
+  );
+}
+
+function extractConversationIdFromTwiml(twiml: string): string | null {
+  const match = twiml.match(/<Parameter\s+name=["']conversation_id["']\s+value=["']([^"']+)["']/i);
+  return match?.[1] || null;
+}
 
 function twimlSay(message: string): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
