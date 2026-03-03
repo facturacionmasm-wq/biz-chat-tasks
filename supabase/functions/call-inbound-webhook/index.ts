@@ -10,11 +10,11 @@ const corsHeaders = {
  * Inbound Call Webhook — Production-grade
  *
  * Twilio → this webhook → registers call in DB → resolves tenant →
- * routes to ElevenLabs via register-call API → fallback to voicemail.
+ * calls ElevenLabs register-call API → returns native TwiML AS-IS.
  *
- * IMPORTANT: Only the register-call API produces Twilio-compatible TwiML.
- * The signed-url/conversation endpoint uses WebRTC audio format and is
- * NOT compatible with Twilio's <Stream> (μ-law 8kHz).
+ * CRITICAL: The register-call API returns TwiML with <Connect><Stream>
+ * pointing to ElevenLabs' own infrastructure, which IS compatible with
+ * Twilio Media Streams. DO NOT rewrite the Stream URL.
  */
 
 // ═══════════ Twilio HMAC-SHA1 Signature Validation ═══════════
@@ -65,7 +65,6 @@ serve(async (req) => {
   const ELEVENLABS_AGENT_ID = Deno.env.get('ELEVENLABS_AGENT_ID');
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-  // Structured voice log helper (fire-and-forget)
   const voiceLog = (callSidVal: string, tenantIdVal: string | null, stage: string, errorCode?: string, errorMsg?: string, meta?: Record<string, unknown>) => {
     supabase.from('voice_call_logs').insert({
       call_sid: callSidVal,
@@ -219,7 +218,7 @@ serve(async (req) => {
       }
     }
 
-    // Record initial events (fire-and-forget, don't block TwiML response)
+    // Record initial events (fire-and-forget)
     if (callRecordId) {
       Promise.all([
         supabase.from('call_events').insert({
@@ -244,9 +243,10 @@ serve(async (req) => {
       .from('tenants').select('name, settings_json').eq('id', tenantId).single();
     const companyName = tenant?.name || '';
 
-    // ═══════════ 5. ROUTE TO ELEVENLABS VIA REGISTER-CALL + BRIDGE ═══════════
-    // We still use register-call to get Twilio-compatible TwiML/session wiring,
-    // then rewrite the <Stream url="..."> to our secure intermediary bridge.
+    // ═══════════ 5. ROUTE TO ELEVENLABS VIA REGISTER-CALL (NATIVE TwiML) ═══════════
+    // register-call returns TwiML with <Connect><Stream> pointing to ElevenLabs'
+    // own WebSocket infrastructure. This is DIRECTLY compatible with Twilio.
+    // DO NOT rewrite the Stream URL — use it AS-IS.
     let routingMethod = 'record';
     let sessionState = 'fallback_recording';
     let twiml: string | null = null;
@@ -294,17 +294,12 @@ serve(async (req) => {
             }
 
             if (twimlContent && twimlContent.includes('<Response')) {
-              twiml = await rewriteTwimlStreamToBridge(twimlContent, {
-                supabaseUrl: SUPABASE_URL,
-                callSid,
-                tenantId,
-                authToken: TWILIO_AUTH_TOKEN || undefined,
-              });
-
-              routingMethod = 'register_call_bridge';
+              // USE THE TwiML AS-IS — ElevenLabs' infrastructure handles the WebSocket
+              twiml = twimlContent;
+              routingMethod = 'register_call_native';
               sessionState = 'connected_to_agent';
-              console.log(`[inbound] ElevenLabs register-call TwiML bridged OK (attempt ${attempt + 1})`);
-              voiceLog(callSid, tenantId, 'routing_ok', undefined, undefined, { method: 'register_call_bridge', attempt: attempt + 1 });
+              console.log(`[inbound] ElevenLabs register-call TwiML OK (attempt ${attempt + 1}) — using native stream`);
+              voiceLog(callSid, tenantId, 'routing_ok', undefined, undefined, { method: 'register_call_native', attempt: attempt + 1 });
               break;
             } else {
               console.error(`[inbound] register-call: invalid TwiML (attempt ${attempt + 1}), body: ${String(twimlContent).substring(0, 200)}`);
@@ -338,7 +333,7 @@ serve(async (req) => {
         language: 'es',
         routing_method: routingMethod,
         state: sessionState,
-        retry_count: routingMethod === 'register_call' ? 0 : 1,
+        retry_count: 0,
       }, { onConflict: 'call_sid' }).then(({ error }) => {
         if (error) console.error('[inbound] Session upsert error:', error);
       });
@@ -362,7 +357,6 @@ serve(async (req) => {
         : 'Hola, bienvenido.';
 
       if (sessionState === 'failed_routing') {
-        // Voicemail fallback — record message instead of hanging up
         twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say voice="Polly.Mia-Neural" language="es-MX">${greeting} Nuestro asistente no está disponible en este momento. Por favor deje su mensaje después del tono.</Say>
@@ -407,73 +401,6 @@ serve(async (req) => {
     });
   }
 });
-
-async function rewriteTwimlStreamToBridge(
-  twiml: string,
-  context: { supabaseUrl: string; callSid: string; tenantId: string; authToken?: string }
-): Promise<string> {
-  const streamMatch = twiml.match(/<Stream\b[^>]*\burl="([^"]+)"/i);
-  if (!streamMatch?.[1]) {
-    console.warn('[inbound] No <Stream url="..."> found in TwiML, returning original');
-    return twiml;
-  }
-
-  const originalUrl = streamMatch[1];
-  const bridgeUrl = await buildBridgeWsUrl({
-    supabaseUrl: context.supabaseUrl,
-    targetUrl: originalUrl,
-    callSid: context.callSid,
-    tenantId: context.tenantId,
-    authToken: context.authToken,
-  });
-
-  return twiml.replace(originalUrl, escapeXml(bridgeUrl));
-}
-
-async function buildBridgeWsUrl(params: {
-  supabaseUrl: string;
-  targetUrl: string;
-  callSid: string;
-  tenantId: string;
-  authToken?: string;
-}): Promise<string> {
-  const baseWs = params.supabaseUrl
-    .replace(/^https:\/\//i, 'wss://')
-    .replace(/^http:\/\//i, 'ws://');
-
-  const exp = Math.floor(Date.now() / 1000) + 300;
-  const search = new URLSearchParams({
-    target: params.targetUrl,
-    callSid: params.callSid,
-    tenantId: params.tenantId,
-    exp: String(exp),
-  });
-
-  if (params.authToken) {
-    const sig = await signBridgeToken(params.authToken, `${params.callSid}.${params.tenantId}.${exp}.${params.targetUrl}`);
-    search.set('sig', sig);
-  }
-
-  return `${baseWs}/functions/v1/elevenlabs-bridge?${search.toString()}`;
-}
-
-async function signBridgeToken(secret: string, payload: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    'raw',
-    encoder.encode(secret),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign']
-  );
-
-  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(payload));
-  return toBase64Url(new Uint8Array(signature));
-}
-
-function toBase64Url(bytes: Uint8Array): string {
-  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
-}
 
 function twimlSay(message: string): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
