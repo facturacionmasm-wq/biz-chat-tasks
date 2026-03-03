@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Database, Shield, Zap, FileCode, Copy, Check, ChevronDown, ChevronRight, Search } from 'lucide-react';
+import { useState, useCallback } from 'react';
+import { Database, Shield, Zap, FileCode, Copy, Check, ChevronDown, ChevronRight, Search, FileDown } from 'lucide-react';
 import { toast } from 'sonner';
 
 /* ─────────────────────────────── DATA ─────────────────────────────── */
@@ -531,8 +531,37 @@ const SchemaDocsPage = () => {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
+  const exportPdf = useCallback(() => {
+    // Expand all tables for print
+    const allExpanded: Record<string, boolean> = {};
+    tables.forEach(t => { allExpanded[t.name] = true; });
+    setExpanded(allExpanded);
+    setSearch('');
+    // Wait for render, then print
+    setTimeout(() => {
+      window.print();
+    }, 300);
+  }, []);
+
   return (
-    <div className="p-4 sm:p-6 max-w-5xl mx-auto space-y-6">
+    <div className="p-4 sm:p-6 max-w-5xl mx-auto space-y-6 print:p-2 print:max-w-none" id="schema-docs">
+      {/* Print styles */}
+      <style>{`
+        @media print {
+          nav, aside, header, [data-sidebar], .no-print, [role="banner"] { display: none !important; }
+          body { background: white !important; color: black !important; font-size: 10px !important; }
+          #schema-docs { padding: 0 !important; max-width: 100% !important; }
+          .bg-card, .bg-background, .bg-secondary\\/20 { background: white !important; border-color: #ddd !important; }
+          code { background: #f3f4f6 !important; }
+          .text-foreground { color: black !important; }
+          .text-muted-foreground { color: #666 !important; }
+          .text-primary { color: #2563eb !important; }
+          button { display: none !important; }
+          @page { margin: 1cm; size: A4; }
+          .print\\:break-inside-avoid { break-inside: avoid; }
+        }
+      `}</style>
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
@@ -544,10 +573,16 @@ const SchemaDocsPage = () => {
             {tables.length} tablas · {helperFunctions.length} funciones helper · RLS completo
           </p>
         </div>
-        <button onClick={copyAll} className="flex items-center gap-2 bg-primary text-primary-foreground text-sm px-4 py-2 rounded-lg hover:opacity-90 transition-opacity font-medium">
-          {copiedId === 'all' ? <Check size={16} /> : <Copy size={16} />}
-          {copiedId === 'all' ? 'Copiado' : 'Copiar todo como Markdown'}
-        </button>
+        <div className="flex gap-2 no-print">
+          <button onClick={exportPdf} className="flex items-center gap-2 bg-secondary text-foreground text-sm px-4 py-2 rounded-lg hover:bg-secondary/80 transition-opacity font-medium border border-border">
+            <FileDown size={16} />
+            Descargar PDF
+          </button>
+          <button onClick={copyAll} className="flex items-center gap-2 bg-primary text-primary-foreground text-sm px-4 py-2 rounded-lg hover:opacity-90 transition-opacity font-medium">
+            {copiedId === 'all' ? <Check size={16} /> : <Copy size={16} />}
+            {copiedId === 'all' ? 'Copiado' : 'Copiar Markdown'}
+          </button>
+        </div>
       </div>
 
       {/* Search */}
@@ -614,7 +649,7 @@ const SchemaDocsPage = () => {
         {filtered.map(table => {
           const isOpen = expanded[table.name];
           return (
-            <div key={table.name} className="bg-card border border-border rounded-xl overflow-hidden">
+            <div key={table.name} className="bg-card border border-border rounded-xl overflow-hidden print:break-inside-avoid">
               <button
                 onClick={() => toggle(table.name)}
                 className="w-full flex items-center gap-3 p-4 text-left hover:bg-secondary/30 transition-colors"
