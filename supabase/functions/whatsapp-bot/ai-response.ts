@@ -14,6 +14,7 @@ export async function getAIResponse(
 ): Promise<string> {
   const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
   const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const contactPhone = conversation.contact_phone || '';
 
   // === KNOWLEDGE RETRIEVAL ===
   const [{ data: corrections }, { data: generalKnowledge }] = await Promise.all([
