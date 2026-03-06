@@ -598,11 +598,19 @@ async function handleState(input: StateInput): Promise<StateResult> {
   } else if (botState === 'credential_collect_platform') {
     // Cancel detection for credential flow
     const isCancelIntent = /\b(cancel|cancela|cancelar|no|salir|deja|dejarlo|olvida|olv[ií]dalo|para|detente|stop)\b/i.test(msg);
-    if (isCancelIntent) {
+    // Intent-change detection: if the message looks like a completely different request, break out
+    const isIntentChange = msg.length > 40 || /\b(ag[eé]nda|cita|recordatorio|recu[eé]rdame|agenda|gastos?|presupuesto|busca|dime|ayuda|pendientes)\b/i.test(msg);
+    if (isCancelIntent || isIntentChange) {
       delete newContext.cred_platform;
       delete newContext.cred_username;
-      reply = '✅ Proceso de credencial cancelado. ¿En qué más te puedo ayudar? 😊';
-      newState = 'employee_mode';
+      if (isIntentChange && !isCancelIntent) {
+        // Re-process as employee_mode — delegate to AI
+        newState = 'employee_mode';
+        reply = await getAIResponse(LOVABLE_API_KEY, tenantId, supabase, 'employee', effectiveMessageBody, conv);
+      } else {
+        reply = '✅ Proceso de credencial cancelado. ¿En qué más te puedo ayudar? 😊';
+        newState = 'employee_mode';
+      }
     } else {
       const platformName = effectiveMessageBody.trim();
       newContext = { ...newContext, cred_platform: platformName };
@@ -612,11 +620,17 @@ async function handleState(input: StateInput): Promise<StateResult> {
 
   } else if (botState === 'credential_collect_username') {
     const isCancelIntent = /\b(cancel|cancela|cancelar|no|salir|deja|dejarlo|olvida|olv[ií]dalo|para|detente|stop)\b/i.test(msg);
-    if (isCancelIntent) {
+    const isIntentChange = msg.length > 40 || /\b(ag[eé]nda|cita|recordatorio|recu[eé]rdame|agenda|gastos?|presupuesto|busca|dime|ayuda|pendientes)\b/i.test(msg);
+    if (isCancelIntent || isIntentChange) {
       delete newContext.cred_platform;
       delete newContext.cred_username;
-      reply = '✅ Proceso de credencial cancelado. ¿En qué más te puedo ayudar? 😊';
-      newState = 'employee_mode';
+      if (isIntentChange && !isCancelIntent) {
+        newState = 'employee_mode';
+        reply = await getAIResponse(LOVABLE_API_KEY, tenantId, supabase, 'employee', effectiveMessageBody, conv);
+      } else {
+        reply = '✅ Proceso de credencial cancelado. ¿En qué más te puedo ayudar? 😊';
+        newState = 'employee_mode';
+      }
     } else {
       const username = effectiveMessageBody.trim();
       newContext = { ...newContext, cred_username: username };
@@ -626,11 +640,17 @@ async function handleState(input: StateInput): Promise<StateResult> {
 
   } else if (botState === 'credential_collect_password') {
     const isCancelIntent = /\b(cancel|cancela|cancelar|salir|deja|dejarlo|olvida|olv[ií]dalo|para|detente|stop)\b/i.test(msg);
-    if (isCancelIntent) {
+    const isIntentChange = msg.length > 40 || /\b(ag[eé]nda|cita|recordatorio|recu[eé]rdame|agenda|gastos?|presupuesto|busca|dime|ayuda|pendientes)\b/i.test(msg);
+    if (isCancelIntent || isIntentChange) {
       delete newContext.cred_platform;
       delete newContext.cred_username;
-      reply = '✅ Proceso de credencial cancelado. ¿En qué más te puedo ayudar? 😊';
-      newState = 'employee_mode';
+      if (isIntentChange && !isCancelIntent) {
+        newState = 'employee_mode';
+        reply = await getAIResponse(LOVABLE_API_KEY, tenantId, supabase, 'employee', effectiveMessageBody, conv);
+      } else {
+        reply = '✅ Proceso de credencial cancelado. ¿En qué más te puedo ayudar? 😊';
+        newState = 'employee_mode';
+      }
     } else {
       const password = effectiveMessageBody.trim();
     const platform = newContext.cred_platform as string;
