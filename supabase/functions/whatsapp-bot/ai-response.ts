@@ -74,9 +74,11 @@ export async function getAIResponse(
   tomorrow.setDate(tomorrow.getDate() + 1);
   const tomorrowStr = tomorrow.toISOString().split('T')[0];
 
+  const adaptiveContext = buildAdaptiveContext(adaptiveProfile);
+
   const systemPrompt = mode === 'client'
-    ? buildClientPrompt(todayStr, tomorrowStr, currentTime, employeeList, knowledgeContext)
-    : buildEmployeePrompt(conversation.bot_context?.user_name || 'tu compañero', todayStr, tomorrowStr, currentTime, knowledgeContext);
+    ? buildClientPrompt(todayStr, tomorrowStr, currentTime, employeeList, knowledgeContext, adaptiveContext)
+    : buildEmployeePrompt(conversation.bot_context?.user_name || 'tu compañero', todayStr, tomorrowStr, currentTime, knowledgeContext, adaptiveContext);
 
   try {
     const messages = [
