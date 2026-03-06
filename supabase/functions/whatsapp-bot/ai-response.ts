@@ -113,6 +113,8 @@ export async function getAIResponse(
 
     if (!choice) return 'No pude generar una respuesta. Intenta reformular tu pregunta.';
 
+    // Track tools used for adaptive learning
+    const toolsUsed: string[] = [];
     // Check if AI wants to call tools
     if (choice.finish_reason === 'tool_calls' || choice.message?.tool_calls) {
       const toolCalls = choice.message.tool_calls;
