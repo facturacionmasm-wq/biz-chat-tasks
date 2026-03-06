@@ -2,6 +2,7 @@ import { AI_GATEWAY_URL } from "./constants.ts";
 import { AI_TOOLS } from "./tools.ts";
 import { executeTool } from "./tool-executor.ts";
 import { buildClientPrompt, buildEmployeePrompt } from "./prompts.ts";
+import { getAdaptiveProfile, buildAdaptiveContext, analyzeAndLearn } from "./adaptive-learning.ts";
 
 export async function getAIResponse(
   apiKey: string,
