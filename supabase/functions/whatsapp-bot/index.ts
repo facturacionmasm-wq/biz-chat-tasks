@@ -656,6 +656,7 @@ async function handleState(input: StateInput): Promise<StateResult> {
     delete newContext.cred_username;
     reply = `✅ ¡Credencial guardada exitosamente!\n\n🔐 *${platform}*\n👤 ${username}\n🔑 ••••••••\n\nTodos los miembros del equipo pueden verla en la sección *Credenciales* de la app.\n\n¿Te ayudo con algo más?`;
     newState = 'employee_mode';
+    }
 
   } else if (botState === 'employee_expense') {
     if (mediaUrl) {
