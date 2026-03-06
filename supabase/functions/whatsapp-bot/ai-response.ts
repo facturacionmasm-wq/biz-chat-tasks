@@ -16,8 +16,8 @@ export async function getAIResponse(
   const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
   const contactPhone = conversation.contact_phone || '';
 
-  // === KNOWLEDGE RETRIEVAL ===
-  const [{ data: corrections }, { data: generalKnowledge }] = await Promise.all([
+  // === KNOWLEDGE RETRIEVAL + ADAPTIVE PROFILE ===
+  const [{ data: corrections }, { data: generalKnowledge }, adaptiveProfile] = await Promise.all([
     supabase
       .from('knowledge_items')
       .select('title, content, category, tags')
@@ -34,6 +34,7 @@ export async function getAIResponse(
       .neq('category', 'Entrenamiento IA')
       .order('updated_at', { ascending: false })
       .limit(30),
+    getAdaptiveProfile(supabase, tenantId, contactPhone),
   ]);
 
   const allKnowledge = [...(corrections || []), ...(generalKnowledge || [])];
