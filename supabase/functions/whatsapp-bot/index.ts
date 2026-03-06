@@ -537,7 +537,10 @@ async function handleState(input: StateInput): Promise<StateResult> {
       newState = result.newState;
       newContext = result.newContext;
 
-    } else if (msg.includes('credencial') || msg.includes('contraseña') || msg.includes('password') || msg.includes('usuario y contraseña') || msg.includes('acceso')) {
+    } else if (
+      (msg.includes('credencial') || msg.includes('contraseña') || msg.includes('password') || msg.includes('usuario y contraseña') || msg.includes('acceso')) &&
+      !(/(borr|elimin|quita|borra|elimina|quitar|delete|remove)/i.test(msg))
+    ) {
       reply = '🔐 Vamos a guardar una credencial compartida.\n\n¿De qué *plataforma o servicio* es? (Ej: Gmail, Hosting, CPanel, Facebook Ads...)';
       newState = 'credential_collect_platform';
 
@@ -593,19 +596,43 @@ async function handleState(input: StateInput): Promise<StateResult> {
     }
 
   } else if (botState === 'credential_collect_platform') {
-    const platformName = effectiveMessageBody.trim();
-    newContext = { ...newContext, cred_platform: platformName };
-    reply = `📌 Plataforma: *${platformName}*\n\nAhora escríbeme el *usuario o email* de acceso:`;
-    newState = 'credential_collect_username';
+    // Cancel detection for credential flow
+    const isCancelIntent = /\b(cancel|cancela|cancelar|no|salir|deja|dejarlo|olvida|olv[ií]dalo|para|detente|stop)\b/i.test(msg);
+    if (isCancelIntent) {
+      delete newContext.cred_platform;
+      delete newContext.cred_username;
+      reply = '✅ Proceso de credencial cancelado. ¿En qué más te puedo ayudar? 😊';
+      newState = 'employee_mode';
+    } else {
+      const platformName = effectiveMessageBody.trim();
+      newContext = { ...newContext, cred_platform: platformName };
+      reply = `📌 Plataforma: *${platformName}*\n\nAhora escríbeme el *usuario o email* de acceso:\n\n_Escribe *cancelar* para salir del proceso._`;
+      newState = 'credential_collect_username';
+    }
 
   } else if (botState === 'credential_collect_username') {
-    const username = effectiveMessageBody.trim();
-    newContext = { ...newContext, cred_username: username };
-    reply = `👤 Usuario: *${username}*\n\nAhora escríbeme la *contraseña*:`;
-    newState = 'credential_collect_password';
+    const isCancelIntent = /\b(cancel|cancela|cancelar|no|salir|deja|dejarlo|olvida|olv[ií]dalo|para|detente|stop)\b/i.test(msg);
+    if (isCancelIntent) {
+      delete newContext.cred_platform;
+      delete newContext.cred_username;
+      reply = '✅ Proceso de credencial cancelado. ¿En qué más te puedo ayudar? 😊';
+      newState = 'employee_mode';
+    } else {
+      const username = effectiveMessageBody.trim();
+      newContext = { ...newContext, cred_username: username };
+      reply = `👤 Usuario: *${username}*\n\nAhora escríbeme la *contraseña*:\n\n_Escribe *cancelar* para salir del proceso._`;
+      newState = 'credential_collect_password';
+    }
 
   } else if (botState === 'credential_collect_password') {
-    const password = effectiveMessageBody.trim();
+    const isCancelIntent = /\b(cancel|cancela|cancelar|salir|deja|dejarlo|olvida|olv[ií]dalo|para|detente|stop)\b/i.test(msg);
+    if (isCancelIntent) {
+      delete newContext.cred_platform;
+      delete newContext.cred_username;
+      reply = '✅ Proceso de credencial cancelado. ¿En qué más te puedo ayudar? 😊';
+      newState = 'employee_mode';
+    } else {
+      const password = effectiveMessageBody.trim();
     const platform = newContext.cred_platform as string;
     const username = newContext.cred_username as string;
 
