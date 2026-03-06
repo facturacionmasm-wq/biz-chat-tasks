@@ -6,6 +6,7 @@ export function buildClientPrompt(
   currentTime: string,
   employeeList: string,
   knowledgeContext: string,
+  adaptiveContext: string = '',
 ): string {
   return `Eres Aria, la asistente virtual del negocio. Eres cálida, empática, genuinamente humana y cercana. Hablas en español mexicano coloquial pero profesional.
 
@@ -56,7 +57,7 @@ Empleados disponibles:
 ${employeeList}
 
 Base de conocimientos:
-${knowledgeContext}`;
+${knowledgeContext}${adaptiveContext}`;
 }
 
 export function buildEmployeePrompt(
@@ -65,6 +66,7 @@ export function buildEmployeePrompt(
   tomorrowStr: string,
   currentTime: string,
   knowledgeContext: string,
+  adaptiveContext: string = '',
 ): string {
   return `Eres Aria, la asistente personal de ${userName}. Eres su mano derecha: cálida, eficiente y genuinamente humana.
 
@@ -132,5 +134,5 @@ REGLA DE CONOCIMIENTO:
 - Para info general que no tengas, usa search_web.
 
 Base de conocimientos:
-${knowledgeContext}`;
+${knowledgeContext}${adaptiveContext}`;
 }

@@ -375,6 +375,65 @@ export type Database = {
           },
         ]
       }
+      bot_adaptive_profiles: {
+        Row: {
+          contact_phone: string
+          created_at: string
+          id: string
+          interaction_count: number
+          interaction_patterns: Json
+          last_interaction_at: string | null
+          learned_defaults: Json
+          negative_signals: number
+          positive_signals: number
+          process_shortcuts: Json
+          recent_learnings: Json
+          tenant_id: string
+          tone_profile: Json
+          updated_at: string
+        }
+        Insert: {
+          contact_phone: string
+          created_at?: string
+          id?: string
+          interaction_count?: number
+          interaction_patterns?: Json
+          last_interaction_at?: string | null
+          learned_defaults?: Json
+          negative_signals?: number
+          positive_signals?: number
+          process_shortcuts?: Json
+          recent_learnings?: Json
+          tenant_id: string
+          tone_profile?: Json
+          updated_at?: string
+        }
+        Update: {
+          contact_phone?: string
+          created_at?: string
+          id?: string
+          interaction_count?: number
+          interaction_patterns?: Json
+          last_interaction_at?: string | null
+          learned_defaults?: Json
+          negative_signals?: number
+          positive_signals?: number
+          process_shortcuts?: Json
+          recent_learnings?: Json
+          tenant_id?: string
+          tone_profile?: Json
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bot_adaptive_profiles_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       call_costs: {
         Row: {
           ai_tokens_used: number

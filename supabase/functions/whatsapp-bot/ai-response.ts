@@ -2,6 +2,7 @@ import { AI_GATEWAY_URL } from "./constants.ts";
 import { AI_TOOLS } from "./tools.ts";
 import { executeTool } from "./tool-executor.ts";
 import { buildClientPrompt, buildEmployeePrompt } from "./prompts.ts";
+import { getAdaptiveProfile, buildAdaptiveContext, analyzeAndLearn } from "./adaptive-learning.ts";
 
 export async function getAIResponse(
   apiKey: string,
@@ -13,9 +14,10 @@ export async function getAIResponse(
 ): Promise<string> {
   const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
   const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const contactPhone = conversation.contact_phone || '';
 
-  // === KNOWLEDGE RETRIEVAL ===
-  const [{ data: corrections }, { data: generalKnowledge }] = await Promise.all([
+  // === KNOWLEDGE RETRIEVAL + ADAPTIVE PROFILE ===
+  const [{ data: corrections }, { data: generalKnowledge }, adaptiveProfile] = await Promise.all([
     supabase
       .from('knowledge_items')
       .select('title, content, category, tags')
@@ -32,6 +34,7 @@ export async function getAIResponse(
       .neq('category', 'Entrenamiento IA')
       .order('updated_at', { ascending: false })
       .limit(30),
+    getAdaptiveProfile(supabase, tenantId, contactPhone),
   ]);
 
   const allKnowledge = [...(corrections || []), ...(generalKnowledge || [])];
@@ -71,9 +74,11 @@ export async function getAIResponse(
   tomorrow.setDate(tomorrow.getDate() + 1);
   const tomorrowStr = tomorrow.toISOString().split('T')[0];
 
+  const adaptiveContext = buildAdaptiveContext(adaptiveProfile);
+
   const systemPrompt = mode === 'client'
-    ? buildClientPrompt(todayStr, tomorrowStr, currentTime, employeeList, knowledgeContext)
-    : buildEmployeePrompt(conversation.bot_context?.user_name || 'tu compañero', todayStr, tomorrowStr, currentTime, knowledgeContext);
+    ? buildClientPrompt(todayStr, tomorrowStr, currentTime, employeeList, knowledgeContext, adaptiveContext)
+    : buildEmployeePrompt(conversation.bot_context?.user_name || 'tu compañero', todayStr, tomorrowStr, currentTime, knowledgeContext, adaptiveContext);
 
   try {
     const messages = [
@@ -108,6 +113,8 @@ export async function getAIResponse(
 
     if (!choice) return 'No pude generar una respuesta. Intenta reformular tu pregunta.';
 
+    // Track tools used for adaptive learning
+    const toolsUsed: string[] = [];
     // Check if AI wants to call tools
     if (choice.finish_reason === 'tool_calls' || choice.message?.tool_calls) {
       const toolCalls = choice.message.tool_calls;
@@ -115,6 +122,7 @@ export async function getAIResponse(
 
       for (const tc of toolCalls) {
         const fnName = tc.function.name;
+        toolsUsed.push(fnName);
         let fnArgs: any;
         try {
           fnArgs = typeof tc.function.arguments === 'string' ? JSON.parse(tc.function.arguments) : tc.function.arguments;
@@ -152,11 +160,23 @@ export async function getAIResponse(
       }
 
       const followUpResult = await followUpResponse.json();
-      return followUpResult.choices?.[0]?.message?.content || 'Acción ejecutada correctamente.';
+      const finalReply = followUpResult.choices?.[0]?.message?.content || 'Acción ejecutada correctamente.';
+
+      // Async adaptive learning (fire-and-forget)
+      analyzeAndLearn(supabase, apiKey, tenantId, contactPhone, userMessage, finalReply, mode, toolsUsed)
+        .catch(e => console.error('[ADAPTIVE] async error:', e));
+
+      return finalReply;
     }
 
     // No tool calls — direct response
-    return choice.message?.content || 'No pude generar una respuesta.';
+    const directReply = choice.message?.content || 'No pude generar una respuesta.';
+
+    // Async adaptive learning (fire-and-forget)
+    analyzeAndLearn(supabase, apiKey, tenantId, contactPhone, userMessage, directReply, mode, toolsUsed)
+      .catch(e => console.error('[ADAPTIVE] async error:', e));
+
+    return directReply;
   } catch (err) {
     console.error('AI error:', err);
     return 'Disculpa, tengo un problema técnico. Intenta de nuevo en un momento.';
