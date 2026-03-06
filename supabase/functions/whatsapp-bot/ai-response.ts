@@ -122,6 +122,7 @@ export async function getAIResponse(
 
       for (const tc of toolCalls) {
         const fnName = tc.function.name;
+        toolsUsed.push(fnName);
         let fnArgs: any;
         try {
           fnArgs = typeof tc.function.arguments === 'string' ? JSON.parse(tc.function.arguments) : tc.function.arguments;
@@ -159,11 +160,23 @@ export async function getAIResponse(
       }
 
       const followUpResult = await followUpResponse.json();
-      return followUpResult.choices?.[0]?.message?.content || 'Acción ejecutada correctamente.';
+      const finalReply = followUpResult.choices?.[0]?.message?.content || 'Acción ejecutada correctamente.';
+
+      // Async adaptive learning (fire-and-forget)
+      analyzeAndLearn(supabase, apiKey, tenantId, contactPhone, userMessage, finalReply, mode, toolsUsed)
+        .catch(e => console.error('[ADAPTIVE] async error:', e));
+
+      return finalReply;
     }
 
     // No tool calls — direct response
-    return choice.message?.content || 'No pude generar una respuesta.';
+    const directReply = choice.message?.content || 'No pude generar una respuesta.';
+
+    // Async adaptive learning (fire-and-forget)
+    analyzeAndLearn(supabase, apiKey, tenantId, contactPhone, userMessage, directReply, mode, toolsUsed)
+      .catch(e => console.error('[ADAPTIVE] async error:', e));
+
+    return directReply;
   } catch (err) {
     console.error('AI error:', err);
     return 'Disculpa, tengo un problema técnico. Intenta de nuevo en un momento.';
