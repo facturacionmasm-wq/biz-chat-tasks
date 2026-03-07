@@ -370,7 +370,7 @@ export const AI_TOOLS = [
     type: 'function',
     function: {
       name: 'get_document_detail',
-      description: 'Obtener detalle completo de un documento: resumen, entidades, montos, fechas, riesgos. Usa después de search_documents para ver detalles de un documento específico.',
+      description: 'Obtener detalle completo de un documento: resumen, entidades, montos, fechas, riesgos, análisis de agentes. Usa después de search_documents.',
       parameters: {
         type: 'object',
         properties: {
@@ -384,13 +384,13 @@ export const AI_TOOLS = [
     type: 'function',
     function: {
       name: 'manage_drive_folders',
-      description: 'Gestionar carpetas en Google Drive: crear, listar, buscar carpetas. Usa cuando pidan "crea una carpeta para X", "muéstrame las carpetas", "organiza en Drive".',
+      description: 'Gestionar carpetas en Google Drive: crear, listar, buscar carpetas.',
       parameters: {
         type: 'object',
         properties: {
-          action: { type: 'string', enum: ['create', 'list', 'search'], description: 'Acción: create=crear carpeta, list=listar subcarpetas, search=buscar carpeta' },
-          folder_name: { type: 'string', description: 'Nombre de la carpeta. Para create/search.' },
-          parent_folder_name: { type: 'string', description: 'Nombre de la carpeta padre (opcional). Para create.' },
+          action: { type: 'string', enum: ['create', 'list', 'search'], description: 'Acción' },
+          folder_name: { type: 'string', description: 'Nombre de la carpeta' },
+          parent_folder_name: { type: 'string', description: 'Carpeta padre (opcional)' },
         },
         required: ['action'],
       },
@@ -400,14 +400,82 @@ export const AI_TOOLS = [
     type: 'function',
     function: {
       name: 'get_document_alerts',
-      description: 'Obtener alertas de documentos: vencimientos próximos, riesgos detectados, documentos incompletos. Usa cuando pregunten "hay alertas", "documentos con riesgo", "qué vence pronto".',
+      description: 'Obtener alertas de documentos: vencimientos, riesgos, documentos incompletos.',
       parameters: {
         type: 'object',
         properties: {
           severity: { type: 'string', enum: ['high', 'medium', 'low'], description: 'Filtrar por severidad' },
-          resolved: { type: 'boolean', description: 'Incluir alertas resueltas. Default: false' },
+          resolved: { type: 'boolean', description: 'Incluir resueltas. Default: false' },
         },
         required: [],
+      },
+    },
+  },
+
+  // ──────────────── RAG & SEMANTIC SEARCH TOOLS ────────────────
+  {
+    type: 'function',
+    function: {
+      name: 'rag_search',
+      description: 'Búsqueda semántica avanzada sobre el contenido de documentos. Usa cuando hagan preguntas complejas sobre documentos: "¿cuándo vence el contrato?", "¿cuál es la penalización?", "busca la cláusula de exclusividad", "¿qué monto aparece en la factura?", "compárame los contratos". Mejor que search_documents para preguntas sobre CONTENIDO.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'La pregunta o consulta semántica sobre documentos' },
+          document_type: { type: 'string', description: 'Filtrar por tipo de documento (opcional)' },
+          limit: { type: 'number', description: 'Máximo de resultados (1-20). Default: 5' },
+        },
+        required: ['query'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'compare_documents',
+      description: 'Comparar dos documentos para detectar diferencias (montos, fechas, cláusulas, condiciones). Usa cuando pidan "compara estos dos contratos", "qué cambió entre versiones", "diferencias entre documentos".',
+      parameters: {
+        type: 'object',
+        properties: {
+          document_id_1: { type: 'string', description: 'ID del primer documento' },
+          document_id_2: { type: 'string', description: 'ID del segundo documento' },
+        },
+        required: ['document_id_1', 'document_id_2'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_document_memory',
+      description: 'Consultar la memoria documental: historial de documentos por contacto, patrones del negocio, análisis previos. Usa cuando pregunten "qué documentos ha enviado este cliente", "historial documental", "qué sabe Aria sobre los documentos de X".',
+      parameters: {
+        type: 'object',
+        properties: {
+          contact_phone: { type: 'string', description: 'Teléfono del contacto para consultar su historial' },
+          query: { type: 'string', description: 'Texto para buscar en la memoria' },
+          memory_type: { type: 'string', enum: ['client', 'tenant', 'conversation'], description: 'Tipo de memoria. Default: client' },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'manage_workflow_rules',
+      description: 'Ver o gestionar reglas de workflows documentales automáticos. Usa cuando pregunten "qué workflows hay", "reglas automáticas de documentos", "automatizaciones".',
+      parameters: {
+        type: 'object',
+        properties: {
+          action: { type: 'string', enum: ['list', 'create', 'toggle'], description: 'Acción' },
+          rule_id: { type: 'string', description: 'ID de la regla. Para toggle.' },
+          name: { type: 'string', description: 'Nombre de la regla. Para create.' },
+          trigger_type: { type: 'string', enum: ['document_type', 'keyword', 'amount_threshold', 'date_proximity'], description: 'Tipo de trigger. Para create.' },
+          trigger_config: { type: 'object', description: 'Configuración del trigger. Para create.' },
+          actions: { type: 'array', description: 'Acciones a ejecutar. Para create.' },
+        },
+        required: ['action'],
       },
     },
   },

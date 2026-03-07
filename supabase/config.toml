@@ -104,3 +104,9 @@ verify_jwt = false
 
 [functions.calendar-tools]
 verify_jwt = false
+
+[functions.document-search]
+verify_jwt = false
+
+[functions.parse-pdf]
+verify_jwt = false

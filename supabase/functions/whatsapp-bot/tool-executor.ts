@@ -1,5 +1,7 @@
 // Executes AI tool calls against the database and external services
 import { searchDocuments, getDocumentDetail } from "./document-handler.ts";
+import { compareDocuments } from "./document-agents.ts";
+import { retrieveMemory } from "./document-memory.ts";
 
 export async function executeTool(
   toolName: string,
@@ -106,6 +108,23 @@ export async function executeTool(
 
   if (toolName === 'get_document_alerts') {
     return await executeGetDocumentAlerts(args, tenantId, supabase);
+  }
+
+  // ──── RAG & Semantic Search tools ────
+  if (toolName === 'rag_search') {
+    return await executeRagSearch(args, tenantId, supabaseUrl, serviceRoleKey);
+  }
+
+  if (toolName === 'compare_documents') {
+    return await executeCompareDocuments(args, tenantId, supabase);
+  }
+
+  if (toolName === 'get_document_memory') {
+    return await executeGetDocumentMemory(args, tenantId, supabase);
+  }
+
+  if (toolName === 'manage_workflow_rules') {
+    return await executeManageWorkflowRules(args, tenantId, supabase);
   }
 
   return JSON.stringify({ error: 'Unknown tool' });
@@ -1684,4 +1703,108 @@ async function executeGetDocumentAlerts(
     })),
     count: (data || []).length,
   });
+}
+
+// ==================== RAG SEARCH ====================
+
+async function executeRagSearch(
+  args: any, tenantId: string, supabaseUrl: string, serviceRoleKey: string,
+): Promise<string> {
+  try {
+    const res = await fetch(`${supabaseUrl}/functions/v1/document-search`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${serviceRoleKey}` },
+      body: JSON.stringify({
+        action: 'search',
+        tenant_id: tenantId,
+        query: args.query,
+        document_type: args.document_type || null,
+        limit: args.limit || 5,
+      }),
+    });
+    const result = await res.json();
+    return JSON.stringify(result);
+  } catch (err) {
+    console.error('RAG search error:', err);
+    return JSON.stringify({ error: 'Error en búsqueda semántica.' });
+  }
+}
+
+// ==================== COMPARE DOCUMENTS ====================
+
+async function executeCompareDocuments(
+  args: any, tenantId: string, supabase: any,
+): Promise<string> {
+  const { document_id_1, document_id_2 } = args;
+  if (!document_id_1 || !document_id_2) return JSON.stringify({ error: 'Se necesitan dos IDs de documento.' });
+
+  const [{ data: doc1 }, { data: doc2 }] = await Promise.all([
+    supabase.from('documents').select('original_filename, extracted_text, analysis_summary').eq('id', document_id_1).eq('tenant_id', tenantId).single(),
+    supabase.from('documents').select('original_filename, extracted_text, analysis_summary').eq('id', document_id_2).eq('tenant_id', tenantId).single(),
+  ]);
+
+  if (!doc1 || !doc2) return JSON.stringify({ error: 'Uno o ambos documentos no fueron encontrados.' });
+
+  const apiKey = Deno.env.get('LOVABLE_API_KEY');
+  if (!apiKey) return JSON.stringify({ error: 'AI not configured' });
+
+  const result = await compareDocuments(
+    apiKey,
+    doc1.extracted_text || doc1.analysis_summary || '',
+    doc1.original_filename,
+    doc2.extracted_text || doc2.analysis_summary || '',
+    doc2.original_filename,
+  );
+
+  return JSON.stringify(result || { error: 'No se pudo completar la comparación.' });
+}
+
+// ==================== DOCUMENT MEMORY ====================
+
+async function executeGetDocumentMemory(
+  args: any, tenantId: string, supabase: any,
+): Promise<string> {
+  const memories = await retrieveMemory(supabase, tenantId, {
+    memoryType: args.memory_type || (args.contact_phone ? 'client' : 'tenant'),
+    scopeKey: args.contact_phone || tenantId,
+    query: args.query,
+    limit: 15,
+  });
+
+  return JSON.stringify({
+    memories: memories.map(m => ({ type: m.memory_type, content: m.content, metadata: m.metadata })),
+    count: memories.length,
+  });
+}
+
+// ==================== WORKFLOW RULES ====================
+
+async function executeManageWorkflowRules(
+  args: any, tenantId: string, supabase: any,
+): Promise<string> {
+  if (args.action === 'list') {
+    const { data } = await supabase.from('document_workflow_rules').select('*').eq('tenant_id', tenantId).order('created_at', { ascending: false });
+    return JSON.stringify({ rules: data || [], count: (data || []).length });
+  }
+
+  if (args.action === 'create') {
+    if (!args.name) return JSON.stringify({ error: 'Se necesita un nombre para la regla.' });
+    const { data, error } = await supabase.from('document_workflow_rules').insert({
+      tenant_id: tenantId, name: args.name,
+      trigger_type: args.trigger_type || 'document_type',
+      trigger_config: args.trigger_config || {},
+      actions: args.actions || [],
+    }).select('id').single();
+    if (error) return JSON.stringify({ error: error.message });
+    return JSON.stringify({ success: true, rule_id: data.id, message: `Regla "${args.name}" creada.` });
+  }
+
+  if (args.action === 'toggle' && args.rule_id) {
+    const { data: rule } = await supabase.from('document_workflow_rules').select('active').eq('id', args.rule_id).eq('tenant_id', tenantId).single();
+    if (!rule) return JSON.stringify({ error: 'Regla no encontrada.' });
+    await supabase.from('document_workflow_rules').update({ active: !rule.active }).eq('id', args.rule_id);
+    return JSON.stringify({ success: true, active: !rule.active });
+  }
+
+  return JSON.stringify({ error: 'Acción no reconocida.' });
 }

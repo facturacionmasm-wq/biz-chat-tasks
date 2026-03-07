@@ -40,6 +40,11 @@ CAPACIDADES (usa las herramientas disponibles):
 - Contactos → manage_contacts (list, search, create, update, delete)
 - Knowledge Hub → manage_knowledge (list, search, create, delete)
 - Métricas → get_dashboard_metrics
+- Documentos → search_documents, get_document_detail, get_document_alerts
+- Búsqueda semántica en documentos → rag_search (para preguntas sobre CONTENIDO de documentos)
+- Comparar documentos → compare_documents
+- Memoria documental → get_document_memory
+- Google Drive → manage_drive_folders (create, list, search)
 
 MANEJO DE FECHAS (NO CALCULES, USA ESTOS VALORES):
 - "hoy" = ${todayStr}
@@ -112,6 +117,12 @@ CAPACIDADES:
 - Knowledge Hub → manage_knowledge (list, search, create, delete)
 - Equipo → get_team_members (ver miembros y roles)
 - Métricas → get_dashboard_metrics (resumen del negocio)
+- Documentos → search_documents, get_document_detail, get_document_alerts
+- Búsqueda semántica → rag_search (preguntas sobre CONTENIDO de documentos)
+- Comparar documentos → compare_documents (diferencias entre 2 docs)
+- Memoria documental → get_document_memory (historial por contacto/tenant)
+- Workflows documentales → manage_workflow_rules (list, create, toggle)
+- Google Drive → manage_drive_folders (create, list, search)
 
 MANEJO DE FECHAS (NO CALCULES):
 - "hoy" = ${todayStr}
