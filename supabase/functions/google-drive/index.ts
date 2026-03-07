@@ -326,6 +326,201 @@ serve(async (req) => {
       });
     }
 
+    // ─── ENSURE SUBFOLDER ───
+    if (action === 'ensure_subfolder') {
+      const { folder_name, parent_folder_name } = body;
+      if (!folder_name) return jsonResponse({ error: 'folder_name required' }, 400);
+
+      const accessToken = await getValidAccessToken(supabase, tenantId, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET);
+      if (!accessToken) return jsonResponse({ error: 'No Google access token' }, 400);
+
+      const { data: driveSettings } = await supabase
+        .from('tenant_drive_settings')
+        .select('drive_root_folder_id')
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
+
+      if (!driveSettings?.drive_root_folder_id) {
+        return jsonResponse({ error: 'Drive not configured' }, 400);
+      }
+
+      let parentId = driveSettings.drive_root_folder_id;
+
+      // If parent_folder_name specified, find or create it first
+      if (parent_folder_name) {
+        const parentSearch = await searchFolderByName(accessToken, parent_folder_name, driveSettings.drive_root_folder_id);
+        if (parentSearch) {
+          parentId = parentSearch;
+        } else {
+          const newParent = await createFolder(accessToken, parent_folder_name, driveSettings.drive_root_folder_id);
+          if (newParent.id) parentId = newParent.id;
+        }
+      }
+
+      // Check if subfolder already exists
+      const existingId = await searchFolderByName(accessToken, folder_name, parentId);
+      if (existingId) {
+        return jsonResponse({ folder_id: existingId, already_exists: true });
+      }
+
+      // Create it
+      const result = await createFolder(accessToken, folder_name, parentId);
+      if (!result.id) return jsonResponse({ error: 'Could not create folder' }, 500);
+
+      await supabase.from('drive_audit_log').insert({
+        tenant_id: tenantId, user_id: callerUserId,
+        action: 'subfolder_created', resource_type: 'folder',
+        resource_id: result.id, resource_name: folder_name,
+        metadata: { parent_id: parentId },
+      });
+
+      return jsonResponse({ folder_id: result.id, created: true });
+    }
+
+    // ─── UPLOAD FILE TO SPECIFIC FOLDER ───
+    if (action === 'upload_file_to_folder') {
+      const { file_url, file_name, target_folder_id, document_id, twilio_sid, twilio_token } = body;
+      if (!file_url) return jsonResponse({ error: 'file_url required' }, 400);
+
+      const { data: driveSettings } = await supabase
+        .from('tenant_drive_settings')
+        .select('drive_root_folder_id')
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
+
+      if (!driveSettings) return jsonResponse({ error: 'Drive not configured' }, 400);
+
+      const accessToken = await getValidAccessToken(supabase, tenantId, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET);
+      if (!accessToken) return jsonResponse({ error: 'No access token' }, 500);
+
+      const parentFolderId = target_folder_id || driveSettings.drive_root_folder_id;
+
+      // Download file
+      let fileBuffer: ArrayBuffer;
+      let contentType = 'application/octet-stream';
+      try {
+        const fetchHeaders: Record<string, string> = {};
+        if (twilio_sid && twilio_token) {
+          fetchHeaders['Authorization'] = `Basic ${btoa(`${twilio_sid}:${twilio_token}`)}`;
+        }
+        const fileRes = await fetch(file_url, { headers: fetchHeaders });
+        if (!fileRes.ok) throw new Error(`Download failed: ${fileRes.status}`);
+        contentType = fileRes.headers.get('content-type') || 'application/octet-stream';
+        fileBuffer = await fileRes.arrayBuffer();
+      } catch (e) {
+        console.error('File download error:', e);
+        return jsonResponse({ error: 'Could not download file' }, 500);
+      }
+
+      const finalName = file_name || `document_${Date.now()}.${contentType.split('/').pop() || 'bin'}`;
+
+      // Upload via multipart
+      const metadata = { name: finalName, parents: [parentFolderId] };
+      const boundary = 'boundary_' + Date.now();
+      const metadataStr = JSON.stringify(metadata);
+      const encoder = new TextEncoder();
+      const metaPart = encoder.encode(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadataStr}\r\n`);
+      const filePart = encoder.encode(`--${boundary}\r\nContent-Type: ${contentType}\r\n\r\n`);
+      const endPart = encoder.encode(`\r\n--${boundary}--`);
+      const fileBytes = new Uint8Array(fileBuffer);
+      const totalLength = metaPart.length + filePart.length + fileBytes.length + endPart.length;
+      const combined = new Uint8Array(totalLength);
+      let offset = 0;
+      combined.set(metaPart, offset); offset += metaPart.length;
+      combined.set(filePart, offset); offset += filePart.length;
+      combined.set(fileBytes, offset); offset += fileBytes.length;
+      combined.set(endPart, offset);
+
+      const uploadRes = await fetch(`${DRIVE_UPLOAD_API}/files?uploadType=multipart&fields=id,webViewLink`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': `multipart/related; boundary=${boundary}` },
+        body: combined,
+      });
+
+      if (!uploadRes.ok) {
+        const errText = await uploadRes.text();
+        console.error('Drive upload error:', uploadRes.status, errText);
+        return jsonResponse({ error: 'Upload failed' }, 500);
+      }
+
+      const uploadData = await uploadRes.json();
+      const driveFileId = uploadData.id;
+      const driveFileUrl = uploadData.webViewLink || `https://drive.google.com/file/d/${driveFileId}/view`;
+
+      // Update document record if provided
+      if (document_id) {
+        await supabase.from('documents').update({
+          google_drive_file_id: driveFileId,
+          google_drive_folder_id: parentFolderId,
+          google_drive_url: driveFileUrl,
+          upload_status: 'uploaded',
+        }).eq('id', document_id);
+      }
+
+      await supabase.from('drive_audit_log').insert({
+        tenant_id: tenantId, user_id: callerUserId,
+        action: 'file_uploaded', resource_type: 'file',
+        resource_id: driveFileId, resource_name: finalName,
+        metadata: { folder_id: parentFolderId, document_id, content_type: contentType },
+      });
+
+      return jsonResponse({ success: true, drive_file_id: driveFileId, drive_file_url: driveFileUrl });
+    }
+
+    // ─── LIST FOLDERS ───
+    if (action === 'list_folders') {
+      const { data: driveSettings } = await supabase
+        .from('tenant_drive_settings')
+        .select('drive_root_folder_id')
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
+
+      if (!driveSettings?.drive_root_folder_id) return jsonResponse({ folders: [], error: 'Drive not configured' });
+
+      const accessToken = await getValidAccessToken(supabase, tenantId, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET);
+      if (!accessToken) return jsonResponse({ error: 'No access token' }, 400);
+
+      const query = `'${driveSettings.drive_root_folder_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+      const listRes = await fetch(`${DRIVE_API}/files?q=${encodeURIComponent(query)}&fields=files(id,name,createdTime)&orderBy=name`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+
+      if (!listRes.ok) return jsonResponse({ error: 'Could not list folders' }, 500);
+      const listData = await listRes.json();
+
+      return jsonResponse({
+        folders: (listData.files || []).map((f: any) => ({
+          id: f.id,
+          name: f.name,
+          created: f.createdTime,
+        })),
+      });
+    }
+
+    // ─── SEARCH FOLDER ───
+    if (action === 'search_folder') {
+      const { folder_name: searchName } = body;
+      if (!searchName) return jsonResponse({ error: 'folder_name required' }, 400);
+
+      const { data: driveSettings } = await supabase
+        .from('tenant_drive_settings')
+        .select('drive_root_folder_id')
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
+
+      if (!driveSettings?.drive_root_folder_id) return jsonResponse({ folders: [] });
+
+      const accessToken = await getValidAccessToken(supabase, tenantId, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET);
+      if (!accessToken) return jsonResponse({ error: 'No access token' }, 400);
+
+      const folderId = await searchFolderByName(accessToken, searchName, driveSettings.drive_root_folder_id);
+      return jsonResponse({
+        found: !!folderId,
+        folder_id: folderId,
+        folder_name: searchName,
+      });
+    }
+
     return jsonResponse({ error: 'Unknown action' }, 400);
   } catch (err) {
     console.error('Google Drive function error:', err);
@@ -419,6 +614,16 @@ async function createFolder(accessToken: string, name: string, parentId: string 
 
   const data = await res.json();
   return { id: data.id };
+}
+
+async function searchFolderByName(accessToken: string, name: string, parentId: string): Promise<string | null> {
+  const query = `name='${name.replace(/'/g, "\\'")}' and '${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+  const res = await fetch(`${DRIVE_API}/files?q=${encodeURIComponent(query)}&fields=files(id)&pageSize=1`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) return null;
+  const data = await res.json();
+  return data.files?.[0]?.id || null;
 }
 
 async function checkAdminRole(supabase: any, userId: string, tenantId: string): Promise<boolean> {
