@@ -1587,3 +1587,101 @@ function parseLocalToUTC(rawDateStr: string, tz: string): Date {
   }
   return tempDate;
 }
+
+// ==================== MANAGE DRIVE FOLDERS ====================
+
+async function executeManageDriveFolders(
+  args: any,
+  tenantId: string,
+  supabaseUrl: string,
+  serviceRoleKey: string,
+): Promise<string> {
+  const { action, folder_name, parent_folder_name } = args;
+
+  try {
+    if (action === 'create') {
+      if (!folder_name) return JSON.stringify({ error: 'Se necesita el nombre de la carpeta.' });
+      const res = await fetch(`${supabaseUrl}/functions/v1/google-drive`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${serviceRoleKey}` },
+        body: JSON.stringify({
+          action: 'ensure_subfolder',
+          tenant_id: tenantId,
+          internal_caller: true,
+          folder_name,
+          parent_folder_name: parent_folder_name || null,
+        }),
+      });
+      const result = await res.json();
+      if (result.folder_id) {
+        return JSON.stringify({ success: true, folder_id: result.folder_id, folder_name, message: `Carpeta "${folder_name}" creada/verificada en Google Drive.` });
+      }
+      return JSON.stringify({ error: result.error || 'No se pudo crear la carpeta.' });
+    }
+
+    if (action === 'list') {
+      const res = await fetch(`${supabaseUrl}/functions/v1/google-drive`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${serviceRoleKey}` },
+        body: JSON.stringify({ action: 'list_folders', tenant_id: tenantId, internal_caller: true }),
+      });
+      const result = await res.json();
+      return JSON.stringify(result);
+    }
+
+    if (action === 'search') {
+      if (!folder_name) return JSON.stringify({ error: 'Se necesita el nombre a buscar.' });
+      const res = await fetch(`${supabaseUrl}/functions/v1/google-drive`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${serviceRoleKey}` },
+        body: JSON.stringify({ action: 'search_folder', tenant_id: tenantId, internal_caller: true, folder_name }),
+      });
+      const result = await res.json();
+      return JSON.stringify(result);
+    }
+
+    return JSON.stringify({ error: 'Acción no reconocida.' });
+  } catch (err) {
+    console.error('Drive folders error:', err);
+    return JSON.stringify({ error: 'Error al gestionar carpetas de Drive.' });
+  }
+}
+
+// ==================== GET DOCUMENT ALERTS ====================
+
+async function executeGetDocumentAlerts(
+  args: any,
+  tenantId: string,
+  supabase: any,
+): Promise<string> {
+  let query = supabase
+    .from('document_alerts')
+    .select('id, alert_type, severity, title, description, metadata, resolved, created_at, document_id')
+    .eq('tenant_id', tenantId)
+    .order('created_at', { ascending: false })
+    .limit(20);
+
+  if (args?.severity) {
+    query = query.eq('severity', args.severity);
+  }
+  if (!args?.resolved) {
+    query = query.eq('resolved', false);
+  }
+
+  const { data, error } = await query;
+  if (error) return JSON.stringify({ error: error.message });
+
+  return JSON.stringify({
+    alerts: (data || []).map((a: any) => ({
+      id: a.id,
+      type: a.alert_type,
+      severity: a.severity,
+      title: a.title,
+      description: a.description,
+      document_id: a.document_id,
+      resolved: a.resolved,
+      created: a.created_at,
+    })),
+    count: (data || []).length,
+  });
+}
