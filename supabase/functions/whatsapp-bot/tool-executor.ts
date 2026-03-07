@@ -64,6 +64,32 @@ export async function executeTool(
     return await executeSearchWeb(args, supabaseUrl, serviceRoleKey);
   }
 
+  // ──── Google Calendar tools ────
+  if (toolName === 'gcal_list_events' || toolName === 'gcal_create_event' || toolName === 'gcal_update_event' || toolName === 'gcal_delete_event') {
+    return await executeGoogleCalendarTool(toolName, args, tenantId, supabase, userId, supabaseUrl, serviceRoleKey);
+  }
+
+  // ──── Platform data tools ────
+  if (toolName === 'manage_contacts') {
+    return await executeManageContacts(args, tenantId, supabase);
+  }
+
+  if (toolName === 'manage_knowledge') {
+    return await executeManageKnowledge(args, tenantId, supabase, conversation);
+  }
+
+  if (toolName === 'manage_expenses') {
+    return await executeManageExpenses(args, tenantId, supabase, userId);
+  }
+
+  if (toolName === 'get_team_members') {
+    return await executeGetTeamMembers(args, tenantId, supabase);
+  }
+
+  if (toolName === 'get_dashboard_metrics') {
+    return await executeGetDashboardMetrics(tenantId, supabase);
+  }
+
   return JSON.stringify({ error: 'Unknown tool' });
 }
 
