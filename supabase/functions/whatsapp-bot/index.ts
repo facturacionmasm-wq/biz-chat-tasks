@@ -154,7 +154,7 @@ serve(async (req) => {
 
     const stateResult = await handleState({
       botState: effectiveBotState, msg: isResetCommand ? '' : msg, effectiveMessageBody, isSandbox, tenantId, contactPhone,
-      conversationId, conv, newContext: effectiveContext, supabase, mediaUrl,
+      conversationId, conv, newContext: effectiveContext, supabase, mediaUrl, mediaContentType,
       TWILIO_ACCOUNT_SID: TWILIO_ACCOUNT_SID!, TWILIO_AUTH_TOKEN: TWILIO_AUTH_TOKEN!,
       LOVABLE_API_KEY: LOVABLE_API_KEY!, SUPABASE_URL,
     });
