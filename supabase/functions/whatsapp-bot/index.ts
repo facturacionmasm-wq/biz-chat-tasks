@@ -392,6 +392,25 @@ async function handleState(input: StateInput): Promise<StateResult> {
     }
 
   } else if (botState === 'client_mode') {
+    // ---- Handle document uploads from clients ----
+    if (mediaUrl && !isVoiceMessage) {
+      const isImageType = mediaContentType && mediaContentType.startsWith('image/');
+      const isDocType = mediaContentType && (
+        mediaContentType.includes('pdf') || mediaContentType.includes('document') ||
+        mediaContentType.includes('spreadsheet') || mediaContentType.includes('csv') ||
+        mediaContentType.includes('text/')
+      );
+      if (isDocType || isImageType) {
+        const docResult = await processDocumentUpload(
+          mediaUrl, mediaContentType || null, effectiveMessageBody || '',
+          LOVABLE_API_KEY, tenantId, null, contactPhone, conversationId, supabase,
+          TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN,
+        );
+        reply = docResult.reply;
+        return { reply, newState, newContext };
+      }
+    }
+
     // Check for appointment confirmation/cancellation responses
     const confirmMatch = /^(confirmo|si confirmo|sí confirmo|confirmar|acepto|asistiré|asistire|si voy|sí voy)$/i.test(msg);
     const cancelMatch = /^(cancelo|cancelar|no puedo|no voy|no asistiré|no asistire|no podré|no podre)$/i.test(msg);
