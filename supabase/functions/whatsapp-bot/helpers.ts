@@ -1,3 +1,26 @@
+export function splitMessageForTwilio(body: string, maxLen = 1500): string[] {
+  const text = (body || '').trim();
+  if (!text) return [];
+  if (text.length <= maxLen) return [text];
+
+  const chunks: string[] = [];
+  let remaining = text;
+
+  while (remaining.length > maxLen) {
+    let splitAt = remaining.lastIndexOf('\n\n', maxLen);
+    if (splitAt < Math.floor(maxLen * 0.5)) splitAt = remaining.lastIndexOf('\n', maxLen);
+    if (splitAt < Math.floor(maxLen * 0.5)) splitAt = remaining.lastIndexOf(' ', maxLen);
+    if (splitAt < Math.floor(maxLen * 0.5)) splitAt = maxLen;
+
+    const chunk = remaining.slice(0, splitAt).trim();
+    if (chunk) chunks.push(chunk);
+    remaining = remaining.slice(splitAt).trim();
+  }
+
+  if (remaining) chunks.push(remaining);
+  return chunks;
+}
+
 export async function hashPin(pin: string): Promise<string> {
   const encoder = new TextEncoder();
   const data = encoder.encode(pin);
