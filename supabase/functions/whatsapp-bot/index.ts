@@ -272,6 +272,7 @@ interface StateInput {
   newContext: Record<string, unknown>;
   supabase: any;
   mediaUrl?: string;
+  mediaContentType?: string;
   TWILIO_ACCOUNT_SID: string;
   TWILIO_AUTH_TOKEN: string;
   LOVABLE_API_KEY: string;
