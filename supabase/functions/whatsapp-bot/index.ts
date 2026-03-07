@@ -286,7 +286,7 @@ interface StateResult {
 }
 
 async function handleState(input: StateInput): Promise<StateResult> {
-  const { botState, msg, effectiveMessageBody, isSandbox, tenantId, contactPhone, conversationId, conv, supabase, mediaUrl, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, LOVABLE_API_KEY, SUPABASE_URL } = input;
+  const { botState, msg, effectiveMessageBody, isSandbox, tenantId, contactPhone, conversationId, conv, supabase, mediaUrl, mediaContentType, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, LOVABLE_API_KEY, SUPABASE_URL } = input;
   let newContext = { ...input.newContext };
   let reply = '';
   let newState = botState;
