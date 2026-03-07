@@ -924,6 +924,57 @@ export type Database = {
           },
         ]
       }
+      document_chunks: {
+        Row: {
+          chunk_index: number
+          content: string
+          created_at: string
+          document_id: string
+          embedding: string | null
+          id: string
+          metadata: Json
+          tenant_id: string
+          tokens: number | null
+        }
+        Insert: {
+          chunk_index?: number
+          content?: string
+          created_at?: string
+          document_id: string
+          embedding?: string | null
+          id?: string
+          metadata?: Json
+          tenant_id: string
+          tokens?: number | null
+        }
+        Update: {
+          chunk_index?: number
+          content?: string
+          created_at?: string
+          document_id?: string
+          embedding?: string | null
+          id?: string
+          metadata?: Json
+          tenant_id?: string
+          tokens?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_chunks_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_chunks_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       document_jobs: {
         Row: {
           attempts: number
@@ -977,6 +1028,146 @@ export type Database = {
           },
           {
             foreignKeyName: "document_jobs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      document_memory: {
+        Row: {
+          content: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          memory_type: string
+          metadata: Json
+          relevance_score: number | null
+          scope_key: string
+          tenant_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          memory_type?: string
+          metadata?: Json
+          relevance_score?: number | null
+          scope_key: string
+          tenant_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          memory_type?: string
+          metadata?: Json
+          relevance_score?: number | null
+          scope_key?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_memory_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      document_workflow_log: {
+        Row: {
+          actions_taken: Json
+          created_at: string
+          document_id: string | null
+          id: string
+          rule_id: string | null
+          status: string
+          tenant_id: string
+        }
+        Insert: {
+          actions_taken?: Json
+          created_at?: string
+          document_id?: string | null
+          id?: string
+          rule_id?: string | null
+          status?: string
+          tenant_id: string
+        }
+        Update: {
+          actions_taken?: Json
+          created_at?: string
+          document_id?: string | null
+          id?: string
+          rule_id?: string | null
+          status?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_workflow_log_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_workflow_log_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "document_workflow_rules"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_workflow_log_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      document_workflow_rules: {
+        Row: {
+          actions: Json
+          active: boolean
+          created_at: string
+          id: string
+          name: string
+          tenant_id: string
+          trigger_config: Json
+          trigger_type: string
+          updated_at: string
+        }
+        Insert: {
+          actions?: Json
+          active?: boolean
+          created_at?: string
+          id?: string
+          name: string
+          tenant_id: string
+          trigger_config?: Json
+          trigger_type?: string
+          updated_at?: string
+        }
+        Update: {
+          actions?: Json
+          active?: boolean
+          created_at?: string
+          id?: string
+          name?: string
+          tenant_id?: string
+          trigger_config?: Json
+          trigger_type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_workflow_rules_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -3825,6 +4016,25 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      search_document_chunks: {
+        Args: {
+          _document_type?: string
+          _limit?: number
+          _query: string
+          _tenant_id: string
+        }
+        Returns: {
+          chunk_id: string
+          chunk_index: number
+          content: string
+          doc_filename: string
+          doc_summary: string
+          doc_type: string
+          document_id: string
+          metadata: Json
+          rank: number
+        }[]
       }
     }
     Enums: {
