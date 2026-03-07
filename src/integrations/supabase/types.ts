@@ -864,6 +864,261 @@ export type Database = {
           },
         ]
       }
+      document_alerts: {
+        Row: {
+          alert_type: string
+          created_at: string
+          description: string | null
+          document_id: string
+          id: string
+          metadata: Json
+          resolved: boolean
+          resolved_at: string | null
+          resolved_by: string | null
+          severity: string
+          tenant_id: string
+          title: string
+        }
+        Insert: {
+          alert_type: string
+          created_at?: string
+          description?: string | null
+          document_id: string
+          id?: string
+          metadata?: Json
+          resolved?: boolean
+          resolved_at?: string | null
+          resolved_by?: string | null
+          severity?: string
+          tenant_id: string
+          title: string
+        }
+        Update: {
+          alert_type?: string
+          created_at?: string
+          description?: string | null
+          document_id?: string
+          id?: string
+          metadata?: Json
+          resolved?: boolean
+          resolved_at?: string | null
+          resolved_by?: string | null
+          severity?: string
+          tenant_id?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_alerts_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_alerts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      document_jobs: {
+        Row: {
+          attempts: number
+          created_at: string
+          document_id: string
+          id: string
+          job_type: string
+          last_error: string | null
+          max_attempts: number
+          result_data: Json | null
+          run_after: string
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          document_id: string
+          id?: string
+          job_type?: string
+          last_error?: string | null
+          max_attempts?: number
+          result_data?: Json | null
+          run_after?: string
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          document_id?: string
+          id?: string
+          job_type?: string
+          last_error?: string | null
+          max_attempts?: number
+          result_data?: Json | null
+          run_after?: string
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_jobs_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_jobs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      documents: {
+        Row: {
+          analysis_status: string
+          analysis_summary: string | null
+          appointment_id: string | null
+          classification_confidence: number | null
+          contact_phone: string | null
+          conversation_id: string | null
+          created_at: string
+          deleted_at: string | null
+          document_category: string | null
+          document_type: string | null
+          entities: Json
+          expense_id: string | null
+          extension: string | null
+          extracted_data: Json
+          extracted_text: string | null
+          file_hash: string | null
+          file_size: number | null
+          google_drive_file_id: string | null
+          google_drive_folder_id: string | null
+          google_drive_url: string | null
+          id: string
+          key_amounts: Json
+          key_dates: Json
+          mime_type: string | null
+          normalized_filename: string | null
+          ocr_status: string | null
+          original_filename: string
+          parent_document_id: string | null
+          parent_folder_path: string | null
+          recommended_actions: Json
+          risks: Json
+          source_channel: string
+          tenant_id: string
+          updated_at: string
+          upload_status: string
+          user_id: string | null
+          version_number: number
+        }
+        Insert: {
+          analysis_status?: string
+          analysis_summary?: string | null
+          appointment_id?: string | null
+          classification_confidence?: number | null
+          contact_phone?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          document_category?: string | null
+          document_type?: string | null
+          entities?: Json
+          expense_id?: string | null
+          extension?: string | null
+          extracted_data?: Json
+          extracted_text?: string | null
+          file_hash?: string | null
+          file_size?: number | null
+          google_drive_file_id?: string | null
+          google_drive_folder_id?: string | null
+          google_drive_url?: string | null
+          id?: string
+          key_amounts?: Json
+          key_dates?: Json
+          mime_type?: string | null
+          normalized_filename?: string | null
+          ocr_status?: string | null
+          original_filename?: string
+          parent_document_id?: string | null
+          parent_folder_path?: string | null
+          recommended_actions?: Json
+          risks?: Json
+          source_channel?: string
+          tenant_id: string
+          updated_at?: string
+          upload_status?: string
+          user_id?: string | null
+          version_number?: number
+        }
+        Update: {
+          analysis_status?: string
+          analysis_summary?: string | null
+          appointment_id?: string | null
+          classification_confidence?: number | null
+          contact_phone?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          document_category?: string | null
+          document_type?: string | null
+          entities?: Json
+          expense_id?: string | null
+          extension?: string | null
+          extracted_data?: Json
+          extracted_text?: string | null
+          file_hash?: string | null
+          file_size?: number | null
+          google_drive_file_id?: string | null
+          google_drive_folder_id?: string | null
+          google_drive_url?: string | null
+          id?: string
+          key_amounts?: Json
+          key_dates?: Json
+          mime_type?: string | null
+          normalized_filename?: string | null
+          ocr_status?: string | null
+          original_filename?: string
+          parent_document_id?: string | null
+          parent_folder_path?: string | null
+          recommended_actions?: Json
+          risks?: Json
+          source_channel?: string
+          tenant_id?: string
+          updated_at?: string
+          upload_status?: string
+          user_id?: string | null
+          version_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "documents_parent_document_id_fkey"
+            columns: ["parent_document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "documents_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       drive_audit_log: {
         Row: {
           action: string
