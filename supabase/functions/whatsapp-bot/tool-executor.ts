@@ -1,4 +1,5 @@
 // Executes AI tool calls against the database and external services
+import { searchDocuments, getDocumentDetail } from "./document-handler.ts";
 
 export async function executeTool(
   toolName: string,
