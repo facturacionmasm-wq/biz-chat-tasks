@@ -189,4 +189,161 @@ export const AI_TOOLS = [
       },
     },
   },
+
+  // ──────────────── GOOGLE CALENDAR TOOLS ────────────────
+  {
+    type: 'function',
+    function: {
+      name: 'gcal_list_events',
+      description: 'Listar eventos del Google Calendar del usuario. Usa cuando pidan "mis eventos de Google", "qué tengo en el calendario de Google", "eventos de la semana". Diferente de get_today_agenda que muestra citas internas.',
+      parameters: {
+        type: 'object',
+        properties: {
+          time_min: { type: 'string', description: 'Fecha/hora mínima ISO 8601 (ej: 2026-03-07T00:00:00-06:00). Default: ahora.' },
+          time_max: { type: 'string', description: 'Fecha/hora máxima ISO 8601. Opcional.' },
+          max_results: { type: 'number', description: 'Máximo eventos (1-50). Default: 10.' },
+          query: { type: 'string', description: 'Texto para buscar en eventos. Opcional.' },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'gcal_create_event',
+      description: 'Crear un evento en Google Calendar. Usa cuando pidan "ponme un evento en Google Calendar", "agrega a mi calendario de Google". Para citas de negocio usa schedule_appointment.',
+      parameters: {
+        type: 'object',
+        properties: {
+          summary: { type: 'string', description: 'Título del evento' },
+          start_datetime: { type: 'string', description: 'Fecha/hora inicio ISO 8601' },
+          end_datetime: { type: 'string', description: 'Fecha/hora fin ISO 8601' },
+          description: { type: 'string', description: 'Descripción. Opcional.' },
+          location: { type: 'string', description: 'Ubicación. Opcional.' },
+          attendees: { type: 'array', items: { type: 'string' }, description: 'Emails de asistentes. Opcional.' },
+        },
+        required: ['summary', 'start_datetime', 'end_datetime'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'gcal_update_event',
+      description: 'Modificar un evento existente en Google Calendar. Primero busca con gcal_list_events para obtener el event_id.',
+      parameters: {
+        type: 'object',
+        properties: {
+          event_id: { type: 'string', description: 'ID del evento a modificar' },
+          summary: { type: 'string', description: 'Nuevo título. Opcional.' },
+          start_datetime: { type: 'string', description: 'Nueva hora inicio. Opcional.' },
+          end_datetime: { type: 'string', description: 'Nueva hora fin. Opcional.' },
+          description: { type: 'string', description: 'Nueva descripción. Opcional.' },
+          location: { type: 'string', description: 'Nueva ubicación. Opcional.' },
+        },
+        required: ['event_id'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'gcal_delete_event',
+      description: 'Eliminar un evento de Google Calendar. SIEMPRE pide confirmación antes. Primero busca con gcal_list_events.',
+      parameters: {
+        type: 'object',
+        properties: {
+          event_id: { type: 'string', description: 'ID del evento a eliminar' },
+        },
+        required: ['event_id'],
+      },
+    },
+  },
+
+  // ──────────────── PLATFORM DATA TOOLS ────────────────
+  {
+    type: 'function',
+    function: {
+      name: 'manage_contacts',
+      description: 'Gestionar contactos de la plataforma: listar, buscar, crear, actualizar o eliminar. Usa cuando pidan "mis contactos", "busca al contacto X", "agrega un contacto", "actualiza el teléfono de X", "elimina el contacto X".',
+      parameters: {
+        type: 'object',
+        properties: {
+          action: { type: 'string', enum: ['list', 'search', 'create', 'update', 'delete'], description: 'Acción a realizar' },
+          search_term: { type: 'string', description: 'Texto para buscar (nombre, teléfono, email). Para list/search.' },
+          name: { type: 'string', description: 'Nombre del contacto. Para create/update.' },
+          phone: { type: 'string', description: 'Teléfono. Para create/update.' },
+          email: { type: 'string', description: 'Email. Para create/update.' },
+          company: { type: 'string', description: 'Empresa. Para create/update.' },
+          notes: { type: 'string', description: 'Notas. Para create/update.' },
+          contact_id: { type: 'string', description: 'ID del contacto. Para update/delete.' },
+        },
+        required: ['action'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'manage_knowledge',
+      description: 'Gestionar la base de conocimientos: listar artículos, buscar, crear nuevos o eliminar. Usa cuando pidan "qué hay en el knowledge hub", "busca información sobre X", "agrega este conocimiento", "elimina el artículo sobre X".',
+      parameters: {
+        type: 'object',
+        properties: {
+          action: { type: 'string', enum: ['list', 'search', 'create', 'delete'], description: 'Acción' },
+          search_term: { type: 'string', description: 'Texto para buscar. Para search.' },
+          title: { type: 'string', description: 'Título del artículo. Para create.' },
+          content: { type: 'string', description: 'Contenido del artículo. Para create.' },
+          category: { type: 'string', description: 'Categoría. Para create.' },
+          tags: { type: 'array', items: { type: 'string' }, description: 'Tags. Para create.' },
+          item_id: { type: 'string', description: 'ID del artículo. Para delete.' },
+        },
+        required: ['action'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'manage_expenses',
+      description: 'Gestionar gastos: crear, aprobar, rechazar o marcar como pagado. Usa cuando pidan "crea un gasto de X", "aprueba el gasto X", "rechaza el presupuesto X", "marca como pagado".',
+      parameters: {
+        type: 'object',
+        properties: {
+          action: { type: 'string', enum: ['create', 'approve', 'reject', 'mark_paid'], description: 'Acción' },
+          expense_id: { type: 'string', description: 'ID del gasto. Para approve/reject/mark_paid.' },
+          amount: { type: 'number', description: 'Monto. Para create.' },
+          description: { type: 'string', description: 'Descripción. Para create.' },
+          category: { type: 'string', description: 'Categoría. Para create.' },
+          vendor_name: { type: 'string', description: 'Proveedor. Para create.' },
+          type: { type: 'string', enum: ['expense', 'budget'], description: 'Tipo: expense=gasto pagado, budget=presupuesto. Default: expense.' },
+          rejection_reason: { type: 'string', description: 'Razón de rechazo. Para reject.' },
+        },
+        required: ['action'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_team_members',
+      description: 'Listar miembros del equipo con sus roles, estado y datos de contacto. Usa cuando pregunten "quiénes están en el equipo", "lista de empleados", "quién es el admin".',
+      parameters: {
+        type: 'object',
+        properties: {
+          search_name: { type: 'string', description: 'Buscar por nombre. Opcional.' },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_dashboard_metrics',
+      description: 'Obtener métricas del dashboard: total de llamadas, citas, gastos, tareas pendientes. Usa cuando pregunten "cómo vamos", "dame un resumen", "métricas del negocio", "estadísticas".',
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
 ];
