@@ -101,3 +101,6 @@ verify_jwt = false
 
 [functions.elevenlabs-bridge]
 verify_jwt = false
+
+[functions.calendar-tools]
+verify_jwt = false
