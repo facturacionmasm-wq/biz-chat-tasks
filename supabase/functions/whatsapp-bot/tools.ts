@@ -346,4 +346,69 @@ export const AI_TOOLS = [
       parameters: { type: 'object', properties: {}, required: [] },
     },
   },
+
+  // ──────────────── DOCUMENT & DRIVE TOOLS ────────────────
+  {
+    type: 'function',
+    function: {
+      name: 'search_documents',
+      description: 'Buscar documentos almacenados en el sistema. Usa cuando pregunten "mis documentos", "busca el contrato de X", "documentos del cliente Y", "qué documentos tengo", "busca facturas".',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'Texto de búsqueda (nombre, contenido, tipo)' },
+          document_type: { type: 'string', enum: ['contrato', 'factura', 'identificacion', 'cotizacion', 'comprobante', 'estado_de_cuenta', 'expediente_legal', 'reporte', 'other'], description: 'Filtrar por tipo de documento' },
+          contact_phone: { type: 'string', description: 'Filtrar por teléfono del contacto que lo envió' },
+          date_from: { type: 'string', description: 'Fecha inicio ISO (YYYY-MM-DD)' },
+          date_to: { type: 'string', description: 'Fecha fin ISO (YYYY-MM-DD)' },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_document_detail',
+      description: 'Obtener detalle completo de un documento: resumen, entidades, montos, fechas, riesgos. Usa después de search_documents para ver detalles de un documento específico.',
+      parameters: {
+        type: 'object',
+        properties: {
+          document_id: { type: 'string', description: 'ID del documento' },
+        },
+        required: ['document_id'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'manage_drive_folders',
+      description: 'Gestionar carpetas en Google Drive: crear, listar, buscar carpetas. Usa cuando pidan "crea una carpeta para X", "muéstrame las carpetas", "organiza en Drive".',
+      parameters: {
+        type: 'object',
+        properties: {
+          action: { type: 'string', enum: ['create', 'list', 'search'], description: 'Acción: create=crear carpeta, list=listar subcarpetas, search=buscar carpeta' },
+          folder_name: { type: 'string', description: 'Nombre de la carpeta. Para create/search.' },
+          parent_folder_name: { type: 'string', description: 'Nombre de la carpeta padre (opcional). Para create.' },
+        },
+        required: ['action'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_document_alerts',
+      description: 'Obtener alertas de documentos: vencimientos próximos, riesgos detectados, documentos incompletos. Usa cuando pregunten "hay alertas", "documentos con riesgo", "qué vence pronto".',
+      parameters: {
+        type: 'object',
+        properties: {
+          severity: { type: 'string', enum: ['high', 'medium', 'low'], description: 'Filtrar por severidad' },
+          resolved: { type: 'boolean', description: 'Incluir alertas resueltas. Default: false' },
+        },
+        required: [],
+      },
+    },
+  },
 ];
