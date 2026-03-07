@@ -154,7 +154,7 @@ serve(async (req) => {
 
     const stateResult = await handleState({
       botState: effectiveBotState, msg: isResetCommand ? '' : msg, effectiveMessageBody, isSandbox, tenantId, contactPhone,
-      conversationId, conv, newContext: effectiveContext, supabase, mediaUrl,
+      conversationId, conv, newContext: effectiveContext, supabase, mediaUrl, mediaContentType,
       TWILIO_ACCOUNT_SID: TWILIO_ACCOUNT_SID!, TWILIO_AUTH_TOKEN: TWILIO_AUTH_TOKEN!,
       LOVABLE_API_KEY: LOVABLE_API_KEY!, SUPABASE_URL,
     });
@@ -272,6 +272,7 @@ interface StateInput {
   newContext: Record<string, unknown>;
   supabase: any;
   mediaUrl?: string;
+  mediaContentType?: string;
   TWILIO_ACCOUNT_SID: string;
   TWILIO_AUTH_TOKEN: string;
   LOVABLE_API_KEY: string;
@@ -285,7 +286,7 @@ interface StateResult {
 }
 
 async function handleState(input: StateInput): Promise<StateResult> {
-  const { botState, msg, effectiveMessageBody, isSandbox, tenantId, contactPhone, conversationId, conv, supabase, mediaUrl, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, LOVABLE_API_KEY, SUPABASE_URL } = input;
+  const { botState, msg, effectiveMessageBody, isSandbox, tenantId, contactPhone, conversationId, conv, supabase, mediaUrl, mediaContentType, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, LOVABLE_API_KEY, SUPABASE_URL } = input;
   let newContext = { ...input.newContext };
   let reply = '';
   let newState = botState;
@@ -392,6 +393,25 @@ async function handleState(input: StateInput): Promise<StateResult> {
     }
 
   } else if (botState === 'client_mode') {
+    // ---- Handle document uploads from clients ----
+    if (mediaUrl && !isVoiceMessage) {
+      const isImageType = mediaContentType && mediaContentType.startsWith('image/');
+      const isDocType = mediaContentType && (
+        mediaContentType.includes('pdf') || mediaContentType.includes('document') ||
+        mediaContentType.includes('spreadsheet') || mediaContentType.includes('csv') ||
+        mediaContentType.includes('text/')
+      );
+      if (isDocType || isImageType) {
+        const docResult = await processDocumentUpload(
+          mediaUrl, mediaContentType || null, effectiveMessageBody || '',
+          LOVABLE_API_KEY, tenantId, null, contactPhone, conversationId, supabase,
+          TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN,
+        );
+        reply = docResult.reply;
+        return { reply, newState, newContext };
+      }
+    }
+
     // Check for appointment confirmation/cancellation responses
     const confirmMatch = /^(confirmo|si confirmo|sí confirmo|confirmar|acepto|asistiré|asistire|si voy|sí voy)$/i.test(msg);
     const cancelMatch = /^(cancelo|cancelar|no puedo|no voy|no asistiré|no asistire|no podré|no podre)$/i.test(msg);
@@ -530,13 +550,28 @@ async function handleState(input: StateInput): Promise<StateResult> {
     const isBudgetKeyword = /\b(presupuesto|cotizaci[oó]n|quote|propuesta|estimado|por\s*pagar|pendiente|a\s*autorizaci[oó]n)\b/i.test(msg);
 
     if (mediaUrl) {
-      const result = await processExpenseDocument(
-        mediaUrl, effectiveMessageBody, LOVABLE_API_KEY, tenantId, newContext, supabase,
-        TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN
-      );
-      reply = result.reply;
-      newState = result.newState;
-      newContext = result.newContext;
+      // Determine if this is an expense/receipt or a general document
+      const isExpenseMedia = isExpenseIntent || isBudgetKeyword ||
+        /\b(gasto|ticket|factura|recibo|comprobante|presupuesto|cotizaci[oó]n|pago|pagué|pague)\b/i.test(msg);
+
+      if (isExpenseMedia) {
+        // Route to expense handler
+        const result = await processExpenseDocument(
+          mediaUrl, effectiveMessageBody, LOVABLE_API_KEY, tenantId, newContext, supabase,
+          TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN
+        );
+        reply = result.reply;
+        newState = result.newState;
+        newContext = result.newContext;
+      } else {
+        // Route to document handler for general documents
+        const docResult = await processDocumentUpload(
+          mediaUrl, mediaContentType || null, effectiveMessageBody || '',
+          LOVABLE_API_KEY, tenantId, userId, contactPhone, conversationId, supabase,
+          TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN,
+        );
+        reply = docResult.reply;
+      }
 
     } else if (
       (msg.includes('credencial') || msg.includes('contraseña') || msg.includes('password') || msg.includes('usuario y contraseña') || msg.includes('acceso')) &&
