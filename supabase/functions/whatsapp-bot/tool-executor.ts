@@ -1,5 +1,7 @@
 // Executes AI tool calls against the database and external services
 import { searchDocuments, getDocumentDetail } from "./document-handler.ts";
+import { compareDocuments } from "./document-agents.ts";
+import { retrieveMemory } from "./document-memory.ts";
 
 export async function executeTool(
   toolName: string,
@@ -106,6 +108,23 @@ export async function executeTool(
 
   if (toolName === 'get_document_alerts') {
     return await executeGetDocumentAlerts(args, tenantId, supabase);
+  }
+
+  // ──── RAG & Semantic Search tools ────
+  if (toolName === 'rag_search') {
+    return await executeRagSearch(args, tenantId, supabaseUrl, serviceRoleKey);
+  }
+
+  if (toolName === 'compare_documents') {
+    return await executeCompareDocuments(args, tenantId, supabase);
+  }
+
+  if (toolName === 'get_document_memory') {
+    return await executeGetDocumentMemory(args, tenantId, supabase);
+  }
+
+  if (toolName === 'manage_workflow_rules') {
+    return await executeManageWorkflowRules(args, tenantId, supabase);
   }
 
   return JSON.stringify({ error: 'Unknown tool' });
