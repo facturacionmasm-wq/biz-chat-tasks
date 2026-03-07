@@ -16,6 +16,7 @@ const SYSTEM_PROMPT = `Eres "Aria", el asistente virtual inteligente de OfficeHu
 - Soporte técnico interno.
 - Detectas errores y sugieres soluciones.
 - Generas documentación interactiva bajo demanda.
+- **PUEDES gestionar Google Calendar**: consultar, crear, modificar y eliminar eventos directamente.
 
 ## ARQUITECTURA DEL SISTEMA
 - **Multi-tenant**: Cada empresa (tenant) tiene datos aislados. Todos los datos se filtran por tenant_id.
@@ -103,13 +104,24 @@ Panel principal con métricas: llamadas, WhatsApp, citas, tareas pendientes. Res
 ## REGLAS DE COMPORTAMIENTO
 
 1. **Respeta roles**: Si el usuario es staff, no le expliques funciones de admin. Adapta tu respuesta a su rol.
-2. **Nunca ejecutes acciones sin confirmación**: Siempre pregunta antes de hacer cambios.
+2. **Nunca ejecutes acciones sin confirmación**: Siempre pregunta antes de hacer cambios destructivos (eliminar eventos). Para consultas y creación, puedes actuar directamente.
 3. **Sé concisa**: Respuestas claras y accionables. Usa markdown para formatear.
 4. **Detecta contexto**: Si el usuario menciona la página en la que está, ofrece ayuda específica.
 5. **Modo experto vs básico**: Si detectas jerga técnica, responde en modo experto. Si no, simplifica.
 6. **Idioma**: Siempre responde en español a menos que el usuario escriba en otro idioma.
 7. **Seguridad**: Nunca reveles datos sensibles, claves API, configuraciones internas del servidor.
 8. **Empatía**: Si el usuario reporta un error, muestra comprensión y ofrece soluciones paso a paso.
+
+## GOOGLE CALENDAR - INSTRUCCIONES DE USO DE HERRAMIENTAS
+
+Cuando el usuario pida algo relacionado con su calendario, eventos, citas o agenda de Google:
+
+1. **Consultar eventos**: Usa \`calendar_list_events\` para mostrar los próximos eventos. Formatea los resultados de forma legible.
+2. **Crear eventos**: Usa \`calendar_create_event\` con los datos proporcionados. Asegúrate de tener título, fecha/hora inicio y fin. Si falta la hora de fin, asume 1 hora después del inicio.
+3. **Modificar eventos**: Primero busca el evento con \`calendar_list_events\`, luego usa \`calendar_update_event\` con el event_id.
+4. **Eliminar eventos**: Siempre pide confirmación antes de eliminar. Usa \`calendar_delete_event\`.
+5. **Fechas**: Usa formato ISO 8601. Si el usuario dice "mañana a las 3pm", calcula la fecha correcta.
+6. **Si el calendario no está conectado**: Indica al usuario que vaya a **Configuración → Google Calendar** para conectar su cuenta.
 
 ## CAPACIDADES ESPECIALES
 
@@ -118,6 +130,7 @@ Panel principal con métricas: llamadas, WhatsApp, citas, tareas pendientes. Res
 - **Diagnóstico**: Puedes analizar errores reportados y sugerir soluciones.
 - **Optimización**: Puedes sugerir mejores prácticas de uso.
 - **Tutoriales**: Puedes crear guías paso a paso para cualquier proceso.
+- **Gestión de Calendario**: Puedes ver, crear, editar y eliminar eventos de Google Calendar.
 
 ## FORMATO DE RESPUESTAS
 - Usa **negrita** para destacar acciones importantes.
@@ -126,12 +139,125 @@ Panel principal con métricas: llamadas, WhatsApp, citas, tareas pendientes. Res
 - Usa bloques de código cuando sea relevante.
 - Incluye enlaces internos cuando menciones módulos: "Ve a **Configuración → Equipo**".`;
 
+// Tool definitions for function calling
+const CALENDAR_TOOLS = [
+  {
+    type: 'function',
+    function: {
+      name: 'calendar_list_events',
+      description: 'Lista los próximos eventos del Google Calendar del usuario. Úsalo cuando el usuario quiera ver su agenda, próximos eventos, o buscar un evento específico.',
+      parameters: {
+        type: 'object',
+        properties: {
+          time_min: { type: 'string', description: 'Fecha/hora mínima en ISO 8601 (ej: 2026-03-07T00:00:00-06:00). Default: ahora.' },
+          time_max: { type: 'string', description: 'Fecha/hora máxima en ISO 8601. Opcional.' },
+          max_results: { type: 'number', description: 'Máximo de eventos a retornar (1-50). Default: 10.' },
+          query: { type: 'string', description: 'Texto para buscar en eventos. Opcional.' },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'calendar_create_event',
+      description: 'Crea un nuevo evento en el Google Calendar del usuario.',
+      parameters: {
+        type: 'object',
+        properties: {
+          summary: { type: 'string', description: 'Título del evento.' },
+          start_datetime: { type: 'string', description: 'Fecha/hora de inicio en ISO 8601 (ej: 2026-03-10T14:00:00-06:00).' },
+          end_datetime: { type: 'string', description: 'Fecha/hora de fin en ISO 8601.' },
+          description: { type: 'string', description: 'Descripción del evento. Opcional.' },
+          location: { type: 'string', description: 'Ubicación del evento. Opcional.' },
+          attendees: { type: 'array', items: { type: 'string' }, description: 'Lista de emails de asistentes. Opcional.' },
+        },
+        required: ['summary', 'start_datetime', 'end_datetime'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'calendar_update_event',
+      description: 'Modifica un evento existente en Google Calendar. Requiere el event_id del evento a modificar.',
+      parameters: {
+        type: 'object',
+        properties: {
+          event_id: { type: 'string', description: 'ID del evento a modificar.' },
+          summary: { type: 'string', description: 'Nuevo título. Opcional.' },
+          start_datetime: { type: 'string', description: 'Nueva fecha/hora de inicio. Opcional.' },
+          end_datetime: { type: 'string', description: 'Nueva fecha/hora de fin. Opcional.' },
+          description: { type: 'string', description: 'Nueva descripción. Opcional.' },
+          location: { type: 'string', description: 'Nueva ubicación. Opcional.' },
+          attendees: { type: 'array', items: { type: 'string' }, description: 'Nueva lista de asistentes. Opcional.' },
+        },
+        required: ['event_id'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'calendar_delete_event',
+      description: 'Elimina un evento de Google Calendar. SIEMPRE pide confirmación al usuario antes de usar esta herramienta.',
+      parameters: {
+        type: 'object',
+        properties: {
+          event_id: { type: 'string', description: 'ID del evento a eliminar.' },
+        },
+        required: ['event_id'],
+      },
+    },
+  },
+];
+
+// Map tool name → calendar action
+function toolNameToAction(toolName: string): string {
+  const map: Record<string, string> = {
+    calendar_list_events: 'list_events',
+    calendar_create_event: 'create_event',
+    calendar_update_event: 'update_event',
+    calendar_delete_event: 'delete_event',
+  };
+  return map[toolName] || toolName;
+}
+
+// Execute a calendar tool call via the calendar-tools edge function
+async function executeCalendarTool(
+  supabaseUrl: string,
+  serviceKey: string,
+  userId: string,
+  toolName: string,
+  args: any,
+): Promise<string> {
+  try {
+    const action = toolNameToAction(toolName);
+    const res = await fetch(`${supabaseUrl}/functions/v1/calendar-tools`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${serviceKey}`,
+        'Content-Type': 'application/json',
+        'X-Service-Call': 'true',
+      },
+      body: JSON.stringify({ action, user_id: userId, ...args }),
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      return JSON.stringify({ error: data.error || 'Error al ejecutar la acción de calendario', calendar_not_connected: data.calendar_not_connected });
+    }
+    return JSON.stringify(data);
+  } catch (err) {
+    return JSON.stringify({ error: err instanceof Error ? err.message : 'Error desconocido ejecutando herramienta de calendario' });
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // Auth check
   const authHeader = req.headers.get('Authorization');
   if (!authHeader?.startsWith('Bearer ')) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
@@ -141,6 +267,7 @@ serve(async (req) => {
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
   const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
   const anonClient = createClient(supabaseUrl, supabaseAnonKey, {
     global: { headers: { Authorization: authHeader } },
   });
@@ -174,8 +301,11 @@ serve(async (req) => {
       contextualPrompt += `- Página actual: ${currentPage}\n`;
     }
 
-    // Fetch knowledge items for RAG context
-    const serviceClient = createClient(supabaseUrl, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+    // Add current date/time for calendar context
+    contextualPrompt += `- Fecha y hora actual: ${new Date().toISOString()}\n`;
+    contextualPrompt += `- Zona horaria de referencia: America/Mexico_City\n`;
+
+    const serviceClient = createClient(supabaseUrl, serviceKey);
     
     // Get user's tenant
     const { data: profile } = await serviceClient
@@ -183,6 +313,24 @@ serve(async (req) => {
       .select('tenant_id')
       .eq('user_id', userId)
       .maybeSingle();
+
+    // Check if user has Google Calendar connected
+    let calendarConnected = false;
+    if (profile?.tenant_id) {
+      const { data: calToken } = await serviceClient
+        .from('google_calendar_tokens')
+        .select('id, status')
+        .eq('user_id', userId)
+        .eq('status', 'active')
+        .maybeSingle();
+      calendarConnected = !!calToken;
+    }
+
+    if (calendarConnected) {
+      contextualPrompt += `- ✅ Google Calendar: CONECTADO. Puedes usar las herramientas de calendario.\n`;
+    } else {
+      contextualPrompt += `- ❌ Google Calendar: NO CONECTADO. Si el usuario pide algo del calendario, indícale que vaya a Configuración → Google Calendar.\n`;
+    }
 
     if (profile?.tenant_id) {
       // Get assistant settings
@@ -196,7 +344,7 @@ serve(async (req) => {
         contextualPrompt += `\n## INSTRUCCIONES PERSONALIZADAS DEL TENANT\n${settings.custom_instructions}\n`;
       }
 
-      // Get training corrections first (highest priority)
+      // Get training corrections (highest priority)
       const { data: corrections } = await serviceClient
         .from('knowledge_items')
         .select('title, content, category')
@@ -206,7 +354,7 @@ serve(async (req) => {
         .order('updated_at', { ascending: false })
         .limit(15);
 
-      // Get all other knowledge items
+      // Get general knowledge
       const { data: generalKnowledge } = await serviceClient
         .from('knowledge_items')
         .select('title, content, category')
@@ -220,7 +368,7 @@ serve(async (req) => {
 
       if (allKnowledge.length > 0) {
         contextualPrompt += `\n## KNOWLEDGE HUB (Base de conocimientos del tenant)\n`;
-        contextualPrompt += `IMPORTANTE: Los artículos marcados como [⚠️ CORRECCIÓN] son correcciones humanas y tienen MÁXIMA prioridad. Siempre úsalos como referencia principal.\n\n`;
+        contextualPrompt += `IMPORTANTE: Los artículos marcados como [⚠️ CORRECCIÓN] son correcciones humanas y tienen MÁXIMA prioridad.\n\n`;
         allKnowledge.forEach(k => {
           const prefix = k.category === 'Entrenamiento IA' ? '⚠️ CORRECCIÓN' : (k.category || 'General');
           const content = k.category === 'Entrenamiento IA' ? k.content : k.content?.substring(0, 600);
@@ -229,44 +377,126 @@ serve(async (req) => {
       }
     }
 
-    // Stream the response
-    const response = await fetch(AI_GATEWAY_URL, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-3-flash-preview',
-        messages: [
-          { role: 'system', content: contextualPrompt },
-          ...messages,
-        ],
-        stream: true,
-      }),
-    });
+    // ─── AI call with tool-calling loop ───
+    const aiMessages: any[] = [
+      { role: 'system', content: contextualPrompt },
+      ...messages,
+    ];
 
-    if (!response.ok) {
-      const status = response.status;
-      const errText = await response.text();
-      console.error(`AI gateway error: ${status} ${errText}`);
-      if (status === 429) {
-        return new Response(JSON.stringify({ error: 'Límite de solicitudes excedido. Intenta de nuevo en un momento.' }), {
-          status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+    const MAX_TOOL_ROUNDS = 5;
+    let round = 0;
+    let finalStream = false;
+
+    while (round < MAX_TOOL_ROUNDS) {
+      round++;
+
+      const isLastRound = round === MAX_TOOL_ROUNDS;
+      const requestBody: any = {
+        model: 'google/gemini-3-flash-preview',
+        messages: aiMessages,
+      };
+
+      // Only include tools if calendar is connected and not last round
+      if (calendarConnected && !isLastRound) {
+        requestBody.tools = CALENDAR_TOOLS;
+        requestBody.tool_choice = 'auto';
       }
-      if (status === 402) {
-        return new Response(JSON.stringify({ error: 'Créditos insuficientes. Contacta al administrador.' }), {
-          status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+
+      // On last round or when we want the final answer, stream it
+      if (isLastRound || finalStream) {
+        requestBody.stream = true;
       }
-      return new Response(JSON.stringify({ error: 'Error del servicio de IA' }), {
-        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+
+      const response = await fetch(AI_GATEWAY_URL, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
       });
+
+      if (!response.ok) {
+        const status = response.status;
+        const errText = await response.text();
+        console.error(`AI gateway error (round ${round}): ${status} ${errText}`);
+        if (status === 429) {
+          return new Response(JSON.stringify({ error: 'Límite de solicitudes excedido. Intenta de nuevo en un momento.' }), {
+            status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+        if (status === 402) {
+          return new Response(JSON.stringify({ error: 'Créditos insuficientes. Contacta al administrador.' }), {
+            status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+        return new Response(JSON.stringify({ error: 'Error del servicio de IA' }), {
+          status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // If streaming (final answer), pass through
+      if (requestBody.stream) {
+        return new Response(response.body, {
+          headers: { ...corsHeaders, 'Content-Type': 'text/event-stream' },
+        });
+      }
+
+      // Non-streaming: check for tool calls
+      const data = await response.json();
+      const choice = data.choices?.[0];
+
+      if (!choice) {
+        return new Response(JSON.stringify({ error: 'No response from AI' }), {
+          status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      const msg = choice.message;
+
+      // If no tool calls, we got a text response — re-request with streaming
+      if (!msg.tool_calls || msg.tool_calls.length === 0) {
+        // Add the assistant message to context and stream the final response
+        aiMessages.push(msg);
+        finalStream = true;
+        // Actually, we already have the text, so convert to SSE format
+        const content = msg.content || '';
+        const sseData = `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\ndata: [DONE]\n\n`;
+        return new Response(sseData, {
+          headers: { ...corsHeaders, 'Content-Type': 'text/event-stream' },
+        });
+      }
+
+      // Process tool calls
+      aiMessages.push(msg);
+
+      for (const toolCall of msg.tool_calls) {
+        const fnName = toolCall.function.name;
+        let fnArgs: any;
+        try {
+          fnArgs = JSON.parse(toolCall.function.arguments);
+        } catch {
+          fnArgs = {};
+        }
+
+        console.log(`Tool call: ${fnName}`, JSON.stringify(fnArgs));
+
+        const result = await executeCalendarTool(supabaseUrl, serviceKey, userId, fnName, fnArgs);
+        console.log(`Tool result: ${result.substring(0, 200)}`);
+
+        aiMessages.push({
+          role: 'tool',
+          tool_call_id: toolCall.id,
+          content: result,
+        });
+      }
+
+      // Continue loop — AI will process tool results
     }
 
-    return new Response(response.body, {
-      headers: { ...corsHeaders, 'Content-Type': 'text/event-stream' },
+    // Should not reach here, but fallback
+    return new Response(JSON.stringify({ error: 'Max tool rounds exceeded' }), {
+      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (error) {
     console.error('ai-assistant error:', error);
