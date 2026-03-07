@@ -64,6 +64,32 @@ export async function executeTool(
     return await executeSearchWeb(args, supabaseUrl, serviceRoleKey);
   }
 
+  // ──── Google Calendar tools ────
+  if (toolName === 'gcal_list_events' || toolName === 'gcal_create_event' || toolName === 'gcal_update_event' || toolName === 'gcal_delete_event') {
+    return await executeGoogleCalendarTool(toolName, args, tenantId, supabase, userId, supabaseUrl, serviceRoleKey);
+  }
+
+  // ──── Platform data tools ────
+  if (toolName === 'manage_contacts') {
+    return await executeManageContacts(args, tenantId, supabase);
+  }
+
+  if (toolName === 'manage_knowledge') {
+    return await executeManageKnowledge(args, tenantId, supabase, conversation);
+  }
+
+  if (toolName === 'manage_expenses') {
+    return await executeManageExpenses(args, tenantId, supabase, userId);
+  }
+
+  if (toolName === 'get_team_members') {
+    return await executeGetTeamMembers(args, tenantId, supabase);
+  }
+
+  if (toolName === 'get_dashboard_metrics') {
+    return await executeGetDashboardMetrics(tenantId, supabase);
+  }
+
   return JSON.stringify({ error: 'Unknown tool' });
 }
 
@@ -1170,6 +1196,352 @@ async function executeSearchWeb(
     console.error('Search web error:', err);
     return JSON.stringify({ error: 'No se pudo realizar la búsqueda.' });
   }
+}
+
+// ==================== GOOGLE CALENDAR ====================
+
+async function executeGoogleCalendarTool(
+  toolName: string,
+  args: any,
+  tenantId: string,
+  supabase: any,
+  userId: string | null,
+  supabaseUrl: string,
+  serviceRoleKey: string,
+): Promise<string> {
+  if (!userId) {
+    return JSON.stringify({ error: 'Debes estar autenticado para usar Google Calendar.' });
+  }
+
+  const actionMap: Record<string, string> = {
+    gcal_list_events: 'list_events',
+    gcal_create_event: 'create_event',
+    gcal_update_event: 'update_event',
+    gcal_delete_event: 'delete_event',
+  };
+
+  try {
+    const res = await fetch(`${supabaseUrl}/functions/v1/calendar-tools`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${serviceRoleKey}`,
+        'Content-Type': 'application/json',
+        'X-Service-Call': 'true',
+      },
+      body: JSON.stringify({
+        action: actionMap[toolName],
+        user_id: userId,
+        ...args,
+      }),
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      if (data.calendar_not_connected) {
+        return JSON.stringify({ error: 'No tienes Google Calendar conectado. Ve a la app → Configuración → Google Calendar para conectarlo.' });
+      }
+      return JSON.stringify({ error: data.error || 'Error al interactuar con Google Calendar' });
+    }
+    return JSON.stringify(data);
+  } catch (err) {
+    console.error('Google Calendar tool error:', err);
+    return JSON.stringify({ error: 'Error al conectar con Google Calendar.' });
+  }
+}
+
+// ==================== MANAGE CONTACTS ====================
+
+async function executeManageContacts(
+  args: any,
+  tenantId: string,
+  supabase: any,
+): Promise<string> {
+  const { action, search_term, name, phone, email, company, notes, contact_id } = args;
+
+  if (action === 'list' || action === 'search') {
+    let query = supabase
+      .from('contacts')
+      .select('id, name, phone, email, company, notes, source, created_at')
+      .eq('tenant_id', tenantId)
+      .order('created_at', { ascending: false })
+      .limit(20);
+
+    if (search_term) {
+      query = query.or(`name.ilike.%${search_term}%,phone.ilike.%${search_term}%,email.ilike.%${search_term}%,company.ilike.%${search_term}%`);
+    }
+
+    const { data, error } = await query;
+    if (error) return JSON.stringify({ error: error.message });
+    return JSON.stringify({ contacts: data || [], count: (data || []).length });
+  }
+
+  if (action === 'create') {
+    if (!name && !phone) return JSON.stringify({ error: 'Se necesita al menos nombre o teléfono para crear un contacto.' });
+    const { data, error } = await supabase
+      .from('contacts')
+      .insert({ tenant_id: tenantId, name, phone: phone || '', email, company, notes, source: 'whatsapp-bot' })
+      .select('id, name, phone')
+      .single();
+    if (error) return JSON.stringify({ error: error.message });
+    return JSON.stringify({ success: true, contact: data, message: `Contacto ${data.name || data.phone} creado.` });
+  }
+
+  if (action === 'update') {
+    if (!contact_id) {
+      // Try to find by search_term
+      if (search_term) {
+        const { data: found } = await supabase
+          .from('contacts')
+          .select('id')
+          .eq('tenant_id', tenantId)
+          .or(`name.ilike.%${search_term}%,phone.ilike.%${search_term}%`)
+          .limit(1)
+          .maybeSingle();
+        if (!found) return JSON.stringify({ error: `No encontré un contacto que coincida con "${search_term}".` });
+        const updates: any = {};
+        if (name) updates.name = name;
+        if (phone) updates.phone = phone;
+        if (email) updates.email = email;
+        if (company) updates.company = company;
+        if (notes) updates.notes = notes;
+        const { error } = await supabase.from('contacts').update(updates).eq('id', found.id);
+        if (error) return JSON.stringify({ error: error.message });
+        return JSON.stringify({ success: true, message: 'Contacto actualizado.' });
+      }
+      return JSON.stringify({ error: 'Se necesita contact_id o search_term para actualizar.' });
+    }
+    const updates: any = {};
+    if (name) updates.name = name;
+    if (phone) updates.phone = phone;
+    if (email) updates.email = email;
+    if (company) updates.company = company;
+    if (notes) updates.notes = notes;
+    const { error } = await supabase.from('contacts').update(updates).eq('id', contact_id).eq('tenant_id', tenantId);
+    if (error) return JSON.stringify({ error: error.message });
+    return JSON.stringify({ success: true, message: 'Contacto actualizado.' });
+  }
+
+  if (action === 'delete') {
+    const deleteId = contact_id || null;
+    if (!deleteId && search_term) {
+      const { data: found } = await supabase
+        .from('contacts')
+        .select('id, name')
+        .eq('tenant_id', tenantId)
+        .or(`name.ilike.%${search_term}%,phone.ilike.%${search_term}%`)
+        .limit(1)
+        .maybeSingle();
+      if (!found) return JSON.stringify({ error: `No encontré contacto "${search_term}".` });
+      const { error } = await supabase.from('contacts').delete().eq('id', found.id);
+      if (error) return JSON.stringify({ error: error.message });
+      return JSON.stringify({ success: true, message: `Contacto "${found.name}" eliminado.` });
+    }
+    if (!deleteId) return JSON.stringify({ error: 'Se necesita contact_id o search_term.' });
+    const { error } = await supabase.from('contacts').delete().eq('id', deleteId).eq('tenant_id', tenantId);
+    if (error) return JSON.stringify({ error: error.message });
+    return JSON.stringify({ success: true, message: 'Contacto eliminado.' });
+  }
+
+  return JSON.stringify({ error: 'Acción no reconocida.' });
+}
+
+// ==================== MANAGE KNOWLEDGE ====================
+
+async function executeManageKnowledge(
+  args: any,
+  tenantId: string,
+  supabase: any,
+  conversation: any,
+): Promise<string> {
+  const { action, search_term, title, content, category, tags, item_id } = args;
+  const userId = conversation.bot_context?.user_id;
+
+  if (action === 'list' || action === 'search') {
+    let query = supabase
+      .from('knowledge_items')
+      .select('id, title, category, tags, visibility, created_at')
+      .eq('tenant_id', tenantId)
+      .eq('active', true)
+      .is('deleted_at', null)
+      .order('updated_at', { ascending: false })
+      .limit(20);
+
+    if (search_term) {
+      query = query.or(`title.ilike.%${search_term}%,content.ilike.%${search_term}%,category.ilike.%${search_term}%`);
+    }
+
+    const { data, error } = await query;
+    if (error) return JSON.stringify({ error: error.message });
+    return JSON.stringify({ items: data || [], count: (data || []).length });
+  }
+
+  if (action === 'create') {
+    if (!title || !content) return JSON.stringify({ error: 'Se necesita título y contenido.' });
+    const { data, error } = await supabase
+      .from('knowledge_items')
+      .insert({
+        tenant_id: tenantId, title, content,
+        category: category || 'General',
+        tags: tags || [],
+        visibility: 'internal',
+        author_id: userId,
+        active: true,
+      })
+      .select('id, title')
+      .single();
+    if (error) return JSON.stringify({ error: error.message });
+    return JSON.stringify({ success: true, item: data, message: `Artículo "${data.title}" creado en el Knowledge Hub.` });
+  }
+
+  if (action === 'delete') {
+    const deleteId = item_id || null;
+    if (!deleteId && search_term) {
+      const { data: found } = await supabase
+        .from('knowledge_items')
+        .select('id, title')
+        .eq('tenant_id', tenantId)
+        .eq('active', true)
+        .or(`title.ilike.%${search_term}%,content.ilike.%${search_term}%`)
+        .limit(1)
+        .maybeSingle();
+      if (!found) return JSON.stringify({ error: `No encontré artículo "${search_term}".` });
+      await supabase.from('knowledge_items').update({ active: false, deleted_at: new Date().toISOString() }).eq('id', found.id);
+      return JSON.stringify({ success: true, message: `Artículo "${found.title}" eliminado.` });
+    }
+    if (!deleteId) return JSON.stringify({ error: 'Se necesita item_id o search_term.' });
+    await supabase.from('knowledge_items').update({ active: false, deleted_at: new Date().toISOString() }).eq('id', deleteId).eq('tenant_id', tenantId);
+    return JSON.stringify({ success: true, message: 'Artículo eliminado.' });
+  }
+
+  return JSON.stringify({ error: 'Acción no reconocida.' });
+}
+
+// ==================== MANAGE EXPENSES ====================
+
+async function executeManageExpenses(
+  args: any,
+  tenantId: string,
+  supabase: any,
+  userId: string | null,
+): Promise<string> {
+  const { action, expense_id, amount, description, category, vendor_name, type, rejection_reason } = args;
+
+  if (!userId) return JSON.stringify({ error: 'Debes estar autenticado.' });
+
+  if (action === 'create') {
+    if (!amount) return JSON.stringify({ error: 'Se necesita el monto.' });
+    const { data, error } = await supabase
+      .from('expenses')
+      .insert({
+        tenant_id: tenantId, user_id: userId,
+        amount, description, category,
+        vendor_name, type: type || 'expense',
+        source: 'whatsapp-bot',
+        status: type === 'budget' ? 'pending_approval' : 'paid',
+      })
+      .select('id, amount, status')
+      .single();
+    if (error) return JSON.stringify({ error: error.message });
+    return JSON.stringify({ success: true, expense: data, message: `${type === 'budget' ? 'Presupuesto' : 'Gasto'} por $${amount} registrado.` });
+  }
+
+  if (action === 'approve' || action === 'reject' || action === 'mark_paid') {
+    if (!expense_id) return JSON.stringify({ error: 'Se necesita el expense_id.' });
+    const updates: any = {};
+    if (action === 'approve') {
+      updates.status = 'approved';
+      updates.approved_at = new Date().toISOString();
+      updates.approver_user_id = userId;
+    } else if (action === 'reject') {
+      updates.status = 'rejected';
+      updates.rejected_at = new Date().toISOString();
+      updates.rejection_reason = rejection_reason || '';
+      updates.approver_user_id = userId;
+    } else {
+      updates.status = 'paid';
+      updates.paid_at = new Date().toISOString();
+    }
+    const { error } = await supabase.from('expenses').update(updates).eq('id', expense_id).eq('tenant_id', tenantId);
+    if (error) return JSON.stringify({ error: error.message });
+    return JSON.stringify({ success: true, message: `Gasto ${action === 'approve' ? 'aprobado' : action === 'reject' ? 'rechazado' : 'marcado como pagado'}.` });
+  }
+
+  return JSON.stringify({ error: 'Acción no reconocida.' });
+}
+
+// ==================== GET TEAM MEMBERS ====================
+
+async function executeGetTeamMembers(
+  args: any,
+  tenantId: string,
+  supabase: any,
+): Promise<string> {
+  let query = supabase
+    .from('profiles')
+    .select('user_id, name, email, phone, whatsapp_number, status, position')
+    .eq('tenant_id', tenantId)
+    .eq('status', 'active')
+    .order('name');
+
+  if (args?.search_name) {
+    query = query.ilike('name', `%${args.search_name}%`);
+  }
+
+  const { data: profiles, error } = await query.limit(30);
+  if (error) return JSON.stringify({ error: error.message });
+
+  // Get roles for each member
+  const members = [];
+  for (const p of (profiles || [])) {
+    const { data: roles } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', p.user_id)
+      .eq('tenant_id', tenantId);
+
+    members.push({
+      name: p.name,
+      email: p.email,
+      phone: p.phone || p.whatsapp_number,
+      position: p.position,
+      roles: (roles || []).map((r: any) => r.role),
+    });
+  }
+
+  return JSON.stringify({ members, count: members.length });
+}
+
+// ==================== GET DASHBOARD METRICS ====================
+
+async function executeGetDashboardMetrics(
+  tenantId: string,
+  supabase: any,
+): Promise<string> {
+  const today = new Date().toISOString().split('T')[0];
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+  // Parallel queries
+  const [callsRes, appointmentsRes, expensesRes, contactsRes] = await Promise.all([
+    supabase.from('call_records').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId).gte('created_at', thirtyDaysAgo).is('deleted_at', null),
+    supabase.from('appointments').select('id, status', { count: 'exact' }).eq('tenant_id', tenantId).gte('start_at', today).neq('status', 'cancelled').is('deleted_at', null),
+    supabase.from('expenses').select('id, amount, status').eq('tenant_id', tenantId).gte('created_at', thirtyDaysAgo),
+    supabase.from('contacts').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId),
+  ]);
+
+  const pendingExpenses = (expensesRes.data || []).filter((e: any) => e.status === 'pending_approval' || e.status === 'pending');
+  const totalExpenseAmount = (expensesRes.data || []).reduce((sum: number, e: any) => sum + (e.amount || 0), 0);
+
+  return JSON.stringify({
+    period: 'Últimos 30 días',
+    calls_total: callsRes.count || 0,
+    appointments_upcoming: appointmentsRes.count || 0,
+    contacts_total: contactsRes.count || 0,
+    expenses: {
+      total_count: (expensesRes.data || []).length,
+      pending_count: pendingExpenses.length,
+      total_amount: totalExpenseAmount,
+    },
+  });
 }
 
 // ==================== Shared utility ====================

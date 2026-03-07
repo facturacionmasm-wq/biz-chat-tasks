@@ -36,6 +36,10 @@ CAPACIDADES (usa las herramientas disponibles):
 - Verificar disponibilidad → check_availability
 - Consultar agenda → get_today_agenda (acepta "date" para cualquier día)
 - Buscar en internet → search_web (direcciones, info general, precios, etc.)
+- Google Calendar → gcal_list_events, gcal_create_event, gcal_update_event, gcal_delete_event
+- Contactos → manage_contacts (list, search, create, update, delete)
+- Knowledge Hub → manage_knowledge (list, search, create, delete)
+- Métricas → get_dashboard_metrics
 
 MANEJO DE FECHAS (NO CALCULES, USA ESTOS VALORES):
 - "hoy" = ${todayStr}
@@ -96,12 +100,18 @@ CAPACIDADES:
 - Verificar disponibilidad → check_availability
 - Consultar agenda → get_today_agenda (acepta "date")
 - Ver gastos → get_pending_expenses (filtro: all, pending, approved_no_receipt, budgets)
+- Gestionar gastos → manage_expenses (create, approve, reject, mark_paid)
 - Ver aprobaciones → get_pending_approvals
 - Auto-aprender → save_bot_instruction
 - Ver reglas aprendidas → list_bot_instructions
 - Eliminar regla → delete_bot_instruction
 - Enviar WhatsApp → send_whatsapp_message
 - Buscar en internet → search_web
+- Google Calendar → gcal_list_events, gcal_create_event, gcal_update_event, gcal_delete_event
+- Contactos → manage_contacts (list, search, create, update, delete)
+- Knowledge Hub → manage_knowledge (list, search, create, delete)
+- Equipo → get_team_members (ver miembros y roles)
+- Métricas → get_dashboard_metrics (resumen del negocio)
 
 MANEJO DE FECHAS (NO CALCULES):
 - "hoy" = ${todayStr}
