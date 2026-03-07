@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
 import { corsHeaders } from "./constants.ts";
-import { sendTwilioMessage, transcribeVoiceMessage } from "./helpers.ts";
+import { sendTwilioMessage, splitMessageForTwilio, transcribeVoiceMessage } from "./helpers.ts";
 import { getAIResponse } from "./ai-response.ts";
 import { processDocumentUpload } from "./document-handler.ts";
 import {
@@ -179,29 +179,33 @@ serve(async (req) => {
       } catch (e) { console.error('[BOT] Usage tracking (in) error:', e); }
 
       if (!skipSend && reply && TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && fromNumber) {
-        // Send reply (From first, MessagingServiceSid fallback is handled in helper)
+        // Send reply in safe Twilio chunks (max 1600 chars per message body)
+        const replyChunks = splitMessageForTwilio(reply, 1500);
         let twilioResult: any = null;
-        let sendSuccess = false;
+        let sendSuccess = true;
 
         try {
-          twilioResult = await sendTwilioMessage(
-            TWILIO_ACCOUNT_SID,
-            TWILIO_AUTH_TOKEN,
-            fromNumber,
-            contactPhone,
-            reply,
-            effectiveMessagingServiceSid,
-          );
+          for (const chunk of replyChunks) {
+            twilioResult = await sendTwilioMessage(
+              TWILIO_ACCOUNT_SID,
+              TWILIO_AUTH_TOKEN,
+              fromNumber,
+              contactPhone,
+              chunk,
+              effectiveMessagingServiceSid,
+            );
 
-          const twilioStatus = String(twilioResult?.status || '').toLowerCase();
-          const hasTwilioError = Boolean(twilioResult?.error_code);
+            const twilioStatus = String(twilioResult?.status || '').toLowerCase();
+            const hasTwilioError = Boolean(twilioResult?.error_code);
 
-          if (!hasTwilioError && twilioStatus !== 'failed' && twilioStatus !== 'undelivered') {
-            sendSuccess = true;
-          } else {
-            console.error(`[BOT] Send failed: status=${twilioStatus} error=${twilioResult?.error_code} msg=${twilioResult?.error_message}`);
+            if (hasTwilioError || twilioStatus === 'failed' || twilioStatus === 'undelivered') {
+              sendSuccess = false;
+              console.error(`[BOT] Send failed: status=${twilioStatus} error=${twilioResult?.error_code} msg=${twilioResult?.error_message}`);
+              break;
+            }
           }
         } catch (sendErr) {
+          sendSuccess = false;
           console.error('[BOT] Send exception:', sendErr);
         }
 
@@ -221,6 +225,7 @@ serve(async (req) => {
             twilio_error_code: twilioResult?.error_code || null,
             twilio_error_message: twilioResult?.error_message || null,
             from_number: fromNumber,
+            chunk_count: replyChunks.length,
           },
         });
 
@@ -228,8 +233,8 @@ serve(async (req) => {
           await supabase.from('whatsapp_usage_events').insert({
             tenant_id: tenantId, region: 'LATAM', provider: 'twilio',
             provider_message_id: twilioResult?.sid || null,
-            event_type: 'message_out', units: 1,
-            metadata: { conversation_id: conversationId, bot_state: newState, twilio_status: twilioResult?.status || null },
+            event_type: 'message_out', units: Math.max(1, replyChunks.length),
+            metadata: { conversation_id: conversationId, bot_state: newState, twilio_status: twilioResult?.status || null, chunk_count: replyChunks.length },
           });
         } catch (e) { console.error('[BOT] Usage tracking (out) error:', e); }
 
