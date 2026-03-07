@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
 import { corsHeaders } from "./constants.ts";
 import { sendTwilioMessage, transcribeVoiceMessage } from "./helpers.ts";
 import { getAIResponse } from "./ai-response.ts";
+import { processDocumentUpload } from "./document-handler.ts";
 import {
   processExpenseDocument,
   classifyExpenseType,
