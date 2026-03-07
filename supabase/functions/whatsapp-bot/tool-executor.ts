@@ -90,6 +90,23 @@ export async function executeTool(
     return await executeGetDashboardMetrics(tenantId, supabase);
   }
 
+  // ──── Document & Drive tools ────
+  if (toolName === 'search_documents') {
+    return await searchDocuments(supabase, tenantId, args);
+  }
+
+  if (toolName === 'get_document_detail') {
+    return await getDocumentDetail(supabase, tenantId, args.document_id);
+  }
+
+  if (toolName === 'manage_drive_folders') {
+    return await executeManageDriveFolders(args, tenantId, supabaseUrl, serviceRoleKey);
+  }
+
+  if (toolName === 'get_document_alerts') {
+    return await executeGetDocumentAlerts(args, tenantId, supabase);
+  }
+
   return JSON.stringify({ error: 'Unknown tool' });
 }
 
