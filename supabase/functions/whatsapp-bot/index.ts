@@ -555,12 +555,21 @@ async function handleState(input: StateInput): Promise<StateResult> {
     const isBudgetKeyword = /\b(presupuesto|cotizaci[oó]n|quote|propuesta|estimado|por\s*pagar|pendiente|a\s*autorizaci[oó]n)\b/i.test(msg);
 
     if (mediaUrl) {
-      // Determine if this is an expense/receipt or a general document
-      const isExpenseMedia = isExpenseIntent || isBudgetKeyword ||
-        /\b(gasto|ticket|factura|recibo|comprobante|presupuesto|cotizaci[oó]n|pago|pagué|pague)\b/i.test(msg);
+      // Determine if this is explicitly a general document (not expense)
+      const isExplicitDocument = /\b(documento|contrato|acta|poder|legal|expediente|manual|identifica)/i.test(msg);
+      const isImageMedia = mediaContentType && mediaContentType.startsWith('image/');
 
-      if (isExpenseMedia) {
-        // Route to expense handler
+      if (isExplicitDocument && !isExpenseIntent && !isBudgetKeyword) {
+        // Route to document handler for explicitly non-expense documents
+        const docResult = await processDocumentUpload(
+          mediaUrl, mediaContentType || null, effectiveMessageBody || '',
+          LOVABLE_API_KEY, tenantId, userId, contactPhone, conversationId, supabase,
+          TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN,
+        );
+        reply = docResult.reply;
+      } else if (isImageMedia || isExpenseIntent || isBudgetKeyword ||
+        /\b(gasto|ticket|factura|recibo|comprobante|presupuesto|cotizaci[oó]n|pago|pagué|pague)\b/i.test(msg)) {
+        // Default: images from employees go to expense OCR handler
         const result = await processExpenseDocument(
           mediaUrl, effectiveMessageBody, LOVABLE_API_KEY, tenantId, newContext, supabase,
           TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN
@@ -569,7 +578,7 @@ async function handleState(input: StateInput): Promise<StateResult> {
         newState = result.newState;
         newContext = result.newContext;
       } else {
-        // Route to document handler for general documents
+        // Non-image files (PDF, DOCX, etc.) go to document handler
         const docResult = await processDocumentUpload(
           mediaUrl, mediaContentType || null, effectiveMessageBody || '',
           LOVABLE_API_KEY, tenantId, userId, contactPhone, conversationId, supabase,

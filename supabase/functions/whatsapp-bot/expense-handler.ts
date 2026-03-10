@@ -56,15 +56,45 @@ async function uploadToDrive(
 
   try {
     // Check if Drive is configured
-    const { data: driveSettings } = await supabase
+    let driveSettings: any = null;
+    const { data: existingSettings } = await supabase
       .from('tenant_drive_settings')
       .select('drive_root_folder_id')
       .eq('tenant_id', tenantId)
       .maybeSingle();
 
+    driveSettings = existingSettings;
+
     if (!driveSettings?.drive_root_folder_id) {
-      console.log('Drive not configured for tenant:', tenantId);
-      return { success: false };
+      // Auto-setup Drive if tenant has Google OAuth
+      const { data: hasToken } = await supabase
+        .from('google_calendar_tokens')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .eq('status', 'active')
+        .limit(1)
+        .maybeSingle();
+
+      if (hasToken) {
+        console.log(`[EXPENSE] Auto-setting up Drive for tenant ${tenantId}`);
+        const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
+        const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+        const setupRes = await fetch(`${SUPABASE_URL}/functions/v1/google-drive`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+          body: JSON.stringify({ action: 'setup_folder', tenant_id: tenantId, internal_caller: true }),
+        });
+        const setupResult = await setupRes.json();
+        if (setupResult.drive_root_folder_id) {
+          driveSettings = { drive_root_folder_id: setupResult.drive_root_folder_id };
+        } else {
+          console.log('Drive auto-setup failed:', setupResult.error || 'unknown');
+          return { success: false };
+        }
+      } else {
+        console.log('Drive not configured and no OAuth for tenant:', tenantId);
+        return { success: false };
+      }
     }
 
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
