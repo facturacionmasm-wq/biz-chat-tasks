@@ -423,11 +423,45 @@ async function uploadDocumentToDrive(
   documentType: string, documentId: string, supabaseUrl: string, serviceRoleKey: string,
   twilioSid?: string, twilioToken?: string,
 ): Promise<{ success: boolean; driveUrl?: string; driveFileId?: string; folderId?: string }> {
-  const { data: driveSettings } = await supabase
+  let { data: driveSettings } = await supabase
     .from('tenant_drive_settings').select('drive_root_folder_id')
     .eq('tenant_id', tenantId).maybeSingle();
 
-  if (!driveSettings?.drive_root_folder_id) return { success: false };
+  // Auto-setup Drive if tenant has Google OAuth but no Drive folder yet
+  if (!driveSettings?.drive_root_folder_id) {
+    // Check if tenant has a Google OAuth token
+    const { data: hasToken } = await supabase
+      .from('google_calendar_tokens')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .eq('status', 'active')
+      .limit(1)
+      .maybeSingle();
+
+    if (hasToken) {
+      console.log(`[DOC] Auto-setting up Drive for tenant ${tenantId}`);
+      try {
+        const setupRes = await fetch(`${supabaseUrl}/functions/v1/google-drive`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${serviceRoleKey}` },
+          body: JSON.stringify({ action: 'setup_folder', tenant_id: tenantId, internal_caller: true }),
+        });
+        const setupResult = await setupRes.json();
+        if (setupResult.drive_root_folder_id) {
+          console.log(`[DOC] Drive auto-setup success for tenant ${tenantId}`);
+          driveSettings = { drive_root_folder_id: setupResult.drive_root_folder_id };
+        } else {
+          console.error('[DOC] Drive auto-setup failed:', setupResult.error || 'unknown');
+          return { success: false };
+        }
+      } catch (setupErr) {
+        console.error('[DOC] Drive auto-setup error:', setupErr);
+        return { success: false };
+      }
+    } else {
+      return { success: false };
+    }
+  }
 
   const folderName = FOLDER_MAP[documentType] || 'Otros';
 
