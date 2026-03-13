@@ -1,26 +1,32 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import ChatSidebar from '@/components/ChatSidebar';
 import ChatArea from '@/components/ChatArea';
-import { channels as initialChannels, messages as initialMessages } from '@/data/mockData';
-import { Channel, Message, TeamMember } from '@/types/app';
+import { Channel, TeamMember } from '@/types/app';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { usePresenceContext } from '@/contexts/PresenceContext';
 import { ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { useChatPersistence } from '@/hooks/useChatPersistence';
 
 type MemberDirectoryItem = Omit<TeamMember, 'status'>;
 
 const ChatPage = () => {
-  const [activeChannelId, setActiveChannelId] = useState('general');
-  const [allMessages, setAllMessages] = useState<Message[]>(initialMessages);
-  const [allChannels, setAllChannels] = useState<Channel[]>(initialChannels);
+  const { channels: allChannels, messages: allMessages, loading, sendMessage, createChannel, createDM } = useChatPersistence();
+  const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
   const [showChat, setShowChat] = useState(false);
   const [memberDirectory, setMemberDirectory] = useState<MemberDirectoryItem[]>([]);
   const isMobile = useIsMobile();
   const { onlineUsers } = usePresenceContext();
   const { user } = useAuth();
+
+  // Set default active channel when channels load
+  useEffect(() => {
+    if (!activeChannelId && allChannels.length > 0) {
+      setActiveChannelId(allChannels[0].id);
+    }
+  }, [allChannels, activeChannelId]);
 
   const teamMembers = useMemo<TeamMember[]>(() => {
     return memberDirectory.map(member => ({
@@ -33,52 +39,34 @@ const ChatPage = () => {
   useEffect(() => {
     const fetchProfiles = async () => {
       const [profilesRes, rolesRes] = await Promise.all([
-        supabase
-          .from('profiles')
-          .select('user_id, name, avatar_url, status, email, phone, whatsapp_number')
-          .eq('status', 'active'),
-        supabase
-          .from('user_roles')
-          .select('user_id, role'),
+        supabase.from('profiles').select('user_id, name, avatar_url, status, email, phone, whatsapp_number').eq('status', 'active'),
+        supabase.from('user_roles').select('user_id, role'),
       ]);
 
-      if (profilesRes.error) {
-        console.error('Error fetching profiles:', profilesRes.error);
-        return;
-      }
+      if (profilesRes.error) { console.error('Error fetching profiles:', profilesRes.error); return; }
 
       const roleMap: Record<string, string> = {};
       if (rolesRes.data) {
         rolesRes.data.forEach(r => {
-          const label = r.role === 'super_admin' ? 'Super Admin'
-            : r.role === 'owner' ? 'Owner'
-            : r.role === 'admin' ? 'Admin'
-            : 'Member';
+          const label = r.role === 'super_admin' ? 'Super Admin' : r.role === 'owner' ? 'Owner' : r.role === 'admin' ? 'Admin' : 'Member';
           roleMap[r.user_id] = label;
         });
       }
 
       if (profilesRes.data && profilesRes.data.length > 0) {
         const members: MemberDirectoryItem[] = profilesRes.data.map(p => ({
-          id: p.user_id,
-          name: p.name,
-          avatar: p.avatar_url || '',
-          role: roleMap[p.user_id] || 'Member',
-          email: p.email || undefined,
-          phone: p.phone || undefined,
-          whatsappNumber: p.whatsapp_number || undefined,
+          id: p.user_id, name: p.name, avatar: p.avatar_url || '', role: roleMap[p.user_id] || 'Member',
+          email: p.email || undefined, phone: p.phone || undefined, whatsappNumber: p.whatsapp_number || undefined,
         }));
         setMemberDirectory(members);
       }
     };
-
     fetchProfiles();
   }, []);
 
-  // Track channel members: channelId -> array of member IDs
+  // Track channel members
   const [channelMembers, setChannelMembers] = useState<Record<string, string[]>>({});
 
-  // Initialize channel members when team members load
   useEffect(() => {
     if (memberDirectory.length > 0) {
       setChannelMembers(prev => {
@@ -98,49 +86,30 @@ const ChatPage = () => {
 
   const notifyOfflineRecipient = useCallback(async (recipient: TeamMember, content: string) => {
     const to = recipient.whatsappNumber || recipient.phone;
-    if (!to) {
-      console.warn(`No hay teléfono/WhatsApp para ${recipient.name}`);
-      return false;
-    }
-
+    if (!to) return false;
     const message = `🔔 Nuevo mensaje en Chat Interno\n\n${content}\n\nAbre la app para responder.`;
-    const { data, error } = await supabase.functions.invoke('twilio-send', {
-      body: { to, body: message },
-    });
-
-    if (error || !data?.ok) {
-      console.error('No se pudo enviar notificación por WhatsApp:', error || data);
-      return false;
-    }
-
+    const { data, error } = await supabase.functions.invoke('twilio-send', { body: { to, body: message } });
+    if (error || !data?.ok) return false;
     return true;
   }, []);
 
   const resolveDirectRecipient = useCallback((channel: Channel) => {
     if (channel.type !== 'direct') return null;
-
     const normalize = (value: string) => value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     const rawId = channel.id.startsWith('dm-') ? channel.id.replace('dm-', '') : '';
-
     return (
       teamMembers.find(m => m.id === rawId) ||
       teamMembers.find(m => m.name === channel.name) ||
-      teamMembers.find(m => {
-        if (!rawId) return false;
-        const normalizedName = normalize(m.name).replace(/\s+/g, '-');
-        return normalizedName.includes(normalize(rawId));
-      }) ||
+      teamMembers.find(m => { if (!rawId) return false; const n = normalize(m.name).replace(/\s+/g, '-'); return n.includes(normalize(rawId)); }) ||
       null
     );
   }, [teamMembers]);
 
   const handleSendMessage = async (content: string) => {
-    const newMsg: Message = {
-      id: Date.now().toString(), channelId: activeChannelId, userId: user?.id || '0', userName: 'Tú', userAvatar: '', content, timestamp: new Date(), isOwn: true,
-    };
-    setAllMessages(prev => [...prev, newMsg]);
+    if (!activeChannelId) return;
+    await sendMessage(activeChannelId, content);
 
-    // For DM: if recipient is offline, notify via WhatsApp
+    // DM offline notification
     if (activeChannel?.type === 'direct') {
       const recipient = resolveDirectRecipient(activeChannel);
       if (recipient && recipient.status !== 'online') {
@@ -150,24 +119,14 @@ const ChatPage = () => {
       return;
     }
 
-    // For channel: notify all offline members except current user
+    // Channel offline notification
     if (activeChannel?.type === 'channel') {
       const memberIds = channelMembers[activeChannelId] || [];
-      const offlineRecipients = teamMembers.filter(member =>
-        memberIds.includes(member.id) &&
-        member.id !== user?.id &&
-        member.status !== 'online'
-      );
-
+      const offlineRecipients = teamMembers.filter(m => memberIds.includes(m.id) && m.id !== user?.id && m.status !== 'online');
       if (offlineRecipients.length > 0) {
-        const results = await Promise.all(
-          offlineRecipients.map(recipient => notifyOfflineRecipient(recipient, content))
-        );
-
-        const notifiedCount = results.filter(Boolean).length;
-        if (notifiedCount > 0) {
-          toast.info(`Notificación enviada a ${notifiedCount} usuario(s) offline por WhatsApp`);
-        }
+        const results = await Promise.all(offlineRecipients.map(r => notifyOfflineRecipient(r, content)));
+        const notified = results.filter(Boolean).length;
+        if (notified > 0) toast.info(`Notificación enviada a ${notified} usuario(s) offline por WhatsApp`);
       }
     }
   };
@@ -177,51 +136,29 @@ const ChatPage = () => {
     if (isMobile) setShowChat(true);
   };
 
-  const handleCreateChannel = useCallback((name: string) => {
-    const exists = allChannels.some(c => c.name === name && c.type === 'channel');
-    if (exists) {
-      toast.error(`El canal #${name} ya existe`);
-      return;
+  const handleCreateChannel = useCallback(async (name: string) => {
+    const ch = await createChannel(name);
+    if (ch) {
+      setActiveChannelId(ch.id);
+      if (isMobile) setShowChat(true);
     }
-    const newChannel: Channel = {
-      id: `ch-${Date.now()}`,
-      name,
-      type: 'channel',
-      unread: 0,
-    };
-    setAllChannels(prev => [...prev, newChannel]);
-    setChannelMembers(prev => ({ ...prev, [newChannel.id]: teamMembers.map(m => m.id) }));
-    setActiveChannelId(newChannel.id);
-    if (isMobile) setShowChat(true);
-    toast.success(`Canal #${name} creado`);
-  }, [allChannels, isMobile, teamMembers]);
+  }, [createChannel, isMobile]);
 
-  const handleCreateDM = useCallback((memberId: string) => {
+  const handleCreateDM = useCallback(async (memberId: string) => {
     const member = teamMembers.find(m => m.id === memberId);
     if (!member) return;
-    const existing = allChannels.find(c => c.type === 'direct' && c.name === member.name);
-    if (existing) {
-      setActiveChannelId(existing.id);
+    const ch = await createDM(member.name, memberId);
+    if (ch) {
+      setActiveChannelId(ch.id);
       if (isMobile) setShowChat(true);
-      return;
     }
-    const newDM: Channel = {
-      id: `dm-${memberId}`,
-      name: member.name,
-      type: 'direct',
-      unread: 0,
-    };
-    setAllChannels(prev => [...prev, newDM]);
-    setActiveChannelId(newDM.id);
-    if (isMobile) setShowChat(true);
-    toast.success(`Chat con ${member.name} creado`);
-  }, [allChannels, isMobile, teamMembers]);
+  }, [teamMembers, createDM, isMobile]);
 
   const handleAddMember = useCallback((memberId: string) => {
     const member = teamMembers.find(m => m.id === memberId);
     setChannelMembers(prev => ({
       ...prev,
-      [activeChannelId]: Array.from(new Set([...(prev[activeChannelId] || []), memberId])),
+      [activeChannelId!]: Array.from(new Set([...(prev[activeChannelId!] || []), memberId])),
     }));
     toast.success(`${member?.name || 'Miembro'} agregado al canal`);
   }, [activeChannelId, teamMembers]);
@@ -230,10 +167,14 @@ const ChatPage = () => {
     const member = teamMembers.find(m => m.id === memberId);
     setChannelMembers(prev => ({
       ...prev,
-      [activeChannelId]: (prev[activeChannelId] || []).filter(id => id !== memberId),
+      [activeChannelId!]: (prev[activeChannelId!] || []).filter(id => id !== memberId),
     }));
     toast.info(`${member?.name || 'Miembro'} removido del canal`);
   }, [activeChannelId, teamMembers]);
+
+  if (loading || !activeChannel) {
+    return <div className="flex items-center justify-center h-full text-muted-foreground">Cargando chat...</div>;
+  }
 
   if (isMobile) {
     if (showChat) {
@@ -246,53 +187,27 @@ const ChatPage = () => {
             <span className="ml-2 text-sm font-medium text-foreground">#{activeChannel.name}</span>
           </div>
           <div className="flex-1 min-w-0">
-            <ChatArea
-              channel={activeChannel}
-              messages={channelMessages}
-              onSendMessage={handleSendMessage}
-              teamMembers={teamMembers}
-              channelMembers={channelMembers[activeChannelId] || []}
-              onAddMember={handleAddMember}
-              onRemoveMember={handleRemoveMember}
-            />
+            <ChatArea channel={activeChannel} messages={channelMessages} onSendMessage={handleSendMessage} teamMembers={teamMembers}
+              channelMembers={channelMembers[activeChannelId!] || []} onAddMember={handleAddMember} onRemoveMember={handleRemoveMember} />
           </div>
         </div>
       );
     }
     return (
       <div className="h-full">
-        <ChatSidebar
-          channels={allChannels}
-          activeChannelId={activeChannelId}
-          onSelectChannel={handleSelectChannel}
-          teamMembers={teamMembers}
-          onCreateChannel={handleCreateChannel}
-          onCreateDM={handleCreateDM}
-        />
+        <ChatSidebar channels={allChannels} activeChannelId={activeChannelId || ''} onSelectChannel={handleSelectChannel}
+          teamMembers={teamMembers} onCreateChannel={handleCreateChannel} onCreateDM={handleCreateDM} />
       </div>
     );
   }
 
   return (
     <div className="flex h-full">
-      <ChatSidebar
-        channels={allChannels}
-        activeChannelId={activeChannelId}
-        onSelectChannel={handleSelectChannel}
-        teamMembers={teamMembers}
-        onCreateChannel={handleCreateChannel}
-        onCreateDM={handleCreateDM}
-      />
+      <ChatSidebar channels={allChannels} activeChannelId={activeChannelId || ''} onSelectChannel={handleSelectChannel}
+        teamMembers={teamMembers} onCreateChannel={handleCreateChannel} onCreateDM={handleCreateDM} />
       <div className="flex-1 min-w-0">
-        <ChatArea
-          channel={activeChannel}
-          messages={channelMessages}
-          onSendMessage={handleSendMessage}
-          teamMembers={teamMembers}
-          channelMembers={channelMembers[activeChannelId] || []}
-          onAddMember={handleAddMember}
-          onRemoveMember={handleRemoveMember}
-        />
+        <ChatArea channel={activeChannel} messages={channelMessages} onSendMessage={handleSendMessage} teamMembers={teamMembers}
+          channelMembers={channelMembers[activeChannelId!] || []} onAddMember={handleAddMember} onRemoveMember={handleRemoveMember} />
       </div>
     </div>
   );

@@ -4,13 +4,13 @@ import {
   Circle, Clock, CheckCircle2, AlertOctagon, ArrowLeft, ChevronRight, X, BarChart3,
   Target, Milestone as MilestoneIcon, Edit3, Trash2, Timer, User
 } from 'lucide-react';
-import { projects as initialProjects, tasks as initialTasks } from '@/data/mockData';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Task } from '@/types/app';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { useProjectsPersistence } from '@/hooks/useProjectsPersistence';
 
 interface RealTeamMember {
   id: string;
@@ -58,13 +58,19 @@ interface TaskWithMeta extends Task {
 
 const ProjectsPage = () => {
   const { user } = useAuth();
+  const {
+    projects: allProjects, tasks: allTasks, loading: dbLoading,
+    createProject: dbCreateProject, updateProjectStatus: dbUpdateProjectStatus,
+    createTask: dbCreateTask, updateTaskStatus: dbUpdateTaskStatus,
+    deleteTask: dbDeleteTask, createMilestone: dbCreateMilestone,
+    toggleMilestone: dbToggleMilestone, deleteMilestone: dbDeleteMilestone,
+    setTasks: setAllTasks, setProjects: setAllProjects,
+  } = useProjectsPersistence();
   const [teamMembers, setTeamMembers] = useState<RealTeamMember[]>([]);
 
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [view, setView] = useState<'list' | 'board'>('list');
-  const [allTasks, setAllTasks] = useState<TaskWithMeta[]>(initialTasks.map(t => ({ ...t })));
   const [selectedTask, setSelectedTask] = useState<TaskWithMeta | null>(null);
-  const [allProjects, setAllProjects] = useState(() => initialProjects.map(p => ({ ...p, milestones: p.milestones.map(m => ({ ...m })) })));
 
   // New project modal
   const [showNewProject, setShowNewProject] = useState(false);
@@ -124,103 +130,62 @@ const ProjectsPage = () => {
     loadTeam();
   }, [user]);
 
-  const handleCreateProject = () => {
+  const handleCreateProject = async () => {
     if (!newProjectName.trim()) {
       toast.error('El nombre del proyecto es obligatorio');
       return;
     }
-    const newProject = {
-      id: `proj-${Date.now()}`,
+    await dbCreateProject({
       name: newProjectName.trim(),
       description: newProjectDesc.trim() || 'Sin descripción',
-      status: newProjectStatus as 'planning' | 'active' | 'completed' | 'on_hold',
-      progress: 0,
+      status: newProjectStatus,
+      startDate: newProjectStartDate,
+      endDate: newProjectEndDate,
       teamIds: newProjectTeam,
-      startDate: new Date(newProjectStartDate),
-      endDate: new Date(newProjectEndDate),
-      milestones: [],
-    };
-    setAllProjects(prev => [newProject, ...prev]);
+    });
     setNewProjectName('');
     setNewProjectDesc('');
     setNewProjectTeam([]);
     setNewProjectStatus('planning');
     setShowNewProject(false);
-    toast.success(`Proyecto "${newProject.name}" creado 🎉`);
   };
 
-  const handleCreateTask = () => {
-    if (!newTaskTitle.trim()) {
-      toast.error('El título de la tarea es obligatorio');
-      return;
-    }
-    if (!newTaskAssignee) {
-      toast.error('Selecciona un responsable');
-      return;
-    }
+  const handleCreateTask = async () => {
+    if (!newTaskTitle.trim()) { toast.error('El título de la tarea es obligatorio'); return; }
+    if (!newTaskAssignee) { toast.error('Selecciona un responsable'); return; }
     const member = teamMembers.find(m => m.id === newTaskAssignee);
-    const newTask: TaskWithMeta = {
-      id: `task-${Date.now()}`,
+    await dbCreateTask({
       title: newTaskTitle.trim(),
       description: newTaskDesc.trim() || undefined,
-      status: 'todo',
+      assigneeId: newTaskAssignee,
+      assigneeName: member?.name || 'Sin asignar',
       priority: newTaskPriority,
-      assignee: member?.name || 'Sin asignar',
-      assigneeAvatar: '',
-      dueDate: newTaskDueDate ? new Date(newTaskDueDate) : undefined,
-      projectId: selectedProjectId || undefined,
+      dueDate: newTaskDueDate || undefined,
       estimatedHours: newTaskEstHours ? parseFloat(newTaskEstHours) : undefined,
-    };
-    setAllTasks(prev => [newTask, ...prev]);
-    setNewTaskTitle('');
-    setNewTaskDesc('');
-    setNewTaskAssignee('');
-    setNewTaskPriority('medium');
-    setNewTaskDueDate('');
-    setNewTaskEstHours('');
+      projectId: selectedProjectId || undefined,
+    });
+    setNewTaskTitle(''); setNewTaskDesc(''); setNewTaskAssignee('');
+    setNewTaskPriority('medium'); setNewTaskDueDate(''); setNewTaskEstHours('');
     setShowNewTask(false);
-    toast.success(`Tarea "${newTask.title}" creada ✅`);
   };
 
-  const handleCreateMilestone = () => {
+  const handleCreateMilestone = async () => {
     if (!newMilestoneName.trim() || !newMilestoneDate || !selectedProjectId) return;
-    setAllProjects(prev => prev.map(p => {
-      if (p.id !== selectedProjectId) return p;
-      return {
-        ...p,
-        milestones: [...p.milestones, {
-          id: `m-${Date.now()}`,
-          name: newMilestoneName.trim(),
-          date: new Date(newMilestoneDate),
-          completed: false,
-        }],
-      };
-    }));
-    setNewMilestoneName('');
-    setNewMilestoneDate('');
-    setShowNewMilestone(false);
-    toast.success('Hito agregado');
+    await dbCreateMilestone(selectedProjectId, newMilestoneName.trim(), newMilestoneDate);
+    setNewMilestoneName(''); setNewMilestoneDate(''); setShowNewMilestone(false);
   };
 
-  const handleDeleteTask = (taskId: string) => {
-    setAllTasks(prev => prev.filter(t => t.id !== taskId));
+  const handleDeleteTask = async (taskId: string) => {
+    await dbDeleteTask(taskId);
     setSelectedTask(null);
-    toast.success('Tarea eliminada');
   };
 
-  const handleDeleteMilestone = (projectId: string, milestoneId: string) => {
-    setAllProjects(prev => prev.map(p => {
-      if (p.id !== projectId) return p;
-      return { ...p, milestones: p.milestones.filter(m => m.id !== milestoneId) };
-    }));
-    toast.success('Hito eliminado');
+  const handleDeleteMilestone = async (projectId: string, milestoneId: string) => {
+    await dbDeleteMilestone(projectId, milestoneId);
   };
 
-  const handleChangeProjectStatus = (projectId: string, newStatus: string) => {
-    setAllProjects(prev => prev.map(p =>
-      p.id === projectId ? { ...p, status: newStatus as any } : p
-    ));
-    toast.success('Estado del proyecto actualizado');
+  const handleChangeProjectStatus = async (projectId: string, newStatus: string) => {
+    await dbUpdateProjectStatus(projectId, newStatus);
   };
 
   const toggleTeamMember = (memberId: string) => {
@@ -246,51 +211,38 @@ const ProjectsPage = () => {
     return 0;
   }, [allProjects, allTasks]);
 
-  const toggleMilestone = useCallback((projectId: string, milestoneId: string) => {
-    setAllProjects(prev => prev.map(p => {
-      if (p.id !== projectId) return p;
-      return { ...p, milestones: p.milestones.map(m => m.id === milestoneId ? { ...m, completed: !m.completed } : m) };
-    }));
-    toast.success('Hito actualizado');
-  }, []);
+  const toggleMilestone = useCallback(async (projectId: string, milestoneId: string) => {
+    await dbToggleMilestone(projectId, milestoneId);
+  }, [dbToggleMilestone]);
 
-  const cycleTaskStatus = useCallback((taskId: string, e?: React.MouseEvent) => {
+  const cycleTaskStatus = useCallback(async (taskId: string, e?: React.MouseEvent) => {
     e?.stopPropagation();
-    setAllTasks(prev => prev.map(t => {
-      if (t.id !== taskId) return t;
-      const newStatus = nextStatus[t.status];
-      const updates: Partial<TaskWithMeta> = { status: newStatus };
-      if (newStatus === 'done') {
-        updates.completedAt = new Date();
-        updates.completedBy = t.assignee;
-        toast.success(`✅ "${t.title}" completada`);
-      } else {
-        updates.completedAt = undefined;
-        updates.completedBy = undefined;
-      }
-      const updated = { ...t, ...updates };
-      if (selectedTask?.id === taskId) setSelectedTask(updated);
-      return updated;
-    }));
-  }, [selectedTask]);
+    const task = allTasks.find(t => t.id === taskId);
+    if (!task) return;
+    const newStatus = nextStatus[task.status];
+    await dbUpdateTaskStatus(taskId, newStatus);
+    if (newStatus === 'done') toast.success(`✅ "${task.title}" completada`);
+    const updated = {
+      ...task, status: newStatus,
+      completedAt: newStatus === 'done' ? new Date() : undefined,
+      completedBy: newStatus === 'done' ? task.assignee : undefined,
+    };
+    if (selectedTask?.id === taskId) setSelectedTask(updated);
+  }, [selectedTask, allTasks, dbUpdateTaskStatus]);
 
-  const setTaskStatus = useCallback((taskId: string, newStatus: Task['status']) => {
-    setAllTasks(prev => prev.map(t => {
-      if (t.id !== taskId) return t;
-      const updates: Partial<TaskWithMeta> = { status: newStatus };
-      if (newStatus === 'done') {
-        updates.completedAt = new Date();
-        updates.completedBy = t.assignee;
-      } else {
-        updates.completedAt = undefined;
-        updates.completedBy = undefined;
-      }
-      const updated = { ...t, ...updates };
+  const setTaskStatus = useCallback(async (taskId: string, newStatus: Task['status']) => {
+    await dbUpdateTaskStatus(taskId, newStatus);
+    const task = allTasks.find(t => t.id === taskId);
+    if (task) {
+      const updated = {
+        ...task, status: newStatus,
+        completedAt: newStatus === 'done' ? new Date() : undefined,
+        completedBy: newStatus === 'done' ? task.assignee : undefined,
+      };
       if (selectedTask?.id === taskId) setSelectedTask(updated);
-      return updated;
-    }));
+    }
     toast.success('Estado actualizado');
-  }, [selectedTask]);
+  }, [selectedTask, allTasks, dbUpdateTaskStatus]);
 
   // Stats for project detail
   const projectStats = useMemo(() => {
@@ -420,6 +372,10 @@ const ProjectsPage = () => {
       </div>
     );
   };
+
+  if (dbLoading) {
+    return <div className="flex items-center justify-center h-full text-muted-foreground">Cargando proyectos...</div>;
+  }
 
   // ===== PROJECT DETAIL VIEW =====
   if (selectedProject) {
