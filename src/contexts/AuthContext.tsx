@@ -68,19 +68,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setLoading(false);
     });
 
-    // Clear session on browser close if "remember me" is off
-    const handleBeforeUnload = () => {
-      const remember = localStorage.getItem('rybix_remember_me');
-      if (remember === 'false') {
-        // Move token to sessionStorage-like behavior by clearing on close
-        supabase.auth.signOut();
-      }
-    };
-    window.addEventListener('beforeunload', handleBeforeUnload);
-
     return () => {
       subscription.unsubscribe();
-      window.removeEventListener('beforeunload', handleBeforeUnload);
     };
   }, []);
 
