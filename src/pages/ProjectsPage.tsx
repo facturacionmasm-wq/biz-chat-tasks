@@ -169,45 +169,23 @@ const ProjectsPage = () => {
     setShowNewTask(false);
   };
 
-  const handleCreateMilestone = () => {
+  const handleCreateMilestone = async () => {
     if (!newMilestoneName.trim() || !newMilestoneDate || !selectedProjectId) return;
-    setAllProjects(prev => prev.map(p => {
-      if (p.id !== selectedProjectId) return p;
-      return {
-        ...p,
-        milestones: [...p.milestones, {
-          id: `m-${Date.now()}`,
-          name: newMilestoneName.trim(),
-          date: new Date(newMilestoneDate),
-          completed: false,
-        }],
-      };
-    }));
-    setNewMilestoneName('');
-    setNewMilestoneDate('');
-    setShowNewMilestone(false);
-    toast.success('Hito agregado');
+    await dbCreateMilestone(selectedProjectId, newMilestoneName.trim(), newMilestoneDate);
+    setNewMilestoneName(''); setNewMilestoneDate(''); setShowNewMilestone(false);
   };
 
-  const handleDeleteTask = (taskId: string) => {
-    setAllTasks(prev => prev.filter(t => t.id !== taskId));
+  const handleDeleteTask = async (taskId: string) => {
+    await dbDeleteTask(taskId);
     setSelectedTask(null);
-    toast.success('Tarea eliminada');
   };
 
-  const handleDeleteMilestone = (projectId: string, milestoneId: string) => {
-    setAllProjects(prev => prev.map(p => {
-      if (p.id !== projectId) return p;
-      return { ...p, milestones: p.milestones.filter(m => m.id !== milestoneId) };
-    }));
-    toast.success('Hito eliminado');
+  const handleDeleteMilestone = async (projectId: string, milestoneId: string) => {
+    await dbDeleteMilestone(projectId, milestoneId);
   };
 
-  const handleChangeProjectStatus = (projectId: string, newStatus: string) => {
-    setAllProjects(prev => prev.map(p =>
-      p.id === projectId ? { ...p, status: newStatus as any } : p
-    ));
-    toast.success('Estado del proyecto actualizado');
+  const handleChangeProjectStatus = async (projectId: string, newStatus: string) => {
+    await dbUpdateProjectStatus(projectId, newStatus);
   };
 
   const toggleTeamMember = (memberId: string) => {
