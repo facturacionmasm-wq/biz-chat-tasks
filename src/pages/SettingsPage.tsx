@@ -1897,7 +1897,7 @@ const SettingsPage = () => {
                   ? 'Configura qué notificaciones recibir por email, push y dentro de la app.'
                   : 'Gestiona exportación de datos, políticas de retención y configuración de privacidad.'}
               </p>
-              <p className="text-xs text-muted-foreground mt-2">Próximamente con Lovable Cloud</p>
+              <p className="text-xs text-muted-foreground mt-2">Próximamente</p>
             </div>
           </div>
         )}
