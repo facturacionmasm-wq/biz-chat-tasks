@@ -130,29 +130,24 @@ const ProjectsPage = () => {
     loadTeam();
   }, [user]);
 
-  const handleCreateProject = () => {
+  const handleCreateProject = async () => {
     if (!newProjectName.trim()) {
       toast.error('El nombre del proyecto es obligatorio');
       return;
     }
-    const newProject = {
-      id: `proj-${Date.now()}`,
+    await dbCreateProject({
       name: newProjectName.trim(),
       description: newProjectDesc.trim() || 'Sin descripción',
-      status: newProjectStatus as 'planning' | 'active' | 'completed' | 'on_hold',
-      progress: 0,
+      status: newProjectStatus,
+      startDate: newProjectStartDate,
+      endDate: newProjectEndDate,
       teamIds: newProjectTeam,
-      startDate: new Date(newProjectStartDate),
-      endDate: new Date(newProjectEndDate),
-      milestones: [],
-    };
-    setAllProjects(prev => [newProject, ...prev]);
+    });
     setNewProjectName('');
     setNewProjectDesc('');
     setNewProjectTeam([]);
     setNewProjectStatus('planning');
     setShowNewProject(false);
-    toast.success(`Proyecto "${newProject.name}" creado 🎉`);
   };
 
   const handleCreateTask = () => {
