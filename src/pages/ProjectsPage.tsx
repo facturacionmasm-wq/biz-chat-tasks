@@ -373,6 +373,10 @@ const ProjectsPage = () => {
     );
   };
 
+  if (dbLoading) {
+    return <div className="flex items-center justify-center h-full text-muted-foreground">Cargando proyectos...</div>;
+  }
+
   // ===== PROJECT DETAIL VIEW =====
   if (selectedProject) {
     const pct = getProjectProgress(selectedProject.id);
