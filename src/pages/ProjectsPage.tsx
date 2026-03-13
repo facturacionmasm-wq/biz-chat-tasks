@@ -4,13 +4,13 @@ import {
   Circle, Clock, CheckCircle2, AlertOctagon, ArrowLeft, ChevronRight, X, BarChart3,
   Target, Milestone as MilestoneIcon, Edit3, Trash2, Timer, User
 } from 'lucide-react';
-import { projects as initialProjects, tasks as initialTasks } from '@/data/mockData';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Task } from '@/types/app';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { useProjectsPersistence } from '@/hooks/useProjectsPersistence';
 
 interface RealTeamMember {
   id: string;
