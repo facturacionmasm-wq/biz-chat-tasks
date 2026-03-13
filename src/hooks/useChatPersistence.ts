@@ -5,10 +5,18 @@ import { Channel, Message } from '@/types/app';
 import { toast } from 'sonner';
 
 export function useChatPersistence() {
-  const { user, tenantId } = useAuth();
+  const { user } = useAuth();
+  const [tenantId, setTenantId] = useState<string | null>(null);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Fetch tenant_id
+  useEffect(() => {
+    if (!user) return;
+    supabase.from('profiles').select('tenant_id').eq('user_id', user.id).maybeSingle()
+      .then(({ data }) => { if (data) setTenantId(data.tenant_id); });
+  }, [user]);
 
   // Load channels and messages
   useEffect(() => {
