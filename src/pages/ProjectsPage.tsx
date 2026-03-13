@@ -150,37 +150,23 @@ const ProjectsPage = () => {
     setShowNewProject(false);
   };
 
-  const handleCreateTask = () => {
-    if (!newTaskTitle.trim()) {
-      toast.error('El título de la tarea es obligatorio');
-      return;
-    }
-    if (!newTaskAssignee) {
-      toast.error('Selecciona un responsable');
-      return;
-    }
+  const handleCreateTask = async () => {
+    if (!newTaskTitle.trim()) { toast.error('El título de la tarea es obligatorio'); return; }
+    if (!newTaskAssignee) { toast.error('Selecciona un responsable'); return; }
     const member = teamMembers.find(m => m.id === newTaskAssignee);
-    const newTask: TaskWithMeta = {
-      id: `task-${Date.now()}`,
+    await dbCreateTask({
       title: newTaskTitle.trim(),
       description: newTaskDesc.trim() || undefined,
-      status: 'todo',
+      assigneeId: newTaskAssignee,
+      assigneeName: member?.name || 'Sin asignar',
       priority: newTaskPriority,
-      assignee: member?.name || 'Sin asignar',
-      assigneeAvatar: '',
-      dueDate: newTaskDueDate ? new Date(newTaskDueDate) : undefined,
-      projectId: selectedProjectId || undefined,
+      dueDate: newTaskDueDate || undefined,
       estimatedHours: newTaskEstHours ? parseFloat(newTaskEstHours) : undefined,
-    };
-    setAllTasks(prev => [newTask, ...prev]);
-    setNewTaskTitle('');
-    setNewTaskDesc('');
-    setNewTaskAssignee('');
-    setNewTaskPriority('medium');
-    setNewTaskDueDate('');
-    setNewTaskEstHours('');
+      projectId: selectedProjectId || undefined,
+    });
+    setNewTaskTitle(''); setNewTaskDesc(''); setNewTaskAssignee('');
+    setNewTaskPriority('medium'); setNewTaskDueDate(''); setNewTaskEstHours('');
     setShowNewTask(false);
-    toast.success(`Tarea "${newTask.title}" creada ✅`);
   };
 
   const handleCreateMilestone = () => {
