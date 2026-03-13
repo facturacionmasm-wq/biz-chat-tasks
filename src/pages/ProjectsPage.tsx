@@ -58,13 +58,19 @@ interface TaskWithMeta extends Task {
 
 const ProjectsPage = () => {
   const { user } = useAuth();
+  const {
+    projects: allProjects, tasks: allTasks, loading: dbLoading,
+    createProject: dbCreateProject, updateProjectStatus: dbUpdateProjectStatus,
+    createTask: dbCreateTask, updateTaskStatus: dbUpdateTaskStatus,
+    deleteTask: dbDeleteTask, createMilestone: dbCreateMilestone,
+    toggleMilestone: dbToggleMilestone, deleteMilestone: dbDeleteMilestone,
+    setTasks: setAllTasks, setProjects: setAllProjects,
+  } = useProjectsPersistence();
   const [teamMembers, setTeamMembers] = useState<RealTeamMember[]>([]);
 
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [view, setView] = useState<'list' | 'board'>('list');
-  const [allTasks, setAllTasks] = useState<TaskWithMeta[]>(initialTasks.map(t => ({ ...t })));
   const [selectedTask, setSelectedTask] = useState<TaskWithMeta | null>(null);
-  const [allProjects, setAllProjects] = useState(() => initialProjects.map(p => ({ ...p, milestones: p.milestones.map(m => ({ ...m })) })));
 
   // New project modal
   const [showNewProject, setShowNewProject] = useState(false);
