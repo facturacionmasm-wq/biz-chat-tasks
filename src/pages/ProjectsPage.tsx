@@ -211,51 +211,38 @@ const ProjectsPage = () => {
     return 0;
   }, [allProjects, allTasks]);
 
-  const toggleMilestone = useCallback((projectId: string, milestoneId: string) => {
-    setAllProjects(prev => prev.map(p => {
-      if (p.id !== projectId) return p;
-      return { ...p, milestones: p.milestones.map(m => m.id === milestoneId ? { ...m, completed: !m.completed } : m) };
-    }));
-    toast.success('Hito actualizado');
-  }, []);
+  const toggleMilestone = useCallback(async (projectId: string, milestoneId: string) => {
+    await dbToggleMilestone(projectId, milestoneId);
+  }, [dbToggleMilestone]);
 
-  const cycleTaskStatus = useCallback((taskId: string, e?: React.MouseEvent) => {
+  const cycleTaskStatus = useCallback(async (taskId: string, e?: React.MouseEvent) => {
     e?.stopPropagation();
-    setAllTasks(prev => prev.map(t => {
-      if (t.id !== taskId) return t;
-      const newStatus = nextStatus[t.status];
-      const updates: Partial<TaskWithMeta> = { status: newStatus };
-      if (newStatus === 'done') {
-        updates.completedAt = new Date();
-        updates.completedBy = t.assignee;
-        toast.success(`✅ "${t.title}" completada`);
-      } else {
-        updates.completedAt = undefined;
-        updates.completedBy = undefined;
-      }
-      const updated = { ...t, ...updates };
-      if (selectedTask?.id === taskId) setSelectedTask(updated);
-      return updated;
-    }));
-  }, [selectedTask]);
+    const task = allTasks.find(t => t.id === taskId);
+    if (!task) return;
+    const newStatus = nextStatus[task.status];
+    await dbUpdateTaskStatus(taskId, newStatus);
+    if (newStatus === 'done') toast.success(`✅ "${task.title}" completada`);
+    const updated = {
+      ...task, status: newStatus,
+      completedAt: newStatus === 'done' ? new Date() : undefined,
+      completedBy: newStatus === 'done' ? task.assignee : undefined,
+    };
+    if (selectedTask?.id === taskId) setSelectedTask(updated);
+  }, [selectedTask, allTasks, dbUpdateTaskStatus]);
 
-  const setTaskStatus = useCallback((taskId: string, newStatus: Task['status']) => {
-    setAllTasks(prev => prev.map(t => {
-      if (t.id !== taskId) return t;
-      const updates: Partial<TaskWithMeta> = { status: newStatus };
-      if (newStatus === 'done') {
-        updates.completedAt = new Date();
-        updates.completedBy = t.assignee;
-      } else {
-        updates.completedAt = undefined;
-        updates.completedBy = undefined;
-      }
-      const updated = { ...t, ...updates };
+  const setTaskStatus = useCallback(async (taskId: string, newStatus: Task['status']) => {
+    await dbUpdateTaskStatus(taskId, newStatus);
+    const task = allTasks.find(t => t.id === taskId);
+    if (task) {
+      const updated = {
+        ...task, status: newStatus,
+        completedAt: newStatus === 'done' ? new Date() : undefined,
+        completedBy: newStatus === 'done' ? task.assignee : undefined,
+      };
       if (selectedTask?.id === taskId) setSelectedTask(updated);
-      return updated;
-    }));
+    }
     toast.success('Estado actualizado');
-  }, [selectedTask]);
+  }, [selectedTask, allTasks, dbUpdateTaskStatus]);
 
   // Stats for project detail
   const projectStats = useMemo(() => {
