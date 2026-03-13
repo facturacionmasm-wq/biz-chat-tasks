@@ -308,33 +308,6 @@ const ProjectsPage = () => {
 
   // NewTaskModal and NewMilestoneModal are rendered as inline JSX below (see render)
 
-  // ===== MODAL: Nuevo Hito =====
-  const NewMilestoneModal = () => (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowNewMilestone(false)}>
-      <div className="bg-card border border-border rounded-2xl w-full max-w-sm p-6 shadow-lg animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold text-foreground">Nuevo Hito</h3>
-          <button onClick={() => setShowNewMilestone(false)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground"><X size={18} /></button>
-        </div>
-        <div className="space-y-4">
-          <div>
-            <label className="text-sm font-medium text-foreground mb-1.5 block">Nombre del hito *</label>
-            <input autoFocus value={newMilestoneName} onChange={e => setNewMilestoneName(e.target.value)}
-              placeholder="Ej: Beta Launch" className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring" />
-          </div>
-          <div>
-            <label className="text-sm font-medium text-foreground mb-1.5 block">Fecha *</label>
-            <input type="date" value={newMilestoneDate} onChange={e => setNewMilestoneDate(e.target.value)}
-              className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
-          </div>
-          <div className="flex gap-2 justify-end">
-            <button onClick={() => setShowNewMilestone(false)} className="px-4 py-2 text-sm rounded-lg border border-border text-muted-foreground hover:bg-muted">Cancelar</button>
-            <button onClick={handleCreateMilestone} className="px-4 py-2 text-sm rounded-lg bg-primary text-primary-foreground font-medium hover:opacity-90">Agregar Hito</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
 
   // ===== Task detail panel =====
   const TaskDetailPanel = ({ task, onClose }: { task: TaskWithMeta; onClose: () => void }) => {
