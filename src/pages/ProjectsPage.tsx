@@ -306,64 +306,7 @@ const ProjectsPage = () => {
     return { total, done, inProgress, blocked, overdue, totalEstHours, completedEstHours };
   }, [allTasks, selectedProjectId]);
 
-  // ===== MODAL: Nueva Tarea =====
-  const NewTaskModal = () => (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowNewTask(false)}>
-      <div className="bg-card border border-border rounded-2xl w-full max-w-lg p-6 shadow-lg animate-in zoom-in-95 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold text-foreground">Nueva Tarea</h3>
-          <button onClick={() => setShowNewTask(false)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground"><X size={18} /></button>
-        </div>
-        <div className="space-y-4">
-          <div>
-            <label className="text-sm font-medium text-foreground mb-1.5 block">Título *</label>
-            <input autoFocus value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleCreateTask()}
-              placeholder="Ej: Implementar autenticación" className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring" />
-          </div>
-          <div>
-            <label className="text-sm font-medium text-foreground mb-1.5 block">Descripción</label>
-            <textarea value={newTaskDesc} onChange={e => setNewTaskDesc(e.target.value)} placeholder="Detalla el alcance de la tarea..." rows={2}
-              className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none" />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-sm font-medium text-foreground mb-1.5 block">Responsable *</label>
-              <select value={newTaskAssignee} onChange={e => setNewTaskAssignee(e.target.value)}
-                className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
-                <option value="">Seleccionar...</option>
-                {teamMembers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-foreground mb-1.5 block">Prioridad</label>
-              <select value={newTaskPriority} onChange={e => setNewTaskPriority(e.target.value as any)}
-                className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
-                <option value="low">Baja</option>
-                <option value="medium">Media</option>
-                <option value="high">Alta</option>
-              </select>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-sm font-medium text-foreground mb-1.5 block">Fecha límite</label>
-              <input type="date" value={newTaskDueDate} onChange={e => setNewTaskDueDate(e.target.value)}
-                className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-foreground mb-1.5 block">Horas estimadas</label>
-              <input type="number" min="0" step="0.5" value={newTaskEstHours} onChange={e => setNewTaskEstHours(e.target.value)} placeholder="Ej: 8"
-                className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring" />
-            </div>
-          </div>
-          <div className="flex gap-2 justify-end pt-2">
-            <button onClick={() => setShowNewTask(false)} className="px-4 py-2 text-sm rounded-lg border border-border text-muted-foreground hover:bg-muted">Cancelar</button>
-            <button onClick={handleCreateTask} className="px-4 py-2 text-sm rounded-lg bg-primary text-primary-foreground font-medium hover:opacity-90">Crear Tarea</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+  // NewTaskModal and NewMilestoneModal are rendered as inline JSX below (see render)
 
   // ===== MODAL: Nuevo Hito =====
   const NewMilestoneModal = () => (
