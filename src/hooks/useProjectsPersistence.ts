@@ -19,6 +19,15 @@ interface TaskWithMeta {
   completedBy?: string;
 }
 
+const resolveTenantId = async (userId: string) => {
+  const { data, error } = await supabase.rpc('get_user_tenant_id', { _user_id: userId });
+  if (error) {
+    console.error('Error resolving tenant:', error);
+    return null;
+  }
+  return data as string | null;
+};
+
 export function useProjectsPersistence() {
   const { user } = useAuth();
   const [tenantId, setTenantId] = useState<string | null>(null);
@@ -26,26 +35,76 @@ export function useProjectsPersistence() {
   const [tasks, setTasks] = useState<TaskWithMeta[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Fetch tenant
+  const ensureTenant = useCallback(async () => {
+    if (tenantId) return tenantId;
+    if (!user) return null;
+    const id = await resolveTenantId(user.id);
+    if (id) setTenantId(id);
+    return id;
+  }, [tenantId, user]);
+
   useEffect(() => {
-    if (!user) return;
-    supabase.from('profiles').select('tenant_id').eq('user_id', user.id).maybeSingle()
-      .then(({ data }) => { if (data) setTenantId(data.tenant_id); });
+    let cancelled = false;
+
+    const loadTenant = async () => {
+      if (!user) {
+        if (!cancelled) {
+          setTenantId(null);
+          setProjects([]);
+          setTasks([]);
+          setLoading(false);
+        }
+        return;
+      }
+
+      setLoading(true);
+      const id = await resolveTenantId(user.id);
+
+      if (!cancelled) {
+        setTenantId(id);
+        if (!id) {
+          setLoading(false);
+          toast.error('No se pudo identificar tu empresa. Vuelve a iniciar sesión.');
+        }
+      }
+    };
+
+    loadTenant();
+    return () => {
+      cancelled = true;
+    };
   }, [user]);
 
-  // Load projects, tasks, milestones, members
   useEffect(() => {
-    if (!tenantId) return;
+    let cancelled = false;
 
     const load = async () => {
-      const [projRes, taskRes, msRes, membRes] = await Promise.all([
+      if (!tenantId) return;
+
+      const [projRes, taskRes, msRes] = await Promise.all([
         supabase.from('projects').select('*').eq('tenant_id', tenantId).order('created_at', { ascending: false }),
         supabase.from('project_tasks').select('*').eq('tenant_id', tenantId).order('created_at', { ascending: false }),
         supabase.from('project_milestones').select('*').eq('tenant_id', tenantId).order('target_date'),
-        supabase.from('project_members').select('project_id, user_id'),
       ]);
 
-      // Build milestones map
+      if (projRes.error || taskRes.error || msRes.error) {
+        console.error('Error loading projects data:', projRes.error || taskRes.error || msRes.error);
+        if (!cancelled) {
+          setLoading(false);
+          toast.error('No se pudieron cargar los proyectos');
+        }
+        return;
+      }
+
+      const projectIds = (projRes.data || []).map((p: any) => p.id);
+      const membRes = projectIds.length > 0
+        ? await supabase.from('project_members').select('project_id, user_id').in('project_id', projectIds)
+        : { data: [], error: null };
+
+      if (membRes.error) {
+        console.error('Error loading project members:', membRes.error);
+      }
+
       const milestoneMap: Record<string, Milestone[]> = {};
       (msRes.data || []).forEach((m: any) => {
         if (!milestoneMap[m.project_id]) milestoneMap[m.project_id] = [];
@@ -57,15 +116,14 @@ export function useProjectsPersistence() {
         });
       });
 
-      // Build members map
       const memberMap: Record<string, string[]> = {};
       (membRes.data || []).forEach((m: any) => {
         if (!memberMap[m.project_id]) memberMap[m.project_id] = [];
         memberMap[m.project_id].push(m.user_id);
       });
 
-      if (projRes.data) {
-        setProjects(projRes.data.map((p: any) => ({
+      if (!cancelled) {
+        setProjects((projRes.data || []).map((p: any) => ({
           id: p.id,
           name: p.name,
           description: p.description || '',
@@ -76,10 +134,8 @@ export function useProjectsPersistence() {
           endDate: new Date(p.end_date),
           milestones: milestoneMap[p.id] || [],
         })));
-      }
 
-      if (taskRes.data) {
-        setTasks(taskRes.data.map((t: any) => ({
+        setTasks((taskRes.data || []).map((t: any) => ({
           id: t.id,
           title: t.title,
           description: t.description || undefined,
@@ -93,166 +149,323 @@ export function useProjectsPersistence() {
           completedAt: t.completed_at ? new Date(t.completed_at) : undefined,
           completedBy: t.completed_by || undefined,
         })));
-      }
 
-      setLoading(false);
+        setLoading(false);
+      }
     };
 
     load();
+    return () => {
+      cancelled = true;
+    };
   }, [tenantId]);
 
   const createProject = useCallback(async (data: {
-    name: string; description: string; status: string;
-    startDate: string; endDate: string; teamIds: string[];
+    name: string;
+    description: string;
+    status: string;
+    startDate: string;
+    endDate: string;
+    teamIds: string[];
   }) => {
-    if (!tenantId || !user) return null;
+    const activeTenantId = await ensureTenant();
+    if (!activeTenantId || !user) {
+      toast.error('No hay sesión activa para guardar el proyecto');
+      return null;
+    }
 
-    const { data: proj, error } = await supabase.from('projects').insert({
-      tenant_id: tenantId,
-      name: data.name,
-      description: data.description,
-      status: data.status,
-      start_date: data.startDate,
-      end_date: data.endDate,
-      created_by: user.id,
-    }).select().single();
+    const { data: proj, error } = await supabase
+      .from('projects')
+      .insert({
+        tenant_id: activeTenantId,
+        name: data.name,
+        description: data.description,
+        status: data.status,
+        start_date: data.startDate,
+        end_date: data.endDate,
+        created_by: user.id,
+      })
+      .select()
+      .single();
 
-    if (error || !proj) { toast.error('Error al crear proyecto'); return null; }
+    if (error || !proj) {
+      console.error('Error creating project:', error);
+      toast.error('Error al crear proyecto');
+      return null;
+    }
 
-    // Add team members
     if (data.teamIds.length > 0) {
-      await supabase.from('project_members').insert(
-        data.teamIds.map(uid => ({ project_id: proj.id, user_id: uid }))
+      const { error: membersError } = await supabase.from('project_members').insert(
+        data.teamIds.map((uid) => ({ project_id: proj.id, user_id: uid }))
       );
+      if (membersError) {
+        console.error('Error adding project members:', membersError);
+        toast.error('Proyecto creado, pero no se pudo guardar el equipo');
+      }
     }
 
     const newProject: Project = {
-      id: proj.id, name: proj.name, description: proj.description || '',
-      status: proj.status as any, progress: 0, teamIds: data.teamIds,
-      startDate: new Date(proj.start_date), endDate: new Date(proj.end_date), milestones: [],
+      id: proj.id,
+      name: proj.name,
+      description: proj.description || '',
+      status: proj.status as any,
+      progress: 0,
+      teamIds: data.teamIds,
+      startDate: new Date(proj.start_date),
+      endDate: new Date(proj.end_date),
+      milestones: [],
     };
 
-    setProjects(prev => [newProject, ...prev]);
+    setProjects((prev) => [newProject, ...prev]);
     toast.success(`Proyecto "${proj.name}" creado 🎉`);
     return newProject;
-  }, [tenantId, user]);
+  }, [ensureTenant, user]);
 
   const updateProjectStatus = useCallback(async (projectId: string, newStatus: string) => {
-    await supabase.from('projects').update({ status: newStatus }).eq('id', projectId);
-    setProjects(prev => prev.map(p => p.id === projectId ? { ...p, status: newStatus as any } : p));
+    const activeTenantId = await ensureTenant();
+    if (!activeTenantId) return;
+
+    const { data, error } = await supabase
+      .from('projects')
+      .update({ status: newStatus })
+      .eq('id', projectId)
+      .eq('tenant_id', activeTenantId)
+      .select('id')
+      .maybeSingle();
+
+    if (error || !data) {
+      console.error('Error updating project status:', error);
+      toast.error('No se pudo actualizar el estado del proyecto');
+      return;
+    }
+
+    setProjects((prev) => prev.map((p) => (p.id === projectId ? { ...p, status: newStatus as any } : p)));
     toast.success('Estado del proyecto actualizado');
-  }, []);
+  }, [ensureTenant]);
 
   const createTask = useCallback(async (data: {
-    title: string; description?: string; assigneeId: string; assigneeName: string;
-    priority: string; dueDate?: string; estimatedHours?: number; projectId?: string;
+    title: string;
+    description?: string;
+    assigneeId: string;
+    assigneeName: string;
+    priority: string;
+    dueDate?: string;
+    estimatedHours?: number;
+    projectId?: string;
   }) => {
-    if (!tenantId) return null;
+    const activeTenantId = await ensureTenant();
+    if (!activeTenantId) {
+      toast.error('No hay sesión activa para guardar la tarea');
+      return null;
+    }
 
-    const { data: task, error } = await supabase.from('project_tasks').insert({
-      tenant_id: tenantId,
-      project_id: data.projectId || null,
-      title: data.title,
-      description: data.description || null,
-      status: 'todo',
-      priority: data.priority,
-      assignee_user_id: data.assigneeId,
-      assignee_name: data.assigneeName,
-      due_date: data.dueDate || null,
-      estimated_hours: data.estimatedHours || null,
-    }).select().single();
+    const { data: task, error } = await supabase
+      .from('project_tasks')
+      .insert({
+        tenant_id: activeTenantId,
+        project_id: data.projectId || null,
+        title: data.title,
+        description: data.description || null,
+        status: 'todo',
+        priority: data.priority,
+        assignee_user_id: data.assigneeId,
+        assignee_name: data.assigneeName,
+        due_date: data.dueDate || null,
+        estimated_hours: data.estimatedHours || null,
+      })
+      .select()
+      .single();
 
-    if (error || !task) { toast.error('Error al crear tarea'); return null; }
+    if (error || !task) {
+      console.error('Error creating task:', error);
+      toast.error('Error al crear tarea');
+      return null;
+    }
 
     const newTask: TaskWithMeta = {
-      id: task.id, title: task.title, description: task.description || undefined,
-      status: 'todo', priority: task.priority as any, assignee: task.assignee_name || 'Sin asignar',
-      assigneeAvatar: '', dueDate: task.due_date ? new Date(task.due_date) : undefined,
+      id: task.id,
+      title: task.title,
+      description: task.description || undefined,
+      status: 'todo',
+      priority: task.priority as any,
+      assignee: task.assignee_name || 'Sin asignar',
+      assigneeAvatar: '',
+      dueDate: task.due_date ? new Date(task.due_date) : undefined,
       projectId: task.project_id || undefined,
       estimatedHours: task.estimated_hours ? Number(task.estimated_hours) : undefined,
     };
 
-    setTasks(prev => [newTask, ...prev]);
+    setTasks((prev) => [newTask, ...prev]);
     toast.success(`Tarea "${task.title}" creada ✅`);
     return newTask;
-  }, [tenantId]);
+  }, [ensureTenant]);
 
   const updateTaskStatus = useCallback(async (taskId: string, newStatus: 'todo' | 'in_progress' | 'done' | 'blocked') => {
+    const activeTenantId = await ensureTenant();
+    if (!activeTenantId) return;
+
+    const currentTask = tasks.find((t) => t.id === taskId);
     const updates: any = { status: newStatus };
+
     if (newStatus === 'done') {
       updates.completed_at = new Date().toISOString();
-      const task = tasks.find(t => t.id === taskId);
-      updates.completed_by = task?.assignee || null;
+      updates.completed_by = currentTask?.assignee || null;
     } else {
       updates.completed_at = null;
       updates.completed_by = null;
     }
 
-    await supabase.from('project_tasks').update(updates).eq('id', taskId);
+    const { data, error } = await supabase
+      .from('project_tasks')
+      .update(updates)
+      .eq('id', taskId)
+      .eq('tenant_id', activeTenantId)
+      .select('id')
+      .maybeSingle();
 
-    setTasks(prev => prev.map(t => {
-      if (t.id !== taskId) return t;
-      return {
-        ...t, status: newStatus,
-        completedAt: newStatus === 'done' ? new Date() : undefined,
-        completedBy: newStatus === 'done' ? t.assignee : undefined,
-      };
-    }));
-  }, [tasks]);
+    if (error || !data) {
+      console.error('Error updating task status:', error);
+      toast.error('No se pudo actualizar la tarea');
+      return;
+    }
+
+    setTasks((prev) =>
+      prev.map((t) => {
+        if (t.id !== taskId) return t;
+        return {
+          ...t,
+          status: newStatus,
+          completedAt: newStatus === 'done' ? new Date() : undefined,
+          completedBy: newStatus === 'done' ? t.assignee : undefined,
+        };
+      })
+    );
+  }, [ensureTenant, tasks]);
 
   const deleteTask = useCallback(async (taskId: string) => {
-    await supabase.from('project_tasks').delete().eq('id', taskId);
-    setTasks(prev => prev.filter(t => t.id !== taskId));
+    const activeTenantId = await ensureTenant();
+    if (!activeTenantId) return;
+
+    const { data, error } = await supabase
+      .from('project_tasks')
+      .delete()
+      .eq('id', taskId)
+      .eq('tenant_id', activeTenantId)
+      .select('id')
+      .maybeSingle();
+
+    if (error || !data) {
+      console.error('Error deleting task:', error);
+      toast.error('No se pudo eliminar la tarea');
+      return;
+    }
+
+    setTasks((prev) => prev.filter((t) => t.id !== taskId));
     toast.success('Tarea eliminada');
-  }, []);
+  }, [ensureTenant]);
 
   const createMilestone = useCallback(async (projectId: string, name: string, date: string) => {
-    if (!tenantId) return;
+    const activeTenantId = await ensureTenant();
+    if (!activeTenantId) return;
 
-    const { data: ms, error } = await supabase.from('project_milestones').insert({
-      tenant_id: tenantId,
-      project_id: projectId,
-      name,
-      target_date: date,
-    }).select().single();
+    const { data: ms, error } = await supabase
+      .from('project_milestones')
+      .insert({ tenant_id: activeTenantId, project_id: projectId, name, target_date: date })
+      .select()
+      .single();
 
-    if (error || !ms) { toast.error('Error al crear hito'); return; }
+    if (error || !ms) {
+      console.error('Error creating milestone:', error);
+      toast.error('Error al crear hito');
+      return;
+    }
 
-    setProjects(prev => prev.map(p => {
-      if (p.id !== projectId) return p;
-      return { ...p, milestones: [...p.milestones, { id: ms.id, name: ms.name, date: new Date(ms.target_date), completed: false }] };
-    }));
+    setProjects((prev) =>
+      prev.map((p) => {
+        if (p.id !== projectId) return p;
+        return {
+          ...p,
+          milestones: [...p.milestones, { id: ms.id, name: ms.name, date: new Date(ms.target_date), completed: false }],
+        };
+      })
+    );
     toast.success('Hito agregado');
-  }, [tenantId]);
+  }, [ensureTenant]);
 
   const toggleMilestone = useCallback(async (projectId: string, milestoneId: string) => {
-    const project = projects.find(p => p.id === projectId);
-    const ms = project?.milestones.find(m => m.id === milestoneId);
+    const activeTenantId = await ensureTenant();
+    if (!activeTenantId) return;
+
+    const project = projects.find((p) => p.id === projectId);
+    const ms = project?.milestones.find((m) => m.id === milestoneId);
     if (!ms) return;
 
-    await supabase.from('project_milestones').update({ completed: !ms.completed }).eq('id', milestoneId);
+    const { data, error } = await supabase
+      .from('project_milestones')
+      .update({ completed: !ms.completed })
+      .eq('id', milestoneId)
+      .eq('tenant_id', activeTenantId)
+      .select('id')
+      .maybeSingle();
 
-    setProjects(prev => prev.map(p => {
-      if (p.id !== projectId) return p;
-      return { ...p, milestones: p.milestones.map(m => m.id === milestoneId ? { ...m, completed: !m.completed } : m) };
-    }));
+    if (error || !data) {
+      console.error('Error toggling milestone:', error);
+      toast.error('No se pudo actualizar el hito');
+      return;
+    }
+
+    setProjects((prev) =>
+      prev.map((p) => {
+        if (p.id !== projectId) return p;
+        return {
+          ...p,
+          milestones: p.milestones.map((m) => (m.id === milestoneId ? { ...m, completed: !m.completed } : m)),
+        };
+      })
+    );
     toast.success('Hito actualizado');
-  }, [projects]);
+  }, [ensureTenant, projects]);
 
   const deleteMilestone = useCallback(async (projectId: string, milestoneId: string) => {
-    await supabase.from('project_milestones').delete().eq('id', milestoneId);
-    setProjects(prev => prev.map(p => {
-      if (p.id !== projectId) return p;
-      return { ...p, milestones: p.milestones.filter(m => m.id !== milestoneId) };
-    }));
+    const activeTenantId = await ensureTenant();
+    if (!activeTenantId) return;
+
+    const { data, error } = await supabase
+      .from('project_milestones')
+      .delete()
+      .eq('id', milestoneId)
+      .eq('tenant_id', activeTenantId)
+      .select('id')
+      .maybeSingle();
+
+    if (error || !data) {
+      console.error('Error deleting milestone:', error);
+      toast.error('No se pudo eliminar el hito');
+      return;
+    }
+
+    setProjects((prev) =>
+      prev.map((p) => {
+        if (p.id !== projectId) return p;
+        return { ...p, milestones: p.milestones.filter((m) => m.id !== milestoneId) };
+      })
+    );
     toast.success('Hito eliminado');
-  }, []);
+  }, [ensureTenant]);
 
   return {
-    projects, tasks, loading,
-    createProject, updateProjectStatus,
-    createTask, updateTaskStatus, deleteTask,
-    createMilestone, toggleMilestone, deleteMilestone,
-    setTasks, setProjects,
+    projects,
+    tasks,
+    loading,
+    createProject,
+    updateProjectStatus,
+    createTask,
+    updateTaskStatus,
+    deleteTask,
+    createMilestone,
+    toggleMilestone,
+    deleteMilestone,
+    setTasks,
+    setProjects,
   };
 }
