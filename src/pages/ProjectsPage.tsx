@@ -267,8 +267,8 @@ const ProjectsPage = () => {
     const PIcon = pConfig.icon;
     return (
       <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40" onClick={onClose}>
-        <div className="bg-card border border-border rounded-t-2xl sm:rounded-2xl w-full sm:max-w-lg max-h-[85vh] overflow-auto shadow-lg animate-in slide-in-from-bottom-4" onClick={e => e.stopPropagation()}>
-          <div className="sticky top-0 bg-card border-b border-border p-4 flex items-start justify-between gap-3 z-10">
+        <div className="bg-card rounded-t-3xl sm:rounded-3xl w-full sm:max-w-lg max-h-[85vh] overflow-auto shadow-elevated animate-in slide-in-from-bottom-4" onClick={e => e.stopPropagation()}>
+          <div className="sticky top-0 bg-card p-4 flex items-start justify-between gap-3 z-10">
             <div className="min-w-0 flex-1">
               <h3 className="text-lg font-bold text-foreground">{task.title}</h3>
               {task.description && <p className="text-sm text-muted-foreground mt-1">{task.description}</p>}
@@ -383,7 +383,7 @@ const ProjectsPage = () => {
     return (
       <div className="flex flex-col h-full">
         {/* Header */}
-        <div className="shrink-0 border-b border-border p-4 sm:p-5 bg-card">
+        <div className="shrink-0 p-4 sm:p-5 bg-card shadow-soft">
           <div className="flex items-center gap-3 mb-2">
             <button onClick={() => setSelectedProjectId(null)} className="text-muted-foreground hover:text-foreground text-sm flex items-center gap-1">
               <ArrowLeft size={14} /> Proyectos
@@ -424,7 +424,7 @@ const ProjectsPage = () => {
               ].map(stat => {
                 const SIcon = stat.icon;
                 return (
-                  <div key={stat.label} className="bg-muted/50 rounded-lg px-3 py-2 flex items-center gap-2">
+                  <div key={stat.label} className="bg-muted/50 rounded-xl px-3 py-2.5 flex items-center gap-2">
                     <SIcon size={14} className={stat.color} />
                     <div>
                       <p className={`text-sm font-bold ${stat.color}`}>{stat.value}</p>
@@ -477,10 +477,10 @@ const ProjectsPage = () => {
           {/* View toggle + New task */}
           <div className="flex items-center justify-between mt-4">
             <div className="flex items-center gap-1">
-              <button onClick={() => setView('board')} className={`text-xs px-3 py-1 rounded-md ${view === 'board' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-secondary'}`}>Kanban</button>
-              <button onClick={() => setView('list')} className={`text-xs px-3 py-1 rounded-md ${view === 'list' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-secondary'}`}>Lista</button>
+               <button onClick={() => setView('board')} className={`text-xs px-3.5 py-1.5 rounded-xl font-medium transition-all ${view === 'board' ? 'bg-primary text-primary-foreground shadow-soft' : 'text-muted-foreground hover:bg-secondary'}`}>Kanban</button>
+               <button onClick={() => setView('list')} className={`text-xs px-3.5 py-1.5 rounded-xl font-medium transition-all ${view === 'list' ? 'bg-primary text-primary-foreground shadow-soft' : 'text-muted-foreground hover:bg-secondary'}`}>Lista</button>
             </div>
-            <button onClick={() => setShowNewTask(true)} className="flex items-center gap-1.5 bg-primary text-primary-foreground text-xs font-medium px-3 py-1.5 rounded-lg hover:opacity-90">
+            <button onClick={() => setShowNewTask(true)} className="flex items-center gap-1.5 bg-primary text-primary-foreground text-xs font-semibold px-4 py-2 rounded-xl hover:opacity-90 shadow-soft active:scale-95 transition-all">
               <Plus size={14} /> Nueva Tarea
             </button>
           </div>
@@ -513,7 +513,7 @@ const ProjectsPage = () => {
                         const PIcon = priorityConfig[task.priority].icon;
                         return (
                           <button key={task.id} onClick={() => setSelectedTask(task)}
-                            className="w-full text-left bg-card border border-border rounded-lg p-3 shadow-sm hover:shadow-md hover:border-primary/30 transition-all">
+                            className="w-full text-left bg-card rounded-2xl p-3.5 shadow-soft hover:shadow-card transition-all active:scale-[0.98]">
                             <div className="flex items-start justify-between mb-1.5">
                               <h4 className={`text-sm font-medium leading-tight ${task.status === 'done' ? 'line-through text-muted-foreground' : 'text-foreground'}`}>{task.title}</h4>
                               <PIcon size={14} className={`shrink-0 ml-2 ${priorityConfig[task.priority].className}`} />
@@ -544,7 +544,7 @@ const ProjectsPage = () => {
                 const sConfig = taskStatusConfig[task.status];
                 return (
                   <button key={task.id} onClick={() => setSelectedTask(task)}
-                    className="w-full bg-card border border-border rounded-lg p-3 flex items-center gap-3 sm:gap-4 hover:shadow-md hover:border-primary/30 transition-all text-left">
+                    className="w-full bg-card rounded-2xl p-3.5 flex items-center gap-3 sm:gap-4 shadow-soft hover:shadow-card transition-all text-left active:scale-[0.98]">
                     <button onClick={(e) => cycleTaskStatus(task.id, e)}
                       className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 border-2 transition-all hover:scale-110 ${
                         task.status === 'done' ? 'bg-success border-success text-success-foreground'
@@ -684,11 +684,11 @@ const ProjectsPage = () => {
 
   // ===== PROJECTS LIST =====
   return (
-    <div className="p-4 sm:p-6 max-w-7xl mx-auto">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
-        <h1 className="text-xl font-bold text-foreground">Proyectos</h1>
-        <button onClick={() => setShowNewProject(true)} className="flex items-center gap-1.5 bg-primary text-primary-foreground text-sm font-medium px-4 py-2 rounded-lg hover:opacity-90 w-fit">
-          <Plus size={16} /> Nuevo Proyecto
+     <div className="p-4 sm:p-6 max-w-7xl mx-auto animate-fade-in">
+       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
+         <h1 className="text-2xl font-extrabold text-foreground">Proyectos</h1>
+         <button onClick={() => setShowNewProject(true)} className="flex items-center gap-1.5 bg-primary text-primary-foreground text-sm font-semibold px-5 py-2.5 rounded-xl hover:opacity-90 shadow-soft active:scale-95 transition-all w-fit">
+           <Plus size={16} /> Nuevo Proyecto
         </button>
       </div>
 
@@ -765,7 +765,7 @@ const ProjectsPage = () => {
           const computedProgress = getProjectProgress(proj.id);
           const members = teamMembers.filter(m => proj.teamIds.includes(m.id));
           return (
-            <button key={proj.id} onClick={() => setSelectedProjectId(proj.id)} className="bg-card border border-border rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow text-left">
+            <button key={proj.id} onClick={() => setSelectedProjectId(proj.id)} className="bg-card rounded-2xl p-5 shadow-card hover:shadow-elevated transition-all active:scale-[0.98] text-left">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
                   <FolderKanban size={16} className="text-primary" />
