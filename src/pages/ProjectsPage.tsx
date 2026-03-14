@@ -477,8 +477,8 @@ const ProjectsPage = () => {
           {/* View toggle + New task */}
           <div className="flex items-center justify-between mt-4">
             <div className="flex items-center gap-1">
-              <button onClick={() => setView('board')} className={`text-xs px-3 py-1 rounded-md ${view === 'board' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-secondary'}`}>Kanban</button>
-              <button onClick={() => setView('list')} className={`text-xs px-3 py-1 rounded-md ${view === 'list' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-secondary'}`}>Lista</button>
+               <button onClick={() => setView('board')} className={`text-xs px-3.5 py-1.5 rounded-xl font-medium transition-all ${view === 'board' ? 'bg-primary text-primary-foreground shadow-soft' : 'text-muted-foreground hover:bg-secondary'}`}>Kanban</button>
+               <button onClick={() => setView('list')} className={`text-xs px-3.5 py-1.5 rounded-xl font-medium transition-all ${view === 'list' ? 'bg-primary text-primary-foreground shadow-soft' : 'text-muted-foreground hover:bg-secondary'}`}>Lista</button>
             </div>
             <button onClick={() => setShowNewTask(true)} className="flex items-center gap-1.5 bg-primary text-primary-foreground text-xs font-medium px-3 py-1.5 rounded-lg hover:opacity-90">
               <Plus size={14} /> Nueva Tarea
