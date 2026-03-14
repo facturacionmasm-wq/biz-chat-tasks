@@ -89,38 +89,56 @@ export function useChatPersistence() {
     let cancelled = false;
 
     const load = async () => {
-      if (!tenantId) return;
-
-      const [chRes, msgRes] = await Promise.all([
-        supabase.from('chat_channels').select('*').eq('tenant_id', tenantId).order('created_at'),
-        supabase.from('chat_messages').select('*').eq('tenant_id', tenantId).order('created_at'),
-      ]);
-
-      if (chRes.error || msgRes.error) {
-        console.error('Error loading chat data:', chRes.error || msgRes.error);
-        if (!cancelled) {
-          setLoading(false);
-          toast.error('No se pudo cargar el chat interno');
-        }
+      if (!tenantId) {
+        console.log('[Chat] No tenantId yet, skipping load');
         return;
       }
 
-      const chatMessages = msgRes.data || [];
-      const userIds = Array.from(new Set(chatMessages.map((message) => message.user_id)));
-      const profileMap = await getProfilesByUserId(tenantId, userIds);
+      console.log('[Chat] Loading chat data for tenant:', tenantId);
 
-      if (!cancelled) {
-        setChannels((chRes.data || []).map((ch) => ({
+      try {
+        const [chRes, msgRes] = await Promise.all([
+          supabase.from('chat_channels').select('*').eq('tenant_id', tenantId).order('created_at'),
+          supabase.from('chat_messages').select('*').eq('tenant_id', tenantId).order('created_at'),
+        ]);
+
+        console.log('[Chat] Channels result:', { data: chRes.data?.length, error: chRes.error });
+        console.log('[Chat] Messages result:', { data: msgRes.data?.length, error: msgRes.error });
+
+        if (chRes.error || msgRes.error) {
+          console.error('[Chat] Error loading chat data:', chRes.error || msgRes.error);
+          if (!cancelled) {
+            setLoading(false);
+            toast.error('No se pudo cargar el chat interno');
+          }
+          return;
+        }
+
+        if (cancelled) {
+          console.log('[Chat] Load cancelled after fetch');
+          return;
+        }
+
+        const chatMessages = msgRes.data || [];
+        const userIds = Array.from(new Set(chatMessages.map((message) => message.user_id)));
+        const profileMap = await getProfilesByUserId(tenantId, userIds);
+
+        if (cancelled) {
+          console.log('[Chat] Load cancelled after profiles');
+          return;
+        }
+
+        const loadedChannels = (chRes.data || []).map((ch) => ({
           id: ch.id,
           name: ch.name,
           type: ch.type as 'channel' | 'direct',
           unread: 0,
-        })));
+        }));
 
+        setChannels(loadedChannels);
         setMessages(
           chatMessages.map((message) => {
             const profile = profileMap.get(message.user_id);
-
             return {
               id: message.id,
               channelId: message.channel_id,
@@ -133,22 +151,35 @@ export function useChatPersistence() {
             };
           })
         );
-      }
 
-      if ((chRes.data || []).length === 0) {
-        const { data: newCh, error: channelError } = await supabase
-          .from('chat_channels')
-          .insert({ tenant_id: tenantId, name: 'General', type: 'channel', created_by: user?.id })
-          .select()
-          .single();
+        // Auto-create "General" channel if none exist
+        if (loadedChannels.length === 0 && user?.id) {
+          console.log('[Chat] No channels found, creating General channel...');
+          const { data: newCh, error: channelError } = await supabase
+            .from('chat_channels')
+            .insert({ tenant_id: tenantId, name: 'General', type: 'channel', created_by: user.id })
+            .select()
+            .single();
 
-        if (!channelError && newCh && !cancelled) {
-          setChannels([{ id: newCh.id, name: newCh.name, type: 'channel', unread: 0 }]);
+          if (channelError) {
+            console.error('[Chat] Error creating General channel:', channelError);
+            toast.error('Error al crear canal General: ' + channelError.message);
+          } else if (newCh && !cancelled) {
+            console.log('[Chat] General channel created:', newCh.id);
+            setChannels([{ id: newCh.id, name: newCh.name, type: 'channel', unread: 0 }]);
+          }
         }
-      }
 
-      if (!cancelled) {
-        setLoading(false);
+        if (!cancelled) {
+          console.log('[Chat] Loading complete, channels:', loadedChannels.length);
+          setLoading(false);
+        }
+      } catch (err) {
+        console.error('[Chat] Unexpected error loading chat:', err);
+        if (!cancelled) {
+          setLoading(false);
+          toast.error('Error inesperado al cargar el chat');
+        }
       }
     };
 
