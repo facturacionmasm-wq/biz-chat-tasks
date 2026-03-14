@@ -383,7 +383,7 @@ const ProjectsPage = () => {
     return (
       <div className="flex flex-col h-full">
         {/* Header */}
-        <div className="shrink-0 border-b border-border p-4 sm:p-5 bg-card">
+        <div className="shrink-0 p-4 sm:p-5 bg-card shadow-soft">
           <div className="flex items-center gap-3 mb-2">
             <button onClick={() => setSelectedProjectId(null)} className="text-muted-foreground hover:text-foreground text-sm flex items-center gap-1">
               <ArrowLeft size={14} /> Proyectos
