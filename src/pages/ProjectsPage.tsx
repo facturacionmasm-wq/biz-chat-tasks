@@ -513,7 +513,7 @@ const ProjectsPage = () => {
                         const PIcon = priorityConfig[task.priority].icon;
                         return (
                           <button key={task.id} onClick={() => setSelectedTask(task)}
-                            className="w-full text-left bg-card border border-border rounded-lg p-3 shadow-sm hover:shadow-md hover:border-primary/30 transition-all">
+                            className="w-full text-left bg-card rounded-2xl p-3.5 shadow-soft hover:shadow-card transition-all active:scale-[0.98]">
                             <div className="flex items-start justify-between mb-1.5">
                               <h4 className={`text-sm font-medium leading-tight ${task.status === 'done' ? 'line-through text-muted-foreground' : 'text-foreground'}`}>{task.title}</h4>
                               <PIcon size={14} className={`shrink-0 ml-2 ${priorityConfig[task.priority].className}`} />
