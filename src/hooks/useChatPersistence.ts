@@ -178,6 +178,7 @@ export function useChatPersistence() {
           const { data: profile } = await supabase
             .from('profiles')
             .select('name, avatar_url')
+            .eq('tenant_id', tenantId)
             .eq('user_id', m.user_id)
             .maybeSingle();
 

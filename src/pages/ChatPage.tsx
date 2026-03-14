@@ -23,7 +23,12 @@ const ChatPage = () => {
 
   // Set default active channel when channels load
   useEffect(() => {
-    if (!activeChannelId && allChannels.length > 0) {
+    if (allChannels.length === 0) {
+      setActiveChannelId(null);
+      return;
+    }
+
+    if (!activeChannelId || !allChannels.some(channel => channel.id === activeChannelId)) {
       setActiveChannelId(allChannels[0].id);
     }
   }, [allChannels, activeChannelId]);
