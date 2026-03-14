@@ -13,6 +13,31 @@ const resolveTenantId = async (userId: string) => {
   return data as string | null;
 };
 
+const getProfilesByUserId = async (tenantId: string, userIds: string[]) => {
+  if (userIds.length === 0) return new Map<string, { name: string; avatarUrl: string }>();
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('user_id, name, avatar_url')
+    .eq('tenant_id', tenantId)
+    .in('user_id', userIds);
+
+  if (error) {
+    console.error('Error loading chat member profiles:', error);
+    return new Map<string, { name: string; avatarUrl: string }>();
+  }
+
+  return new Map(
+    (data || []).map((profile) => [
+      profile.user_id,
+      {
+        name: profile.name || 'Usuario',
+        avatarUrl: profile.avatar_url || '',
+      },
+    ])
+  );
+};
+
 export function useChatPersistence() {
   const { user } = useAuth();
   const [tenantId, setTenantId] = useState<string | null>(null);
@@ -68,7 +93,7 @@ export function useChatPersistence() {
 
       const [chRes, msgRes] = await Promise.all([
         supabase.from('chat_channels').select('*').eq('tenant_id', tenantId).order('created_at'),
-        supabase.from('chat_messages').select('*, profiles:user_id(name, avatar_url)').eq('tenant_id', tenantId).order('created_at'),
+        supabase.from('chat_messages').select('*').eq('tenant_id', tenantId).order('created_at'),
       ]);
 
       if (chRes.error || msgRes.error) {
@@ -80,6 +105,10 @@ export function useChatPersistence() {
         return;
       }
 
+      const chatMessages = msgRes.data || [];
+      const userIds = Array.from(new Set(chatMessages.map((message) => message.user_id)));
+      const profileMap = await getProfilesByUserId(tenantId, userIds);
+
       if (!cancelled) {
         setChannels((chRes.data || []).map((ch) => ({
           id: ch.id,
@@ -88,16 +117,22 @@ export function useChatPersistence() {
           unread: 0,
         })));
 
-        setMessages((msgRes.data || []).map((m: any) => ({
-          id: m.id,
-          channelId: m.channel_id,
-          userId: m.user_id,
-          userName: m.profiles?.name || 'Usuario',
-          userAvatar: m.profiles?.avatar_url || '',
-          content: m.content,
-          timestamp: new Date(m.created_at),
-          isOwn: m.user_id === user?.id,
-        })));
+        setMessages(
+          chatMessages.map((message) => {
+            const profile = profileMap.get(message.user_id);
+
+            return {
+              id: message.id,
+              channelId: message.channel_id,
+              userId: message.user_id,
+              userName: profile?.name || 'Usuario',
+              userAvatar: profile?.avatarUrl || '',
+              content: message.content,
+              timestamp: new Date(message.created_at),
+              isOwn: message.user_id === user?.id,
+            };
+          })
+        );
       }
 
       if ((chRes.data || []).length === 0) {
@@ -143,6 +178,7 @@ export function useChatPersistence() {
           const { data: profile } = await supabase
             .from('profiles')
             .select('name, avatar_url')
+            .eq('tenant_id', tenantId)
             .eq('user_id', m.user_id)
             .maybeSingle();
 

@@ -23,7 +23,12 @@ const ChatPage = () => {
 
   // Set default active channel when channels load
   useEffect(() => {
-    if (!activeChannelId && allChannels.length > 0) {
+    if (allChannels.length === 0) {
+      setActiveChannelId(null);
+      return;
+    }
+
+    if (!activeChannelId || !allChannels.some(channel => channel.id === activeChannelId)) {
       setActiveChannelId(allChannels[0].id);
     }
   }, [allChannels, activeChannelId]);
@@ -172,7 +177,7 @@ const ChatPage = () => {
     toast.info(`${member?.name || 'Miembro'} removido del canal`);
   }, [activeChannelId, teamMembers]);
 
-  if (loading || !activeChannel) {
+  if (loading) {
     return <div className="flex items-center justify-center h-full text-muted-foreground">Cargando chat...</div>;
   }
 
@@ -184,11 +189,24 @@ const ChatPage = () => {
             <button onClick={() => setShowChat(false)} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
               <ArrowLeft size={16} /> Canales
             </button>
-            <span className="ml-2 text-sm font-medium text-foreground">#{activeChannel.name}</span>
+            <span className="ml-2 text-sm font-medium text-foreground">{activeChannel ? `#${activeChannel.name}` : 'Sin canal'}</span>
           </div>
           <div className="flex-1 min-w-0">
-            <ChatArea channel={activeChannel} messages={channelMessages} onSendMessage={handleSendMessage} teamMembers={teamMembers}
-              channelMembers={channelMembers[activeChannelId!] || []} onAddMember={handleAddMember} onRemoveMember={handleRemoveMember} />
+            {activeChannel ? (
+              <ChatArea
+                channel={activeChannel}
+                messages={channelMessages}
+                onSendMessage={handleSendMessage}
+                teamMembers={teamMembers}
+                channelMembers={activeChannelId ? channelMembers[activeChannelId] || [] : []}
+                onAddMember={handleAddMember}
+                onRemoveMember={handleRemoveMember}
+              />
+            ) : (
+              <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
+                No hay canales aún. Crea uno nuevo desde la lista.
+              </div>
+            )}
           </div>
         </div>
       );
@@ -206,8 +224,21 @@ const ChatPage = () => {
       <ChatSidebar channels={allChannels} activeChannelId={activeChannelId || ''} onSelectChannel={handleSelectChannel}
         teamMembers={teamMembers} onCreateChannel={handleCreateChannel} onCreateDM={handleCreateDM} />
       <div className="flex-1 min-w-0">
-        <ChatArea channel={activeChannel} messages={channelMessages} onSendMessage={handleSendMessage} teamMembers={teamMembers}
-          channelMembers={channelMembers[activeChannelId!] || []} onAddMember={handleAddMember} onRemoveMember={handleRemoveMember} />
+        {activeChannel ? (
+          <ChatArea
+            channel={activeChannel}
+            messages={channelMessages}
+            onSendMessage={handleSendMessage}
+            teamMembers={teamMembers}
+            channelMembers={activeChannelId ? channelMembers[activeChannelId] || [] : []}
+            onAddMember={handleAddMember}
+            onRemoveMember={handleRemoveMember}
+          />
+        ) : (
+          <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
+            No hay canales aún. Crea uno nuevo para iniciar el chat interno.
+          </div>
+        )}
       </div>
     </div>
   );
