@@ -544,7 +544,7 @@ const ProjectsPage = () => {
                 const sConfig = taskStatusConfig[task.status];
                 return (
                   <button key={task.id} onClick={() => setSelectedTask(task)}
-                    className="w-full bg-card border border-border rounded-lg p-3 flex items-center gap-3 sm:gap-4 hover:shadow-md hover:border-primary/30 transition-all text-left">
+                    className="w-full bg-card rounded-2xl p-3.5 flex items-center gap-3 sm:gap-4 shadow-soft hover:shadow-card transition-all text-left active:scale-[0.98]">
                     <button onClick={(e) => cycleTaskStatus(task.id, e)}
                       className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 border-2 transition-all hover:scale-110 ${
                         task.status === 'done' ? 'bg-success border-success text-success-foreground'
