@@ -765,7 +765,7 @@ const ProjectsPage = () => {
           const computedProgress = getProjectProgress(proj.id);
           const members = teamMembers.filter(m => proj.teamIds.includes(m.id));
           return (
-            <button key={proj.id} onClick={() => setSelectedProjectId(proj.id)} className="bg-card border border-border rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow text-left">
+            <button key={proj.id} onClick={() => setSelectedProjectId(proj.id)} className="bg-card rounded-2xl p-5 shadow-card hover:shadow-elevated transition-all active:scale-[0.98] text-left">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
                   <FolderKanban size={16} className="text-primary" />
