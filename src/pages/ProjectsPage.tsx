@@ -684,11 +684,11 @@ const ProjectsPage = () => {
 
   // ===== PROJECTS LIST =====
   return (
-    <div className="p-4 sm:p-6 max-w-7xl mx-auto">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
-        <h1 className="text-xl font-bold text-foreground">Proyectos</h1>
-        <button onClick={() => setShowNewProject(true)} className="flex items-center gap-1.5 bg-primary text-primary-foreground text-sm font-medium px-4 py-2 rounded-lg hover:opacity-90 w-fit">
-          <Plus size={16} /> Nuevo Proyecto
+     <div className="p-4 sm:p-6 max-w-7xl mx-auto animate-fade-in">
+       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
+         <h1 className="text-2xl font-extrabold text-foreground">Proyectos</h1>
+         <button onClick={() => setShowNewProject(true)} className="flex items-center gap-1.5 bg-primary text-primary-foreground text-sm font-semibold px-5 py-2.5 rounded-xl hover:opacity-90 shadow-soft active:scale-95 transition-all w-fit">
+           <Plus size={16} /> Nuevo Proyecto
         </button>
       </div>
 
