@@ -267,7 +267,7 @@ const ProjectsPage = () => {
     const PIcon = pConfig.icon;
     return (
       <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40" onClick={onClose}>
-        <div className="bg-card border border-border rounded-t-2xl sm:rounded-2xl w-full sm:max-w-lg max-h-[85vh] overflow-auto shadow-lg animate-in slide-in-from-bottom-4" onClick={e => e.stopPropagation()}>
+        <div className="bg-card rounded-t-3xl sm:rounded-3xl w-full sm:max-w-lg max-h-[85vh] overflow-auto shadow-elevated animate-in slide-in-from-bottom-4" onClick={e => e.stopPropagation()}>
           <div className="sticky top-0 bg-card border-b border-border p-4 flex items-start justify-between gap-3 z-10">
             <div className="min-w-0 flex-1">
               <h3 className="text-lg font-bold text-foreground">{task.title}</h3>
