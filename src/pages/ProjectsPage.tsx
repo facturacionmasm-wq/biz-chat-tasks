@@ -424,7 +424,7 @@ const ProjectsPage = () => {
               ].map(stat => {
                 const SIcon = stat.icon;
                 return (
-                  <div key={stat.label} className="bg-muted/50 rounded-lg px-3 py-2 flex items-center gap-2">
+                  <div key={stat.label} className="bg-muted/50 rounded-xl px-3 py-2.5 flex items-center gap-2">
                     <SIcon size={14} className={stat.color} />
                     <div>
                       <p className={`text-sm font-bold ${stat.color}`}>{stat.value}</p>
