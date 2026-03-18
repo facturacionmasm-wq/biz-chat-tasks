@@ -217,6 +217,24 @@ const AppointmentsPage = () => {
         triggerCalendarSync(apt.id, 'sync_appointment');
       }
 
+      // Send WhatsApp confirmation to the contact
+      if (form.contactPhone) {
+        const assignedEmployee = employees.find(e => e.userId === form.userId);
+        const dateStr = format(startAt, "EEEE d 'de' MMMM", { locale: es });
+        const timeStr = `${form.startTime} - ${form.endTime || format(endAt, 'HH:mm')}`;
+        const confirmMsg = `📅 *Nueva Cita Agendada*\n\nHola ${form.contactName}, se ha agendado una cita para ti:\n\n📆 ${dateStr}\n⏰ ${timeStr}${form.serviceType ? `\n🏷️ ${form.serviceType}` : ''}${assignedEmployee ? `\n👤 Con: ${assignedEmployee.name}` : ''}\n\nResponde *CONFIRMO* para confirmar tu asistencia o *CANCELO* para cancelar.`;
+        
+        supabase.functions.invoke('twilio-send', {
+          body: { to: form.contactPhone, body: confirmMsg },
+        }).then(({ error: sendErr }) => {
+          if (sendErr) {
+            console.error('Error sending WhatsApp confirmation to contact:', sendErr);
+          } else {
+            toast.info(`Confirmación enviada por WhatsApp a ${form.contactName}`);
+          }
+        });
+      }
+
       toast.success('Cita creada exitosamente');
       setShowCreateDialog(false);
       setForm({ ...emptyForm });
