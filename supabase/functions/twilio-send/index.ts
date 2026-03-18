@@ -26,8 +26,8 @@ serve(async (req) => {
     global: { headers: { Authorization: authHeader } },
   });
 
-  const { data: claimsData, error: claimsError } = await anonClient.auth.getClaims(authHeader.replace("Bearer ", ""));
-  if (claimsError || !claimsData?.claims) {
+  const { data: { user: authUser }, error: userError } = await anonClient.auth.getUser();
+  if (userError || !authUser) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
       status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
@@ -43,12 +43,7 @@ serve(async (req) => {
       );
     }
 
-    const userId = String(claimsData.claims.sub || "");
-    if (!userId) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    const userId = authUser.id;
 
     // Service client for backend lookups/inserts
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
