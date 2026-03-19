@@ -42,19 +42,25 @@ serve(async (req) => {
     let callerUserId: string | null = null;
     const authHeader = req.headers.get('Authorization') || '';
 
-    if (body.internal_caller && authHeader.includes(SUPABASE_SERVICE_ROLE_KEY)) {
-      callerUserId = body.user_id || null;
+    const bearerToken = authHeader.replace('Bearer ', '').trim();
+    
+    // Try to authenticate: first try as user JWT, then fall back to service role
+    const { data: userData, error: userErr } = await supabase.auth.getUser(bearerToken);
+    if (userData?.user?.id) {
+      callerUserId = userData.user.id;
     } else {
-      const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') || Deno.env.get('SUPABASE_PUBLISHABLE_KEY') || '';
-      const authSupabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-        global: { headers: { Authorization: authHeader } },
-      });
-      const token = authHeader.replace('Bearer ', '');
-      const { data: claimsData, error: claimsErr } = await authSupabase.auth.getClaims(token);
-      if (claimsErr || !claimsData?.claims?.sub) {
+      // Not a user JWT — check if it's a service role key by verifying admin access
+      // Service role clients can list users, regular clients can't
+      const testClient = createClient(SUPABASE_URL, bearerToken);
+      const { data: testData, error: testErr } = await testClient.auth.admin.listUsers({ perPage: 1 });
+      if (!testErr && testData) {
+        // It's a service role key
+        callerUserId = body.user_id || null;
+        console.log('[google-drive] Service role auth, user:', callerUserId);
+      } else {
+        console.error('[google-drive] Auth failed:', userErr?.message);
         return jsonResponse({ error: 'Unauthorized' }, 401);
       }
-      callerUserId = claimsData.claims.sub as string;
     }
 
     const tenantId = body.tenant_id;
@@ -199,20 +205,15 @@ serve(async (req) => {
         return jsonResponse({ error: 'file_url required' }, 400);
       }
 
-      // Get Drive settings
-      const { data: driveSettings } = await supabase
-        .from('tenant_drive_settings')
-        .select('*')
-        .eq('tenant_id', tenantId)
-        .maybeSingle();
-
-      if (!driveSettings) {
-        return jsonResponse({ error: 'drive_not_configured', message: 'Google Drive no está configurado para esta empresa.' }, 400);
-      }
-
       const accessToken = await getValidAccessToken(supabase, tenantId, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET);
       if (!accessToken) {
         return jsonResponse({ error: 'No se pudo obtener acceso a Google Drive.' }, 500);
+      }
+
+      // Get Drive settings — verify and auto-recreate folders if deleted
+      const driveSettings = await ensureDriveFolders(supabase, tenantId, accessToken, callerUserId);
+      if (!driveSettings) {
+        return jsonResponse({ error: 'drive_not_configured', message: 'Google Drive no está configurado. Ve a Configuración para conectarlo.' }, 400);
       }
 
       // Determine target folder
@@ -334,12 +335,7 @@ serve(async (req) => {
       const accessToken = await getValidAccessToken(supabase, tenantId, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET);
       if (!accessToken) return jsonResponse({ error: 'No Google access token' }, 400);
 
-      const { data: driveSettings } = await supabase
-        .from('tenant_drive_settings')
-        .select('drive_root_folder_id')
-        .eq('tenant_id', tenantId)
-        .maybeSingle();
-
+      const driveSettings = await ensureDriveFolders(supabase, tenantId, accessToken, callerUserId);
       if (!driveSettings?.drive_root_folder_id) {
         return jsonResponse({ error: 'Drive not configured' }, 400);
       }
@@ -382,16 +378,11 @@ serve(async (req) => {
       const { file_url, file_name, target_folder_id, document_id, twilio_sid, twilio_token } = body;
       if (!file_url) return jsonResponse({ error: 'file_url required' }, 400);
 
-      const { data: driveSettings } = await supabase
-        .from('tenant_drive_settings')
-        .select('drive_root_folder_id')
-        .eq('tenant_id', tenantId)
-        .maybeSingle();
-
-      if (!driveSettings) return jsonResponse({ error: 'Drive not configured' }, 400);
-
       const accessToken = await getValidAccessToken(supabase, tenantId, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET);
       if (!accessToken) return jsonResponse({ error: 'No access token' }, 500);
+
+      const driveSettings = await ensureDriveFolders(supabase, tenantId, accessToken, callerUserId);
+      if (!driveSettings) return jsonResponse({ error: 'Drive not configured' }, 400);
 
       const parentFolderId = target_folder_id || driveSettings.drive_root_folder_id;
 
@@ -528,7 +519,92 @@ serve(async (req) => {
   }
 });
 
-// ==================== HELPERS ====================
+// ==================== AUTO-RECOVERY ====================
+
+async function ensureDriveFolders(
+  supabase: any,
+  tenantId: string,
+  accessToken: string,
+  callerUserId: string | null,
+): Promise<{ drive_root_folder_id: string; drive_budgets_folder_id: string; drive_receipts_folder_id: string } | null> {
+  const { data: settings } = await supabase
+    .from('tenant_drive_settings')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
+
+  if (!settings) return null;
+
+  // Verify root folder still exists
+  let rootOk = false;
+  try {
+    const checkRes = await fetch(`${DRIVE_API}/files/${settings.drive_root_folder_id}?fields=id,trashed`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (checkRes.ok) {
+      const data = await checkRes.json();
+      rootOk = !data.trashed;
+    } else {
+      await checkRes.text(); // consume body
+    }
+  } catch (_) { /* network error */ }
+
+  if (rootOk) {
+    return {
+      drive_root_folder_id: settings.drive_root_folder_id,
+      drive_budgets_folder_id: settings.drive_budgets_folder_id,
+      drive_receipts_folder_id: settings.drive_receipts_folder_id,
+    };
+  }
+
+  // Root folder was deleted — recreate everything
+  console.log(`[google-drive] Root folder ${settings.drive_root_folder_id} not found, recreating...`);
+
+  const { data: tenant } = await supabase.from('tenants').select('name').eq('id', tenantId).single();
+  const tenantName = tenant?.name || 'Empresa';
+
+  const rootResult = await createFolder(accessToken, `Aria - ${tenantName} - Finanzas`, null);
+  if (!rootResult.id) {
+    console.error('[google-drive] Failed to recreate root folder');
+    return null;
+  }
+
+  const budgetsResult = await createFolder(accessToken, 'Presupuestos', rootResult.id);
+  const receiptsResult = await createFolder(accessToken, 'Comprobantes', rootResult.id);
+  // Also recreate Proyectos subfolder
+  await createFolder(accessToken, 'Proyectos', rootResult.id);
+
+  const rootUrl = `https://drive.google.com/drive/folders/${rootResult.id}`;
+
+  await supabase.from('tenant_drive_settings').update({
+    drive_root_folder_id: rootResult.id,
+    drive_root_folder_url: rootUrl,
+    drive_budgets_folder_id: budgetsResult.id,
+    drive_receipts_folder_id: receiptsResult.id,
+    updated_by: callerUserId,
+    updated_at: new Date().toISOString(),
+  }).eq('tenant_id', tenantId);
+
+  await supabase.from('drive_audit_log').insert({
+    tenant_id: tenantId,
+    user_id: callerUserId,
+    action: 'folder_recreated',
+    resource_type: 'folder',
+    resource_id: rootResult.id,
+    resource_name: `Aria - ${tenantName} - Finanzas`,
+    metadata: { reason: 'root_folder_deleted', old_folder_id: settings.drive_root_folder_id },
+  });
+
+  console.log(`[google-drive] Folders recreated: root=${rootResult.id}`);
+
+  return {
+    drive_root_folder_id: rootResult.id,
+    drive_budgets_folder_id: budgetsResult.id || '',
+    drive_receipts_folder_id: receiptsResult.id || '',
+  };
+}
+
+
 
 async function getValidAccessToken(
   supabase: any,
