@@ -384,7 +384,23 @@ serve(async (req) => {
       const driveSettings = await ensureDriveFolders(supabase, tenantId, accessToken, callerUserId);
       if (!driveSettings) return jsonResponse({ error: 'Drive not configured' }, 400);
 
-      const parentFolderId = target_folder_id || driveSettings.drive_root_folder_id;
+      let parentFolderId = target_folder_id || driveSettings.drive_root_folder_id;
+
+      // If a specific folder was provided but no longer exists, fallback to root
+      if (target_folder_id) {
+        const folderCheckRes = await fetch(`${DRIVE_API}/files/${target_folder_id}?fields=id,trashed`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        if (folderCheckRes.ok) {
+          const folderData = await folderCheckRes.json();
+          if (folderData?.trashed) {
+            parentFolderId = driveSettings.drive_root_folder_id;
+          }
+        } else {
+          await folderCheckRes.text();
+          parentFolderId = driveSettings.drive_root_folder_id;
+        }
+      }
 
       // Download file
       let fileBuffer: ArrayBuffer;
@@ -527,80 +543,113 @@ async function ensureDriveFolders(
   accessToken: string,
   callerUserId: string | null,
 ): Promise<{ drive_root_folder_id: string; drive_budgets_folder_id: string; drive_receipts_folder_id: string } | null> {
+  const checkFolderExists = async (folderId: string | null | undefined): Promise<boolean> => {
+    if (!folderId) return false;
+    try {
+      const res = await fetch(`${DRIVE_API}/files/${folderId}?fields=id,trashed`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!res.ok) {
+        await res.text();
+        return false;
+      }
+      const data = await res.json();
+      return !data?.trashed;
+    } catch {
+      return false;
+    }
+  };
+
+  const { data: tenant } = await supabase.from('tenants').select('name').eq('id', tenantId).single();
+  const tenantName = tenant?.name || 'Empresa';
+
+  const createOrRecreateStructure = async (oldRootId: string | null = null) => {
+    const rootResult = await createFolder(accessToken, `Aria - ${tenantName} - Finanzas`, null);
+    if (!rootResult.id) return null;
+
+    const budgetsResult = await createFolder(accessToken, 'Presupuestos', rootResult.id);
+    const receiptsResult = await createFolder(accessToken, 'Comprobantes', rootResult.id);
+    await createFolder(accessToken, 'Proyectos', rootResult.id);
+
+    if (!budgetsResult.id || !receiptsResult.id) return null;
+
+    const rootUrl = `https://drive.google.com/drive/folders/${rootResult.id}`;
+
+    await supabase.from('tenant_drive_settings').upsert({
+      tenant_id: tenantId,
+      drive_root_folder_id: rootResult.id,
+      drive_root_folder_url: rootUrl,
+      drive_budgets_folder_id: budgetsResult.id,
+      drive_receipts_folder_id: receiptsResult.id,
+      drive_structure_version: 1,
+      drive_provider: 'google',
+      created_by: callerUserId,
+      updated_by: callerUserId,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'tenant_id' });
+
+    await supabase.from('drive_audit_log').insert({
+      tenant_id: tenantId,
+      user_id: callerUserId,
+      action: oldRootId ? 'folder_recreated' : 'folder_created',
+      resource_type: 'folder',
+      resource_id: rootResult.id,
+      resource_name: `Aria - ${tenantName} - Finanzas`,
+      metadata: oldRootId ? { reason: 'root_folder_deleted', old_folder_id: oldRootId } : { auto_provisioned: true },
+    });
+
+    return {
+      drive_root_folder_id: rootResult.id,
+      drive_budgets_folder_id: budgetsResult.id,
+      drive_receipts_folder_id: receiptsResult.id,
+    };
+  };
+
   const { data: settings } = await supabase
     .from('tenant_drive_settings')
     .select('*')
     .eq('tenant_id', tenantId)
     .maybeSingle();
 
-  if (!settings) return null;
-
-  // Verify root folder still exists
-  let rootOk = false;
-  try {
-    const checkRes = await fetch(`${DRIVE_API}/files/${settings.drive_root_folder_id}?fields=id,trashed`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    if (checkRes.ok) {
-      const data = await checkRes.json();
-      rootOk = !data.trashed;
-    } else {
-      await checkRes.text(); // consume body
-    }
-  } catch (_) { /* network error */ }
-
-  if (rootOk) {
-    return {
-      drive_root_folder_id: settings.drive_root_folder_id,
-      drive_budgets_folder_id: settings.drive_budgets_folder_id,
-      drive_receipts_folder_id: settings.drive_receipts_folder_id,
-    };
+  // No settings yet: auto-provision immediately
+  if (!settings?.drive_root_folder_id) {
+    return await createOrRecreateStructure(null);
   }
 
-  // Root folder was deleted — recreate everything
-  console.log(`[google-drive] Root folder ${settings.drive_root_folder_id} not found, recreating...`);
-
-  const { data: tenant } = await supabase.from('tenants').select('name').eq('id', tenantId).single();
-  const tenantName = tenant?.name || 'Empresa';
-
-  const rootResult = await createFolder(accessToken, `Aria - ${tenantName} - Finanzas`, null);
-  if (!rootResult.id) {
-    console.error('[google-drive] Failed to recreate root folder');
-    return null;
+  const rootExists = await checkFolderExists(settings.drive_root_folder_id);
+  if (!rootExists) {
+    return await createOrRecreateStructure(settings.drive_root_folder_id);
   }
 
-  const budgetsResult = await createFolder(accessToken, 'Presupuestos', rootResult.id);
-  const receiptsResult = await createFolder(accessToken, 'Comprobantes', rootResult.id);
-  // Also recreate Proyectos subfolder
-  await createFolder(accessToken, 'Proyectos', rootResult.id);
+  // Root exists: ensure required subfolders are still valid
+  let budgetsId = settings.drive_budgets_folder_id;
+  let receiptsId = settings.drive_receipts_folder_id;
 
-  const rootUrl = `https://drive.google.com/drive/folders/${rootResult.id}`;
+  if (!(await checkFolderExists(budgetsId))) {
+    const created = await createFolder(accessToken, 'Presupuestos', settings.drive_root_folder_id);
+    budgetsId = created.id;
+  }
 
-  await supabase.from('tenant_drive_settings').update({
-    drive_root_folder_id: rootResult.id,
-    drive_root_folder_url: rootUrl,
-    drive_budgets_folder_id: budgetsResult.id,
-    drive_receipts_folder_id: receiptsResult.id,
-    updated_by: callerUserId,
-    updated_at: new Date().toISOString(),
-  }).eq('tenant_id', tenantId);
+  if (!(await checkFolderExists(receiptsId))) {
+    const created = await createFolder(accessToken, 'Comprobantes', settings.drive_root_folder_id);
+    receiptsId = created.id;
+  }
 
-  await supabase.from('drive_audit_log').insert({
-    tenant_id: tenantId,
-    user_id: callerUserId,
-    action: 'folder_recreated',
-    resource_type: 'folder',
-    resource_id: rootResult.id,
-    resource_name: `Aria - ${tenantName} - Finanzas`,
-    metadata: { reason: 'root_folder_deleted', old_folder_id: settings.drive_root_folder_id },
-  });
+  if (!budgetsId || !receiptsId) return null;
 
-  console.log(`[google-drive] Folders recreated: root=${rootResult.id}`);
+  if (budgetsId !== settings.drive_budgets_folder_id || receiptsId !== settings.drive_receipts_folder_id) {
+    await supabase.from('tenant_drive_settings').update({
+      drive_budgets_folder_id: budgetsId,
+      drive_receipts_folder_id: receiptsId,
+      updated_by: callerUserId,
+      updated_at: new Date().toISOString(),
+    }).eq('tenant_id', tenantId);
+  }
 
   return {
-    drive_root_folder_id: rootResult.id,
-    drive_budgets_folder_id: budgetsResult.id || '',
-    drive_receipts_folder_id: receiptsResult.id || '',
+    drive_root_folder_id: settings.drive_root_folder_id,
+    drive_budgets_folder_id: budgetsId,
+    drive_receipts_folder_id: receiptsId,
   };
 }
 
