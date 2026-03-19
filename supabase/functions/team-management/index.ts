@@ -51,7 +51,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { action, user_id, email, name } = await req.json();
+    const { action, user_id, email, name, password } = await req.json();
 
     if (action === "list_status") {
       // Get all users in tenant
