@@ -779,6 +779,24 @@ async function checkAdminRole(supabase: any, userId: string, tenantId: string): 
   return !!data;
 }
 
+async function isValidInternalAuth(
+  supabaseUrl: string,
+  bearerToken: string,
+  envServiceRoleKey: string | null,
+): Promise<boolean> {
+  if (!bearerToken) return false;
+  if (envServiceRoleKey && bearerToken === envServiceRoleKey) return true;
+  if (isServiceRoleJwt(bearerToken)) return true;
+
+  try {
+    const testClient = createClient(supabaseUrl, bearerToken);
+    const { data, error } = await testClient.auth.admin.listUsers({ perPage: 1 });
+    return !error && !!data;
+  } catch {
+    return false;
+  }
+}
+
 function isServiceRoleJwt(token: string): boolean {
   try {
     const parts = token.split('.');
