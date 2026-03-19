@@ -2,7 +2,7 @@ import { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   Plus, FolderKanban, Calendar, Users, ArrowUpCircle, ArrowRightCircle, ArrowDownCircle,
   Circle, Clock, CheckCircle2, AlertOctagon, ArrowLeft, ChevronRight, X, BarChart3,
-  Target, Milestone as MilestoneIcon, Edit3, Trash2, Timer, User
+  Target, Milestone as MilestoneIcon, Edit3, Trash2, Timer, User, FileText
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useProjectsPersistence } from '@/hooks/useProjectsPersistence';
+import ProjectDocumentsTab from '@/components/projects/ProjectDocumentsTab';
 
 interface RealTeamMember {
   id: string;
@@ -70,6 +71,7 @@ const ProjectsPage = () => {
 
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [view, setView] = useState<'list' | 'board'>('list');
+  const [activeDetailTab, setActiveDetailTab] = useState<'tasks' | 'documents'>('tasks');
   const [selectedTask, setSelectedTask] = useState<TaskWithMeta | null>(null);
 
   // New project modal
@@ -474,21 +476,35 @@ const ProjectsPage = () => {
             )}
           </div>
 
-          {/* View toggle + New task */}
+          {/* Tab toggle: Tareas | Documentos */}
           <div className="flex items-center justify-between mt-4">
             <div className="flex items-center gap-1">
-               <button onClick={() => setView('board')} className={`text-xs px-3.5 py-1.5 rounded-xl font-medium transition-all ${view === 'board' ? 'bg-primary text-primary-foreground shadow-soft' : 'text-muted-foreground hover:bg-secondary'}`}>Kanban</button>
-               <button onClick={() => setView('list')} className={`text-xs px-3.5 py-1.5 rounded-xl font-medium transition-all ${view === 'list' ? 'bg-primary text-primary-foreground shadow-soft' : 'text-muted-foreground hover:bg-secondary'}`}>Lista</button>
+              <button onClick={() => setActiveDetailTab('tasks')} className={`text-xs px-3.5 py-1.5 rounded-xl font-medium transition-all ${activeDetailTab === 'tasks' ? 'bg-primary text-primary-foreground shadow-soft' : 'text-muted-foreground hover:bg-secondary'}`}>
+                <span className="flex items-center gap-1.5"><FolderKanban size={13} /> Tareas</span>
+              </button>
+              <button onClick={() => setActiveDetailTab('documents')} className={`text-xs px-3.5 py-1.5 rounded-xl font-medium transition-all ${activeDetailTab === 'documents' ? 'bg-primary text-primary-foreground shadow-soft' : 'text-muted-foreground hover:bg-secondary'}`}>
+                <span className="flex items-center gap-1.5"><FileText size={13} /> Documentos</span>
+              </button>
             </div>
-            <button onClick={() => setShowNewTask(true)} className="flex items-center gap-1.5 bg-primary text-primary-foreground text-xs font-semibold px-4 py-2 rounded-xl hover:opacity-90 shadow-soft active:scale-95 transition-all">
-              <Plus size={14} /> Nueva Tarea
-            </button>
+            {activeDetailTab === 'tasks' && (
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1">
+                  <button onClick={() => setView('board')} className={`text-xs px-3 py-1.5 rounded-xl font-medium transition-all ${view === 'board' ? 'bg-secondary text-foreground' : 'text-muted-foreground hover:bg-secondary/50'}`}>Kanban</button>
+                  <button onClick={() => setView('list')} className={`text-xs px-3 py-1.5 rounded-xl font-medium transition-all ${view === 'list' ? 'bg-secondary text-foreground' : 'text-muted-foreground hover:bg-secondary/50'}`}>Lista</button>
+                </div>
+                <button onClick={() => setShowNewTask(true)} className="flex items-center gap-1.5 bg-primary text-primary-foreground text-xs font-semibold px-4 py-2 rounded-xl hover:opacity-90 shadow-soft active:scale-95 transition-all">
+                  <Plus size={14} /> Nueva Tarea
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Tasks content */}
+        {/* Content */}
         <div className="flex-1 overflow-auto p-4">
-          {projectTasks.length === 0 ? (
+          {activeDetailTab === 'documents' ? (
+            <ProjectDocumentsTab projectId={selectedProject.id} projectName={selectedProject.name} />
+          ) : projectTasks.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <FolderKanban size={40} className="text-muted-foreground/30 mb-3" />
               <p className="text-sm text-muted-foreground mb-3">Este proyecto aún no tiene tareas</p>
