@@ -69,9 +69,7 @@ serve(async (req) => {
       callerUserId = userData.user.id;
     } else if (
       body.internal_caller === true
-      && (SUPABASE_SERVICE_ROLE_KEY
-        ? bearerToken === SUPABASE_SERVICE_ROLE_KEY
-        : isServiceRoleJwt(bearerToken))
+      && await isValidInternalAuth(SUPABASE_URL, bearerToken, SUPABASE_SERVICE_ROLE_KEY)
     ) {
       callerUserId = body.user_id || null;
       console.log('[google-drive] Internal service auth, user:', callerUserId);
