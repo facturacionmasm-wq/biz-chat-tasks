@@ -513,7 +513,92 @@ serve(async (req) => {
   }
 });
 
-// ==================== HELPERS ====================
+// ==================== AUTO-RECOVERY ====================
+
+async function ensureDriveFolders(
+  supabase: any,
+  tenantId: string,
+  accessToken: string,
+  callerUserId: string | null,
+): Promise<{ drive_root_folder_id: string; drive_budgets_folder_id: string; drive_receipts_folder_id: string } | null> {
+  const { data: settings } = await supabase
+    .from('tenant_drive_settings')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
+
+  if (!settings) return null;
+
+  // Verify root folder still exists
+  let rootOk = false;
+  try {
+    const checkRes = await fetch(`${DRIVE_API}/files/${settings.drive_root_folder_id}?fields=id,trashed`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (checkRes.ok) {
+      const data = await checkRes.json();
+      rootOk = !data.trashed;
+    } else {
+      await checkRes.text(); // consume body
+    }
+  } catch (_) { /* network error */ }
+
+  if (rootOk) {
+    return {
+      drive_root_folder_id: settings.drive_root_folder_id,
+      drive_budgets_folder_id: settings.drive_budgets_folder_id,
+      drive_receipts_folder_id: settings.drive_receipts_folder_id,
+    };
+  }
+
+  // Root folder was deleted — recreate everything
+  console.log(`[google-drive] Root folder ${settings.drive_root_folder_id} not found, recreating...`);
+
+  const { data: tenant } = await supabase.from('tenants').select('name').eq('id', tenantId).single();
+  const tenantName = tenant?.name || 'Empresa';
+
+  const rootResult = await createFolder(accessToken, `Aria - ${tenantName} - Finanzas`, null);
+  if (!rootResult.id) {
+    console.error('[google-drive] Failed to recreate root folder');
+    return null;
+  }
+
+  const budgetsResult = await createFolder(accessToken, 'Presupuestos', rootResult.id);
+  const receiptsResult = await createFolder(accessToken, 'Comprobantes', rootResult.id);
+  // Also recreate Proyectos subfolder
+  await createFolder(accessToken, 'Proyectos', rootResult.id);
+
+  const rootUrl = `https://drive.google.com/drive/folders/${rootResult.id}`;
+
+  await supabase.from('tenant_drive_settings').update({
+    drive_root_folder_id: rootResult.id,
+    drive_root_folder_url: rootUrl,
+    drive_budgets_folder_id: budgetsResult.id,
+    drive_receipts_folder_id: receiptsResult.id,
+    updated_by: callerUserId,
+    updated_at: new Date().toISOString(),
+  }).eq('tenant_id', tenantId);
+
+  await supabase.from('drive_audit_log').insert({
+    tenant_id: tenantId,
+    user_id: callerUserId,
+    action: 'folder_recreated',
+    resource_type: 'folder',
+    resource_id: rootResult.id,
+    resource_name: `Aria - ${tenantName} - Finanzas`,
+    metadata: { reason: 'root_folder_deleted', old_folder_id: settings.drive_root_folder_id },
+  });
+
+  console.log(`[google-drive] Folders recreated: root=${rootResult.id}`);
+
+  return {
+    drive_root_folder_id: rootResult.id,
+    drive_budgets_folder_id: budgetsResult.id || '',
+    drive_receipts_folder_id: receiptsResult.id || '',
+  };
+}
+
+
 
 async function getValidAccessToken(
   supabase: any,
