@@ -135,19 +135,14 @@ Deno.serve(async (req) => {
     }
 
     if (action === "reset_password") {
-      if (!user_id) {
-        return new Response(JSON.stringify({ error: "user_id requerido" }), {
+      if (!user_id || !password) {
+        return new Response(JSON.stringify({ error: "user_id y password requeridos" }), {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
-      const { password } = await req.json().catch(() => ({ password: null }));
-      const body = JSON.parse(await new Request(req.url, { headers: req.headers }).text().catch(() => '{}'));
-
-      const { data: updatedUser, error: updateError } = await adminClient.auth.admin.updateUserById(user_id, {
-        password: body.password || password,
-      });
+      const { error: updateError } = await adminClient.auth.admin.updateUserById(user_id, { password });
 
       if (updateError) {
         return new Response(JSON.stringify({ error: updateError.message }), {
