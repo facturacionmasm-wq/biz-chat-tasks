@@ -326,7 +326,119 @@ serve(async (req) => {
       });
     }
 
-    // ─── ENSURE SUBFOLDER ───
+    // ─── UPLOAD PROJECT DOCUMENT ───
+    if (action === 'upload_project_document') {
+      const { file_url, file_name, project_id, project_name } = body;
+      if (!file_url || !project_id) {
+        return jsonResponse({ error: 'file_url and project_id required' }, 400);
+      }
+
+      const accessToken = await getValidAccessToken(supabase, tenantId, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET);
+      if (!accessToken) {
+        return jsonResponse({ error: 'No Google access token available' }, 400);
+      }
+
+      const { data: driveSettings } = await supabase
+        .from('tenant_drive_settings')
+        .select('drive_root_folder_id')
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
+
+      if (!driveSettings?.drive_root_folder_id) {
+        return jsonResponse({ error: 'Drive not configured for tenant' }, 400);
+      }
+
+      const rootId = driveSettings.drive_root_folder_id;
+
+      // Ensure "Proyectos" subfolder exists
+      let projectsParentId: string;
+      const existingProjects = await searchFolderByName(accessToken, 'Proyectos', rootId);
+      if (existingProjects) {
+        projectsParentId = existingProjects;
+      } else {
+        const created = await createFolder(accessToken, 'Proyectos', rootId);
+        if (!created.id) return jsonResponse({ error: 'Could not create Proyectos folder' }, 500);
+        projectsParentId = created.id;
+      }
+
+      // Ensure project-specific subfolder exists
+      const safeName = (project_name || 'Proyecto').replace(/[/\\]/g, '-');
+      let projectFolderId: string;
+      const existingProject = await searchFolderByName(accessToken, safeName, projectsParentId);
+      if (existingProject) {
+        projectFolderId = existingProject;
+      } else {
+        const created = await createFolder(accessToken, safeName, projectsParentId);
+        if (!created.id) return jsonResponse({ error: 'Could not create project folder' }, 500);
+        projectFolderId = created.id;
+      }
+
+      // Download file
+      let fileBuffer: ArrayBuffer;
+      let contentType = 'application/octet-stream';
+      try {
+        const fileRes = await fetch(file_url);
+        if (!fileRes.ok) throw new Error(`Download failed: ${fileRes.status}`);
+        contentType = fileRes.headers.get('content-type') || 'application/octet-stream';
+        fileBuffer = await fileRes.arrayBuffer();
+      } catch (e) {
+        console.error('File download error:', e);
+        return jsonResponse({ error: 'Could not download file' }, 500);
+      }
+
+      const finalName = file_name || `documento_${Date.now()}`;
+
+      // Upload to Drive
+      const metadata = { name: finalName, parents: [projectFolderId] };
+      const boundary = 'boundary_' + Date.now();
+      const metadataStr = JSON.stringify(metadata);
+      const encoder = new TextEncoder();
+      const metaPart = encoder.encode(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadataStr}\r\n`);
+      const filePart = encoder.encode(`--${boundary}\r\nContent-Type: ${contentType}\r\n\r\n`);
+      const endPart = encoder.encode(`\r\n--${boundary}--`);
+      const fileBytes = new Uint8Array(fileBuffer);
+      const totalLength = metaPart.length + filePart.length + fileBytes.length + endPart.length;
+      const combined = new Uint8Array(totalLength);
+      let offset = 0;
+      combined.set(metaPart, offset); offset += metaPart.length;
+      combined.set(filePart, offset); offset += filePart.length;
+      combined.set(fileBytes, offset); offset += fileBytes.length;
+      combined.set(endPart, offset);
+
+      const uploadRes = await fetch(`${DRIVE_UPLOAD_API}/files?uploadType=multipart&fields=id,webViewLink`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': `multipart/related; boundary=${boundary}`,
+        },
+        body: combined,
+      });
+
+      if (!uploadRes.ok) {
+        const errText = await uploadRes.text();
+        console.error('Drive upload error:', uploadRes.status, errText);
+        return jsonResponse({ error: 'Could not upload file to Drive' }, 500);
+      }
+
+      const uploadData = await uploadRes.json();
+      const driveFileId = uploadData.id;
+      const driveFileUrl = uploadData.webViewLink || `https://drive.google.com/file/d/${driveFileId}/view`;
+
+      // Audit
+      await supabase.from('drive_audit_log').insert({
+        tenant_id: tenantId,
+        user_id: callerUserId,
+        action: 'project_document_uploaded',
+        resource_type: 'file',
+        resource_id: driveFileId,
+        resource_name: finalName,
+        metadata: { project_id, project_name: safeName },
+      });
+
+      return jsonResponse({ success: true, drive_file_id: driveFileId, drive_file_url: driveFileUrl });
+    }
+
+
     if (action === 'ensure_subfolder') {
       const { folder_name, parent_folder_name } = body;
       if (!folder_name) return jsonResponse({ error: 'folder_name required' }, 400);
