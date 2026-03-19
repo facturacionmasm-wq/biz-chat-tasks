@@ -781,6 +781,17 @@ async function checkAdminRole(supabase: any, userId: string, tenantId: string): 
   return !!data;
 }
 
+function isServiceRoleJwt(token: string): boolean {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return false;
+    const payload = JSON.parse(atob(parts[1]));
+    return payload?.role === 'service_role';
+  } catch {
+    return false;
+  }
+}
+
 function jsonResponse(data: any, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
