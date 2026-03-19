@@ -232,9 +232,22 @@ serve(async (req) => {
         return jsonResp({ error: 'Missing required fields' }, 400);
       }
 
-      const startDate = new Date(start_at);
-      const endDate = new Date(startDate);
-      endDate.setMinutes(endDate.getMinutes() + 30);
+      // Get tenant timezone
+      const { data: tenantData } = await supabase
+        .from('tenants')
+        .select('timezone')
+        .eq('id', tenant_id)
+        .single();
+      const tz = tenantData?.timezone || 'America/Mexico_City';
+
+      // Parse start_at preserving local time intent
+      // start_at comes as "2026-03-20T12:00:00" (naive local) — treat as local time
+      // We store with explicit timezone offset so it's unambiguous
+      const naiveDateTime = start_at.replace(/Z$/, '').split('+')[0].split('-06:00')[0]; // strip any tz info
+      const tzOffset = getTzOffset(tz);
+      const startIso = `${naiveDateTime}${tzOffset}`;
+      const startDate = new Date(startIso);
+      const endDate = new Date(startDate.getTime() + 30 * 60 * 1000);
 
       // Build idempotency key
       const idempotencyKey = `${tenant_id}:${contact_name}:${startDate.toISOString()}:${service_type || 'general'}:${employee_id || 'unassigned'}`;
