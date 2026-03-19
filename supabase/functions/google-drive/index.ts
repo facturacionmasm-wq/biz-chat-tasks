@@ -557,26 +557,57 @@ serve(async (req) => {
         resolvedProjectName = projectRow?.name || `Proyecto ${resolvedProjectId.slice(0, 8)}`;
       }
 
-      // Ensure "Proyectos" root exists
-      let projectsFolderId = await searchFolderByName(accessToken, 'Proyectos', driveSettings.drive_root_folder_id);
-      if (!projectsFolderId) {
-        const projectsRoot = await createFolder(accessToken, 'Proyectos', driveSettings.drive_root_folder_id);
-        if (!projectsRoot.id) {
-          return jsonResponse({ error: 'No se pudo crear la carpeta base de Proyectos en Google Drive.' }, 500);
+      // Ensure "Proyectos" root exists (with recovery if root became stale)
+      let effectiveRootFolderId = driveSettings.drive_root_folder_id;
+      let projectsFolderResult = await ensureNamedFolder(accessToken, 'Proyectos', effectiveRootFolderId);
+
+      if (!projectsFolderResult.id && ['parent_not_found', 'insufficient_permissions'].includes(projectsFolderResult.error || '')) {
+        const recoveredSettings = await ensureDriveFolders(supabase, tenantId, accessToken, callerUserId);
+        if (recoveredSettings?.drive_root_folder_id) {
+          effectiveRootFolderId = recoveredSettings.drive_root_folder_id;
+          projectsFolderResult = await ensureNamedFolder(accessToken, 'Proyectos', effectiveRootFolderId);
         }
-        projectsFolderId = projectsRoot.id;
       }
 
-      // Ensure project folder exists under "Proyectos"
-      const targetProjectFolderName = (resolvedProjectName || `Proyecto ${resolvedProjectId.slice(0, 8)}`).trim();
-      let projectFolderId = await searchFolderByName(accessToken, targetProjectFolderName, projectsFolderId);
-      if (!projectFolderId) {
-        const projectFolder = await createFolder(accessToken, targetProjectFolderName, projectsFolderId);
-        if (!projectFolder.id) {
-          return jsonResponse({ error: 'No se pudo crear la carpeta del proyecto en Google Drive.' }, 500);
+      if (!projectsFolderResult.id) {
+        if (projectsFolderResult.error === 'insufficient_scope') {
+          return jsonResponse({
+            error: 'scope_missing',
+            message: 'Tu cuenta de Google no tiene permisos para crear carpetas. Reconecta Google Calendar para renovar permisos de Drive.',
+            action: 'reauth_required',
+          }, 403);
         }
-        projectFolderId = projectFolder.id;
+        return jsonResponse({ error: 'Could not create Proyectos folder' }, 500);
       }
+
+      let projectsFolderId = projectsFolderResult.id;
+
+      // Ensure project folder exists under "Proyectos"
+      const targetProjectFolderName = sanitizeDriveFolderName(
+        (resolvedProjectName || `Proyecto ${resolvedProjectId.slice(0, 8)}`).trim()
+      );
+
+      let projectFolderResult = await ensureNamedFolder(accessToken, targetProjectFolderName, projectsFolderId);
+      if (!projectFolderResult.id && projectFolderResult.error === 'parent_not_found') {
+        const projectsRetry = await ensureNamedFolder(accessToken, 'Proyectos', effectiveRootFolderId);
+        if (projectsRetry.id) {
+          projectsFolderId = projectsRetry.id;
+          projectFolderResult = await ensureNamedFolder(accessToken, targetProjectFolderName, projectsFolderId);
+        }
+      }
+
+      if (!projectFolderResult.id) {
+        if (projectFolderResult.error === 'insufficient_scope') {
+          return jsonResponse({
+            error: 'scope_missing',
+            message: 'Tu cuenta de Google no tiene permisos para crear carpetas de proyecto. Reconecta Google Calendar para renovar permisos de Drive.',
+            action: 'reauth_required',
+          }, 403);
+        }
+        return jsonResponse({ error: 'No se pudo crear la carpeta del proyecto en Google Drive.' }, 500);
+      }
+
+      const projectFolderId = projectFolderResult.id;
 
       // Get file bytes either from direct URL or from storage path
       let fileBuffer: ArrayBuffer;
