@@ -384,7 +384,23 @@ serve(async (req) => {
       const driveSettings = await ensureDriveFolders(supabase, tenantId, accessToken, callerUserId);
       if (!driveSettings) return jsonResponse({ error: 'Drive not configured' }, 400);
 
-      const parentFolderId = target_folder_id || driveSettings.drive_root_folder_id;
+      let parentFolderId = target_folder_id || driveSettings.drive_root_folder_id;
+
+      // If a specific folder was provided but no longer exists, fallback to root
+      if (target_folder_id) {
+        const folderCheckRes = await fetch(`${DRIVE_API}/files/${target_folder_id}?fields=id,trashed`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        if (folderCheckRes.ok) {
+          const folderData = await folderCheckRes.json();
+          if (folderData?.trashed) {
+            parentFolderId = driveSettings.drive_root_folder_id;
+          }
+        } else {
+          await folderCheckRes.text();
+          parentFolderId = driveSettings.drive_root_folder_id;
+        }
+      }
 
       // Download file
       let fileBuffer: ArrayBuffer;
