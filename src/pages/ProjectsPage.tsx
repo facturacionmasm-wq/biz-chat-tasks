@@ -2,8 +2,9 @@ import { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   Plus, FolderKanban, Calendar, Users, ArrowUpCircle, ArrowRightCircle, ArrowDownCircle,
   Circle, Clock, CheckCircle2, AlertOctagon, ArrowLeft, ChevronRight, X, BarChart3,
-  Target, Milestone as MilestoneIcon, Edit3, Trash2, Timer, User
+  Target, Milestone as MilestoneIcon, Edit3, Trash2, Timer, User, FileText
 } from 'lucide-react';
+import ProjectDocuments from '@/components/ProjectDocuments';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Task } from '@/types/app';
