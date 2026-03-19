@@ -43,7 +43,14 @@ serve(async (req) => {
     const authHeader = req.headers.get('Authorization') || '';
 
     const bearerToken = authHeader.replace('Bearer ', '');
-    if (body.internal_caller && bearerToken === SUPABASE_SERVICE_ROLE_KEY) {
+    
+    // Check if caller is using service role key (internal call)
+    const isServiceRole = bearerToken === SUPABASE_SERVICE_ROLE_KEY;
+    
+    if (body.internal_caller && isServiceRole) {
+      callerUserId = body.user_id || null;
+    } else if (isServiceRole) {
+      // Service role without internal_caller flag — allow with provided user_id
       callerUserId = body.user_id || null;
     } else {
       // Try to get user from JWT
