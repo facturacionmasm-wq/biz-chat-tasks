@@ -26,10 +26,25 @@ serve(async (req) => {
     global: { headers: { Authorization: authHeader } },
   });
 
-  const { data: claimsData, error: claimsError } = await anonClient.auth.getClaims(authHeader.replace("Bearer ", ""));
-  if (claimsError || !claimsData?.claims) {
+  const { data: { user }, error: userError } = await anonClient.auth.getUser();
+  if (userError || !user) {
     return new Response(JSON.stringify({ ok: false, error: "Unauthorized" }), {
       status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  // Role check: only admin/owner/super_admin can configure Twilio
+  const serviceClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+  const { data: userRoles } = await serviceClient
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", user.id);
+
+  const allowedRoles = ["admin", "owner", "super_admin"];
+  const hasPermission = (userRoles || []).some((r: { role: string }) => allowedRoles.includes(r.role));
+  if (!hasPermission) {
+    return new Response(JSON.stringify({ ok: false, error: "No tienes permisos para configurar Twilio" }), {
+      status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 
