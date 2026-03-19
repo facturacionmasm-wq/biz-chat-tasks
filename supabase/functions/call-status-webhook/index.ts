@@ -6,7 +6,20 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// ═══════════ Twilio HMAC-SHA1 Signature Validation ═══════════
+function extractElevenLabsTranscript(convData: any): string {
+  if (convData.transcript && typeof convData.transcript === 'string') return convData.transcript;
+  if (Array.isArray(convData.transcript)) {
+    return convData.transcript.map((t: any) => `${t.role || 'unknown'}: ${t.message || t.text || ''}`).join('\n');
+  }
+  if (convData.conversation_transcript) {
+    if (typeof convData.conversation_transcript === 'string') return convData.conversation_transcript;
+    if (Array.isArray(convData.conversation_transcript)) {
+      return convData.conversation_transcript.map((t: any) => `${t.role || 'unknown'}: ${t.message || t.text || ''}`).join('\n');
+    }
+  }
+  return '';
+}
+
 async function validateTwilioSignature(
   authToken: string, signature: string, url: string, params: Record<string, string>
 ): Promise<boolean> {
