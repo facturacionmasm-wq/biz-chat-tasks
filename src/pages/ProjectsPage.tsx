@@ -2,8 +2,9 @@ import { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   Plus, FolderKanban, Calendar, Users, ArrowUpCircle, ArrowRightCircle, ArrowDownCircle,
   Circle, Clock, CheckCircle2, AlertOctagon, ArrowLeft, ChevronRight, X, BarChart3,
-  Target, Milestone as MilestoneIcon, Edit3, Trash2, Timer, User
+  Target, Milestone as MilestoneIcon, Edit3, Trash2, Timer, User, FileText
 } from 'lucide-react';
+import ProjectDocuments from '@/components/ProjectDocuments';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Task } from '@/types/app';
@@ -69,7 +70,8 @@ const ProjectsPage = () => {
   const [teamMembers, setTeamMembers] = useState<RealTeamMember[]>([]);
 
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
-  const [view, setView] = useState<'list' | 'board'>('list');
+  const [view, setView] = useState<'list' | 'board' | 'docs'>('list');
+  const [tenantId, setTenantId] = useState<string | null>(null);
   const [selectedTask, setSelectedTask] = useState<TaskWithMeta | null>(null);
 
   // New project modal
@@ -105,7 +107,7 @@ const ProjectsPage = () => {
         .eq('user_id', user.id)
         .maybeSingle();
       if (!profile) return;
-
+      setTenantId(profile.tenant_id);
       const { data: profiles } = await supabase
         .from('profiles')
         .select('user_id, name, email')
@@ -479,16 +481,25 @@ const ProjectsPage = () => {
             <div className="flex items-center gap-1">
                <button onClick={() => setView('board')} className={`text-xs px-3.5 py-1.5 rounded-xl font-medium transition-all ${view === 'board' ? 'bg-primary text-primary-foreground shadow-soft' : 'text-muted-foreground hover:bg-secondary'}`}>Kanban</button>
                <button onClick={() => setView('list')} className={`text-xs px-3.5 py-1.5 rounded-xl font-medium transition-all ${view === 'list' ? 'bg-primary text-primary-foreground shadow-soft' : 'text-muted-foreground hover:bg-secondary'}`}>Lista</button>
+               <button onClick={() => setView('docs')} className={`text-xs px-3.5 py-1.5 rounded-xl font-medium transition-all flex items-center gap-1 ${view === 'docs' ? 'bg-primary text-primary-foreground shadow-soft' : 'text-muted-foreground hover:bg-secondary'}`}><FileText size={12} /> Documentos</button>
             </div>
-            <button onClick={() => setShowNewTask(true)} className="flex items-center gap-1.5 bg-primary text-primary-foreground text-xs font-semibold px-4 py-2 rounded-xl hover:opacity-90 shadow-soft active:scale-95 transition-all">
-              <Plus size={14} /> Nueva Tarea
-            </button>
+            {view !== 'docs' && (
+              <button onClick={() => setShowNewTask(true)} className="flex items-center gap-1.5 bg-primary text-primary-foreground text-xs font-semibold px-4 py-2 rounded-xl hover:opacity-90 shadow-soft active:scale-95 transition-all">
+                <Plus size={14} /> Nueva Tarea
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Tasks content */}
+        {/* Content */}
         <div className="flex-1 overflow-auto p-4">
-          {projectTasks.length === 0 ? (
+          {view === 'docs' ? (
+            tenantId ? (
+              <ProjectDocuments projectId={selectedProject.id} projectName={selectedProject.name} tenantId={tenantId} />
+            ) : (
+              <div className="flex items-center justify-center py-16 text-muted-foreground">Cargando...</div>
+            )
+          ) : projectTasks.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <FolderKanban size={40} className="text-muted-foreground/30 mb-3" />
               <p className="text-sm text-muted-foreground mb-3">Este proyecto aún no tiene tareas</p>
