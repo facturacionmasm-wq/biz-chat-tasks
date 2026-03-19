@@ -2116,6 +2116,36 @@ export type Database = {
           },
         ]
       }
+      oauth_nonces: {
+        Row: {
+          app_origin: string | null
+          created_at: string
+          expires_at: string
+          id: string
+          nonce: string
+          tenant_id: string
+          user_id: string
+        }
+        Insert: {
+          app_origin?: string | null
+          created_at?: string
+          expires_at?: string
+          id?: string
+          nonce: string
+          tenant_id: string
+          user_id: string
+        }
+        Update: {
+          app_origin?: string | null
+          created_at?: string
+          expires_at?: string
+          id?: string
+          nonce?: string
+          tenant_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       otp_challenges: {
         Row: {
           attempts: number | null
@@ -4326,6 +4356,7 @@ export type Database = {
         Args: { _base_delay_minutes?: number; _retry_count: number }
         Returns: string
       }
+      cleanup_expired_nonces: { Args: never; Returns: undefined }
       get_tenant_branding: { Args: { _tenant_id: string }; Returns: Json }
       get_tenant_subscription_status: {
         Args: { _user_id: string }
