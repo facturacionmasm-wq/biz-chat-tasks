@@ -45,16 +45,12 @@ serve(async (req) => {
     if (body.internal_caller && authHeader.includes(SUPABASE_SERVICE_ROLE_KEY)) {
       callerUserId = body.user_id || null;
     } else {
-      const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') || Deno.env.get('SUPABASE_PUBLISHABLE_KEY') || '';
-      const authSupabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-        global: { headers: { Authorization: authHeader } },
-      });
       const token = authHeader.replace('Bearer ', '');
-      const { data: claimsData, error: claimsErr } = await authSupabase.auth.getClaims(token);
-      if (claimsErr || !claimsData?.claims?.sub) {
+      const { data: userData, error: userErr } = await supabase.auth.getUser(token);
+      if (userErr || !userData?.user?.id) {
         return jsonResponse({ error: 'Unauthorized' }, 401);
       }
-      callerUserId = claimsData.claims.sub as string;
+      callerUserId = userData.user.id;
     }
 
     const tenantId = body.tenant_id;
