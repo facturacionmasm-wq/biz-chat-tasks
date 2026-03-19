@@ -1,0 +1,1 @@
+SELECT extensions.pgp_sym_encrypt('test', 'test'); -- just checking if pgcrypto is available

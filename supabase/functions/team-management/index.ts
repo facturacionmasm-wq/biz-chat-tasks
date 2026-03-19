@@ -51,7 +51,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { action, user_id, email, name } = await req.json();
+    const { action, user_id, email, name, password } = await req.json();
 
     if (action === "list_status") {
       // Get all users in tenant
@@ -130,6 +130,29 @@ Deno.serve(async (req) => {
 
       return new Response(
         JSON.stringify({ success: true, message: "Se envió un enlace de acceso al correo del miembro" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (action === "reset_password") {
+      if (!user_id || !password) {
+        return new Response(JSON.stringify({ error: "user_id y password requeridos" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const { error: updateError } = await adminClient.auth.admin.updateUserById(user_id, { password });
+
+      if (updateError) {
+        return new Response(JSON.stringify({ error: updateError.message }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      return new Response(
+        JSON.stringify({ success: true, message: "Contraseña actualizada" }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
