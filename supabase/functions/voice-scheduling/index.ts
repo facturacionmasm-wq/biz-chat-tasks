@@ -232,9 +232,22 @@ serve(async (req) => {
         return jsonResp({ error: 'Missing required fields' }, 400);
       }
 
-      const startDate = new Date(start_at);
-      const endDate = new Date(startDate);
-      endDate.setMinutes(endDate.getMinutes() + 30);
+      // Get tenant timezone
+      const { data: tenantData } = await supabase
+        .from('tenants')
+        .select('timezone')
+        .eq('id', tenant_id)
+        .single();
+      const tz = tenantData?.timezone || 'America/Mexico_City';
+
+      // Parse start_at preserving local time intent
+      // start_at comes as "2026-03-20T12:00:00" (naive local) — treat as local time
+      // We store with explicit timezone offset so it's unambiguous
+      const naiveDateTime = start_at.replace(/Z$/, '').split('+')[0].split('-06:00')[0]; // strip any tz info
+      const tzOffset = getTzOffset(tz);
+      const startIso = `${naiveDateTime}${tzOffset}`;
+      const startDate = new Date(startIso);
+      const endDate = new Date(startDate.getTime() + 30 * 60 * 1000);
 
       // Build idempotency key
       const idempotencyKey = `${tenant_id}:${contact_name}:${startDate.toISOString()}:${service_type || 'general'}:${employee_id || 'unassigned'}`;
@@ -373,4 +386,30 @@ function jsonResp(body: any, status = 200) {
       'Content-Type': 'application/json',
     },
   });
+}
+
+// Returns UTC offset string for common Mexican timezones
+function getTzOffset(tz: string): string {
+  const offsets: Record<string, string> = {
+    'America/Mexico_City': '-06:00',
+    'America/Monterrey': '-06:00',
+    'America/Merida': '-06:00',
+    'America/Cancun': '-05:00',
+    'America/Chihuahua': '-06:00',
+    'America/Mazatlan': '-07:00',
+    'America/Hermosillo': '-07:00',
+    'America/Tijuana': '-08:00',
+    'America/Bogota': '-05:00',
+    'America/Lima': '-05:00',
+    'America/Santiago': '-03:00',
+    'America/Buenos_Aires': '-03:00',
+    'America/Sao_Paulo': '-03:00',
+    'America/New_York': '-05:00',
+    'America/Chicago': '-06:00',
+    'America/Denver': '-07:00',
+    'America/Los_Angeles': '-08:00',
+    'Europe/Madrid': '+01:00',
+    'UTC': '+00:00',
+  };
+  return offsets[tz] || '-06:00'; // Default to Mexico City
 }
