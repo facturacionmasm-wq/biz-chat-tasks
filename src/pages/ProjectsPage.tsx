@@ -491,9 +491,15 @@ const ProjectsPage = () => {
           </div>
         </div>
 
-        {/* Tasks content */}
+        {/* Content */}
         <div className="flex-1 overflow-auto p-4">
-          {projectTasks.length === 0 ? (
+          {view === 'docs' ? (
+            tenantId ? (
+              <ProjectDocuments projectId={selectedProject.id} projectName={selectedProject.name} tenantId={tenantId} />
+            ) : (
+              <div className="flex items-center justify-center py-16 text-muted-foreground">Cargando...</div>
+            )
+          ) : projectTasks.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <FolderKanban size={40} className="text-muted-foreground/30 mb-3" />
               <p className="text-sm text-muted-foreground mb-3">Este proyecto aún no tiene tareas</p>
