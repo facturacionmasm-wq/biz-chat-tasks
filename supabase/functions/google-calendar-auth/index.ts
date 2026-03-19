@@ -1,5 +1,4 @@
 // Google Calendar OAuth2 flow: initiate and callback
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
 
 const corsHeaders = {
@@ -11,7 +10,7 @@ const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const SCOPES = 'https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/drive.file';
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -45,10 +44,7 @@ serve(async (req) => {
         const appOrigin = decodeAppOriginFromState(stateParam);
         if (appOrigin) {
           const redirectUrl = `${appOrigin}/settings?calendar_error=${encodeURIComponent(error)}`;
-          return new Response(null, {
-            status: 302,
-            headers: { 'Location': redirectUrl },
-          });
+          return new Response(null, { status: 302, headers: { 'Location': redirectUrl } });
         }
         return htmlResponse('Error', `Google rechazó la autorización: ${error}`);
       }
@@ -57,12 +53,45 @@ serve(async (req) => {
         return htmlResponse('Error', 'Parámetros faltantes');
       }
 
-      let state: { user_id: string; tenant_id: string; app_origin?: string };
+      let stateData: { nonce: string };
       try {
-        state = JSON.parse(atob(stateParam));
+        stateData = JSON.parse(atob(stateParam));
       } catch {
         return htmlResponse('Error', 'Estado inválido');
       }
+
+      if (!stateData.nonce) {
+        return htmlResponse('Error', 'Estado inválido: nonce faltante');
+      }
+
+      const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+      // Verify nonce and retrieve stored state
+      const { data: nonceRecord, error: nonceErr } = await supabase
+        .from('oauth_nonces')
+        .select('*')
+        .eq('nonce', stateData.nonce)
+        .maybeSingle();
+
+      if (nonceErr || !nonceRecord) {
+        console.error('Invalid or expired nonce:', stateData.nonce);
+        return htmlResponse('Error', 'Enlace de autorización expirado o inválido. Intenta de nuevo.');
+      }
+
+      // Check expiration
+      if (new Date(nonceRecord.expires_at) < new Date()) {
+        await supabase.from('oauth_nonces').delete().eq('id', nonceRecord.id);
+        return htmlResponse('Error', 'Enlace de autorización expirado. Intenta de nuevo.');
+      }
+
+      // Delete nonce (one-time use)
+      await supabase.from('oauth_nonces').delete().eq('id', nonceRecord.id);
+
+      const state = {
+        user_id: nonceRecord.user_id,
+        tenant_id: nonceRecord.tenant_id,
+        app_origin: nonceRecord.app_origin || '',
+      };
 
       // Exchange code for tokens
       const tokenRes = await fetch(GOOGLE_TOKEN_URL, {
@@ -93,12 +122,9 @@ serve(async (req) => {
         });
         const userInfo = await userInfoRes.json();
         googleEmail = userInfo.email || '';
-        console.log('Google email retrieved:', googleEmail);
       } catch (e) {
         console.error('Failed to get Google user info:', e);
       }
-
-      const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
       const expiresAt = new Date(Date.now() + (tokenData.expires_in || 3600) * 1000).toISOString();
 
@@ -120,8 +146,6 @@ serve(async (req) => {
         console.error('Token save error:', JSON.stringify(upsertErr));
         return htmlResponse('Error', 'No se pudieron guardar los tokens');
       }
-
-      console.log('Tokens saved successfully for user:', state.user_id);
 
       // Update tenant google_calendar_config
       const { data: tenant } = await supabase
@@ -156,13 +180,9 @@ serve(async (req) => {
         payload: { email: googleEmail },
       });
 
-      // If we have app_origin, redirect back to the app settings
       if (state.app_origin) {
         const redirectUrl = `${state.app_origin}/settings?calendar_connected=true&email=${encodeURIComponent(googleEmail)}`;
-        return new Response(null, {
-          status: 302,
-          headers: { 'Location': redirectUrl },
-        });
+        return new Response(null, { status: 302, headers: { 'Location': redirectUrl } });
       }
 
       return htmlResponse('¡Conectado!', `Google Calendar conectado exitosamente con ${googleEmail}. Puedes cerrar esta ventana.`);
@@ -192,19 +212,17 @@ serve(async (req) => {
         requestedEmail = '';
       }
 
-      const authSupabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+      const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
       const token = authHeader.replace('Bearer ', '');
-      const { data: userData, error: userErr } = await authSupabase.auth.getUser(token);
+      const { data: userData, error: userErr } = await supabase.auth.getUser(token);
       
       if (userErr || !userData?.user?.id) {
-        console.error('Auth error:', userErr?.message);
         return new Response(JSON.stringify({ error: 'Invalid token' }), {
           status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
 
       const userId = userData.user.id;
-      const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
       // Get tenant_id
       const { data: profile } = await supabase
@@ -218,8 +236,27 @@ serve(async (req) => {
         });
       }
 
-      // Encode state with user info
-      const state = btoa(JSON.stringify({ user_id: userId, tenant_id: profile.tenant_id, app_origin: appOrigin }));
+      // Clean up expired nonces
+      await supabase.rpc('cleanup_expired_nonces');
+
+      // Generate secure nonce and store server-side
+      const nonce = crypto.randomUUID();
+      const { error: nonceInsertErr } = await supabase.from('oauth_nonces').insert({
+        nonce,
+        user_id: userId,
+        tenant_id: profile.tenant_id,
+        app_origin: appOrigin || null,
+      });
+
+      if (nonceInsertErr) {
+        console.error('Failed to store nonce:', nonceInsertErr);
+        return new Response(JSON.stringify({ error: 'Failed to initiate OAuth' }), {
+          status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // State only contains the nonce - sensitive data stays server-side
+      const state = btoa(JSON.stringify({ nonce }));
 
       const authUrl = new URL(GOOGLE_AUTH_URL);
       authUrl.searchParams.set('client_id', GOOGLE_CLIENT_ID);
@@ -254,21 +291,19 @@ serve(async (req) => {
       });
     }
 
-    const authSupabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const token = authHeader.replace('Bearer ', '');
-    const { data: userData } = await authSupabase.auth.getUser(token);
+    const { data: userData } = await supabase.auth.getUser(token);
     if (!userData?.user?.id) {
       return new Response(JSON.stringify({ connected: false }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
-    const userId = userData.user.id;
 
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const { data: calToken } = await supabase
       .from('google_calendar_tokens')
       .select('email, status, token_expires_at, calendar_id')
-      .eq('user_id', userId)
+      .eq('user_id', userData.user.id)
       .eq('status', 'active')
       .maybeSingle();
 
@@ -291,6 +326,8 @@ serve(async (req) => {
 function decodeAppOriginFromState(stateParam: string | null): string | null {
   try {
     if (!stateParam) return null;
+    // Try to decode nonce-based state and look up app_origin
+    // For error redirects, we can't do DB lookup, so we fall back
     const parsed = JSON.parse(atob(stateParam));
     if (typeof parsed?.app_origin === 'string' && parsed.app_origin.trim()) {
       return parsed.app_origin.trim();
