@@ -34,7 +34,19 @@ serve(async (req) => {
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
   try {
-    const body = await req.json();
+    const rawText = await req.text();
+    if (!rawText || rawText.trim() === '') {
+      console.log('[el-actions] Empty body received (health check), returning OK');
+      return jsonResp({ success: true, message: 'Webhook active' });
+    }
+
+    let body: any;
+    try {
+      body = JSON.parse(rawText);
+    } catch {
+      console.error('[el-actions] Invalid JSON body:', rawText.substring(0, 200));
+      return jsonResp({ success: true, message: 'Invalid JSON, ignored' });
+    }
     console.log('[el-actions] Received:', JSON.stringify(body).substring(0, 500));
 
     // ElevenLabs sends tool calls in various formats. Normalize.
