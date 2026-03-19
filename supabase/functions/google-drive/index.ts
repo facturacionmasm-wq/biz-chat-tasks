@@ -794,7 +794,7 @@ async function ensureDriveFolders(
   const checkFolderExists = async (folderId: string | null | undefined): Promise<boolean> => {
     if (!folderId) return false;
     try {
-      const res = await fetch(`${DRIVE_API}/files/${folderId}?fields=id,trashed`, {
+      const res = await fetch(`${DRIVE_API}/files/${folderId}?fields=id,trashed,capabilities(canAddChildren)`, {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
       if (!res.ok) {
@@ -802,7 +802,8 @@ async function ensureDriveFolders(
         return false;
       }
       const data = await res.json();
-      return !data?.trashed;
+      const canAddChildren = data?.capabilities?.canAddChildren;
+      return !data?.trashed && canAddChildren !== false;
     } catch {
       return false;
     }
