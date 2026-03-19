@@ -64,6 +64,12 @@ serve(async (req) => {
       return jsonResponse({ error: 'Unauthorized' }, 401);
     }
 
+    if (body.internal_caller === true) {
+      const envFormat = SUPABASE_SERVICE_ROLE_KEY?.startsWith('eyJ') ? 'jwt' : SUPABASE_SERVICE_ROLE_KEY?.startsWith('sb_secret_') ? 'secret' : 'unknown';
+      const bearerFormat = bearerToken.startsWith('eyJ') ? 'jwt' : bearerToken.startsWith('sb_secret_') ? 'secret' : 'unknown';
+      console.log(`[google-drive] internal auth debug env=${envFormat} bearer=${bearerFormat} env_present=${!!SUPABASE_SERVICE_ROLE_KEY}`);
+    }
+
     const { data: userData, error: userErr } = await supabase.auth.getUser(bearerToken);
     if (userData?.user?.id) {
       callerUserId = userData.user.id;
