@@ -2440,6 +2440,69 @@ export type Database = {
           },
         ]
       }
+      project_documents: {
+        Row: {
+          created_at: string
+          description: string | null
+          drive_file_id: string | null
+          drive_file_url: string | null
+          file_name: string
+          file_size: number | null
+          id: string
+          mime_type: string | null
+          project_id: string
+          storage_path: string | null
+          tenant_id: string
+          updated_at: string
+          uploaded_by: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          drive_file_id?: string | null
+          drive_file_url?: string | null
+          file_name: string
+          file_size?: number | null
+          id?: string
+          mime_type?: string | null
+          project_id: string
+          storage_path?: string | null
+          tenant_id: string
+          updated_at?: string
+          uploaded_by: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          drive_file_id?: string | null
+          drive_file_url?: string | null
+          file_name?: string
+          file_size?: number | null
+          id?: string
+          mime_type?: string | null
+          project_id?: string
+          storage_path?: string | null
+          tenant_id?: string
+          updated_at?: string
+          uploaded_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_documents_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_documents_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       project_members: {
         Row: {
           created_at: string
