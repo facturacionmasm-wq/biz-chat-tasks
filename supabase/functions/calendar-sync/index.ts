@@ -95,12 +95,26 @@ async function syncAppointment(
     return { success: true, event_id: apt.calendar_event_id, already_synced: true, correlationId };
   }
 
-  // Find user with calendar tokens (appointment user_id, or any tenant admin)
-  const userId = apt.user_id;
+  // Find user with calendar tokens (appointment user_id, or fallback to any tenant user with GCal)
+  let userId = apt.user_id;
   if (!userId) {
-    // No user assigned — mark PENDING and skip
-    await updateSyncStatus(supabase, appointmentId, 'PENDING_SYNC', 'No user assigned to appointment');
-    return { error: 'No user assigned', correlationId };
+    // No user assigned — find a tenant user with active Google Calendar token
+    const { data: gcalToken } = await supabase
+      .from('google_calendar_tokens')
+      .select('user_id')
+      .eq('status', 'active')
+      .limit(1)
+      .maybeSingle();
+
+    if (gcalToken?.user_id) {
+      userId = gcalToken.user_id;
+      console.log(`[${correlationId}] No user_id on appointment, using GCal token owner: ${userId}`);
+      // Also assign the user to the appointment for future reference
+      await supabase.from('appointments').update({ user_id: userId }).eq('id', appointmentId);
+    } else {
+      await updateSyncStatus(supabase, appointmentId, 'PENDING_SYNC', 'No user with Google Calendar connected');
+      return { error: 'No user with Google Calendar connected', correlationId };
+    }
   }
 
   // Get tokens
