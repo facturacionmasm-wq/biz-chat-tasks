@@ -385,7 +385,7 @@ const ProjectsPage = () => {
     return (
       <div className="flex flex-col h-full">
         {/* Header */}
-        <div className="shrink-0 p-4 sm:p-5 bg-card shadow-soft">
+        <div className="shrink-0 overflow-auto max-h-[55vh] p-4 sm:p-5 bg-card shadow-soft">
           <div className="flex items-center gap-3 mb-2">
             <button onClick={() => setSelectedProjectId(null)} className="text-muted-foreground hover:text-foreground text-sm flex items-center gap-1">
               <ArrowLeft size={14} /> Proyectos
@@ -475,20 +475,20 @@ const ProjectsPage = () => {
               <p className="text-xs text-muted-foreground">Sin hitos definidos</p>
             )}
           </div>
+        </div>
 
-          {/* View toggle + New task */}
-          <div className="flex items-center justify-between mt-4">
-            <div className="flex items-center gap-1">
-               <button onClick={() => setView('board')} className={`text-xs px-3.5 py-1.5 rounded-xl font-medium transition-all ${view === 'board' ? 'bg-primary text-primary-foreground shadow-soft' : 'text-muted-foreground hover:bg-secondary'}`}>Kanban</button>
-               <button onClick={() => setView('list')} className={`text-xs px-3.5 py-1.5 rounded-xl font-medium transition-all ${view === 'list' ? 'bg-primary text-primary-foreground shadow-soft' : 'text-muted-foreground hover:bg-secondary'}`}>Lista</button>
-               <button onClick={() => setView('docs')} className={`text-xs px-3.5 py-1.5 rounded-xl font-medium transition-all flex items-center gap-1 ${view === 'docs' ? 'bg-primary text-primary-foreground shadow-soft' : 'text-muted-foreground hover:bg-secondary'}`}><FileText size={12} /> Documentos</button>
-            </div>
-            {view !== 'docs' && (
-              <button onClick={() => setShowNewTask(true)} className="flex items-center gap-1.5 bg-primary text-primary-foreground text-xs font-semibold px-4 py-2 rounded-xl hover:opacity-90 shadow-soft active:scale-95 transition-all">
-                <Plus size={14} /> Nueva Tarea
-              </button>
-            )}
+        {/* View toggle - always visible outside scrollable header */}
+        <div className="shrink-0 px-4 sm:px-5 py-3 bg-card border-t border-border flex items-center justify-between">
+          <div className="flex items-center gap-1">
+             <button onClick={() => setView('board')} className={`text-xs px-3.5 py-1.5 rounded-xl font-medium transition-all ${view === 'board' ? 'bg-primary text-primary-foreground shadow-soft' : 'text-muted-foreground hover:bg-secondary'}`}>Kanban</button>
+             <button onClick={() => setView('list')} className={`text-xs px-3.5 py-1.5 rounded-xl font-medium transition-all ${view === 'list' ? 'bg-primary text-primary-foreground shadow-soft' : 'text-muted-foreground hover:bg-secondary'}`}>Lista</button>
+             <button onClick={() => setView('docs')} className={`text-xs px-3.5 py-1.5 rounded-xl font-medium transition-all flex items-center gap-1 ${view === 'docs' ? 'bg-primary text-primary-foreground shadow-soft' : 'text-muted-foreground hover:bg-secondary'}`}><FileText size={12} /> Documentos</button>
           </div>
+          {view !== 'docs' && (
+            <button onClick={() => setShowNewTask(true)} className="flex items-center gap-1.5 bg-primary text-primary-foreground text-xs font-semibold px-4 py-2 rounded-xl hover:opacity-90 shadow-soft active:scale-95 transition-all">
+              <Plus size={14} /> Nueva Tarea
+            </button>
+          )}
         </div>
 
         {/* Content */}
