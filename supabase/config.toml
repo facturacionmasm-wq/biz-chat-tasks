@@ -110,3 +110,6 @@ verify_jwt = false
 
 [functions.parse-pdf]
 verify_jwt = false
+
+[functions.elevenlabs-actions-webhook]
+verify_jwt = false
