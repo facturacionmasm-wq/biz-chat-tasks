@@ -818,9 +818,9 @@ async function ensureDriveFolders(
 
     const budgetsResult = await createFolder(accessToken, 'Presupuestos', rootResult.id);
     const receiptsResult = await createFolder(accessToken, 'Comprobantes', rootResult.id);
-    await createFolder(accessToken, 'Proyectos', rootResult.id);
+    const projectsResult = await createFolder(accessToken, 'Proyectos', rootResult.id);
 
-    if (!budgetsResult.id || !receiptsResult.id) return null;
+    if (!budgetsResult.id || !receiptsResult.id || !projectsResult.id) return null;
 
     const rootUrl = `https://drive.google.com/drive/folders/${rootResult.id}`;
 
