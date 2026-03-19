@@ -44,26 +44,23 @@ serve(async (req) => {
 
     const bearerToken = authHeader.replace('Bearer ', '').trim();
     
-    // Check if caller is using service role key (internal call)
-    const isServiceRole = bearerToken === SUPABASE_SERVICE_ROLE_KEY;
-    console.log(`[google-drive] Auth check: token_len=${bearerToken.length} srk_len=${SUPABASE_SERVICE_ROLE_KEY.length} match=${isServiceRole}`);
-    
-    if (isServiceRole) {
-      callerUserId = body.user_id || null;
-      console.log('[google-drive] Service role auth, user:', callerUserId);
+    // Try to authenticate: first try as user JWT, then fall back to service role
+    const { data: userData, error: userErr } = await supabase.auth.getUser(bearerToken);
+    if (userData?.user?.id) {
+      callerUserId = userData.user.id;
     } else {
-      // Try to get user from JWT using a client with the user's token
-      const anonKey = Deno.env.get('SUPABASE_ANON_KEY') || Deno.env.get('SUPABASE_PUBLISHABLE_KEY') || SUPABASE_SERVICE_ROLE_KEY;
-      const userClient = createClient(SUPABASE_URL, anonKey, {
-        global: { headers: { Authorization: authHeader } },
-      });
-      const { data: userData, error: userErr } = await userClient.auth.getUser();
-      if (userErr || !userData?.user?.id) {
-        console.error('[google-drive] Auth error:', userErr?.message || 'No user found');
+      // Not a user JWT — check if it's a service role key by verifying admin access
+      // Service role clients can list users, regular clients can't
+      const testClient = createClient(SUPABASE_URL, bearerToken);
+      const { data: testData, error: testErr } = await testClient.auth.admin.listUsers({ perPage: 1 });
+      if (!testErr && testData) {
+        // It's a service role key
+        callerUserId = body.user_id || null;
+        console.log('[google-drive] Service role auth, user:', callerUserId);
+      } else {
+        console.error('[google-drive] Auth failed:', userErr?.message);
         return jsonResponse({ error: 'Unauthorized' }, 401);
       }
-      callerUserId = userData.user.id;
-      console.log('[google-drive] JWT auth, user:', callerUserId);
     }
 
     const tenantId = body.tenant_id;
