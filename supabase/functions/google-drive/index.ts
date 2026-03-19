@@ -46,6 +46,7 @@ serve(async (req) => {
     
     // Check if caller is using service role key (internal call)
     const isServiceRole = bearerToken === SUPABASE_SERVICE_ROLE_KEY;
+    console.log(`[google-drive] Auth check: token_len=${bearerToken.length} srk_len=${SUPABASE_SERVICE_ROLE_KEY.length} match=${isServiceRole}`);
     
     if (isServiceRole) {
       callerUserId = body.user_id || null;
