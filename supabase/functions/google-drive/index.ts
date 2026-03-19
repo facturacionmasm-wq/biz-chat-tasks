@@ -334,14 +334,46 @@ serve(async (req) => {
         return jsonResponse({ error: 'No Google access token available' }, 400);
       }
 
-      const { data: driveSettings } = await supabase
+      let { data: driveSettings } = await supabase
         .from('tenant_drive_settings')
         .select('drive_root_folder_id')
         .eq('tenant_id', tenantId)
         .maybeSingle();
 
+      // Auto-provision Drive folder structure if not configured
       if (!driveSettings?.drive_root_folder_id) {
-        return jsonResponse({ error: 'Drive not configured for tenant' }, 400);
+        console.log('Auto-provisioning Drive folders for tenant:', tenantId);
+        const { data: tenant } = await supabase
+          .from('tenants')
+          .select('name')
+          .eq('id', tenantId)
+          .single();
+        const tenantName = tenant?.name || 'Empresa';
+
+        const rootFolderResult = await createFolder(accessToken, `Aria - ${tenantName} - Finanzas`, null);
+        if (!rootFolderResult.id) {
+          console.error('Could not auto-provision root folder');
+          return jsonResponse({ error: 'Could not create Drive folder' }, 500);
+        }
+
+        const budgetsResult = await createFolder(accessToken, 'Presupuestos', rootFolderResult.id);
+        const receiptsResult = await createFolder(accessToken, 'Comprobantes', rootFolderResult.id);
+
+        await supabase.from('tenant_drive_settings').upsert({
+          tenant_id: tenantId,
+          drive_root_folder_id: rootFolderResult.id,
+          drive_root_folder_url: `https://drive.google.com/drive/folders/${rootFolderResult.id}`,
+          drive_budgets_folder_id: budgetsResult.id,
+          drive_receipts_folder_id: receiptsResult.id,
+          drive_structure_version: 1,
+          drive_provider: 'google',
+          created_by: callerUserId,
+          updated_by: callerUserId,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'tenant_id' });
+
+        driveSettings = { drive_root_folder_id: rootFolderResult.id };
+        console.log('Auto-provisioned Drive folders successfully');
       }
 
       const rootId = driveSettings.drive_root_folder_id;
