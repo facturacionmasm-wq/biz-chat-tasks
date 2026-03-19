@@ -42,24 +42,27 @@ serve(async (req) => {
     let callerUserId: string | null = null;
     const authHeader = req.headers.get('Authorization') || '';
 
-    const bearerToken = authHeader.replace('Bearer ', '');
+    const bearerToken = authHeader.replace('Bearer ', '').trim();
     
     // Check if caller is using service role key (internal call)
     const isServiceRole = bearerToken === SUPABASE_SERVICE_ROLE_KEY;
     
-    if (body.internal_caller && isServiceRole) {
+    if (isServiceRole) {
       callerUserId = body.user_id || null;
-    } else if (isServiceRole) {
-      // Service role without internal_caller flag — allow with provided user_id
-      callerUserId = body.user_id || null;
+      console.log('[google-drive] Service role auth, user:', callerUserId);
     } else {
-      // Try to get user from JWT
-      const { data: userData, error: userErr } = await supabase.auth.getUser(bearerToken);
+      // Try to get user from JWT using a client with the user's token
+      const anonKey = Deno.env.get('SUPABASE_ANON_KEY') || Deno.env.get('SUPABASE_PUBLISHABLE_KEY') || SUPABASE_SERVICE_ROLE_KEY;
+      const userClient = createClient(SUPABASE_URL, anonKey, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data: userData, error: userErr } = await userClient.auth.getUser();
       if (userErr || !userData?.user?.id) {
-        console.error('Auth error:', userErr?.message || 'No user found');
+        console.error('[google-drive] Auth error:', userErr?.message || 'No user found');
         return jsonResponse({ error: 'Unauthorized' }, 401);
       }
       callerUserId = userData.user.id;
+      console.log('[google-drive] JWT auth, user:', callerUserId);
     }
 
     const tenantId = body.tenant_id;
