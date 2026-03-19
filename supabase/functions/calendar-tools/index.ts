@@ -256,14 +256,14 @@ serve(async (req) => {
   const anonClient = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!, {
     global: { headers: { Authorization: authHeader } },
   });
-  const { data: claims, error: claimsErr } = await anonClient.auth.getClaims(authHeader.replace('Bearer ', ''));
-  if (claimsErr || !claims?.claims?.sub) {
+  const { data: { user: authUser }, error: userErr } = await anonClient.auth.getUser();
+  if (userErr || !authUser) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
 
-  userId = claims.claims.sub as string;
+  userId = authUser.id;
   const body = await req.json();
 
   return await handleAction(supabase, userId, body);
