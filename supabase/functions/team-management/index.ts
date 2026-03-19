@@ -134,6 +134,34 @@ Deno.serve(async (req) => {
       );
     }
 
+    if (action === "reset_password") {
+      if (!user_id) {
+        return new Response(JSON.stringify({ error: "user_id requerido" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const { password } = await req.json().catch(() => ({ password: null }));
+      const body = JSON.parse(await new Request(req.url, { headers: req.headers }).text().catch(() => '{}'));
+
+      const { data: updatedUser, error: updateError } = await adminClient.auth.admin.updateUserById(user_id, {
+        password: body.password || password,
+      });
+
+      if (updateError) {
+        return new Response(JSON.stringify({ error: updateError.message }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      return new Response(
+        JSON.stringify({ success: true, message: "Contraseña actualizada" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     return new Response(JSON.stringify({ error: "Acción no válida" }), {
       status: 400,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
