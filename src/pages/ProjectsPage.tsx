@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useProjectsPersistence } from '@/hooks/useProjectsPersistence';
+import ProjectDocumentsTab from '@/components/projects/ProjectDocumentsTab';
 
 interface RealTeamMember {
   id: string;
