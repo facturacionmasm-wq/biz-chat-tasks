@@ -68,6 +68,82 @@ serve(async (req) => {
 
       const { data: existingApts } = await aptsQuery;
 
+      // ── Fetch Google Calendar events for conflict checking ──
+      const gcalEvents: Array<{ start: Date; end: Date }> = [];
+      try {
+        // Find users with Google Calendar connected for this tenant
+        const userIdsToCheck: string[] = [];
+        if (employee_id) {
+          userIdsToCheck.push(employee_id);
+        } else {
+          // Get all unique user_ids from rules
+          const uniqueUserIds = [...new Set(rules.map((r: any) => r.user_id).filter(Boolean))];
+          userIdsToCheck.push(...uniqueUserIds);
+        }
+
+        // Also check tenant owner/admin if no specific users
+        if (userIdsToCheck.length === 0) {
+          const { data: tenantProfiles } = await supabase
+            .from('profiles')
+            .select('user_id')
+            .eq('tenant_id', tenant_id)
+            .eq('status', 'active')
+            .limit(3);
+          if (tenantProfiles) {
+            userIdsToCheck.push(...tenantProfiles.map((p: any) => p.user_id));
+          }
+        }
+
+        // For each user with a Google Calendar token, fetch events
+        for (const uid of userIdsToCheck) {
+          const { data: tokenRow } = await supabase
+            .from('google_calendar_tokens')
+            .select('id, user_id')
+            .eq('user_id', uid)
+            .eq('status', 'active')
+            .maybeSingle();
+
+          if (tokenRow) {
+            try {
+              const calRes = await fetch(`${SUPABASE_URL}/functions/v1/calendar-tools`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+                  'X-Service-Call': 'true',
+                },
+                body: JSON.stringify({
+                  user_id: uid,
+                  action: 'list_events',
+                  time_min: dayStart.toISOString(),
+                  time_max: dayEnd.toISOString(),
+                  max_results: 50,
+                }),
+              });
+
+              if (calRes.ok) {
+                const calData = await calRes.json();
+                if (calData.events) {
+                  for (const evt of calData.events) {
+                    if (evt.start && evt.end) {
+                      gcalEvents.push({
+                        start: new Date(evt.start),
+                        end: new Date(evt.end),
+                      });
+                    }
+                  }
+                }
+                console.log(`[voice-scheduling] Fetched ${calData.events?.length || 0} Google Calendar events for user ${uid}`);
+              }
+            } catch (calErr) {
+              console.warn(`[voice-scheduling] Google Calendar fetch error for user ${uid}:`, calErr);
+            }
+          }
+        }
+      } catch (gcalErr) {
+        console.warn('[voice-scheduling] Google Calendar integration error (non-blocking):', gcalErr);
+      }
+
       // Generate available slots (30-min intervals)
       const slots: Array<{ start: string; end: string; employee_id: string | null; employee_name: string }> = [];
 
@@ -104,13 +180,19 @@ serve(async (req) => {
           const slotEndWithBuffer = new Date(slotEnd);
           slotEndWithBuffer.setMinutes(slotEndWithBuffer.getMinutes() + bufferAfter);
 
-          const hasConflict = (existingApts || []).some(apt => {
+          // Check local appointment conflicts
+          const hasLocalConflict = (existingApts || []).some(apt => {
             const aptStart = new Date(apt.start_at);
             const aptEnd = new Date(apt.end_at);
             return slotStartWithBuffer < aptEnd && slotEndWithBuffer > aptStart;
           });
 
-          if (!hasConflict) {
+          // Check Google Calendar conflicts
+          const hasGcalConflict = gcalEvents.some(evt => {
+            return slotStartWithBuffer < evt.end && slotEndWithBuffer > evt.start;
+          });
+
+          if (!hasLocalConflict && !hasGcalConflict) {
             // Check max_appointments
             const aptsInSlot = (existingApts || []).filter(apt => {
               const aptStart = new Date(apt.start_at);
@@ -135,6 +217,7 @@ serve(async (req) => {
         available: slots.length > 0,
         slots,
         date: targetDate.toISOString().split('T')[0],
+        gcal_events_checked: gcalEvents.length,
         message: slots.length > 0
           ? `Hay ${slots.length} horarios disponibles para ${targetDate.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' })}`
           : 'No hay horarios disponibles para esta fecha',
