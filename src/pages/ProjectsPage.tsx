@@ -71,6 +71,7 @@ const ProjectsPage = () => {
 
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [view, setView] = useState<'list' | 'board'>('list');
+  const [activeDetailTab, setActiveDetailTab] = useState<'tasks' | 'documents'>('tasks');
   const [selectedTask, setSelectedTask] = useState<TaskWithMeta | null>(null);
 
   // New project modal
