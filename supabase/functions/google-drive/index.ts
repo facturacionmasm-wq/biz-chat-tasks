@@ -329,12 +329,7 @@ serve(async (req) => {
       const accessToken = await getValidAccessToken(supabase, tenantId, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET);
       if (!accessToken) return jsonResponse({ error: 'No Google access token' }, 400);
 
-      const { data: driveSettings } = await supabase
-        .from('tenant_drive_settings')
-        .select('drive_root_folder_id')
-        .eq('tenant_id', tenantId)
-        .maybeSingle();
-
+      const driveSettings = await ensureDriveFolders(supabase, tenantId, accessToken, callerUserId);
       if (!driveSettings?.drive_root_folder_id) {
         return jsonResponse({ error: 'Drive not configured' }, 400);
       }
