@@ -199,20 +199,15 @@ serve(async (req) => {
         return jsonResponse({ error: 'file_url required' }, 400);
       }
 
-      // Get Drive settings
-      const { data: driveSettings } = await supabase
-        .from('tenant_drive_settings')
-        .select('*')
-        .eq('tenant_id', tenantId)
-        .maybeSingle();
-
-      if (!driveSettings) {
-        return jsonResponse({ error: 'drive_not_configured', message: 'Google Drive no está configurado para esta empresa.' }, 400);
-      }
-
       const accessToken = await getValidAccessToken(supabase, tenantId, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET);
       if (!accessToken) {
         return jsonResponse({ error: 'No se pudo obtener acceso a Google Drive.' }, 500);
+      }
+
+      // Get Drive settings — verify and auto-recreate folders if deleted
+      const driveSettings = await ensureDriveFolders(supabase, tenantId, accessToken, callerUserId);
+      if (!driveSettings) {
+        return jsonResponse({ error: 'drive_not_configured', message: 'Google Drive no está configurado. Ve a Configuración para conectarlo.' }, 400);
       }
 
       // Determine target folder
