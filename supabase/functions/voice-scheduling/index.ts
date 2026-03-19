@@ -387,3 +387,29 @@ function jsonResp(body: any, status = 200) {
     },
   });
 }
+
+// Returns UTC offset string for common Mexican timezones
+function getTzOffset(tz: string): string {
+  const offsets: Record<string, string> = {
+    'America/Mexico_City': '-06:00',
+    'America/Monterrey': '-06:00',
+    'America/Merida': '-06:00',
+    'America/Cancun': '-05:00',
+    'America/Chihuahua': '-06:00',
+    'America/Mazatlan': '-07:00',
+    'America/Hermosillo': '-07:00',
+    'America/Tijuana': '-08:00',
+    'America/Bogota': '-05:00',
+    'America/Lima': '-05:00',
+    'America/Santiago': '-03:00',
+    'America/Buenos_Aires': '-03:00',
+    'America/Sao_Paulo': '-03:00',
+    'America/New_York': '-05:00',
+    'America/Chicago': '-06:00',
+    'America/Denver': '-07:00',
+    'America/Los_Angeles': '-08:00',
+    'Europe/Madrid': '+01:00',
+    'UTC': '+00:00',
+  };
+  return offsets[tz] || '-06:00'; // Default to Mexico City
+}
