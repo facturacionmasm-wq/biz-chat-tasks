@@ -70,7 +70,8 @@ const ProjectsPage = () => {
   const [teamMembers, setTeamMembers] = useState<RealTeamMember[]>([]);
 
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
-  const [view, setView] = useState<'list' | 'board'>('list');
+  const [view, setView] = useState<'list' | 'board' | 'docs'>('list');
+  const [tenantId, setTenantId] = useState<string | null>(null);
   const [selectedTask, setSelectedTask] = useState<TaskWithMeta | null>(null);
 
   // New project modal
