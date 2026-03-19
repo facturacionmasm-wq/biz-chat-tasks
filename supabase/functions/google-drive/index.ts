@@ -42,7 +42,8 @@ serve(async (req) => {
     let callerUserId: string | null = null;
     const authHeader = req.headers.get('Authorization') || '';
 
-    if (body.internal_caller && authHeader.includes(SUPABASE_SERVICE_ROLE_KEY)) {
+    const bearerToken = authHeader.replace('Bearer ', '');
+    if (body.internal_caller && (bearerToken === SUPABASE_SERVICE_ROLE_KEY || authHeader.includes(SUPABASE_SERVICE_ROLE_KEY))) {
       callerUserId = body.user_id || null;
     } else {
       const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') || Deno.env.get('SUPABASE_PUBLISHABLE_KEY') || '';
