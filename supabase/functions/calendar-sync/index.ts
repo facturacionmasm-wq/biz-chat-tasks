@@ -95,25 +95,44 @@ async function syncAppointment(
     return { success: true, event_id: apt.calendar_event_id, already_synced: true, correlationId };
   }
 
-  // Find user with calendar tokens (appointment user_id, or fallback to any tenant user with GCal)
+  // Find user with calendar tokens — use the assigned employee's calendar
   let userId = apt.user_id;
   if (!userId) {
-    // No user assigned — find a tenant user with active Google Calendar token
-    const { data: gcalToken } = await supabase
-      .from('google_calendar_tokens')
-      .select('user_id')
-      .eq('status', 'active')
-      .limit(1)
-      .maybeSingle();
+    // No user assigned — try to find employee from availability rules for this time slot
+    const aptDate = new Date(apt.start_at);
+    const dayOfWeek = aptDate.getDay();
 
-    if (gcalToken?.user_id) {
-      userId = gcalToken.user_id;
-      console.log(`[${correlationId}] No user_id on appointment, using GCal token owner: ${userId}`);
-      // Also assign the user to the appointment for future reference
-      await supabase.from('appointments').update({ user_id: userId }).eq('id', appointmentId);
-    } else {
-      await updateSyncStatus(supabase, appointmentId, 'PENDING_SYNC', 'No user with Google Calendar connected');
-      return { error: 'No user with Google Calendar connected', correlationId };
+    const { data: matchingRules } = await supabase
+      .from('availability_rules')
+      .select('user_id')
+      .eq('tenant_id', apt.tenant_id)
+      .eq('day_of_week', dayOfWeek)
+      .eq('active', true)
+      .not('user_id', 'is', null)
+      .limit(5);
+
+    if (matchingRules && matchingRules.length > 0) {
+      // Find first employee with active Google Calendar token
+      for (const rule of matchingRules) {
+        const { data: gcalToken } = await supabase
+          .from('google_calendar_tokens')
+          .select('user_id')
+          .eq('user_id', rule.user_id)
+          .eq('tenant_id', apt.tenant_id)
+          .eq('status', 'active')
+          .maybeSingle();
+        if (gcalToken) {
+          userId = rule.user_id;
+          console.log(`[${correlationId}] Assigned employee ${userId} from availability rules`);
+          await supabase.from('appointments').update({ user_id: userId }).eq('id', appointmentId);
+          break;
+        }
+      }
+    }
+
+    if (!userId) {
+      await updateSyncStatus(supabase, appointmentId, 'PENDING_SYNC', 'No employee with Google Calendar found for this time slot');
+      return { error: 'No employee with Google Calendar found', correlationId };
     }
   }
 

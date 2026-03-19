@@ -241,16 +241,67 @@ serve(async (req) => {
       const tz = tenantData?.timezone || 'America/Mexico_City';
 
       // Parse start_at preserving local time intent
-      // start_at comes as "2026-03-20T12:00:00" (naive local) — treat as local time
-      // We store with explicit timezone offset so it's unambiguous
-      const naiveDateTime = start_at.replace(/Z$/, '').split('+')[0].split('-06:00')[0]; // strip any tz info
+      const naiveDateTime = start_at.replace(/Z$/, '').split('+')[0].split('-06:00')[0];
       const tzOffset = getTzOffset(tz);
       const startIso = `${naiveDateTime}${tzOffset}`;
       const startDate = new Date(startIso);
       const endDate = new Date(startDate.getTime() + 30 * 60 * 1000);
 
+      // Auto-assign employee if not specified: find who has availability for this slot
+      let resolvedEmployeeId = employee_id || null;
+      if (!resolvedEmployeeId) {
+        const dayOfWeek = startDate.getDay();
+        const slotHour = startDate.getUTCHours() + (parseInt(tzOffset) || -6); // approximate local hour
+        // Better: reconstruct local time from naiveDateTime
+        const [datePart, timePart] = naiveDateTime.split('T');
+        const [localH, localM] = (timePart || '00:00').split(':').map(Number);
+        const localMinutes = localH * 60 + localM;
+
+        const { data: matchingRules } = await supabase
+          .from('availability_rules')
+          .select('user_id, start_time, end_time')
+          .eq('tenant_id', tenant_id)
+          .eq('day_of_week', dayOfWeek)
+          .eq('active', true)
+          .not('user_id', 'is', null);
+
+        if (matchingRules && matchingRules.length > 0) {
+          // Find the employee whose schedule covers this time
+          for (const rule of matchingRules) {
+            const [rStartH, rStartM] = rule.start_time.split(':').map(Number);
+            const [rEndH, rEndM] = rule.end_time.split(':').map(Number);
+            const ruleStart = rStartH * 60 + rStartM;
+            const ruleEnd = rEndH * 60 + rEndM;
+            if (localMinutes >= ruleStart && localMinutes < ruleEnd) {
+              // Check this employee has Google Calendar connected
+              const { data: gcalToken } = await supabase
+                .from('google_calendar_tokens')
+                .select('user_id')
+                .eq('user_id', rule.user_id)
+                .eq('tenant_id', tenant_id)
+                .eq('status', 'active')
+                .maybeSingle();
+              if (gcalToken) {
+                resolvedEmployeeId = rule.user_id;
+                console.log(`[voice-scheduling] Auto-assigned employee ${resolvedEmployeeId} based on availability rule`);
+                break;
+              }
+              // Still assign even without calendar
+              if (!resolvedEmployeeId) {
+                resolvedEmployeeId = rule.user_id;
+              }
+            }
+          }
+          // If no time match, pick first available employee with calendar
+          if (!resolvedEmployeeId) {
+            resolvedEmployeeId = matchingRules[0].user_id;
+            console.log(`[voice-scheduling] Fallback: assigned first available employee ${resolvedEmployeeId}`);
+          }
+        }
+      }
+
       // Build idempotency key
-      const idempotencyKey = `${tenant_id}:${contact_name}:${startDate.toISOString()}:${service_type || 'general'}:${employee_id || 'unassigned'}`;
+      const idempotencyKey = `${tenant_id}:${contact_name}:${startDate.toISOString()}:${service_type || 'general'}:${resolvedEmployeeId || 'unassigned'}`;
 
       const { data: appointment, error: insertErr } = await supabase
         .from('appointments')
@@ -262,7 +313,7 @@ serve(async (req) => {
           start_at: startDate.toISOString(),
           end_at: endDate.toISOString(),
           service_type: service_type || 'general',
-          user_id: employee_id || null,
+          user_id: resolvedEmployeeId,
           notes: notes || null,
           source: source || 'call',
           call_record_id: call_record_id || null,
