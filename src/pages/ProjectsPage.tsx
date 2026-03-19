@@ -107,7 +107,7 @@ const ProjectsPage = () => {
         .eq('user_id', user.id)
         .maybeSingle();
       if (!profile) return;
-
+      setTenantId(profile.tenant_id);
       const { data: profiles } = await supabase
         .from('profiles')
         .select('user_id, name, email')
