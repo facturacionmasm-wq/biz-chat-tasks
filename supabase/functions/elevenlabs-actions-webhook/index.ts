@@ -138,23 +138,160 @@ serve(async (req) => {
 
       case 'transfer_call':
       case 'transferir_llamada': {
-        // Transfer is handled differently — via Twilio API
+        // Transfer via Twilio API — find employee by phone or user_id
         const targetPhone = toolParams.target_phone || toolParams.telefono_destino || '';
-        if (!targetPhone) {
-          return jsonResp({ success: false, message: 'Necesito el número de teléfono de destino.' });
+        const targetUserId = toolParams.target_user_id || toolParams.employee_id || '';
+        const targetName = toolParams.target_name || toolParams.nombre_destino || '';
+
+        if (!targetPhone && !targetUserId && !targetName) {
+          return jsonResp({ success: false, message: 'Necesito el nombre o número de teléfono del empleado para transferir.' });
         }
-        // Invoke the call-transfer function
-        try {
-          const transferRes = await fetch(`${SUPABASE_URL}/functions/v1/call-transfer`, {
+
+        // Resolve employee
+        let employeePhone = targetPhone;
+        let employeeName = targetName || 'Empleado';
+        let resolvedUserId = targetUserId;
+
+        if (!employeePhone) {
+          // Try to find by name or user_id
+          let query = supabase.from('profiles').select('user_id, name, phone, whatsapp_number')
+            .eq('tenant_id', resolvedTenantId).eq('status', 'active');
+          
+          if (targetUserId) {
+            query = query.eq('user_id', targetUserId);
+          } else if (targetName) {
+            query = query.ilike('name', `%${targetName}%`);
+          }
+          
+          const { data: profiles } = await query.limit(1).maybeSingle();
+          if (profiles) {
+            employeePhone = profiles.phone || profiles.whatsapp_number || '';
+            employeeName = profiles.name;
+            resolvedUserId = profiles.user_id;
+          }
+        }
+
+        if (!employeePhone) {
+          return jsonResp({ success: false, message: `No encontré número de teléfono para ${employeeName}. No se puede transferir.` });
+        }
+
+        // Get caller phone from call record
+        let callerPhone = toolParams.caller_phone || '';
+        if (!callerPhone && callSid) {
+          const { data: cr } = await supabase.from('call_records').select('from_number').eq('external_call_id', callSid).maybeSingle();
+          if (cr) callerPhone = cr.from_number || '';
+        }
+
+        // Get transcript for whisper
+        let transcript = toolParams.transcript || '';
+        if (!transcript && callRecordId) {
+          const { data: cr } = await supabase.from('call_records').select('transcript').eq('id', callRecordId).maybeSingle();
+          if (cr) transcript = cr.transcript || '';
+        }
+
+        // Direct Twilio call to employee (bypassing call-transfer auth)
+        const TWILIO_ACCOUNT_SID = Deno.env.get('TWILIO_ACCOUNT_SID');
+        const TWILIO_AUTH_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN');
+        const TWILIO_PHONE_NUMBER = Deno.env.get('TWILIO_PHONE_NUMBER');
+        const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+
+        if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_PHONE_NUMBER) {
+          return jsonResp({ success: false, message: 'Credenciales de Twilio no configuradas para transferencia.' });
+        }
+
+        // Generate whisper summary
+        let whisperText = `Llamada transferida. Cliente al teléfono: ${callerPhone || 'desconocido'}.`;
+        if (transcript && LOVABLE_API_KEY) {
+          try {
+            const aiRes = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                model: 'google/gemini-2.5-flash',
+                messages: [
+                  { role: 'system', content: 'Genera un resumen en español de máximo 3 oraciones de esta llamada para el empleado que la recibirá. Solo el resumen.' },
+                  { role: 'user', content: `Transcripción:\n${transcript}` },
+                ],
+              }),
+            });
+            if (aiRes.ok) {
+              const aiData = await aiRes.json();
+              const summary = aiData.choices?.[0]?.message?.content;
+              if (summary) whisperText = `Resumen: ${summary}. El cliente está en la línea.`;
+            }
+          } catch (_) { /* use default whisper */ }
+        }
+
+        const conferenceName = `transfer_${callRecordId || Date.now()}`;
+        const twilioAuth = btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`);
+
+        // Call employee with whisper
+        const twimlUrl = `${SUPABASE_URL}/functions/v1/call-transfer-twiml?` +
+          `action=whisper&whisper=${encodeURIComponent(whisperText)}&conference=${encodeURIComponent(conferenceName)}&caller_phone=${encodeURIComponent(callerPhone)}`;
+
+        const empCallRes = await fetch(
+          `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Calls.json`,
+          {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
-            body: JSON.stringify({ call_sid: callSid, target_phone: targetPhone, tenant_id: resolvedTenantId }),
-          });
-          const transferData = await transferRes.json();
-          return jsonResp(transferData);
-        } catch (e) {
-          return jsonResp({ success: false, message: 'Error al transferir la llamada.' }, 500);
+            headers: { Authorization: `Basic ${twilioAuth}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({ To: employeePhone, From: TWILIO_PHONE_NUMBER, Url: twimlUrl }).toString(),
+          }
+        );
+        const empCallData = await empCallRes.json();
+
+        if (!empCallRes.ok) {
+          console.error('[el-actions] Twilio transfer error:', empCallData);
+          return jsonResp({ success: false, message: `Error al llamar a ${employeeName}: ${empCallData.message || 'Error de Twilio'}` });
         }
+
+        // Call the original caller to join conference (only if not already on an active call via Twilio)
+        let callerCallSid: string | null = null;
+        if (callerPhone) {
+          const callerTwimlUrl = `${SUPABASE_URL}/functions/v1/call-transfer-twiml?action=join&conference=${encodeURIComponent(conferenceName)}`;
+          const callerRes = await fetch(
+            `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Calls.json`,
+            {
+              method: 'POST',
+              headers: { Authorization: `Basic ${twilioAuth}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: new URLSearchParams({ To: callerPhone, From: TWILIO_PHONE_NUMBER, Url: callerTwimlUrl }).toString(),
+            }
+          );
+          const callerData = await callerRes.json();
+          callerCallSid = callerData?.sid || null;
+        }
+
+        // Log transfer event
+        if (callRecordId) {
+          await supabase.from('call_events').insert({
+            call_record_id: callRecordId,
+            tenant_id: resolvedTenantId,
+            event_type: 'transferred',
+            event_data: {
+              target_user_id: resolvedUserId, target_name: employeeName, target_phone: employeePhone,
+              caller_phone: callerPhone, conference: conferenceName,
+              employee_call_sid: empCallData.sid, caller_call_sid: callerCallSid,
+              whisper_summary: whisperText, source: 'voice_agent',
+            },
+          });
+        }
+
+        // Notify employee (fire and forget)
+        fetch(`${SUPABASE_URL}/functions/v1/notify-transfer`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+          body: JSON.stringify({
+            tenant_id: resolvedTenantId, target_user_id: resolvedUserId,
+            target_name: employeeName, caller_phone: callerPhone,
+            summary: whisperText, call_record_id: callRecordId,
+          }),
+        }).catch(e => console.error('[el-actions] notify error:', e));
+
+        return jsonResp({
+          success: true,
+          message: `Transfiriendo la llamada a ${employeeName}. Se le está llamando ahora.`,
+          conference: conferenceName,
+          employee_call_sid: empCallData.sid,
+        });
       }
 
       default:
