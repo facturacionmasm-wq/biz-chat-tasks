@@ -25,43 +25,62 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
-  const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || Deno.env.get('VITE_SUPABASE_URL');
+  const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') || Deno.env.get('SUPABASE_PUBLISHABLE_KEY');
   const GOOGLE_CLIENT_ID = Deno.env.get('GOOGLE_CLIENT_ID')!;
   const GOOGLE_CLIENT_SECRET = Deno.env.get('GOOGLE_CLIENT_SECRET')!;
-
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
   try {
     const body = await req.json();
     const { action } = body;
 
+    const authHeader = req.headers.get('Authorization') || '';
+    const bearerToken = authHeader.replace('Bearer ', '').trim();
+
+    if (!SUPABASE_URL) {
+      console.error('[google-drive] Missing SUPABASE_URL');
+      return jsonResponse({ error: 'Server misconfigured: SUPABASE_URL missing' }, 500);
+    }
+
+    const supabaseKey = SUPABASE_SERVICE_ROLE_KEY || SUPABASE_ANON_KEY;
+    if (!supabaseKey) {
+      console.error('[google-drive] Missing Supabase API key (service/anon)');
+      return jsonResponse({ error: 'Server misconfigured: Supabase key missing' }, 500);
+    }
+
+    const supabase = createClient(SUPABASE_URL, supabaseKey, {
+      global: bearerToken
+        ? { headers: { Authorization: `Bearer ${bearerToken}` } }
+        : undefined,
+    });
+
     // ─── AUTH: Validate caller ───
-    // For internal calls (from whatsapp-bot), accept service_role auth
+    // For internal calls (from backend workers), accept service_role token
     // For UI calls, validate JWT
     let callerUserId: string | null = null;
-    const authHeader = req.headers.get('Authorization') || '';
 
-    const bearerToken = authHeader.replace('Bearer ', '').trim();
-    
-    // Try to authenticate: first try as user JWT, then fall back to service role
+    if (!bearerToken) {
+      return jsonResponse({ error: 'Unauthorized' }, 401);
+    }
+
     const { data: userData, error: userErr } = await supabase.auth.getUser(bearerToken);
     if (userData?.user?.id) {
       callerUserId = userData.user.id;
+    } else if (
+      body.internal_caller === true
+      && (SUPABASE_SERVICE_ROLE_KEY
+        ? bearerToken === SUPABASE_SERVICE_ROLE_KEY
+        : isServiceRoleJwt(bearerToken))
+    ) {
+      callerUserId = body.user_id || null;
+      console.log('[google-drive] Internal service auth, user:', callerUserId);
     } else {
-      // Not a user JWT — check if it's a service role key by verifying admin access
-      // Service role clients can list users, regular clients can't
-      const testClient = createClient(SUPABASE_URL, bearerToken);
-      const { data: testData, error: testErr } = await testClient.auth.admin.listUsers({ perPage: 1 });
-      if (!testErr && testData) {
-        // It's a service role key
-        callerUserId = body.user_id || null;
-        console.log('[google-drive] Service role auth, user:', callerUserId);
-      } else {
-        console.error('[google-drive] Auth failed:', userErr?.message);
-        return jsonResponse({ error: 'Unauthorized' }, 401);
-      }
+      console.error('[google-drive] Auth failed:', userErr?.message || 'invalid token');
+      return jsonResponse({ error: 'Unauthorized' }, 401);
     }
+
+    console.log(`[google-drive] action=${action} tenant=${body.tenant_id || 'n/a'} internal=${body.internal_caller === true}`);
 
     const tenantId = body.tenant_id;
     if (!tenantId) {
