@@ -239,7 +239,7 @@ async function jobFetchRecording(
 async function jobTranscribeCall(supabase: any, job: any) {
   const { data: call } = await supabase
     .from('call_records')
-    .select('transcript, audio_url')
+    .select('transcript, audio_url, external_call_id, extracted_data')
     .eq('id', job.call_id)
     .single();
 
@@ -260,14 +260,136 @@ async function jobTranscribeCall(supabase: any, job: any) {
     return { status: 'transcript_exists', length: call.transcript.length };
   }
 
+  // Mark as processing
+  await supabase.from('call_records').update({ transcript_status: 'processing' }).eq('id', job.call_id);
+
+  // ── Try fetching transcript from ElevenLabs conversation API ──
+  const ELEVENLABS_API_KEY = Deno.env.get('ELEVENLABS_API_KEY');
+  const convId = call.extracted_data?.elevenlabs_conversation_id;
+  
+  if (ELEVENLABS_API_KEY && convId) {
+    try {
+      console.log(`[call-job-worker] Fetching ElevenLabs conversation ${convId} for transcript`);
+      const convRes = await fetch(
+        `https://api.elevenlabs.io/v1/convai/conversations/${convId}`,
+        { headers: { 'xi-api-key': ELEVENLABS_API_KEY } }
+      );
+      if (convRes.ok) {
+        const convData = await convRes.json();
+        const elTranscript = extractTranscriptFromConversation(convData);
+        if (elTranscript) {
+          const elSummary = convData.analysis?.summary || convData.analysis?.call_summary || '';
+          await supabase.from('call_records').update({
+            transcript: elTranscript,
+            transcript_status: 'ready',
+            ...(elSummary ? { summary_system: elSummary, summary_status: 'ready' } : {}),
+          }).eq('id', job.call_id);
+
+          // Chain to summarize if no summary yet
+          if (!elSummary) {
+            await supabase.from('call_jobs').upsert({
+              tenant_id: job.tenant_id,
+              call_id: job.call_id,
+              job_type: 'summarize_call',
+              status: 'queued',
+              run_after: new Date().toISOString(),
+            }, { onConflict: 'call_id,job_type' });
+          } else {
+            // Summary already exists, chain to extract_appointment
+            await supabase.from('call_jobs').upsert({
+              tenant_id: job.tenant_id,
+              call_id: job.call_id,
+              job_type: 'extract_appointment',
+              status: 'queued',
+              run_after: new Date().toISOString(),
+            }, { onConflict: 'call_id,job_type' });
+          }
+
+          return { status: 'transcribed_from_elevenlabs', length: elTranscript.length };
+        }
+      }
+    } catch (e) {
+      console.error('[call-job-worker] ElevenLabs transcript fetch error:', e);
+    }
+  }
+
+  // ── Try ElevenLabs STT if we have audio ──
+  if (ELEVENLABS_API_KEY && call.audio_url) {
+    try {
+      console.log(`[call-job-worker] Using ElevenLabs STT for audio: ${call.audio_url}`);
+      const audioRes = await fetch(call.audio_url);
+      if (audioRes.ok) {
+        const audioBlob = await audioRes.blob();
+        const formData = new FormData();
+        formData.append('file', audioBlob, 'recording.mp3');
+        formData.append('model_id', 'scribe_v2');
+        formData.append('language_code', 'spa');
+        formData.append('diarize', 'true');
+
+        const sttRes = await fetch('https://api.elevenlabs.io/v1/speech-to-text', {
+          method: 'POST',
+          headers: { 'xi-api-key': ELEVENLABS_API_KEY },
+          body: formData,
+        });
+
+        if (sttRes.ok) {
+          const sttData = await sttRes.json();
+          const sttTranscript = sttData.text || '';
+          if (sttTranscript.trim()) {
+            await supabase.from('call_records').update({
+              transcript: sttTranscript,
+              transcript_status: 'ready',
+              transcript_language: sttData.language_code || 'es',
+            }).eq('id', job.call_id);
+
+            await supabase.from('call_jobs').upsert({
+              tenant_id: job.tenant_id,
+              call_id: job.call_id,
+              job_type: 'summarize_call',
+              status: 'queued',
+              run_after: new Date().toISOString(),
+            }, { onConflict: 'call_id,job_type' });
+
+            return { status: 'transcribed_via_stt', length: sttTranscript.length };
+          }
+        } else {
+          console.error(`[call-job-worker] ElevenLabs STT error: ${sttRes.status}`);
+        }
+      }
+    } catch (e) {
+      console.error('[call-job-worker] STT error:', e);
+    }
+  }
+
   if (!call.audio_url) {
     await supabase.from('call_records').update({ transcript_status: 'not_requested' }).eq('id', job.call_id);
     return { status: 'no_audio_no_transcript' };
   }
 
-  // Mark as awaiting external transcription
-  await supabase.from('call_records').update({ transcript_status: 'processing' }).eq('id', job.call_id);
-  return { status: 'awaiting_transcription_service', audio_url: call.audio_url };
+  // If we get here, transcription failed — throw to trigger retry
+  throw new Error('Transcription service unavailable, will retry');
+}
+
+function extractTranscriptFromConversation(convData: any): string {
+  if (convData.transcript && typeof convData.transcript === 'string') {
+    return convData.transcript;
+  }
+  if (Array.isArray(convData.transcript)) {
+    return convData.transcript
+      .map((t: any) => `${t.role || 'unknown'}: ${t.message || t.text || ''}`)
+      .join('\n');
+  }
+  if (convData.conversation_transcript) {
+    if (typeof convData.conversation_transcript === 'string') {
+      return convData.conversation_transcript;
+    }
+    if (Array.isArray(convData.conversation_transcript)) {
+      return convData.conversation_transcript
+        .map((t: any) => `${t.role || 'unknown'}: ${t.message || t.text || ''}`)
+        .join('\n');
+    }
+  }
+  return '';
 }
 
 // ═══════════════════════════════════════════════

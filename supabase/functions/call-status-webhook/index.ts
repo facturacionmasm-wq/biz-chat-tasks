@@ -293,6 +293,98 @@ serve(async (req) => {
     // ═══════════ POST-COMPLETION PIPELINE ═══════════
     if (mappedStatus === 'completed') {
       const effectiveTenantId = callRecord.tenant_id;
+      const ELEVENLABS_API_KEY = Deno.env.get('ELEVENLABS_API_KEY');
+
+      // ── Fetch transcript from ElevenLabs conversation API ──
+      // The post-call webhook may not fire, so we proactively pull conversation data
+      if (ELEVENLABS_API_KEY) {
+        try {
+          // Find the call_session to get the ElevenLabs conversation_id
+          const { data: session } = await supabase
+            .from('call_sessions')
+            .select('call_sid, elevenlabs_agent_id')
+            .eq('call_record_id', callRecord.id)
+            .maybeSingle();
+
+          if (session) {
+            // Get conversations for this agent, filter by call_sid
+            // ElevenLabs stores the conversation with the call metadata
+            const { data: currentCall } = await supabase
+              .from('call_records')
+              .select('transcript, extracted_data')
+              .eq('id', callRecord.id)
+              .single();
+
+            const existingConvId = currentCall?.extracted_data?.elevenlabs_conversation_id;
+
+            // If we already have a conversation_id, fetch it directly
+            if (existingConvId) {
+              console.log(`[status] Fetching ElevenLabs conversation ${existingConvId}`);
+              const convRes = await fetch(
+                `https://api.elevenlabs.io/v1/convai/conversations/${existingConvId}`,
+                { headers: { 'xi-api-key': ELEVENLABS_API_KEY } }
+              );
+              if (convRes.ok) {
+                const convData = await convRes.json();
+                const elTranscript = extractElevenLabsTranscript(convData);
+                const elSummary = convData.analysis?.summary || convData.analysis?.call_summary || '';
+                
+                if (elTranscript && (!currentCall?.transcript?.trim())) {
+                  await supabase.from('call_records').update({
+                    transcript: elTranscript,
+                    transcript_status: 'ready',
+                    ...(elSummary ? { summary_system: elSummary, summary_status: 'ready' } : {}),
+                  }).eq('id', callRecord.id);
+                  console.log(`[status] Saved ElevenLabs transcript (${elTranscript.length} chars)`);
+                }
+              }
+            } else {
+              // Try to find the conversation by listing recent ones
+              console.log(`[status] Searching ElevenLabs conversations for CallSid=${callSid}`);
+              const listRes = await fetch(
+                `https://api.elevenlabs.io/v1/convai/conversations?page_size=5`,
+                { headers: { 'xi-api-key': ELEVENLABS_API_KEY } }
+              );
+              if (listRes.ok) {
+                const listData = await listRes.json();
+                const conversations = listData.conversations || [];
+                // Find the conversation matching our call_sid
+                for (const conv of conversations) {
+                  const convDetailRes = await fetch(
+                    `https://api.elevenlabs.io/v1/convai/conversations/${conv.conversation_id}`,
+                    { headers: { 'xi-api-key': ELEVENLABS_API_KEY } }
+                  );
+                  if (!convDetailRes.ok) continue;
+                  const convDetail = await convDetailRes.json();
+                  const vars = convDetail.conversation_initiation_client_data?.dynamic_variables || {};
+                  if (vars.call_sid === callSid || vars.call_record_id === callRecord.id) {
+                    const elTranscript = extractElevenLabsTranscript(convDetail);
+                    const elSummary = convDetail.analysis?.summary || '';
+                    const { data: freshCall } = await supabase
+                      .from('call_records').select('transcript').eq('id', callRecord.id).single();
+                    
+                    if (elTranscript && (!freshCall?.transcript?.trim())) {
+                      await supabase.from('call_records').update({
+                        transcript: elTranscript,
+                        transcript_status: 'ready',
+                        extracted_data: {
+                          ...((freshCall as any)?.extracted_data || {}),
+                          elevenlabs_conversation_id: conv.conversation_id,
+                        },
+                        ...(elSummary ? { summary_system: elSummary, summary_status: 'ready' } : {}),
+                      }).eq('id', callRecord.id);
+                      console.log(`[status] Found and saved ElevenLabs transcript from conv ${conv.conversation_id}`);
+                    }
+                    break;
+                  }
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.error('[status] ElevenLabs conversation fetch error:', e);
+        }
+      }
 
       // Cost calculation
       try {
@@ -312,12 +404,14 @@ serve(async (req) => {
         });
       } catch (e) { console.error('[status] Fraud detection error:', e); }
 
-      // Enqueue async jobs
-      const jobTypes = ['fetch_recording', 'transcribe_call'];
+      // Enqueue async jobs — re-check transcript after ElevenLabs fetch
       const { data: fullRecord } = await supabase.from('call_records').select('transcript').eq('id', callRecord.id).single();
+      const jobTypes = ['fetch_recording'];
       if (fullRecord?.transcript?.trim()) {
         jobTypes.push('summarize_call');
         await supabase.from('call_records').update({ transcript_status: 'ready', summary_status: 'pending' }).eq('id', callRecord.id);
+      } else {
+        jobTypes.push('transcribe_call');
       }
       await supabase.from('call_records').update({ recording_status: recordingUrl ? 'ready' : 'pending' }).eq('id', callRecord.id);
 
