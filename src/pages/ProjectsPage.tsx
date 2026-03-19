@@ -481,10 +481,13 @@ const ProjectsPage = () => {
             <div className="flex items-center gap-1">
                <button onClick={() => setView('board')} className={`text-xs px-3.5 py-1.5 rounded-xl font-medium transition-all ${view === 'board' ? 'bg-primary text-primary-foreground shadow-soft' : 'text-muted-foreground hover:bg-secondary'}`}>Kanban</button>
                <button onClick={() => setView('list')} className={`text-xs px-3.5 py-1.5 rounded-xl font-medium transition-all ${view === 'list' ? 'bg-primary text-primary-foreground shadow-soft' : 'text-muted-foreground hover:bg-secondary'}`}>Lista</button>
+               <button onClick={() => setView('docs')} className={`text-xs px-3.5 py-1.5 rounded-xl font-medium transition-all flex items-center gap-1 ${view === 'docs' ? 'bg-primary text-primary-foreground shadow-soft' : 'text-muted-foreground hover:bg-secondary'}`}><FileText size={12} /> Documentos</button>
             </div>
-            <button onClick={() => setShowNewTask(true)} className="flex items-center gap-1.5 bg-primary text-primary-foreground text-xs font-semibold px-4 py-2 rounded-xl hover:opacity-90 shadow-soft active:scale-95 transition-all">
-              <Plus size={14} /> Nueva Tarea
-            </button>
+            {view !== 'docs' && (
+              <button onClick={() => setShowNewTask(true)} className="flex items-center gap-1.5 bg-primary text-primary-foreground text-xs font-semibold px-4 py-2 rounded-xl hover:opacity-90 shadow-soft active:scale-95 transition-all">
+                <Plus size={14} /> Nueva Tarea
+              </button>
+            )}
           </div>
         </div>
 
