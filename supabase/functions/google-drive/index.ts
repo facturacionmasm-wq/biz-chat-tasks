@@ -372,16 +372,11 @@ serve(async (req) => {
       const { file_url, file_name, target_folder_id, document_id, twilio_sid, twilio_token } = body;
       if (!file_url) return jsonResponse({ error: 'file_url required' }, 400);
 
-      const { data: driveSettings } = await supabase
-        .from('tenant_drive_settings')
-        .select('drive_root_folder_id')
-        .eq('tenant_id', tenantId)
-        .maybeSingle();
-
-      if (!driveSettings) return jsonResponse({ error: 'Drive not configured' }, 400);
-
       const accessToken = await getValidAccessToken(supabase, tenantId, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET);
       if (!accessToken) return jsonResponse({ error: 'No access token' }, 500);
+
+      const driveSettings = await ensureDriveFolders(supabase, tenantId, accessToken, callerUserId);
+      if (!driveSettings) return jsonResponse({ error: 'Drive not configured' }, 400);
 
       const parentFolderId = target_folder_id || driveSettings.drive_root_folder_id;
 
