@@ -497,6 +497,200 @@ serve(async (req) => {
       return jsonResponse({ success: true, drive_file_id: driveFileId, drive_file_url: driveFileUrl });
     }
 
+    // ─── UPLOAD PROJECT DOCUMENT ───
+    if (action === 'upload_project_document') {
+      const {
+        document_id,
+        project_id,
+        project_name,
+        file_url,
+        file_name,
+        storage_path,
+        mime_type,
+        twilio_sid,
+        twilio_token,
+      } = body;
+
+      const accessToken = await getValidAccessToken(supabase, tenantId, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET);
+      if (!accessToken) {
+        return jsonResponse({ error: 'No se pudo obtener acceso a Google Drive.' }, 500);
+      }
+
+      const driveSettings = await ensureDriveFolders(supabase, tenantId, accessToken, callerUserId);
+      if (!driveSettings?.drive_root_folder_id) {
+        return jsonResponse({ error: 'drive_not_configured', message: 'Google Drive no está configurado.' }, 400);
+      }
+
+      let resolvedProjectId: string | null = project_id || null;
+      let resolvedProjectName: string | null = project_name || null;
+      let resolvedStoragePath: string | null = storage_path || null;
+      let resolvedFileName: string | null = file_name || null;
+      let resolvedMimeType = mime_type || 'application/octet-stream';
+
+      if (document_id) {
+        const { data: projectDoc } = await supabase
+          .from('project_documents')
+          .select('id, project_id, file_name, storage_path, mime_type')
+          .eq('id', document_id)
+          .eq('tenant_id', tenantId)
+          .maybeSingle();
+
+        if (projectDoc) {
+          resolvedProjectId = resolvedProjectId || projectDoc.project_id;
+          resolvedStoragePath = resolvedStoragePath || projectDoc.storage_path;
+          resolvedFileName = resolvedFileName || projectDoc.file_name;
+          resolvedMimeType = mime_type || projectDoc.mime_type || resolvedMimeType;
+        }
+      }
+
+      if (!resolvedProjectId) {
+        return jsonResponse({ error: 'project_id required' }, 400);
+      }
+
+      if (!resolvedProjectName) {
+        const { data: projectRow } = await supabase
+          .from('projects')
+          .select('name')
+          .eq('id', resolvedProjectId)
+          .eq('tenant_id', tenantId)
+          .maybeSingle();
+        resolvedProjectName = projectRow?.name || `Proyecto ${resolvedProjectId.slice(0, 8)}`;
+      }
+
+      // Ensure "Proyectos" root exists
+      let projectsFolderId = await searchFolderByName(accessToken, 'Proyectos', driveSettings.drive_root_folder_id);
+      if (!projectsFolderId) {
+        const projectsRoot = await createFolder(accessToken, 'Proyectos', driveSettings.drive_root_folder_id);
+        if (!projectsRoot.id) {
+          return jsonResponse({ error: 'No se pudo crear la carpeta base de Proyectos en Google Drive.' }, 500);
+        }
+        projectsFolderId = projectsRoot.id;
+      }
+
+      // Ensure project folder exists under "Proyectos"
+      const targetProjectFolderName = (resolvedProjectName || `Proyecto ${resolvedProjectId.slice(0, 8)}`).trim();
+      let projectFolderId = await searchFolderByName(accessToken, targetProjectFolderName, projectsFolderId);
+      if (!projectFolderId) {
+        const projectFolder = await createFolder(accessToken, targetProjectFolderName, projectsFolderId);
+        if (!projectFolder.id) {
+          return jsonResponse({ error: 'No se pudo crear la carpeta del proyecto en Google Drive.' }, 500);
+        }
+        projectFolderId = projectFolder.id;
+      }
+
+      // Get file bytes either from direct URL or from storage path
+      let fileBuffer: ArrayBuffer;
+      try {
+        if (file_url) {
+          const fetchHeaders: Record<string, string> = {};
+          if (twilio_sid && twilio_token) {
+            fetchHeaders['Authorization'] = `Basic ${btoa(`${twilio_sid}:${twilio_token}`)}`;
+          }
+
+          const fileRes = await fetch(file_url, { headers: fetchHeaders });
+          if (!fileRes.ok) {
+            throw new Error(`Download failed: ${fileRes.status}`);
+          }
+
+          resolvedMimeType = fileRes.headers.get('content-type') || resolvedMimeType;
+          fileBuffer = await fileRes.arrayBuffer();
+        } else if (resolvedStoragePath) {
+          const { data: storageFile, error: downloadError } = await supabase
+            .storage
+            .from('project-documents')
+            .download(resolvedStoragePath);
+
+          if (downloadError || !storageFile) {
+            throw new Error(`Storage download failed: ${downloadError?.message || 'missing_file'}`);
+          }
+
+          resolvedMimeType = resolvedMimeType || storageFile.type || 'application/octet-stream';
+          fileBuffer = await storageFile.arrayBuffer();
+        } else {
+          return jsonResponse({ error: 'file_url or storage_path required' }, 400);
+        }
+      } catch (e) {
+        console.error('[google-drive] project file download error:', e);
+        return jsonResponse({ error: 'No se pudo obtener el archivo para subirlo a Drive.' }, 500);
+      }
+
+      if (!resolvedFileName) {
+        const ext = resolvedMimeType.split('/').pop()?.split(';')[0] || 'bin';
+        resolvedFileName = `documento_proyecto_${Date.now()}.${ext}`;
+      }
+
+      const metadata = { name: resolvedFileName, parents: [projectFolderId] };
+      const boundary = 'boundary_' + Date.now();
+      const metadataStr = JSON.stringify(metadata);
+      const encoder = new TextEncoder();
+      const metaPart = encoder.encode(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadataStr}\r\n`);
+      const filePart = encoder.encode(`--${boundary}\r\nContent-Type: ${resolvedMimeType}\r\n\r\n`);
+      const endPart = encoder.encode(`\r\n--${boundary}--`);
+      const fileBytes = new Uint8Array(fileBuffer);
+      const totalLength = metaPart.length + filePart.length + fileBytes.length + endPart.length;
+      const combined = new Uint8Array(totalLength);
+      let offset = 0;
+      combined.set(metaPart, offset); offset += metaPart.length;
+      combined.set(filePart, offset); offset += filePart.length;
+      combined.set(fileBytes, offset); offset += fileBytes.length;
+      combined.set(endPart, offset);
+
+      const uploadRes = await fetch(`${DRIVE_UPLOAD_API}/files?uploadType=multipart&fields=id,webViewLink`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': `multipart/related; boundary=${boundary}`,
+        },
+        body: combined,
+      });
+
+      if (!uploadRes.ok) {
+        const errText = await uploadRes.text();
+        console.error('[google-drive] upload_project_document error:', uploadRes.status, errText);
+        return jsonResponse({ error: 'No se pudo subir el documento del proyecto a Google Drive.' }, 500);
+      }
+
+      const uploadData = await uploadRes.json();
+      const driveFileId = uploadData.id;
+      const driveFileUrl = uploadData.webViewLink || `https://drive.google.com/file/d/${driveFileId}/view`;
+
+      if (document_id) {
+        await supabase
+          .from('project_documents')
+          .update({
+            drive_file_id: driveFileId,
+            drive_file_url: driveFileUrl,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', document_id)
+          .eq('tenant_id', tenantId);
+      }
+
+      await supabase.from('drive_audit_log').insert({
+        tenant_id: tenantId,
+        user_id: callerUserId,
+        action: 'file_uploaded_project',
+        resource_type: 'file',
+        resource_id: driveFileId,
+        resource_name: resolvedFileName,
+        metadata: {
+          project_id: resolvedProjectId,
+          project_folder_id: projectFolderId,
+          document_id,
+          source: file_url ? 'url' : 'storage',
+          content_type: resolvedMimeType,
+        },
+      });
+
+      return jsonResponse({
+        success: true,
+        drive_file_id: driveFileId,
+        drive_file_url: driveFileUrl,
+        project_folder_id: projectFolderId,
+        projects_root_folder_id: projectsFolderId,
+      });
+    }
+
     // ─── LIST FOLDERS ───
     if (action === 'list_folders') {
       const { data: driveSettings } = await supabase
