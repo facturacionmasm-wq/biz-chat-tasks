@@ -57,26 +57,22 @@ const WhatsAppInboxPage = () => {
 
   const convMessages = messages.filter(m => m.conversation_id === selectedConvId);
 
-  const handleSendMessage = async () => {
-    if (!messageInput.trim() || !selectedConvId) return;
-    const body = messageInput.trim();
-    setMessageInput('');
-    setSending(true);
-    try {
-      const selectedConv = conversations.find(c => c.id === selectedConvId);
-      const { data, error } = await supabase.functions.invoke('twilio-send', {
-        body: { to: selectedConv?.contact_phone, body, conversationId: selectedConvId, tenantId: selectedConv?.tenant_id || DEMO_TENANT },
-      });
-      if (error) throw error;
-      if (data && !data.ok) throw new Error(data.error || 'Error al enviar');
-      await fetchMessages(selectedConvId);
-    } catch (err: any) {
-      toast.error(err.message || 'Error al enviar mensaje');
-      setMessageInput(body);
-    } finally {
-      setSending(false);
+  const handleSendMessage = useCallback(async (body: string) => {
+    if (!selectedConvId) return;
+    const selectedConv = conversations.find(c => c.id === selectedConvId);
+    const { data, error } = await supabase.functions.invoke('twilio-send', {
+      body: { to: selectedConv?.contact_phone, body, conversationId: selectedConvId, tenantId: selectedConv?.tenant_id || DEMO_TENANT },
+    });
+    if (error) {
+      toast.error(error.message || 'Error al enviar mensaje');
+      throw error;
     }
-  };
+    if (data && !data.ok) {
+      toast.error(data.error || 'Error al enviar');
+      throw new Error(data.error || 'Error al enviar');
+    }
+    await fetchMessages(selectedConvId);
+  }, [selectedConvId, conversations, fetchMessages, DEMO_TENANT]);
 
   const handleCreateConversation = async () => {
     if (!newConvName.trim() || !newConvPhone.trim()) return;
