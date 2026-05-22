@@ -103,8 +103,8 @@ const WhatsAppInboxPage = () => {
       setShowDeleteConfirm(false);
       setDeletingConvId(null);
       toast.success('Conversación eliminada');
-    } catch (err: any) {
-      toast.error(err.message || 'Error al eliminar conversación');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error al eliminar conversación');
     } finally {
       setDeleting(false);
     }
