@@ -241,17 +241,7 @@ const WhatsAppInboxPage = () => {
             ))}
             <div ref={messagesEndRef} />
           </div>
-          <div className="shrink-0 border-t border-border p-3 bg-card">
-            <div className="flex items-end gap-2 bg-secondary rounded-lg px-3 py-2">
-              <button className="text-muted-foreground hover:text-foreground pb-0.5 hidden sm:block"><Paperclip size={16} /></button>
-              <textarea value={messageInput} onChange={e => setMessageInput(e.target.value)} placeholder="Escribir mensaje..." rows={1}
-                className="flex-1 bg-transparent text-sm outline-none resize-none max-h-24 placeholder:text-muted-foreground text-foreground"
-                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }} />
-              <button onClick={handleSendMessage} disabled={sending || !messageInput.trim()} className="bg-success text-success-foreground rounded-md p-1.5 hover:opacity-90 disabled:opacity-40">
-                {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-              </button>
-            </div>
-          </div>
+          <MessageComposer onSend={handleSendMessage} />
         </div>
         {showNotes && !isMobile && (
           <div className="w-64 shrink-0 border-l border-border bg-card p-4 overflow-y-auto">
