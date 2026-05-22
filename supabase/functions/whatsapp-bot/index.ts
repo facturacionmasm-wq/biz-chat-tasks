@@ -93,11 +93,13 @@ serve(async (req) => {
       }
     }
 
-    if (!effectiveMessageBody) {
+    if (!effectiveMessageBody && !mediaUrl) {
       return new Response(JSON.stringify({ error: 'Missing messageBody' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+    // Ensure downstream string operations are safe when only media was sent
+    effectiveMessageBody = effectiveMessageBody || '';
 
     // ==================== CONVERSATION SETUP ====================
     const isSandbox = sandboxMode === true;
