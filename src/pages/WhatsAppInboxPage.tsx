@@ -140,7 +140,7 @@ const WhatsAppInboxPage = () => {
   const showChatView = selectedConvId && selectedConv;
   const showListView = !isMobile || !showChatView;
 
-  const ConversationList = () => (
+  const conversationList = (
     <div className={`${isMobile ? 'w-full' : 'w-80'} shrink-0 border-r border-border bg-card flex flex-col h-full`}>
       <div className="p-3 border-b border-border space-y-2">
         <div className="flex items-center gap-2">
@@ -193,7 +193,7 @@ const WhatsAppInboxPage = () => {
     </div>
   );
 
-  const ChatView = () => (
+  const chatView = (
     <div className="flex-1 flex flex-col min-w-0">
       <div className="shrink-0 h-14 border-b border-border flex items-center justify-between px-3 sm:px-5 bg-card">
         <div className="flex items-center gap-3">
@@ -275,8 +275,8 @@ const WhatsAppInboxPage = () => {
 
   return (
     <div className="flex h-full">
-      {showListView && <ConversationList />}
-      {showChatView ? <ChatView /> : (!isMobile && (
+      {showListView && conversationList}
+      {showChatView ? chatView : (!isMobile && (
         <div className="flex-1 flex items-center justify-center text-muted-foreground">
           <div className="text-center">
             <MessageSquare size={40} className="mx-auto mb-3 opacity-40" />
@@ -284,6 +284,7 @@ const WhatsAppInboxPage = () => {
           </div>
         </div>
       ))}
+
 
       <Dialog open={showNewConv} onOpenChange={setShowNewConv}>
         <DialogContent className="sm:max-w-md">
