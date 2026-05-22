@@ -1,10 +1,11 @@
-import { memo, useState, useCallback, KeyboardEvent } from 'react';
+import { memo, useState, useCallback, KeyboardEvent, useEffect, useRef } from 'react';
 import { Send, Paperclip, Loader2 } from 'lucide-react';
 
 interface MessageComposerProps {
   onSend: (body: string) => Promise<void> | void;
   disabled?: boolean;
   placeholder?: string;
+  conversationId?: string | null;
 }
 
 /**
@@ -12,23 +13,32 @@ interface MessageComposerProps {
  * así el textarea jamás pierde foco aunque la lista de conversaciones,
  * mensajes o estado de envío se actualicen en background.
  */
-const MessageComposer = memo(({ onSend, disabled, placeholder = 'Escribir mensaje...' }: MessageComposerProps) => {
-  const [value, setValue] = useState('');
+const MessageComposer = memo(({ onSend, disabled, placeholder = 'Escribir mensaje...', conversationId }: MessageComposerProps) => {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [sending, setSending] = useState(false);
 
+  useEffect(() => {
+    if (textareaRef.current) textareaRef.current.value = '';
+    setSending(false);
+  }, [conversationId]);
+
   const handleSend = useCallback(async () => {
-    const body = value.trim();
+    const textarea = textareaRef.current;
+    const body = textarea?.value.trim() || '';
     if (!body || sending) return;
-    setValue('');
+    if (textarea) textarea.value = '';
     setSending(true);
     try {
       await onSend(body);
     } catch {
-      setValue(body);
+      if (textarea) {
+        textarea.value = body;
+        textarea.focus();
+      }
     } finally {
       setSending(false);
     }
-  }, [value, sending, onSend]);
+  }, [sending, onSend]);
 
   const handleKeyDown = useCallback((e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -44,8 +54,7 @@ const MessageComposer = memo(({ onSend, disabled, placeholder = 'Escribir mensaj
           <Paperclip size={16} />
         </button>
         <textarea
-          value={value}
-          onChange={e => setValue(e.target.value)}
+          ref={textareaRef}
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
           rows={1}
@@ -54,9 +63,10 @@ const MessageComposer = memo(({ onSend, disabled, placeholder = 'Escribir mensaj
         />
         <button
           onClick={handleSend}
-          disabled={disabled || sending || !value.trim()}
+          disabled={disabled || sending}
           type="button"
           className="bg-success text-success-foreground rounded-md p-1.5 hover:opacity-90 disabled:opacity-40"
+          aria-label="Enviar mensaje"
         >
           {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
         </button>
