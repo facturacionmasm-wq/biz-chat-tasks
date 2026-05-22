@@ -241,7 +241,7 @@ const WhatsAppInboxPage = () => {
             ))}
             <div ref={messagesEndRef} />
           </div>
-          <MessageComposer onSend={handleSendMessage} />
+          <MessageComposer conversationId={selectedConvId} onSend={handleSendMessage} />
         </div>
         {showNotes && !isMobile && (
           <div className="w-64 shrink-0 border-l border-border bg-card p-4 overflow-y-auto">
