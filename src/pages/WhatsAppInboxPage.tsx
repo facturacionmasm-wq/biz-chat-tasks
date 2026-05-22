@@ -35,7 +35,6 @@ const WhatsAppInboxPage = () => {
   const [newConvName, setNewConvName] = useState('');
   const [newConvPhone, setNewConvPhone] = useState('');
   const [newConvMessage, setNewConvMessage] = useState('');
-  const [sending, setSending] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deletingConvId, setDeletingConvId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
