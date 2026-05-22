@@ -44,7 +44,7 @@ const ExpensesPage = () => {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'list' | 'by_user'>('list');
-  const [periodFilter, setPeriodFilter] = useState<'day' | 'month' | 'year'>('month');
+  const [periodFilter, setPeriodFilter] = useState<'day' | 'month' | 'year' | 'all'>('all');
   const [typeFilter, setTypeFilter] = useState<'all' | 'expense' | 'budget'>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'paid' | 'pending_approval' | 'approved' | 'rejected'>('all');
 
@@ -137,13 +137,13 @@ const ExpensesPage = () => {
           <p className="text-sm text-muted-foreground mt-1">Registros de gastos pagados y presupuestos por autorizar vía WhatsApp</p>
         </div>
         <div className="flex items-center gap-2">
-          {(['day', 'month', 'year'] as const).map(p => (
+          {(['day', 'month', 'year', 'all'] as const).map(p => (
             <button
               key={p}
               onClick={() => setPeriodFilter(p)}
               className={`text-xs px-3 py-1.5 rounded-md font-medium transition-colors ${periodFilter === p ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-secondary'}`}
             >
-              {p === 'day' ? 'Hoy' : p === 'month' ? 'Este mes' : 'Este año'}
+              {p === 'day' ? 'Hoy' : p === 'month' ? 'Este mes' : p === 'year' ? 'Este año' : 'Todos'}
             </button>
           ))}
         </div>
