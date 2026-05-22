@@ -29,7 +29,7 @@ const WhatsAppInboxPage = () => {
   const [selectedConvId, setSelectedConvId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
-  const [messageInput, setMessageInput] = useState('');
+  
   const [showNotes, setShowNotes] = useState(false);
   const [showNewConv, setShowNewConv] = useState(false);
   const [newConvName, setNewConvName] = useState('');
