@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
-import { MessageSquare, Search, Send, Paperclip, StickyNote, Phone, CalendarPlus, Circle, CheckCircle2, AlertCircle, Plus, Loader2, ArrowLeft, Trash2 } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { MessageSquare, Search, StickyNote, Phone, CalendarPlus, Circle, CheckCircle2, AlertCircle, Plus, Loader2, ArrowLeft, Trash2 } from 'lucide-react';
+import MessageComposer from '@/components/whatsapp/MessageComposer';
 import { format } from 'date-fns';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
