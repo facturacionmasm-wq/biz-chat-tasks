@@ -196,6 +196,32 @@ const ExpensesPage = () => {
         </div>
       </div>
 
+      {/* Search */}
+      <div className="relative">
+        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Buscar por autor, proveedor, descripción, monto, folio..."
+          className="w-full pl-9 pr-9 py-2 text-sm bg-card border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
+        />
+        {search && (
+          <button
+            onClick={() => setSearch('')}
+            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md text-muted-foreground hover:bg-secondary"
+            aria-label="Limpiar búsqueda"
+          >
+            <X size={14} />
+          </button>
+        )}
+        {hasSearch && (
+          <p className="text-[11px] text-muted-foreground mt-1.5 ml-1">
+            Mostrando {filteredExpenses.length} resultados de todos los periodos
+          </p>
+        )}
+      </div>
+
       {/* Filters row */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-1 mr-2">
