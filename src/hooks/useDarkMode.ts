@@ -1,15 +1,30 @@
+/**
+ * useDarkMode — light/dark/system theme switcher.
+ *
+ * NOTE: This hook is intentionally separate from useRybixTheme (the day/night
+ * auto-time-based theme). Do NOT rename this export — it was previously
+ * misnamed `useRybixTheme`, which caused a naming collision.
+ */
 import { useState, useEffect, useCallback } from 'react';
 
 type Theme = 'light' | 'dark' | 'system';
 
-export function useRybixTheme() {
+export function useDarkMode() {
   const [theme, setThemeState] = useState<Theme>(() => {
-    if (typeof window === 'undefined') return 'system';
-    return (localStorage.getItem('rybix-theme') as Theme) || 'system';
+    try {
+      if (typeof window === 'undefined') return 'system';
+      return (localStorage.getItem('rybix-theme') as Theme) || 'system';
+    } catch {
+      return 'system';
+    }
   });
 
   const getSystemTheme = (): 'light' | 'dark' => {
-    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    try {
+      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    } catch {
+      return 'light';
+    }
   };
 
   const applyTheme = useCallback((t: Theme) => {
@@ -20,7 +35,6 @@ export function useRybixTheme() {
   useEffect(() => {
     applyTheme(theme);
 
-    // Listen to system changes when in 'system' mode
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
     const handleChange = () => {
       if (theme === 'system') applyTheme('system');
@@ -31,7 +45,9 @@ export function useRybixTheme() {
   }, [theme, applyTheme]);
 
   const setTheme = useCallback((t: Theme) => {
-    localStorage.setItem('rybix-theme', t);
+    try {
+      localStorage.setItem('rybix-theme', t);
+    } catch { /* ignore storage errors */ }
     setThemeState(t);
     applyTheme(t);
   }, [applyTheme]);

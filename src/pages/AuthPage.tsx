@@ -1,6 +1,5 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { lovable } from '@/integrations/lovable';
 import { toast } from 'sonner';
 import { Loader2, Eye, EyeOff } from 'lucide-react';
 import { useBranding } from '@/hooks/useBranding';
@@ -48,9 +47,9 @@ export default function AuthPage() {
         const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
         if (error) throw error;
       } else if (mode === 'register') {
-        if (!name.trim()) { toast.error('El nombre es obligatorio'); return; }
+        if (!name.trim()) { toast.error('El nombre es obligatorio'); setLoading(false); return; }
         const exists = await checkEmailExists(email.trim());
-        if (exists) { toast.error('Este email ya está registrado'); return; }
+        if (exists) { toast.error('Este email ya está registrado'); setLoading(false); return; }
         const { error } = await supabase.auth.signUp({
           email: email.trim(), password,
           options: { data: { name: name.trim() } },
@@ -65,8 +64,11 @@ export default function AuthPage() {
         setForgotSent(true);
         toast.success('Instrucciones enviadas a tu email');
       }
-    } catch (err: any) {
-      toast.error(err.message || 'Error de autenticación');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Error de autenticación';
+      // Map Supabase error codes to friendly Spanish messages
+      const friendly = getFriendlyAuthError(message);
+      toast.error(friendly);
     } finally {
       setLoading(false);
     }
@@ -80,8 +82,9 @@ export default function AuthPage() {
         options: { redirectTo: `${window.location.origin}/` },
       });
       if (error) throw error;
-    } catch (err: any) {
-      toast.error(err.message || 'Error OAuth');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Error OAuth';
+      toast.error(message);
       setOAuth(null);
     }
   };
@@ -183,6 +186,7 @@ export default function AuthPage() {
                   background: 'var(--rx-s2)', border: '1px solid var(--rx-b1)', borderRadius: 12,
                   padding: '10px 16px', fontSize: 13, fontWeight: 600, color: 'var(--rx-t1)',
                   cursor: 'pointer', marginBottom: 10, transition: 'border-color .15s',
+                  opacity: loading || oauthLoading ? 0.6 : 1,
                 }}
               >
                 {oauthLoading === 'google' ? <Loader2 size={16} className="animate-spin" /> : <GoogleIcon />}
@@ -287,7 +291,7 @@ export default function AuthPage() {
                 type="submit"
                 disabled={loading}
                 className="rx-btn rx-btn-primary"
-                style={{ width: '100%', justifyContent: 'center', padding: '11px', marginTop: 4 }}
+                style={{ width: '100%', justifyContent: 'center', padding: '11px', marginTop: 4, opacity: loading ? 0.7 : 1 }}
               >
                 {loading ? <Loader2 size={16} className="animate-spin" /> : null}
                 {mode === 'login' ? 'Iniciar sesión'
@@ -328,4 +332,30 @@ export default function AuthPage() {
       </div>
     </div>
   );
+}
+
+/**
+ * Map Supabase error messages to friendly Spanish equivalents.
+ */
+function getFriendlyAuthError(message: string): string {
+  const lower = message.toLowerCase();
+  if (lower.includes('invalid login credentials') || lower.includes('invalid email or password')) {
+    return 'Email o contraseña incorrectos';
+  }
+  if (lower.includes('email not confirmed')) {
+    return 'Por favor confirma tu email antes de iniciar sesión';
+  }
+  if (lower.includes('user already registered')) {
+    return 'Este email ya está registrado';
+  }
+  if (lower.includes('password should be at least')) {
+    return 'La contraseña debe tener al menos 6 caracteres';
+  }
+  if (lower.includes('rate limit') || lower.includes('too many requests')) {
+    return 'Demasiados intentos. Espera un momento e intenta de nuevo';
+  }
+  if (lower.includes('network') || lower.includes('fetch')) {
+    return 'Error de conexión. Verifica tu internet e intenta de nuevo';
+  }
+  return message || 'Error de autenticación';
 }

@@ -4,27 +4,36 @@ interface State {
   hasError: boolean;
   error: Error | null;
   errorInfo: React.ErrorInfo | null;
+  errorId: string | null;
+}
+
+function generateErrorId(): string {
+  return `ERR-${Date.now().toString(36).toUpperCase()}`;
 }
 
 export class GlobalErrorBoundary extends React.Component<{ children: React.ReactNode }, State> {
-  state: State = { hasError: false, error: null, errorInfo: null };
+  state: State = { hasError: false, error: null, errorInfo: null, errorId: null };
 
   static getDerivedStateFromError(error: Error): Partial<State> {
-    return { hasError: true, error };
+    return { hasError: true, error, errorId: generateErrorId() };
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     this.setState({ errorInfo });
     console.error('[RYBIX] Error boundary caught:', error, errorInfo);
+    console.error('[RYBIX] Component stack:', errorInfo.componentStack);
   }
 
   handleReset = () => {
-    this.setState({ hasError: false, error: null, errorInfo: null });
+    this.setState({ hasError: false, error: null, errorInfo: null, errorId: null });
     window.location.href = '/';
   };
 
   render() {
     if (!this.state.hasError) return this.props.children;
+
+    const isDev = import.meta.env.DEV;
+    const { error, errorInfo, errorId } = this.state;
 
     return (
       <div style={{
@@ -45,7 +54,7 @@ export class GlobalErrorBoundary extends React.Component<{ children: React.React
         }} />
 
         <div style={{
-          width: '100%', maxWidth: 480, textAlign: 'center',
+          width: '100%', maxWidth: 520, textAlign: 'center',
           position: 'relative', zIndex: 1,
         }}>
           <div style={{
@@ -76,31 +85,51 @@ export class GlobalErrorBoundary extends React.Component<{ children: React.React
             Algo salió mal
           </h1>
 
-          <p style={{ fontSize: 14, color: 'var(--rx-t2, #8888aa)', marginBottom: 24, lineHeight: 1.6 }}>
+          <p style={{ fontSize: 14, color: 'var(--rx-t2, #8888aa)', marginBottom: 8, lineHeight: 1.6 }}>
             Ocurrió un error en la aplicación. Hemos registrado el problema.
             Puedes intentar recargar o volver al inicio.
           </p>
 
-          {/* Error details (dev only) */}
-          {process.env.NODE_ENV === 'development' && this.state.error && (
-            <details style={{
-              marginBottom: 24,
-              background: 'rgba(255,79,114,.05)',
-              border: '1px solid rgba(255,79,114,.15)',
-              borderRadius: 12, padding: 16, textAlign: 'left',
+          {/* Error ID — always shown for support identification */}
+          {errorId && (
+            <div style={{
+              display: 'inline-block',
+              fontFamily: 'JetBrains Mono, Consolas, monospace',
+              fontSize: 10, color: 'var(--rx-t3, #5555777)', marginBottom: 24,
+              background: 'rgba(255,255,255,.04)', borderRadius: 6,
+              padding: '3px 10px', border: '1px solid rgba(255,255,255,.06)',
             }}>
+              ID: {errorId}
+            </div>
+          )}
+
+          {/* Error details (always visible in dev, expandable in prod) */}
+          {error && (
+            <details
+              open={isDev}
+              style={{
+                marginBottom: 24,
+                background: 'rgba(255,79,114,.05)',
+                border: '1px solid rgba(255,79,114,.15)',
+                borderRadius: 12, padding: 16, textAlign: 'left',
+              }}
+            >
               <summary style={{ fontSize: 12, fontWeight: 600, color: '#ff4f72', cursor: 'pointer', marginBottom: 8 }}>
-                Ver detalles del error
+                {isDev ? '⚡ Detalles del error (modo desarrollo)' : 'Ver detalles del error'}
               </summary>
               <pre style={{
                 fontSize: 11, color: 'var(--rx-t2, #8888aa)',
-                fontFamily: 'JetBrains Mono, monospace',
+                fontFamily: 'JetBrains Mono, Consolas, monospace',
                 whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                maxHeight: 200, overflow: 'auto',
+                maxHeight: 300, overflow: 'auto', marginTop: 8,
               }}>
-                {this.state.error.message}
-                {'\n\n'}
-                {this.state.errorInfo?.componentStack}
+                <strong style={{ color: '#ff4f72' }}>{error.name}: {error.message}</strong>
+                {errorInfo?.componentStack && (
+                  <>
+                    {'\n\nComponent Stack:'}
+                    {errorInfo.componentStack}
+                  </>
+                )}
               </pre>
             </details>
           )}
