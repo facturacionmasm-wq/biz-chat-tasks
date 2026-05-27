@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Receipt, DollarSign, Calendar, TrendingUp, Loader2, FileText, ExternalLink, CheckCircle, XCircle, Clock, AlertCircle } from 'lucide-react';
+import { Receipt, DollarSign, Calendar, TrendingUp, Loader2, FileText, ExternalLink, CheckCircle, XCircle, Clock, AlertCircle, Search, X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -47,6 +47,7 @@ const ExpensesPage = () => {
   const [periodFilter, setPeriodFilter] = useState<'day' | 'month' | 'year' | 'all'>('all');
   const [typeFilter, setTypeFilter] = useState<'all' | 'expense' | 'budget'>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'paid' | 'pending_approval' | 'approved' | 'rejected'>('all');
+  const [search, setSearch] = useState('');
 
   useEffect(() => {
     fetchExpenses();
@@ -78,13 +79,27 @@ const ExpensesPage = () => {
   };
 
   const now = new Date();
+  const q = search.trim().toLowerCase();
+  const hasSearch = q.length > 0;
   const filteredExpenses = expenses.filter(e => {
     const d = new Date(e.expense_date);
-    if (periodFilter === 'day' && d.toDateString() !== now.toDateString()) return false;
-    if (periodFilter === 'month' && (d.getMonth() !== now.getMonth() || d.getFullYear() !== now.getFullYear())) return false;
-    if (periodFilter === 'year' && d.getFullYear() !== now.getFullYear()) return false;
+    // When searching, ignore period filter so users find expenses across any date
+    if (!hasSearch) {
+      if (periodFilter === 'day' && d.toDateString() !== now.toDateString()) return false;
+      if (periodFilter === 'month' && (d.getMonth() !== now.getMonth() || d.getFullYear() !== now.getFullYear())) return false;
+      if (periodFilter === 'year' && d.getFullYear() !== now.getFullYear()) return false;
+    }
     if (typeFilter !== 'all' && e.type !== typeFilter) return false;
     if (statusFilter !== 'all' && e.status !== statusFilter) return false;
+    if (hasSearch) {
+      const amountStr = Number(e.amount).toString();
+      const amountFmt = Number(e.amount).toLocaleString('es-MX', { minimumFractionDigits: 2 });
+      const haystack = [
+        e.user_name, e.vendor_name, e.description, e.concept, e.category,
+        e.folio, e.payment_method, e.currency, amountStr, amountFmt,
+      ].filter(Boolean).join(' ').toLowerCase();
+      if (!haystack.includes(q)) return false;
+    }
     return true;
   });
 
@@ -179,6 +194,32 @@ const ExpensesPage = () => {
           </div>
           <p className="text-xl font-bold text-foreground">{pendingApprovalCount}</p>
         </div>
+      </div>
+
+      {/* Search */}
+      <div className="relative">
+        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Buscar por autor, proveedor, descripción, monto, folio..."
+          className="w-full pl-9 pr-9 py-2 text-sm bg-card border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
+        />
+        {search && (
+          <button
+            onClick={() => setSearch('')}
+            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md text-muted-foreground hover:bg-secondary"
+            aria-label="Limpiar búsqueda"
+          >
+            <X size={14} />
+          </button>
+        )}
+        {hasSearch && (
+          <p className="text-[11px] text-muted-foreground mt-1.5 ml-1">
+            Mostrando {filteredExpenses.length} resultados de todos los periodos
+          </p>
+        )}
       </div>
 
       {/* Filters row */}
