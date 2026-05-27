@@ -79,13 +79,27 @@ const ExpensesPage = () => {
   };
 
   const now = new Date();
+  const q = search.trim().toLowerCase();
+  const hasSearch = q.length > 0;
   const filteredExpenses = expenses.filter(e => {
     const d = new Date(e.expense_date);
-    if (periodFilter === 'day' && d.toDateString() !== now.toDateString()) return false;
-    if (periodFilter === 'month' && (d.getMonth() !== now.getMonth() || d.getFullYear() !== now.getFullYear())) return false;
-    if (periodFilter === 'year' && d.getFullYear() !== now.getFullYear()) return false;
+    // When searching, ignore period filter so users find expenses across any date
+    if (!hasSearch) {
+      if (periodFilter === 'day' && d.toDateString() !== now.toDateString()) return false;
+      if (periodFilter === 'month' && (d.getMonth() !== now.getMonth() || d.getFullYear() !== now.getFullYear())) return false;
+      if (periodFilter === 'year' && d.getFullYear() !== now.getFullYear()) return false;
+    }
     if (typeFilter !== 'all' && e.type !== typeFilter) return false;
     if (statusFilter !== 'all' && e.status !== statusFilter) return false;
+    if (hasSearch) {
+      const amountStr = Number(e.amount).toString();
+      const amountFmt = Number(e.amount).toLocaleString('es-MX', { minimumFractionDigits: 2 });
+      const haystack = [
+        e.user_name, e.vendor_name, e.description, e.concept, e.category,
+        e.folio, e.payment_method, e.currency, amountStr, amountFmt,
+      ].filter(Boolean).join(' ').toLowerCase();
+      if (!haystack.includes(q)) return false;
+    }
     return true;
   });
 
