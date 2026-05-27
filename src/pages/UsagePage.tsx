@@ -110,15 +110,15 @@ const UsagePage = () => {
     <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6">
       <div>
         <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
-          <BarChart3 size={22} className="text-primary" /> Consumo y Paquetes
+          <BarChart3 size={22} className="text-[var(--rx-brand)]" /> Consumo y Paquetes
         </h1>
-        <p className="text-sm text-muted-foreground mt-0.5">
+        <p className="text-sm text-[var(--rx-t2)] mt-0.5">
           Métricas unificadas de WhatsApp, Voice Agent y paquetes prepago
         </p>
       </div>
 
       {isLoading ? (
-        <div className="flex justify-center py-12"><Loader2 size={24} className="animate-spin text-muted-foreground" /></div>
+        <div className="flex justify-center py-12"><Loader2 size={24} className="animate-spin text-[var(--rx-t2)]" /></div>
       ) : (
         <>
           {/* ── KPI Cards ── */}
@@ -166,29 +166,29 @@ const UsagePage = () => {
           </div>
 
           {/* ── Package Balance ── */}
-          <div className="bg-card border border-border rounded-xl p-5">
+          <div className="rx-panel">
             <h2 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
-              <Package size={16} className="text-primary" /> Saldo de Paquetes Activos
+              <Package size={16} className="text-[var(--rx-brand)]" /> Saldo de Paquetes Activos
             </h2>
             {packageSummary.activeCount === 0 ? (
               <div className="text-center py-6">
-                <Package size={32} className="mx-auto text-muted-foreground/40 mb-2" />
-                <p className="text-sm text-muted-foreground">No tienes paquetes activos</p>
-                <p className="text-xs text-muted-foreground mt-1">Adquiere un paquete para obtener créditos de mensajes o minutos</p>
+                <Package size={32} className="mx-auto text-[var(--rx-t2)]/40 mb-2" />
+                <p className="text-sm text-[var(--rx-t2)]">No tienes paquetes activos</p>
+                <p className="text-xs text-[var(--rx-t2)] mt-1">Adquiere un paquete para obtener créditos de mensajes o minutos</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="p-4 rounded-lg border border-border bg-secondary/20">
-                  <p className="text-xs text-muted-foreground">Mensajes restantes</p>
-                  <p className="text-2xl font-bold text-foreground">{packageSummary.remainingMessages}</p>
+                <div className="p-4 rounded-lg border border-[var(--rx-b1)] bg-[var(--rx-s2)]/20">
+                  <p className="text-xs text-[var(--rx-t2)]">Mensajes restantes</p>
+                  <p className="rx-page-title">{packageSummary.remainingMessages}</p>
                 </div>
-                <div className="p-4 rounded-lg border border-border bg-secondary/20">
-                  <p className="text-xs text-muted-foreground">Minutos restantes</p>
-                  <p className="text-2xl font-bold text-foreground">{packageSummary.remainingMinutes.toFixed(1)}</p>
+                <div className="p-4 rounded-lg border border-[var(--rx-b1)] bg-[var(--rx-s2)]/20">
+                  <p className="text-xs text-[var(--rx-t2)]">Minutos restantes</p>
+                  <p className="rx-page-title">{packageSummary.remainingMinutes.toFixed(1)}</p>
                 </div>
-                <div className="p-4 rounded-lg border border-border bg-secondary/20">
-                  <p className="text-xs text-muted-foreground">Paquetes activos</p>
-                  <p className="text-2xl font-bold text-foreground">{packageSummary.activeCount}</p>
+                <div className="p-4 rounded-lg border border-[var(--rx-b1)] bg-[var(--rx-s2)]/20">
+                  <p className="text-xs text-[var(--rx-t2)]">Paquetes activos</p>
+                  <p className="rx-page-title">{packageSummary.activeCount}</p>
                 </div>
               </div>
             )}
@@ -197,7 +197,7 @@ const UsagePage = () => {
             {(packages.data || []).length > 0 && (
               <div className="mt-4 space-y-2">
                 {(packages.data || []).map((pkg: any) => (
-                  <div key={pkg.id} className="flex items-center justify-between p-3 rounded-lg border border-border bg-background">
+                  <div key={pkg.id} className="flex items-center justify-between p-3 rounded-lg border border-[var(--rx-b1)] bg-background">
                     <div className="flex items-center gap-3">
                       <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
                         pkg.package_type === 'voice' ? 'bg-blue-500/10' : pkg.package_type === 'mixed' ? 'bg-purple-500/10' : 'bg-green-500/10'
@@ -208,7 +208,7 @@ const UsagePage = () => {
                       </div>
                       <div>
                         <p className="text-sm font-medium text-foreground">{pkg.package_name}</p>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="text-xs text-[var(--rx-t2)]">
                           {pkg.included_messages > 0 && `${pkg.included_messages - pkg.used_messages}/${pkg.included_messages} msgs`}
                           {pkg.included_messages > 0 && Number(pkg.included_minutes) > 0 && ' · '}
                           {Number(pkg.included_minutes) > 0 && `${(Number(pkg.included_minutes) - Number(pkg.used_minutes)).toFixed(1)}/${Number(pkg.included_minutes)} min`}
@@ -217,7 +217,7 @@ const UsagePage = () => {
                     </div>
                     <div className="text-right">
                       {pkg.expires_at && (
-                        <p className="text-xs text-muted-foreground">
+                        <p className="text-xs text-[var(--rx-t2)]">
                           Expira: {new Date(pkg.expires_at).toLocaleDateString('es-MX', { day: 'numeric', month: 'short' })}
                         </p>
                       )}
@@ -231,13 +231,13 @@ const UsagePage = () => {
 
           {/* ── Package Catalog ── */}
           {(catalog.data || []).length > 0 && (
-            <div className="bg-card border border-border rounded-xl p-5">
+            <div className="rx-panel">
               <h2 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
-                <ShoppingCart size={16} className="text-primary" /> Paquetes Disponibles
+                <ShoppingCart size={16} className="text-[var(--rx-brand)]" /> Paquetes Disponibles
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {(catalog.data || []).map((item: any) => (
-                  <div key={item.id} className="border border-border rounded-xl p-4 hover:border-primary/50 transition-colors">
+                  <div key={item.id} className="border border-[var(--rx-b1)] rounded-xl p-4 hover:border-primary/50 transition-colors">
                     <div className="flex items-center gap-2 mb-2">
                       <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
                         item.package_type === 'voice' ? 'bg-blue-500/10' : item.package_type === 'mixed' ? 'bg-purple-500/10' : 'bg-green-500/10'
@@ -246,20 +246,20 @@ const UsagePage = () => {
                          item.package_type === 'mixed' ? <Zap size={16} className="text-purple-600" /> :
                          <MessageSquare size={16} className="text-green-600" />}
                       </div>
-                      <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">{item.package_type}</span>
+                      <span className="text-xs uppercase tracking-wider text-[var(--rx-t2)] font-semibold">{item.package_type}</span>
                     </div>
                     <h3 className="text-base font-bold text-foreground">{item.name}</h3>
                     <p className="text-2xl font-bold text-foreground mt-1">
-                      ${Number(item.price_mxn).toLocaleString()} <span className="text-xs text-muted-foreground font-normal">MXN</span>
+                      ${Number(item.price_mxn).toLocaleString()} <span className="text-xs text-[var(--rx-t2)] font-normal">MXN</span>
                     </p>
-                    <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+                    <div className="mt-2 space-y-1 text-xs text-[var(--rx-t2)]">
                       {item.included_messages > 0 && <p>✓ {item.included_messages} mensajes</p>}
                       {Number(item.included_minutes) > 0 && <p>✓ {Number(item.included_minutes)} minutos</p>}
                       <p>✓ Válido por {item.validity_days} días</p>
                     </div>
                     <button
                       onClick={() => toast.info('Contacta al administrador para adquirir este paquete')}
-                      className="w-full mt-3 bg-primary text-primary-foreground text-sm px-4 py-2 rounded-lg hover:opacity-90 transition-opacity font-medium"
+                      className="w-full mt-3 bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground text-sm px-4 py-2 rounded-lg hover:opacity-90 transition-opacity font-medium"
                     >
                       Adquirir
                     </button>
@@ -270,9 +270,9 @@ const UsagePage = () => {
           )}
 
           {/* ── Voice Agent Detail ── */}
-          <div className="bg-card border border-border rounded-xl p-5">
+          <div className="rx-panel">
             <h2 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
-              <Phone size={16} className="text-primary" /> Detalle Voice Agent — Mes actual
+              <Phone size={16} className="text-[var(--rx-brand)]" /> Detalle Voice Agent — Mes actual
             </h2>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
               <MetricBox label="Llamadas" value={voiceSummary.callCount} />
@@ -284,9 +284,9 @@ const UsagePage = () => {
           </div>
 
           {/* ── WhatsApp Detail ── */}
-          <div className="bg-card border border-border rounded-xl p-5">
+          <div className="rx-panel">
             <h2 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
-              <MessageSquare size={16} className="text-primary" /> Detalle WhatsApp — Mes actual
+              <MessageSquare size={16} className="text-[var(--rx-brand)]" /> Detalle WhatsApp — Mes actual
             </h2>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
               <MetricBox label="Total mensajes" value={currentMonth.totalUnits} />
@@ -299,28 +299,28 @@ const UsagePage = () => {
 
           {/* ── Cost History ── */}
           {history.length > 0 && (
-            <div className="bg-card border border-border rounded-xl p-5">
+            <div className="rx-panel">
               <h2 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
-                <TrendingUp size={16} className="text-primary" /> Historial de Costos (WhatsApp)
+                <TrendingUp size={16} className="text-[var(--rx-brand)]" /> Historial de Costos (WhatsApp)
               </h2>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-border text-left">
-                      <th className="py-2 px-3 font-medium text-muted-foreground">Periodo</th>
-                      <th className="py-2 px-3 font-medium text-muted-foreground text-right">Unidades</th>
-                      <th className="py-2 px-3 font-medium text-muted-foreground text-right">Costo</th>
-                      <th className="py-2 px-3 font-medium text-muted-foreground text-right">USD</th>
-                      <th className="py-2 px-3 font-medium text-muted-foreground text-right">Margen</th>
+                    <tr className="border-b border-[var(--rx-b1)] text-left">
+                      <th className="py-2 px-3 font-medium text-[var(--rx-t2)]">Periodo</th>
+                      <th className="py-2 px-3 font-medium text-[var(--rx-t2)] text-right">Unidades</th>
+                      <th className="py-2 px-3 font-medium text-[var(--rx-t2)] text-right">Costo</th>
+                      <th className="py-2 px-3 font-medium text-[var(--rx-t2)] text-right">USD</th>
+                      <th className="py-2 px-3 font-medium text-[var(--rx-t2)] text-right">Margen</th>
                     </tr>
                   </thead>
                   <tbody>
                     {history.map(h => (
-                      <tr key={h.id} className="border-b border-border/50 hover:bg-secondary/30 transition-colors">
+                      <tr key={h.id} className="border-b border-[var(--rx-b1)]/50 hover:bg-[var(--rx-s2)]/30 transition-colors">
                         <td className="py-2 px-3 text-foreground">{h.period_start}</td>
-                        <td className="py-2 px-3 text-right text-muted-foreground">{h.total_units}</td>
+                        <td className="py-2 px-3 text-right text-[var(--rx-t2)]">{h.total_units}</td>
                         <td className="py-2 px-3 text-right text-foreground">${Number(h.real_cost_local_currency).toFixed(2)}</td>
-                        <td className="py-2 px-3 text-right text-muted-foreground">${Number(h.real_cost_usd).toFixed(2)}</td>
+                        <td className="py-2 px-3 text-right text-[var(--rx-t2)]">${Number(h.real_cost_usd).toFixed(2)}</td>
                         <td className="py-2 px-3 text-right font-semibold text-foreground">{Number(h.margin_pct).toFixed(1)}%</td>
                       </tr>
                     ))}
@@ -337,20 +337,20 @@ const UsagePage = () => {
 
 // ── Small components ──
 const KpiCard = ({ icon: Icon, iconColor, label, value, sub }: { icon: any; iconColor: string; label: string; value: string | number; sub: string }) => (
-  <div className="bg-card border border-border rounded-xl p-4">
+  <div className="rx-panel">
     <div className="flex items-center gap-2 mb-2">
       <Icon size={16} className={iconColor} />
-      <span className="text-xs text-muted-foreground font-medium">{label}</span>
+      <span className="text-xs text-[var(--rx-t2)] font-medium">{label}</span>
     </div>
-    <p className="text-2xl font-bold text-foreground">{value}</p>
-    <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>
+    <p className="rx-page-title">{value}</p>
+    <p className="text-xs text-[var(--rx-t2)] mt-0.5">{sub}</p>
   </div>
 );
 
 const MetricBox = ({ label, value }: { label: string; value: string | number }) => (
-  <div className="p-3 rounded-lg border border-border">
-    <p className="text-xs text-muted-foreground">{label}</p>
-    <p className="text-xl font-bold text-foreground">{value}</p>
+  <div className="p-3 rounded-lg border border-[var(--rx-b1)]">
+    <p className="text-xs text-[var(--rx-t2)]">{label}</p>
+    <p className="rx-page-title">{value}</p>
   </div>
 );
 

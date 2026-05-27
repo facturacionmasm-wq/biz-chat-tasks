@@ -18,6 +18,7 @@ const VoiceAgent = ({ onCallEnd }: VoiceAgentProps) => {
   const [employees, setEmployees] = useState<Array<{ user_id: string; name: string; phone: string | null }>>([]);
   const [transferring, setTransferring] = useState(false);
   const [transferStatus, setTransferStatus] = useState<string | null>(null);
+  const [callerPhoneInput, setCallerPhoneInput] = useState<Record<string, string>>({});
 
   const transcriptLinesRef = useRef<Array<{ role: string; text: string; timestamp: number }>>([]);
   const callRecordIdRef = useRef<string | null>(null);
@@ -360,9 +361,13 @@ const VoiceAgent = ({ onCallEnd }: VoiceAgentProps) => {
       persistEvent('in_progress', { source: 'elevenlabs_webrtc' });
     },
     onDisconnect: () => {
-      finalizeCall();
-      setCallStartTime(null);
-      setCallDuration(0);
+      // Fire finalizeCall first (async) before clearing state
+      // to avoid race condition where callRecordIdRef is nulled
+      // before the async save completes.
+      finalizeCall().finally(() => {
+        setCallStartTime(null);
+        setCallDuration(0);
+      });
     },
     onMessage: (message: any) => {
       if (message.type === 'user_transcript') {
@@ -667,17 +672,28 @@ const VoiceAgent = ({ onCallEnd }: VoiceAgentProps) => {
                     <p className="text-[10px] text-muted-foreground">{emp.phone || 'Sin teléfono'}</p>
                   </div>
                 </div>
-                <button
-                  onClick={() => {
-                    const callerPhone = prompt('Número del cliente para conectar (ej: +525512345678):');
-                    if (callerPhone) handleTransfer(emp.user_id, callerPhone);
-                  }}
-                  disabled={!emp.phone || transferring}
-                  className="text-xs bg-primary text-primary-foreground px-3 py-1.5 rounded-md hover:opacity-90 disabled:opacity-40 flex items-center gap-1"
-                >
-                  {transferring ? <Loader2 size={12} className="animate-spin" /> : <PhoneForwarded size={12} />}
-                  Transferir
-                </button>
+                <div className="flex flex-col gap-1">
+                  <input
+                    type="tel"
+                    placeholder="+52551234..."
+                    value={callerPhoneInput[emp.user_id] || ''}
+                    onChange={e => setCallerPhoneInput(prev => ({ ...prev, [emp.user_id]: e.target.value }))}
+                    className="text-xs px-2 py-1 border border-border rounded-md bg-background w-32 focus:outline-none focus:ring-1 focus:ring-primary"
+                    onClick={e => e.stopPropagation()}
+                  />
+                  <button
+                    onClick={() => {
+                      const phone = callerPhoneInput[emp.user_id]?.trim();
+                      if (phone) handleTransfer(emp.user_id, phone);
+                      else toast.error('Ingresa el número del cliente');
+                    }}
+                    disabled={!emp.phone || transferring || !callerPhoneInput[emp.user_id]?.trim()}
+                    className="text-xs bg-primary text-primary-foreground px-3 py-1.5 rounded-md hover:opacity-90 disabled:opacity-40 flex items-center gap-1"
+                  >
+                    {transferring ? <Loader2 size={12} className="animate-spin" /> : <PhoneForwarded size={12} />}
+                    Transferir
+                  </button>
+                </div>
               </div>
             ))}
           </div>

@@ -224,12 +224,12 @@ const OnboardingPage = () => {
         {steps.map((s, i) => (
           <div key={s} className="flex items-center gap-2">
             <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${
-              i <= currentIdx ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
+              i <= currentIdx ? 'bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground' : 'bg-[var(--rx-s2)] text-[var(--rx-t2)]'
             }`}>
               {i < currentIdx ? <Check size={14} /> : i + 1}
             </div>
-            <span className={`text-xs font-medium hidden sm:inline ${i <= currentIdx ? 'text-foreground' : 'text-muted-foreground'}`}>{s}</span>
-            {i < steps.length - 1 && <div className={`w-8 h-px ${i < currentIdx ? 'bg-primary' : 'bg-border'}`} />}
+            <span className={`text-xs font-medium hidden sm:inline ${i <= currentIdx ? 'text-foreground' : 'text-[var(--rx-t2)]'}`}>{s}</span>
+            {i < steps.length - 1 && <div className={`w-8 h-px ${i < currentIdx ? 'bg-[var(--rx-brand)]' : 'bg-border'}`} />}
           </div>
         ))}
       </div>
@@ -243,16 +243,16 @@ const OnboardingPage = () => {
         <div className="w-full max-w-md">
           <StepIndicator />
           <div className="text-center mb-8">
-            <div className="w-16 h-16 bg-primary rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <Building2 size={32} className="text-primary-foreground" />
+            <div className="w-16 h-16 bg-[var(--rx-brand)] rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <Building2 size={32} className="text-[var(--rx-brand)]-foreground" />
             </div>
-            <h1 className="text-2xl font-bold text-foreground">Configura tu empresa</h1>
-            <p className="text-sm text-muted-foreground mt-2">
+            <h1 className="rx-page-title">Configura tu empresa</h1>
+            <p className="text-sm text-[var(--rx-t2)] mt-2">
               ¿Cómo se llama tu empresa o negocio?
             </p>
           </div>
 
-          <form onSubmit={handleCompanySubmit} className="bg-card border border-border rounded-xl p-6 space-y-4">
+          <form onSubmit={handleCompanySubmit} className="rx-panel">
             <div>
               <label className="text-sm font-medium text-foreground block mb-1">
                 Nombre de la empresa
@@ -265,13 +265,13 @@ const OnboardingPage = () => {
                 minLength={2}
                 placeholder="Ej: Acme Corp"
                 autoFocus
-                className="w-full bg-secondary rounded-lg px-3 py-2.5 text-sm outline-none border border-border focus:border-primary text-foreground placeholder:text-muted-foreground"
+                className="w-full bg-[var(--rx-s2)] rounded-lg px-3 py-2.5 text-sm outline-none border border-[var(--rx-b1)] focus:border-primary text-foreground placeholder:text-[var(--rx-t2)]"
               />
             </div>
             <button
               type="submit"
               disabled={loading || !companyName.trim()}
-              className="w-full bg-primary text-primary-foreground font-medium text-sm px-4 py-2.5 rounded-lg hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
+              className="w-full bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground font-medium text-sm px-4 py-2.5 rounded-lg hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
             >
               {loading && <Loader2 size={16} className="animate-spin" />}
               Continuar
@@ -289,16 +289,16 @@ const OnboardingPage = () => {
         <div className="w-full max-w-md">
           <StepIndicator />
           <div className="text-center mb-8">
-            <div className="w-16 h-16 bg-primary rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <Globe size={32} className="text-primary-foreground" />
+            <div className="w-16 h-16 bg-[var(--rx-brand)] rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <Globe size={32} className="text-[var(--rx-brand)]-foreground" />
             </div>
-            <h1 className="text-2xl font-bold text-foreground">¿Dónde operas?</h1>
-            <p className="text-sm text-muted-foreground mt-2">
+            <h1 className="rx-page-title">¿Dónde operas?</h1>
+            <p className="text-sm text-[var(--rx-t2)] mt-2">
               Selecciona tu país para asignar precios y moneda local automáticamente.
             </p>
           </div>
 
-          <div className="bg-card border border-border rounded-xl p-6 space-y-3">
+          <div className="rx-panel">
             <div className="grid grid-cols-2 gap-2">
               {COUNTRIES.map(c => {
                 const isSelected = selectedCountry?.code === c.code;
@@ -310,17 +310,17 @@ const OnboardingPage = () => {
                     className={`relative flex items-center gap-2.5 p-3 rounded-xl border-2 text-left transition-all ${
                       isSelected
                         ? 'border-primary bg-primary/5 shadow-sm'
-                        : 'border-border hover:border-primary/30 hover:bg-secondary/50'
+                        : 'border-[var(--rx-b1)] hover:border-primary/30 hover:bg-[var(--rx-s2)]/50'
                     }`}
                   >
                     <span className="text-2xl">{c.flag}</span>
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-foreground truncate">{c.name}</p>
-                      <p className="text-[10px] text-muted-foreground">{c.currency} · {c.region}</p>
+                      <p className="text-[10px] text-[var(--rx-t2)]">{c.currency} · {c.region}</p>
                     </div>
                     {isSelected && (
-                      <div className="absolute top-1.5 right-1.5 w-4 h-4 bg-primary rounded-full flex items-center justify-center">
-                        <Check size={10} className="text-primary-foreground" />
+                      <div className="absolute top-1.5 right-1.5 w-4 h-4 bg-[var(--rx-brand)] rounded-full flex items-center justify-center">
+                        <Check size={10} className="text-[var(--rx-brand)]-foreground" />
                       </div>
                     )}
                   </button>
@@ -329,9 +329,9 @@ const OnboardingPage = () => {
             </div>
 
             {selectedCountry && (
-              <div className="bg-secondary/50 rounded-lg p-3 flex items-center gap-2">
-                <MapPin size={14} className="text-primary shrink-0" />
-                <p className="text-xs text-muted-foreground">
+              <div className="bg-[var(--rx-s2)]/50 rounded-lg p-3 flex items-center gap-2">
+                <MapPin size={14} className="text-[var(--rx-brand)] shrink-0" />
+                <p className="text-xs text-[var(--rx-t2)]">
                   Moneda: <span className="font-semibold text-foreground">{selectedCountry.currency}</span> · 
                   Región: <span className="font-semibold text-foreground">{selectedCountry.region}</span> · 
                   Zona horaria: <span className="font-semibold text-foreground">{selectedCountry.timezone.split('/').pop()}</span>
@@ -343,7 +343,7 @@ const OnboardingPage = () => {
               <button
                 type="button"
                 onClick={() => setStep('company')}
-                className="px-4 py-2.5 rounded-lg border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+                className="px-4 py-2.5 rounded-lg border border-[var(--rx-b1)] text-sm font-medium text-[var(--rx-t2)] hover:text-foreground hover:bg-[var(--rx-s2)] transition-colors"
               >
                 Atrás
               </button>
@@ -351,7 +351,7 @@ const OnboardingPage = () => {
                 type="button"
                 onClick={handleCountrySubmit}
                 disabled={loading || !selectedCountry}
-                className="flex-1 bg-primary text-primary-foreground font-medium text-sm px-4 py-2.5 rounded-lg hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
+                className="flex-1 bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground font-medium text-sm px-4 py-2.5 rounded-lg hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 {loading && <Loader2 size={16} className="animate-spin" />}
                 Continuar
@@ -369,12 +369,12 @@ const OnboardingPage = () => {
       <div className="w-full max-w-4xl">
         <StepIndicator />
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-foreground">Elige tu plan</h1>
-          <p className="text-sm text-muted-foreground mt-2">
+          <h1 className="rx-page-title">Elige tu plan</h1>
+          <p className="text-sm text-[var(--rx-t2)] mt-2">
             Comienza con 15 días de prueba gratuita. Sin compromiso.
           </p>
           {selectedCountry && (
-            <p className="text-xs text-muted-foreground mt-1 flex items-center justify-center gap-1">
+            <p className="text-xs text-[var(--rx-t2)] mt-1 flex items-center justify-center gap-1">
               <span>{selectedCountry.flag}</span> Precios en {selectedCountry.currency}
             </p>
           )}
@@ -383,8 +383,8 @@ const OnboardingPage = () => {
               onClick={() => setBillingCycle('monthly')}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                 billingCycle === 'monthly'
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-secondary text-muted-foreground hover:text-foreground'
+                  ? 'bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground'
+                  : 'bg-[var(--rx-s2)] text-[var(--rx-t2)] hover:text-foreground'
               }`}
             >
               Mensual
@@ -393,8 +393,8 @@ const OnboardingPage = () => {
               onClick={() => setBillingCycle('yearly')}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                 billingCycle === 'yearly'
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-secondary text-muted-foreground hover:text-foreground'
+                  ? 'bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground'
+                  : 'bg-[var(--rx-s2)] text-[var(--rx-t2)] hover:text-foreground'
               }`}
             >
               Anual <span className="text-emerald-500 ml-1">-17%</span>
@@ -404,7 +404,7 @@ const OnboardingPage = () => {
 
         {loadingPlans ? (
           <div className="flex justify-center py-12">
-            <Loader2 className="animate-spin text-primary" size={32} />
+            <Loader2 className="animate-spin text-[var(--rx-brand)]" size={32} />
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -428,21 +428,21 @@ const OnboardingPage = () => {
                   }`}
                 >
                   {plan.slug === 'pro' && (
-                    <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground text-[10px] font-bold px-3 py-0.5 rounded-full uppercase tracking-wider">
+                    <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground text-[10px] font-bold px-3 py-0.5 rounded-full uppercase tracking-wider">
                       Popular
                     </span>
                   )}
 
                   <div className="flex items-center gap-2 mb-3">
-                    <Icon size={20} className="text-primary" />
+                    <Icon size={20} className="text-[var(--rx-brand)]" />
                     <span className="font-bold text-foreground">{plan.name}</span>
                   </div>
 
                   <div className="mb-4">
                     <span className="text-3xl font-bold text-foreground">{localized.symbol}{price.toLocaleString()}</span>
-                    <span className="text-xs text-muted-foreground">/{billingCycle === 'yearly' ? 'mes' : 'mes'}</span>
+                    <span className="text-xs text-[var(--rx-t2)]">/{billingCycle === 'yearly' ? 'mes' : 'mes'}</span>
                     {billingCycle === 'yearly' && (
-                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                      <p className="text-[10px] text-[var(--rx-t2)] mt-0.5">
                         {localized.symbol}{Math.round(price * 12).toLocaleString()}/año facturado anual
                       </p>
                     )}
@@ -453,18 +453,18 @@ const OnboardingPage = () => {
                       <div key={key} className="flex items-center gap-2 text-xs">
                         <Check
                           size={14}
-                          className={enabled ? 'text-emerald-500' : 'text-muted-foreground/30'}
+                          className={enabled ? 'text-emerald-500' : 'text-[var(--rx-t2)]/30'}
                         />
-                        <span className={enabled ? 'text-foreground' : 'text-muted-foreground/50 line-through'}>
+                        <span className={enabled ? 'text-foreground' : 'text-[var(--rx-t2)]/50 line-through'}>
                           {FEATURE_LABELS[key] || key}
                         </span>
                       </div>
                     ))}
                   </div>
 
-                  <div className="border-t border-border pt-3 space-y-1">
+                  <div className="border-t border-[var(--rx-b1)] pt-3 space-y-1">
                     {Object.entries(plan.limits).map(([key, value]) => (
-                      <p key={key} className="text-[11px] text-muted-foreground">
+                      <p key={key} className="text-[11px] text-[var(--rx-t2)]">
                         {LIMIT_LABELS[key] || key}:{' '}
                         <span className="font-medium text-foreground">
                           {value === -1 ? 'Ilimitado' : value}
@@ -474,8 +474,8 @@ const OnboardingPage = () => {
                   </div>
 
                   {isSelected && (
-                    <div className="absolute top-3 right-3 w-5 h-5 bg-primary rounded-full flex items-center justify-center">
-                      <Check size={12} className="text-primary-foreground" />
+                    <div className="absolute top-3 right-3 w-5 h-5 bg-[var(--rx-brand)] rounded-full flex items-center justify-center">
+                      <Check size={12} className="text-[var(--rx-brand)]-foreground" />
                     </div>
                   )}
                 </button>
@@ -487,21 +487,21 @@ const OnboardingPage = () => {
         <div className="flex items-center justify-center gap-3 mt-8">
           <button
             onClick={() => setStep('country')}
-            className="px-4 py-3 rounded-lg border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+            className="px-4 py-3 rounded-lg border border-[var(--rx-b1)] text-sm font-medium text-[var(--rx-t2)] hover:text-foreground hover:bg-[var(--rx-s2)] transition-colors"
           >
             Atrás
           </button>
           <button
             onClick={handlePlanSelect}
             disabled={!selectedPlan || loading}
-            className="bg-primary text-primary-foreground font-medium text-sm px-8 py-3 rounded-lg hover:opacity-90 disabled:opacity-50 flex items-center gap-2"
+            className="bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground font-medium text-sm px-8 py-3 rounded-lg hover:opacity-90 disabled:opacity-50 flex items-center gap-2"
           >
             {loading && <Loader2 size={16} className="animate-spin" />}
             Comenzar prueba gratuita de 15 días
           </button>
         </div>
 
-        <p className="text-center text-[11px] text-muted-foreground mt-3">
+        <p className="text-center text-[11px] text-[var(--rx-t2)] mt-3">
           No se requiere tarjeta de crédito durante el período de prueba.
         </p>
       </div>

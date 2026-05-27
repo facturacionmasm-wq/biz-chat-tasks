@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { Building2, Users, CreditCard, Bell, Database, Brain, Globe, ChevronRight, User, KeyRound, Loader2, Palette, Save, Upload, Image, X, Mail, Phone as PhoneIcon, MessageSquare, Trash2, Settings2, ChevronDown, ChevronUp, RefreshCw, ArrowLeft, ArrowRight, CheckCircle, XCircle, CalendarDays, Link2, Unlink, Clock, HardDrive } from 'lucide-react';
 import BillingSection from '@/components/BillingSection';
 import AvailabilityWizard, { type AvailabilityRule, DEFAULT_RULES } from '@/components/AvailabilityWizard';
-import { teamMembers } from '@/data/mockData';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
@@ -953,12 +952,12 @@ const SettingsPage = () => {
     } finally { setDriveLoading(false); }
   };
 
-  const inputClass = "w-full bg-secondary rounded-lg px-3 py-2 text-sm outline-none border border-border focus:border-primary text-foreground placeholder:text-muted-foreground";
+  const inputClass = "w-full bg-[var(--rx-s2)] rounded-lg px-3 py-2 text-sm outline-none border border-[var(--rx-b1)] focus:border-primary text-foreground placeholder:text-[var(--rx-t2)]";
 
   return (
     <div className="flex flex-col sm:flex-row h-full">
       {/* Settings sidebar - horizontal on mobile */}
-      <div className="sm:w-56 shrink-0 border-b sm:border-b-0 sm:border-r border-border bg-card p-2 sm:p-3 overflow-x-auto sm:overflow-x-visible">
+      <div className="sm:w-56 shrink-0 border-b sm:border-b-0 sm:border-r border-[var(--rx-b1)] bg-card p-2 sm:p-3 overflow-x-auto sm:overflow-x-visible">
         <h2 className="text-sm font-semibold text-foreground px-3 mb-2 hidden sm:block">Configuración</h2>
         <div className="flex sm:flex-col gap-1 sm:space-y-0.5">
           {settingsSections.map(s => (
@@ -966,7 +965,7 @@ const SettingsPage = () => {
               key={s.id}
               onClick={() => setActiveSection(s.id)}
               className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors whitespace-nowrap shrink-0 ${
-                activeSection === s.id ? 'bg-primary/10 text-primary font-medium' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
+                activeSection === s.id ? 'bg-primary/10 text-[var(--rx-brand)] font-medium' : 'text-[var(--rx-t2)] hover:bg-[var(--rx-s2)] hover:text-foreground'
               }`}
             >
               <s.icon size={16} />
@@ -981,47 +980,47 @@ const SettingsPage = () => {
         {activeSection === 'profile' && (
           <div className="max-w-2xl">
             <h3 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
-              <User size={20} className="text-primary" /> Mi Perfil
+              <User size={20} className="text-[var(--rx-brand)]" /> Mi Perfil
             </h3>
             <div className="space-y-4">
               {/* Personal data */}
-              <div className="bg-card border border-border rounded-xl p-5">
+              <div className="rx-panel">
                 <h4 className="text-sm font-semibold text-foreground flex items-center gap-2 mb-4">
-                  <User size={16} className="text-primary" /> Datos personales
+                  <User size={16} className="text-[var(--rx-brand)]" /> Datos personales
                 </h4>
                 {!profileLoaded ? (
-                  <div className="flex items-center justify-center py-6"><Loader2 size={20} className="animate-spin text-muted-foreground" /></div>
+                  <div className="flex items-center justify-center py-6"><Loader2 size={20} className="animate-spin text-[var(--rx-t2)]" /></div>
                 ) : (
                   <div className="space-y-3">
                     <div>
-                      <label className="text-xs font-medium text-muted-foreground mb-1 block">Nombre completo</label>
+                      <label className="text-xs font-medium text-[var(--rx-t2)] mb-1 block">Nombre completo</label>
                       <input className={inputClass} value={profileName} onChange={e => setProfileName(e.target.value)} placeholder="Tu nombre" maxLength={100} />
                     </div>
                     <div>
-                      <label className="text-xs font-medium text-muted-foreground mb-1 block">Email</label>
+                      <label className="text-xs font-medium text-[var(--rx-t2)] mb-1 block">Email</label>
                       <div className="flex items-center gap-2">
-                        <Mail size={14} className="text-muted-foreground shrink-0" />
+                        <Mail size={14} className="text-[var(--rx-t2)] shrink-0" />
                         <input className={inputClass} value={profileEmail} onChange={e => setProfileEmail(e.target.value)} placeholder="tu@email.com" type="email" maxLength={255} />
                       </div>
                     </div>
                     <div>
-                      <label className="text-xs font-medium text-muted-foreground mb-1 block">Teléfono</label>
+                      <label className="text-xs font-medium text-[var(--rx-t2)] mb-1 block">Teléfono</label>
                       <div className="flex items-center gap-2">
-                        <PhoneIcon size={14} className="text-muted-foreground shrink-0" />
+                        <PhoneIcon size={14} className="text-[var(--rx-t2)] shrink-0" />
                         <input className={inputClass} value={profilePhone} onChange={e => setProfilePhone(e.target.value)} placeholder="+52 55 1234 5678" maxLength={20} />
                       </div>
                     </div>
                     <div>
-                      <label className="text-xs font-medium text-muted-foreground mb-1 block">Número de WhatsApp</label>
+                      <label className="text-xs font-medium text-[var(--rx-t2)] mb-1 block">Número de WhatsApp</label>
                       <div className="flex items-center gap-2">
-                        <MessageSquare size={14} className="text-muted-foreground shrink-0" />
+                        <MessageSquare size={14} className="text-[var(--rx-t2)] shrink-0" />
                         <input className={inputClass} value={profileWhatsapp} onChange={e => setProfileWhatsapp(e.target.value)} placeholder="+52 55 1234 5678" maxLength={20} />
                       </div>
                     </div>
                     <button
                       disabled={savingProfile || !profileName.trim()}
                       onClick={handleSaveProfile}
-                      className="bg-primary text-primary-foreground text-sm px-5 py-2.5 rounded-lg hover:opacity-90 disabled:opacity-40 flex items-center gap-2 font-medium mt-1"
+                      className="bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground text-sm px-5 py-2.5 rounded-lg hover:opacity-90 disabled:opacity-40 flex items-center gap-2 font-medium mt-1"
                     >
                       {savingProfile ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
                       Guardar datos
@@ -1030,21 +1029,21 @@ const SettingsPage = () => {
                 )}
               </div>
 
-              <div className="bg-card border border-border rounded-xl p-5">
+              <div className="rx-panel">
                 <h4 className="text-sm font-semibold text-foreground flex items-center gap-2 mb-3">
-                  <KeyRound size={16} className="text-warning" /> PIN de autenticación WhatsApp
+                  <KeyRound size={16} className="text-[var(--rx-amber)]" /> PIN de autenticación WhatsApp
                 </h4>
-                <p className="text-xs text-muted-foreground mb-4">
+                <p className="text-xs text-[var(--rx-t2)] mb-4">
                   Este PIN te permite autenticarte como empleado a través del asistente de WhatsApp.
                   Debe ser un número de 4 a 6 dígitos que recuerdes fácilmente.
                 </p>
                 <div className="space-y-3">
                   <div>
-                    <label className="text-xs font-medium text-muted-foreground mb-1 block">Nuevo PIN</label>
+                    <label className="text-xs font-medium text-[var(--rx-t2)] mb-1 block">Nuevo PIN</label>
                     <input type="password" value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="Ej: 1234" maxLength={6} className={inputClass} />
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-muted-foreground mb-1 block">Confirmar PIN</label>
+                    <label className="text-xs font-medium text-[var(--rx-t2)] mb-1 block">Confirmar PIN</label>
                     <input type="password" value={pinConfirm} onChange={e => setPinConfirm(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="Repite tu PIN" maxLength={6} className={inputClass} />
                   </div>
                   <button
@@ -1066,7 +1065,7 @@ const SettingsPage = () => {
                         toast.error(err.message || 'Error al guardar PIN');
                       } finally { setSavingPin(false); }
                     }}
-                    className="bg-primary text-primary-foreground text-sm px-4 py-2 rounded-lg hover:opacity-90 disabled:opacity-40 flex items-center gap-2"
+                    className="bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground text-sm px-4 py-2 rounded-lg hover:opacity-90 disabled:opacity-40 flex items-center gap-2"
                   >
                     {savingPin && <Loader2 size={14} className="animate-spin" />}
                     <Save size={14} /> Guardar PIN
@@ -1080,56 +1079,56 @@ const SettingsPage = () => {
         {activeSection === 'calendar' && (
           <div className="max-w-2xl">
             <h3 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
-              <CalendarDays size={20} className="text-primary" /> Sincronización de Calendario
+              <CalendarDays size={20} className="text-[var(--rx-brand)]" /> Sincronización de Calendario
             </h3>
-            <p className="text-sm text-muted-foreground mb-6">
+            <p className="text-sm text-[var(--rx-t2)] mb-6">
               Vincula tu correo electrónico para que el sistema pueda crear automáticamente citas, eventos y recordatorios en tu calendario cuando se agenden desde WhatsApp, llamadas o la app.
             </p>
 
             <div className="space-y-4">
               {/* Connection status */}
-              <div className={`bg-card border rounded-xl p-5 ${calendarConnected ? 'border-primary/30' : 'border-border'}`}>
+              <div className={`bg-card border rounded-xl p-5 ${calendarConnected ? 'border-primary/30' : 'border-[var(--rx-b1)]'}`}>
                 <div className="flex items-center justify-between mb-4">
                   <h4 className="text-sm font-semibold text-foreground flex items-center gap-2">
                     {calendarConnected ? (
                       <>
-                        <CheckCircle size={16} className="text-primary" />
+                        <CheckCircle size={16} className="text-[var(--rx-brand)]" />
                         Calendario vinculado
                       </>
                     ) : (
                       <>
-                        <Link2 size={16} className="text-muted-foreground" />
+                        <Link2 size={16} className="text-[var(--rx-t2)]" />
                         Vincular calendario
                       </>
                     )}
                   </h4>
                   {calendarConnected && (
-                    <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">Activo</span>
+                    <span className="text-xs bg-primary/10 text-[var(--rx-brand)] px-2 py-0.5 rounded-full font-medium">Activo</span>
                   )}
                 </div>
 
                 {!calendarLoaded ? (
                   <div className="flex items-center justify-center py-6">
-                    <Loader2 size={20} className="animate-spin text-muted-foreground" />
+                    <Loader2 size={20} className="animate-spin text-[var(--rx-t2)]" />
                   </div>
                 ) : (
                   <div className="space-y-4">
                     <div>
                       <label className="text-sm font-medium text-foreground block mb-1">Correo de Google Calendar</label>
                       <input
-                        className="w-full px-3 py-2 rounded-lg bg-secondary border border-border text-foreground text-sm"
+                        className="w-full px-3 py-2 rounded-lg bg-[var(--rx-s2)] border border-[var(--rx-b1)] text-foreground text-sm"
                         value={calendarEmail}
                         onChange={e => setCalendarEmail(e.target.value)}
                         placeholder="tu@gmail.com"
                       />
-                      <p className="text-xs text-muted-foreground mt-1">Ingresa el correo de la cuenta de Google que deseas sincronizar</p>
+                      <p className="text-xs text-[var(--rx-t2)] mt-1">Ingresa el correo de la cuenta de Google que deseas sincronizar</p>
                     </div>
 
                     {!calendarConnected ? (
                       <button
                         disabled={savingCalendar}
                         onClick={handleConnectGoogleCalendar}
-                        className="bg-primary text-primary-foreground text-sm px-5 py-2.5 rounded-lg hover:opacity-90 disabled:opacity-40 flex items-center gap-2 font-medium w-full justify-center"
+                        className="bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground text-sm px-5 py-2.5 rounded-lg hover:opacity-90 disabled:opacity-40 flex items-center gap-2 font-medium w-full justify-center"
                       >
                         {savingCalendar ? <Loader2 size={14} className="animate-spin" /> : <Link2 size={14} />}
                         Conectar con Google Calendar
@@ -1139,7 +1138,7 @@ const SettingsPage = () => {
                         <button
                           disabled={checkingHealth}
                           onClick={handleCheckHealth}
-                          className="text-sm px-4 py-2 rounded-lg border border-border text-foreground hover:bg-secondary flex items-center gap-2 font-medium"
+                          className="text-sm px-4 py-2 rounded-lg border border-[var(--rx-b1)] text-foreground hover:bg-[var(--rx-s2)] flex items-center gap-2 font-medium"
                         >
                           {checkingHealth ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
                           Probar conexión
@@ -1147,7 +1146,7 @@ const SettingsPage = () => {
                         <button
                           disabled={savingCalendar}
                           onClick={handleDisconnectCalendar}
-                          className="text-sm px-4 py-2 rounded-lg border border-destructive/30 text-destructive hover:bg-destructive/10 flex items-center gap-2 font-medium"
+                          className="text-sm px-4 py-2 rounded-lg border border-destructive/30 text-[var(--rx-rose)] hover:bg-destructive/10 flex items-center gap-2 font-medium"
                         >
                           {savingCalendar ? <Loader2 size={14} className="animate-spin" /> : <Unlink size={14} />}
                           Desvincular
@@ -1156,7 +1155,7 @@ const SettingsPage = () => {
                     )}
 
                     {calendarHealthy !== null && (
-                      <div className={`text-xs flex items-center gap-1.5 ${calendarHealthy ? 'text-primary' : 'text-destructive'}`}>
+                      <div className={`text-xs flex items-center gap-1.5 ${calendarHealthy ? 'text-[var(--rx-brand)]' : 'text-[var(--rx-rose)]'}`}>
                         {calendarHealthy ? <CheckCircle size={12} /> : <XCircle size={12} />}
                         {calendarHealthy ? 'Calendario verificado con permisos de escritura' : 'No se pudo verificar el calendario'}
                       </div>
@@ -1167,30 +1166,30 @@ const SettingsPage = () => {
 
               {/* Sync preferences */}
               {calendarConnected && (
-                <div className="bg-card border border-border rounded-xl p-5">
+                <div className="rx-panel">
                   <h4 className="text-sm font-semibold text-foreground flex items-center gap-2 mb-4">
-                    <Settings2 size={16} className="text-primary" /> Preferencias de sincronización
+                    <Settings2 size={16} className="text-[var(--rx-brand)]" /> Preferencias de sincronización
                   </h4>
                   <div className="space-y-4">
                     <div>
                       <label className="text-sm font-medium text-foreground block mb-1">Correo de calendario</label>
                       <input
-                        className="w-full px-3 py-2 rounded-lg bg-secondary border border-border text-foreground text-sm"
+                        className="w-full px-3 py-2 rounded-lg bg-[var(--rx-s2)] border border-[var(--rx-b1)] text-foreground text-sm"
                         value={calendarEmail}
                         onChange={e => setCalendarEmail(e.target.value)}
                         placeholder="tu@email.com"
                       />
-                      <p className="text-xs text-muted-foreground mt-1">Email vinculado a tu Google Calendar para sincronizar citas</p>
+                      <p className="text-xs text-[var(--rx-t2)] mt-1">Email vinculado a tu Google Calendar para sincronizar citas</p>
                     </div>
 
                     <label className="flex items-center justify-between cursor-pointer group">
                       <div>
                         <span className="text-sm font-medium text-foreground">Sincronización activa</span>
-                        <p className="text-xs text-muted-foreground mt-0.5">Las citas nuevas se crearán automáticamente en tu calendario</p>
+                        <p className="text-xs text-[var(--rx-t2)] mt-0.5">Las citas nuevas se crearán automáticamente en tu calendario</p>
                       </div>
                       <div
                         onClick={() => setCalendarSyncEnabled(!calendarSyncEnabled)}
-                        className={`w-10 h-5 rounded-full transition-colors cursor-pointer flex items-center ${calendarSyncEnabled ? 'bg-primary' : 'bg-muted'}`}
+                        className={`w-10 h-5 rounded-full transition-colors cursor-pointer flex items-center ${calendarSyncEnabled ? 'bg-[var(--rx-brand)]' : 'bg-[var(--rx-s2)]'}`}
                       >
                         <div className={`w-4 h-4 rounded-full bg-white shadow transition-transform ${calendarSyncEnabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
                       </div>
@@ -1199,11 +1198,11 @@ const SettingsPage = () => {
                     <label className="flex items-center justify-between cursor-pointer group">
                       <div>
                         <span className="text-sm font-medium text-foreground">Crear eventos automáticamente</span>
-                        <p className="text-xs text-muted-foreground mt-0.5">Citas desde WhatsApp y llamadas se agregan sin confirmación manual</p>
+                        <p className="text-xs text-[var(--rx-t2)] mt-0.5">Citas desde WhatsApp y llamadas se agregan sin confirmación manual</p>
                       </div>
                       <div
                         onClick={() => setCalendarAutoCreate(!calendarAutoCreate)}
-                        className={`w-10 h-5 rounded-full transition-colors cursor-pointer flex items-center ${calendarAutoCreate ? 'bg-primary' : 'bg-muted'}`}
+                        className={`w-10 h-5 rounded-full transition-colors cursor-pointer flex items-center ${calendarAutoCreate ? 'bg-[var(--rx-brand)]' : 'bg-[var(--rx-s2)]'}`}
                       >
                         <div className={`w-4 h-4 rounded-full bg-white shadow transition-transform ${calendarAutoCreate ? 'translate-x-5' : 'translate-x-0.5'}`} />
                       </div>
@@ -1212,7 +1211,7 @@ const SettingsPage = () => {
                     <button
                       disabled={savingCalendar}
                       onClick={handleUpdateCalendarSettings}
-                      className="bg-primary text-primary-foreground text-sm px-5 py-2.5 rounded-lg hover:opacity-90 disabled:opacity-40 flex items-center gap-2 font-medium mt-2"
+                      className="bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground text-sm px-5 py-2.5 rounded-lg hover:opacity-90 disabled:opacity-40 flex items-center gap-2 font-medium mt-2"
                     >
                       {savingCalendar ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
                       Guardar preferencias
@@ -1222,25 +1221,25 @@ const SettingsPage = () => {
               )}
 
               {/* Info card */}
-              <div className="bg-muted/50 border border-border rounded-xl p-4">
+              <div className="bg-[var(--rx-s2)]/50 border border-[var(--rx-b1)] rounded-xl p-4">
                 <h4 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
-                  <CalendarDays size={14} className="text-primary" /> ¿Cómo funciona?
+                  <CalendarDays size={14} className="text-[var(--rx-brand)]" /> ¿Cómo funciona?
                 </h4>
-                <ul className="text-xs text-muted-foreground space-y-1.5">
+                <ul className="text-xs text-[var(--rx-t2)] space-y-1.5">
                   <li className="flex items-start gap-2">
-                    <span className="text-primary mt-0.5">•</span>
+                    <span className="text-[var(--rx-brand)] mt-0.5">•</span>
                     Cuando un cliente agenda una cita por WhatsApp o llamada, se crea automáticamente un evento en tu calendario.
                   </li>
                   <li className="flex items-start gap-2">
-                    <span className="text-primary mt-0.5">•</span>
+                    <span className="text-[var(--rx-brand)] mt-0.5">•</span>
                     Los recordatorios programados por el bot de WhatsApp también se agregan como eventos.
                   </li>
                   <li className="flex items-start gap-2">
-                    <span className="text-primary mt-0.5">•</span>
+                    <span className="text-[var(--rx-brand)] mt-0.5">•</span>
                     El sistema verifica tu disponibilidad en el calendario antes de agendar nuevas citas.
                   </li>
                   <li className="flex items-start gap-2">
-                    <span className="text-primary mt-0.5">•</span>
+                    <span className="text-[var(--rx-brand)] mt-0.5">•</span>
                     Puedes desvincular tu calendario en cualquier momento sin perder tus citas existentes.
                   </li>
                 </ul>
@@ -1252,23 +1251,23 @@ const SettingsPage = () => {
         {activeSection === 'availability' && (
           <div className="max-w-2xl">
             <h3 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
-              <Clock size={20} className="text-primary" /> Reglas de Disponibilidad
+              <Clock size={20} className="text-[var(--rx-brand)]" /> Reglas de Disponibilidad
             </h3>
-            <p className="text-sm text-muted-foreground mb-6">
+            <p className="text-sm text-[var(--rx-t2)] mb-6">
               Define los horarios en que tus clientes pueden agendar citas contigo. Estos horarios se usan por el agente de voz, WhatsApp y la vista de agenda.
             </p>
 
-            <div className="bg-card border border-border rounded-xl p-5">
+            <div className="rx-panel">
               {!ownAvailabilityLoaded ? (
                 <div className="flex items-center justify-center py-6">
-                  <Loader2 size={20} className="animate-spin text-muted-foreground" />
+                  <Loader2 size={20} className="animate-spin text-[var(--rx-t2)]" />
                 </div>
               ) : (
                 <div className="space-y-4">
                   <AvailabilityWizard value={ownAvailabilityRules} onChange={setOwnAvailabilityRules} />
 
-                  <div className="bg-card border border-border rounded-lg p-3">
-                    <label className="text-[10px] font-medium text-muted-foreground block mb-1">Máximo de citas por horario</label>
+                  <div className="bg-card border border-[var(--rx-b1)] rounded-lg p-3">
+                    <label className="text-[10px] font-medium text-[var(--rx-t2)] block mb-1">Máximo de citas por horario</label>
                     <input
                       type="number"
                       min={1}
@@ -1278,14 +1277,14 @@ const SettingsPage = () => {
                         const val = parseInt(e.target.value) || 1;
                         setOwnAvailabilityRules(prev => prev.map(r => ({ ...r, max_appointments: val })));
                       }}
-                      className="w-full bg-secondary border border-border rounded px-2 py-1.5 text-xs outline-none focus:border-primary text-foreground"
+                      className="w-full bg-[var(--rx-s2)] border border-[var(--rx-b1)] rounded px-2 py-1.5 text-xs outline-none focus:border-primary text-foreground"
                     />
                   </div>
 
                   <button
                     disabled={savingOwnAvailability}
                     onClick={handleSaveOwnAvailability}
-                    className="bg-primary text-primary-foreground text-sm px-5 py-2.5 rounded-lg hover:opacity-90 disabled:opacity-40 flex items-center gap-2 font-medium mt-2"
+                    className="bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground text-sm px-5 py-2.5 rounded-lg hover:opacity-90 disabled:opacity-40 flex items-center gap-2 font-medium mt-2"
                   >
                     {savingOwnAvailability ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
                     Guardar reglas de disponibilidad
@@ -1294,25 +1293,25 @@ const SettingsPage = () => {
               )}
             </div>
 
-            <div className="bg-muted/50 border border-border rounded-xl p-4 mt-4">
+            <div className="bg-[var(--rx-s2)]/50 border border-[var(--rx-b1)] rounded-xl p-4 mt-4">
               <h4 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
-                <Clock size={14} className="text-primary" /> ¿Cómo funciona?
+                <Clock size={14} className="text-[var(--rx-brand)]" /> ¿Cómo funciona?
               </h4>
-              <ul className="text-xs text-muted-foreground space-y-1.5">
+              <ul className="text-xs text-[var(--rx-t2)] space-y-1.5">
                 <li className="flex items-start gap-2">
-                  <span className="text-primary mt-0.5">•</span>
+                  <span className="text-[var(--rx-brand)] mt-0.5">•</span>
                   Los días y horarios activos definen cuándo los clientes pueden agendar citas.
                 </li>
                 <li className="flex items-start gap-2">
-                  <span className="text-primary mt-0.5">•</span>
+                  <span className="text-[var(--rx-brand)] mt-0.5">•</span>
                   El buffer antes/después reserva tiempo entre citas para preparación.
                 </li>
                 <li className="flex items-start gap-2">
-                  <span className="text-primary mt-0.5">•</span>
+                  <span className="text-[var(--rx-brand)] mt-0.5">•</span>
                   El agente de voz y WhatsApp consultan estas reglas automáticamente al agendar.
                 </li>
                 <li className="flex items-start gap-2">
-                  <span className="text-primary mt-0.5">•</span>
+                  <span className="text-[var(--rx-brand)] mt-0.5">•</span>
                   Si tienes empleados, puedes configurar su disponibilidad individual desde la sección Equipo.
                 </li>
               </ul>
@@ -1323,24 +1322,24 @@ const SettingsPage = () => {
         {activeSection === 'drive' && (
           <div className="max-w-2xl">
             <h3 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
-              <HardDrive size={20} className="text-primary" /> Google Drive
+              <HardDrive size={20} className="text-[var(--rx-brand)]" /> Google Drive
             </h3>
-            <p className="text-sm text-muted-foreground mb-6">
+            <p className="text-sm text-[var(--rx-t2)] mb-6">
               Conecta Google Drive para almacenar automáticamente presupuestos y comprobantes de pago en una carpeta organizada por tu empresa.
             </p>
 
-            <div className="bg-card border border-border rounded-xl p-5">
+            <div className="rx-panel">
               {driveLoading && !driveChecked ? (
                 <div className="flex items-center justify-center py-6">
-                  <Loader2 size={20} className="animate-spin text-muted-foreground" />
+                  <Loader2 size={20} className="animate-spin text-[var(--rx-t2)]" />
                 </div>
               ) : driveConfigured ? (
                 <div className="space-y-4">
-                  <div className="flex items-center gap-2 text-primary">
+                  <div className="flex items-center gap-2 text-[var(--rx-brand)]">
                     <CheckCircle size={16} />
                     <span className="text-sm font-semibold">Google Drive configurado</span>
                   </div>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-sm text-[var(--rx-t2)]">
                     Los presupuestos y comprobantes se guardan automáticamente en tu carpeta de Google Drive.
                   </p>
                   {driveFolderUrl && (
@@ -1348,7 +1347,7 @@ const SettingsPage = () => {
                       href={driveFolderUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 text-sm text-primary hover:underline"
+                      className="inline-flex items-center gap-2 text-sm text-[var(--rx-brand)] hover:underline"
                     >
                       <Link2 size={14} />
                       Abrir carpeta en Google Drive
@@ -1357,7 +1356,7 @@ const SettingsPage = () => {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-sm text-[var(--rx-t2)]">
                     {calendarOAuthConnected
                       ? 'Tu cuenta de Google ya está conectada. Haz clic para crear la carpeta de finanzas en Google Drive.'
                       : 'Primero debes conectar tu cuenta de Google en la sección de Calendario. Luego podrás activar Google Drive.'}
@@ -1365,13 +1364,13 @@ const SettingsPage = () => {
                   <button
                     disabled={driveLoading || !calendarOAuthConnected}
                     onClick={handleSetupDrive}
-                    className="bg-primary text-primary-foreground text-sm px-5 py-2.5 rounded-lg hover:opacity-90 disabled:opacity-40 flex items-center gap-2 font-medium w-full justify-center"
+                    className="bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground text-sm px-5 py-2.5 rounded-lg hover:opacity-90 disabled:opacity-40 flex items-center gap-2 font-medium w-full justify-center"
                   >
                     {driveLoading ? <Loader2 size={14} className="animate-spin" /> : <HardDrive size={14} />}
                     Crear carpeta en Google Drive
                   </button>
                   {!calendarOAuthConnected && (
-                    <p className="text-xs text-destructive">
+                    <p className="text-xs text-[var(--rx-rose)]">
                       ⚠️ Conecta Google Calendar primero para habilitar esta opción.
                     </p>
                   )}
@@ -1379,9 +1378,9 @@ const SettingsPage = () => {
               )}
             </div>
 
-            <div className="mt-4 bg-card border border-border rounded-xl p-5">
+            <div className="mt-4 bg-card border border-[var(--rx-b1)] rounded-xl p-5">
               <h4 className="text-sm font-semibold text-foreground mb-2">ℹ️ ¿Cómo funciona?</h4>
-              <ul className="text-xs text-muted-foreground space-y-1.5 list-disc list-inside">
+              <ul className="text-xs text-[var(--rx-t2)] space-y-1.5 list-disc list-inside">
                 <li>Se crea una carpeta <strong>"Aria - [Tu Empresa] - Finanzas"</strong> en el Drive de tu cuenta Google</li>
                 <li>Dentro se organizan subcarpetas: <strong>Presupuestos</strong> y <strong>Comprobantes</strong></li>
                 <li>Cada gasto o presupuesto procesado por WhatsApp se sube automáticamente</li>
@@ -1395,11 +1394,11 @@ const SettingsPage = () => {
           <div className="max-w-2xl">
             <h3 className="text-lg font-bold text-foreground mb-4">Configuración General</h3>
             <div className="space-y-4">
-              <div className="bg-card border border-border rounded-xl p-4">
+              <div className="rx-panel">
                 <label className="text-sm font-medium text-foreground block mb-1">Nombre de la organización</label>
                 <input className={inputClass} value={orgName} onChange={e => setOrgName(e.target.value)} placeholder="Mi Empresa" />
               </div>
-              <div className="bg-card border border-border rounded-xl p-4">
+              <div className="rx-panel">
                 <label className="text-sm font-medium text-foreground block mb-1">Zona horaria</label>
                 <select className={inputClass} value={timezone} onChange={e => setTimezone(e.target.value)}>
                   <option value="America/Mexico_City">América/México_City (UTC-6)</option>
@@ -1411,7 +1410,7 @@ const SettingsPage = () => {
               <button
                 disabled={savingGeneral}
                 onClick={handleSaveGeneral}
-                className="bg-primary text-primary-foreground text-sm px-5 py-2.5 rounded-lg hover:opacity-90 disabled:opacity-40 flex items-center gap-2 font-medium"
+                className="bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground text-sm px-5 py-2.5 rounded-lg hover:opacity-90 disabled:opacity-40 flex items-center gap-2 font-medium"
               >
                 {savingGeneral ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
                 Guardar cambios
@@ -1423,48 +1422,48 @@ const SettingsPage = () => {
         {activeSection === 'branding' && (
           <div className="max-w-2xl">
             <h3 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
-              <Palette size={20} className="text-primary" /> Branding de la empresa
+              <Palette size={20} className="text-[var(--rx-brand)]" /> Branding de la empresa
             </h3>
             <div className="space-y-4">
               {/* Logo & Favicon */}
-              <div className="bg-card border border-border rounded-xl p-5">
+              <div className="rx-panel">
                 <h4 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2"><Image size={16} /> Logo y Favicon</h4>
                 <div className="grid grid-cols-2 gap-6">
                   <div>
-                    <label className="text-xs font-medium text-muted-foreground mb-2 block">Logo de la empresa</label>
-                    <div className="border-2 border-dashed border-border rounded-xl p-4 flex flex-col items-center justify-center gap-2 min-h-[120px] relative">
+                    <label className="text-xs font-medium text-[var(--rx-t2)] mb-2 block">Logo de la empresa</label>
+                    <div className="border-2 border-dashed border-[var(--rx-b1)] rounded-xl p-4 flex flex-col items-center justify-center gap-2 min-h-[120px] relative">
                       {logoUrl ? (
                         <>
                           <img src={logoUrl} alt="Logo" className="max-h-20 max-w-full object-contain rounded" />
-                          <button onClick={() => { setLogoUrl(''); }} className="absolute top-2 right-2 p-1 rounded-full bg-destructive/10 text-destructive hover:bg-destructive/20"><X size={12} /></button>
+                          <button onClick={() => { setLogoUrl(''); }} className="absolute top-2 right-2 p-1 rounded-full bg-destructive/10 text-[var(--rx-rose)] hover:bg-destructive/20"><X size={12} /></button>
                         </>
                       ) : (
                         <>
-                          <Upload size={24} className="text-muted-foreground" />
-                          <p className="text-xs text-muted-foreground">PNG, JPG o SVG</p>
+                          <Upload size={24} className="text-[var(--rx-t2)]" />
+                          <p className="text-xs text-[var(--rx-t2)]">PNG, JPG o SVG</p>
                         </>
                       )}
-                      <label className="text-xs text-primary cursor-pointer hover:underline font-medium">
+                      <label className="text-xs text-[var(--rx-brand)] cursor-pointer hover:underline font-medium">
                         {uploadingLogo ? <Loader2 size={14} className="animate-spin inline" /> : (logoUrl ? 'Cambiar' : 'Subir logo')}
                         <input type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) handleUploadFile(f, 'logo'); }} />
                       </label>
                     </div>
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-muted-foreground mb-2 block">Favicon</label>
-                    <div className="border-2 border-dashed border-border rounded-xl p-4 flex flex-col items-center justify-center gap-2 min-h-[120px] relative">
+                    <label className="text-xs font-medium text-[var(--rx-t2)] mb-2 block">Favicon</label>
+                    <div className="border-2 border-dashed border-[var(--rx-b1)] rounded-xl p-4 flex flex-col items-center justify-center gap-2 min-h-[120px] relative">
                       {faviconUrl ? (
                         <>
                           <img src={faviconUrl} alt="Favicon" className="max-h-16 max-w-full object-contain rounded" />
-                          <button onClick={() => { setFaviconUrl(''); }} className="absolute top-2 right-2 p-1 rounded-full bg-destructive/10 text-destructive hover:bg-destructive/20"><X size={12} /></button>
+                          <button onClick={() => { setFaviconUrl(''); }} className="absolute top-2 right-2 p-1 rounded-full bg-destructive/10 text-[var(--rx-rose)] hover:bg-destructive/20"><X size={12} /></button>
                         </>
                       ) : (
                         <>
-                          <Upload size={24} className="text-muted-foreground" />
-                          <p className="text-xs text-muted-foreground">ICO, PNG (32x32)</p>
+                          <Upload size={24} className="text-[var(--rx-t2)]" />
+                          <p className="text-xs text-[var(--rx-t2)]">ICO, PNG (32x32)</p>
                         </>
                       )}
-                      <label className="text-xs text-primary cursor-pointer hover:underline font-medium">
+                      <label className="text-xs text-[var(--rx-brand)] cursor-pointer hover:underline font-medium">
                         {uploadingFavicon ? <Loader2 size={14} className="animate-spin inline" /> : (faviconUrl ? 'Cambiar' : 'Subir favicon')}
                         <input type="file" accept="image/*,.ico" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) handleUploadFile(f, 'favicon'); }} />
                       </label>
@@ -1473,51 +1472,51 @@ const SettingsPage = () => {
                 </div>
               </div>
 
-              <div className="bg-card border border-border rounded-xl p-5">
+              <div className="rx-panel">
                 <h4 className="text-sm font-semibold text-foreground mb-3">Colores corporativos</h4>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="text-xs font-medium text-muted-foreground mb-1 block">Color primario</label>
+                    <label className="text-xs font-medium text-[var(--rx-t2)] mb-1 block">Color primario</label>
                     <div className="flex items-center gap-2">
-                      <input type="color" value={primaryColor} onChange={e => setPrimaryColor(e.target.value)} className="w-10 h-10 rounded-lg border border-border cursor-pointer" />
+                      <input type="color" value={primaryColor} onChange={e => setPrimaryColor(e.target.value)} className="w-10 h-10 rounded-lg border border-[var(--rx-b1)] cursor-pointer" />
                       <input className={inputClass} value={primaryColor} onChange={e => setPrimaryColor(e.target.value)} />
                     </div>
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-muted-foreground mb-1 block">Color secundario</label>
+                    <label className="text-xs font-medium text-[var(--rx-t2)] mb-1 block">Color secundario</label>
                     <div className="flex items-center gap-2">
-                      <input type="color" value={secondaryColor} onChange={e => setSecondaryColor(e.target.value)} className="w-10 h-10 rounded-lg border border-border cursor-pointer" />
+                      <input type="color" value={secondaryColor} onChange={e => setSecondaryColor(e.target.value)} className="w-10 h-10 rounded-lg border border-[var(--rx-b1)] cursor-pointer" />
                       <input className={inputClass} value={secondaryColor} onChange={e => setSecondaryColor(e.target.value)} />
                     </div>
                   </div>
                 </div>
               </div>
 
-              <div className="bg-card border border-border rounded-xl p-5">
+              <div className="rx-panel">
                 <h4 className="text-sm font-semibold text-foreground mb-3">Información de la empresa</h4>
                 <div className="space-y-3">
                   <div>
-                    <label className="text-xs font-medium text-muted-foreground mb-1 block">Slogan</label>
+                    <label className="text-xs font-medium text-[var(--rx-t2)] mb-1 block">Slogan</label>
                     <input className={inputClass} value={companySlogan} onChange={e => setCompanySlogan(e.target.value)} placeholder="Tu slogan corporativo" />
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-muted-foreground mb-1 block">Sitio web</label>
+                    <label className="text-xs font-medium text-[var(--rx-t2)] mb-1 block">Sitio web</label>
                     <input className={inputClass} value={companyWebsite} onChange={e => setCompanyWebsite(e.target.value)} placeholder="https://tuempresa.com" />
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-muted-foreground mb-1 block">Teléfono</label>
+                    <label className="text-xs font-medium text-[var(--rx-t2)] mb-1 block">Teléfono</label>
                     <input className={inputClass} value={companyPhone} onChange={e => setCompanyPhone(e.target.value)} placeholder="+52 55 1234 5678" />
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-muted-foreground mb-1 block">Dirección</label>
+                    <label className="text-xs font-medium text-[var(--rx-t2)] mb-1 block">Dirección</label>
                     <input className={inputClass} value={companyAddress} onChange={e => setCompanyAddress(e.target.value)} placeholder="Calle, Ciudad, País" />
                   </div>
                 </div>
               </div>
 
-              <div className="bg-card border border-border rounded-xl p-5">
+              <div className="rx-panel">
                 <h4 className="text-sm font-semibold text-foreground mb-3">Vista previa</h4>
-                <div className="flex items-center gap-4 p-4 rounded-lg border border-border" style={{ background: `linear-gradient(135deg, ${primaryColor}15, ${secondaryColor}15)` }}>
+                <div className="flex items-center gap-4 p-4 rounded-lg border border-[var(--rx-b1)]" style={{ background: `linear-gradient(135deg, ${primaryColor}15, ${secondaryColor}15)` }}>
                   {logoUrl ? (
                     <img src={logoUrl} alt="Logo" className="w-12 h-12 rounded-xl object-contain" />
                   ) : (
@@ -1527,12 +1526,12 @@ const SettingsPage = () => {
                   )}
                   <div className="flex-1">
                     <p className="font-bold text-foreground">{orgName || 'Mi Empresa'}</p>
-                    <p className="text-xs text-muted-foreground">{companySlogan || 'Tu slogan aquí'}</p>
+                    <p className="text-xs text-[var(--rx-t2)]">{companySlogan || 'Tu slogan aquí'}</p>
                   </div>
                   {faviconUrl && (
                     <div className="flex flex-col items-center gap-1">
                       <img src={faviconUrl} alt="Favicon" className="w-6 h-6 object-contain" />
-                      <span className="text-[10px] text-muted-foreground">Favicon</span>
+                      <span className="text-[10px] text-[var(--rx-t2)]">Favicon</span>
                     </div>
                   )}
                 </div>
@@ -1541,7 +1540,7 @@ const SettingsPage = () => {
               <button
                 disabled={savingBranding}
                 onClick={handleSaveBranding}
-                className="bg-primary text-primary-foreground text-sm px-5 py-2.5 rounded-lg hover:opacity-90 disabled:opacity-40 flex items-center gap-2 font-medium"
+                className="bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground text-sm px-5 py-2.5 rounded-lg hover:opacity-90 disabled:opacity-40 flex items-center gap-2 font-medium"
               >
                 {savingBranding ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
                 Guardar branding
@@ -1553,28 +1552,28 @@ const SettingsPage = () => {
         {activeSection === 'team' && (
           <div className="max-w-3xl">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-foreground">Equipo</h3>
+              <h3 className="rx-page-title">Equipo</h3>
               {isSuperAdmin && (
-                <button onClick={() => setShowInviteModal(true)} className="bg-primary text-primary-foreground text-sm px-4 py-2 rounded-lg hover:opacity-90">+ Invitar</button>
+                <button onClick={() => setShowInviteModal(true)} className="bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground text-sm px-4 py-2 rounded-lg hover:opacity-90">+ Invitar</button>
               )}
             </div>
             {teamLoading ? (
-              <div className="flex items-center justify-center py-12"><Loader2 size={24} className="animate-spin text-muted-foreground" /></div>
+              <div className="flex items-center justify-center py-12"><Loader2 size={24} className="animate-spin text-[var(--rx-t2)]" /></div>
             ) : (
               <div className="space-y-3">
                 {teamData.map(m => {
                   const isExpanded = expandedUserId === m.user_id;
                   const isSelf = m.user_id === user?.id;
                   return (
-                    <div key={m.user_id} className="bg-card border border-border rounded-xl overflow-hidden">
+                    <div key={m.user_id} className="rx-panel">
                       {/* Member row */}
                       <div className="flex items-center gap-3 px-4 py-3">
-                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary shrink-0">
+                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-[var(--rx-brand)] shrink-0">
                           {m.name ? m.name.split(' ').map(n => n[0]).join('').slice(0, 2) : '?'}
                         </div>
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-medium text-foreground truncate">{m.name || 'Sin nombre'}</p>
-                          <p className="text-xs text-muted-foreground truncate">{m.email}</p>
+                          <p className="text-xs text-[var(--rx-t2)] truncate">{m.email}</p>
                         </div>
                         <div className="flex items-center gap-2">
                           {isSuperAdmin && !isSelf ? (
@@ -1596,7 +1595,7 @@ const SettingsPage = () => {
                                   toast.error(err.message || 'Error al cambiar rol');
                                 }
                               }}
-                              className="text-xs bg-secondary px-2 py-1 rounded-full border border-border outline-none cursor-pointer"
+                              className="text-xs bg-[var(--rx-s2)] px-2 py-1 rounded-full border border-[var(--rx-b1)] outline-none cursor-pointer"
                             >
                               <option value="staff">staff</option>
                               <option value="admin">admin</option>
@@ -1605,9 +1604,9 @@ const SettingsPage = () => {
                               <option value="guest">guest</option>
                             </select>
                           ) : (
-                            <span className="text-xs bg-secondary px-2 py-0.5 rounded-full">{m.role}</span>
+                            <span className="text-xs bg-[var(--rx-s2)] px-2 py-0.5 rounded-full">{m.role}</span>
                           )}
-                          <span className={`inline-block w-2 h-2 rounded-full ${m.status === 'active' ? 'bg-green-500' : m.status === 'pending_approval' ? 'bg-amber-500' : 'bg-muted-foreground/40'}`} />
+                          <span className={`inline-block w-2 h-2 rounded-full ${m.status === 'active' ? 'bg-green-500' : m.status === 'pending_approval' ? 'bg-amber-500' : 'bg-[var(--rx-s2)]-foreground/40'}`} />
                           {/* Pending approval buttons */}
                           {isSuperAdmin && !isSelf && m.status === 'pending_approval' && (
                             <>
@@ -1623,7 +1622,7 @@ const SettingsPage = () => {
                               <button
                                 onClick={() => handleApproveMember(m.user_id, false)}
                                 disabled={approvingUserId === m.user_id}
-                                className="text-xs bg-destructive/10 text-destructive px-2 py-1 rounded-full hover:bg-destructive/20 transition-colors flex items-center gap-1 disabled:opacity-40"
+                                className="text-xs bg-destructive/10 text-[var(--rx-rose)] px-2 py-1 rounded-full hover:bg-destructive/20 transition-colors flex items-center gap-1 disabled:opacity-40"
                                 title="Rechazar solicitud"
                               >
                                 <XCircle size={12} />
@@ -1650,7 +1649,7 @@ const SettingsPage = () => {
                             <>
                               <button
                                 onClick={() => setExpandedUserId(isExpanded ? null : m.user_id)}
-                                className="p-1.5 rounded hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground"
+                                className="p-1.5 rounded hover:bg-[var(--rx-s2)] transition-colors text-[var(--rx-t2)] hover:text-foreground"
                                 title="Permisos"
                               >
                                 {isExpanded ? <ChevronUp size={14} /> : <Settings2 size={14} />}
@@ -1658,26 +1657,26 @@ const SettingsPage = () => {
                               <button
                                 onClick={() => handleDeleteMember(m.user_id)}
                                 disabled={deletingUserId === m.user_id}
-                                className="text-destructive hover:text-destructive/80 disabled:opacity-40 p-1.5 rounded hover:bg-destructive/10 transition-colors"
+                                className="text-[var(--rx-rose)] hover:text-[var(--rx-rose)]/80 disabled:opacity-40 p-1.5 rounded hover:bg-destructive/10 transition-colors"
                                 title="Eliminar miembro"
                               >
                                 {deletingUserId === m.user_id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
                               </button>
                             </>
                           )}
-                          {isSelf && <span className="text-[10px] text-muted-foreground bg-secondary px-2 py-0.5 rounded-full">Tú</span>}
+                          {isSelf && <span className="text-[10px] text-[var(--rx-t2)] bg-[var(--rx-s2)] px-2 py-0.5 rounded-full">Tú</span>}
                         </div>
                       </div>
 
                       {/* Permissions & Availability panel */}
                       {isExpanded && isSuperAdmin && !isSelf && (
-                        <div className="border-t border-border bg-secondary/30 px-4 py-3 space-y-4">
+                        <div className="border-t border-[var(--rx-b1)] bg-[var(--rx-s2)]/30 px-4 py-3 space-y-4">
                           {/* Phone numbers for transfers */}
                           <div>
-                            <p className="text-xs font-semibold text-muted-foreground uppercase mb-3">Teléfonos (para transferencias de llamada)</p>
+                            <p className="text-xs font-semibold text-[var(--rx-t2)] uppercase mb-3">Teléfonos (para transferencias de llamada)</p>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                               <div>
-                                <label className="text-xs font-medium text-muted-foreground mb-1 block flex items-center gap-1"><PhoneIcon size={12} /> Teléfono</label>
+                                <label className="text-xs font-medium text-[var(--rx-t2)] mb-1 block flex items-center gap-1"><PhoneIcon size={12} /> Teléfono</label>
                                 <input
                                   className={inputClass}
                                   value={m.phone}
@@ -1686,7 +1685,7 @@ const SettingsPage = () => {
                                 />
                               </div>
                               <div>
-                                <label className="text-xs font-medium text-muted-foreground mb-1 block flex items-center gap-1"><MessageSquare size={12} /> WhatsApp</label>
+                                <label className="text-xs font-medium text-[var(--rx-t2)] mb-1 block flex items-center gap-1"><MessageSquare size={12} /> WhatsApp</label>
                                 <input
                                   className={inputClass}
                                   value={m.whatsapp_number}
@@ -1710,7 +1709,7 @@ const SettingsPage = () => {
                                   toast.error(err.message || 'Error al guardar teléfonos');
                                 }
                               }}
-                              className="mt-2 bg-primary text-primary-foreground text-xs px-3 py-1.5 rounded-lg hover:opacity-90 flex items-center gap-1.5"
+                              className="mt-2 bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground text-xs px-3 py-1.5 rounded-lg hover:opacity-90 flex items-center gap-1.5"
                             >
                               <Save size={12} />
                               Guardar teléfonos
@@ -1718,7 +1717,7 @@ const SettingsPage = () => {
                           </div>
 
                           <div>
-                            <p className="text-xs font-semibold text-muted-foreground uppercase mb-3">Permisos de acceso a módulos</p>
+                            <p className="text-xs font-semibold text-[var(--rx-t2)] uppercase mb-3">Permisos de acceso a módulos</p>
                             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                               {MODULE_PERMISSIONS.map(mod => {
                                 const enabled = m.permissions[mod.key] !== false;
@@ -1726,23 +1725,23 @@ const SettingsPage = () => {
                                   <label key={mod.key} className="flex items-center gap-2 cursor-pointer group">
                                     <button
                                       onClick={() => handleTogglePermission(m.user_id, mod.key, enabled)}
-                                      className={`w-8 h-5 rounded-full flex items-center transition-colors shrink-0 ${enabled ? 'bg-primary justify-end' : 'bg-muted justify-start'}`}
+                                      className={`w-8 h-5 rounded-full flex items-center transition-colors shrink-0 ${enabled ? 'bg-[var(--rx-brand)] justify-end' : 'bg-[var(--rx-s2)] justify-start'}`}
                                     >
                                       <div className="w-3.5 h-3.5 bg-card rounded-full mx-0.5 shadow-sm" />
                                     </button>
-                                    <span className={`text-xs ${enabled ? 'text-foreground' : 'text-muted-foreground'}`}>{mod.label}</span>
+                                    <span className={`text-xs ${enabled ? 'text-foreground' : 'text-[var(--rx-t2)]'}`}>{mod.label}</span>
                                   </label>
                                 );
                               })}
                             </div>
                           </div>
 
-                          <div className="border-t border-border pt-3">
+                          <div className="border-t border-[var(--rx-b1)] pt-3">
                             <div className="flex items-center justify-between mb-2">
-                              <p className="text-xs font-semibold text-muted-foreground uppercase">Disponibilidad para citas</p>
+                              <p className="text-xs font-semibold text-[var(--rx-t2)] uppercase">Disponibilidad para citas</p>
                               <button
                                 onClick={() => handleLoadAvailability(m.user_id)}
-                                className="text-xs text-primary hover:underline"
+                                className="text-xs text-[var(--rx-brand)] hover:underline"
                               >
                                 {editingAvailabilityUserId === m.user_id ? 'Cerrar' : 'Editar horario'}
                               </button>
@@ -1753,7 +1752,7 @@ const SettingsPage = () => {
                                 <button
                                   onClick={() => handleSaveAvailability(m.user_id)}
                                   disabled={savingAvailability}
-                                  className="bg-primary text-primary-foreground text-xs px-4 py-2 rounded-lg hover:opacity-90 disabled:opacity-40 flex items-center gap-1.5"
+                                  className="bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground text-xs px-4 py-2 rounded-lg hover:opacity-90 disabled:opacity-40 flex items-center gap-1.5"
                                 >
                                   {savingAvailability ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
                                   Guardar disponibilidad
@@ -1767,7 +1766,7 @@ const SettingsPage = () => {
                   );
                 })}
                 {teamData.length === 0 && (
-                  <div className="bg-card border border-border rounded-xl p-6 text-center text-muted-foreground text-sm">No hay miembros en el equipo</div>
+                  <div className="rx-panel">No hay miembros en el equipo</div>
                 )}
               </div>
             )}
@@ -1775,48 +1774,48 @@ const SettingsPage = () => {
             {/* Invite Modal */}
             {showInviteModal && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => { setShowInviteModal(false); setInviteStep(0); }}>
-                <div className="bg-card border border-border rounded-xl p-6 w-full max-w-md shadow-xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                <div className="rx-panel" onClick={e => e.stopPropagation()}>
                   {/* Step indicators */}
                   <div className="flex items-center gap-2 mb-4">
-                    <div className={`flex items-center gap-1.5 ${inviteStep >= 0 ? 'text-primary' : 'text-muted-foreground'}`}>
-                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${inviteStep > 0 ? 'bg-primary text-primary-foreground' : inviteStep === 0 ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>1</div>
+                    <div className={`flex items-center gap-1.5 ${inviteStep >= 0 ? 'text-[var(--rx-brand)]' : 'text-[var(--rx-t2)]'}`}>
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${inviteStep > 0 ? 'bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground' : inviteStep === 0 ? 'bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground' : 'bg-[var(--rx-s2)]'}`}>1</div>
                       <span className="text-xs font-medium">Datos</span>
                     </div>
-                    <div className={`flex-1 h-px ${inviteStep > 0 ? 'bg-primary' : 'bg-border'}`} />
-                    <div className={`flex items-center gap-1.5 ${inviteStep >= 1 ? 'text-primary' : 'text-muted-foreground'}`}>
-                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${inviteStep >= 1 ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>2</div>
+                    <div className={`flex-1 h-px ${inviteStep > 0 ? 'bg-[var(--rx-brand)]' : 'bg-border'}`} />
+                    <div className={`flex items-center gap-1.5 ${inviteStep >= 1 ? 'text-[var(--rx-brand)]' : 'text-[var(--rx-t2)]'}`}>
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${inviteStep >= 1 ? 'bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground' : 'bg-[var(--rx-s2)]'}`}>2</div>
                       <span className="text-xs font-medium">Horario</span>
                     </div>
                   </div>
 
                   {inviteStep === 0 && (
                     <div className="space-y-3 animate-fade-in">
-                      <h4 className="text-lg font-bold text-foreground">Datos del miembro</h4>
+                      <h4 className="rx-page-title">Datos del miembro</h4>
                       <div>
-                        <label className="text-xs font-medium text-muted-foreground mb-1 block">Nombre completo</label>
+                        <label className="text-xs font-medium text-[var(--rx-t2)] mb-1 block">Nombre completo</label>
                         <input className={inputClass} value={inviteName} onChange={e => setInviteName(e.target.value)} placeholder="Nombre del miembro" />
                       </div>
                       <div>
-                        <label className="text-xs font-medium text-muted-foreground mb-1 block">Email</label>
+                        <label className="text-xs font-medium text-[var(--rx-t2)] mb-1 block">Email</label>
                         <input className={inputClass} type="email" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} placeholder="email@ejemplo.com" />
                       </div>
                       <div>
-                        <label className="text-xs font-medium text-muted-foreground mb-1 block">Contraseña temporal <span className="text-muted-foreground font-normal">(opcional)</span></label>
+                        <label className="text-xs font-medium text-[var(--rx-t2)] mb-1 block">Contraseña temporal <span className="text-[var(--rx-t2)] font-normal">(opcional)</span></label>
                         <input className={inputClass} type="password" value={invitePassword} onChange={e => setInvitePassword(e.target.value)} placeholder="Dejar vacío para enviar invitación por email" />
                       </div>
-                      <p className="text-xs text-muted-foreground bg-secondary/50 rounded-lg px-3 py-2">
+                      <p className="text-xs text-[var(--rx-t2)] bg-[var(--rx-s2)]/50 rounded-lg px-3 py-2">
                         {invitePassword.length >= 6
                           ? '🔑 Se creará con contraseña temporal.'
                           : '📧 Se enviará un email de invitación.'}
                       </p>
                       <div className="flex gap-2 pt-2">
-                        <button onClick={() => { setShowInviteModal(false); setInviteStep(0); }} className="flex-1 bg-secondary text-secondary-foreground text-sm px-4 py-2.5 rounded-lg hover:opacity-90">
+                        <button onClick={() => { setShowInviteModal(false); setInviteStep(0); }} className="flex-1 bg-[var(--rx-s2)] text-secondary-foreground text-sm px-4 py-2.5 rounded-lg hover:opacity-90">
                           Cancelar
                         </button>
                         <button
                           onClick={() => setInviteStep(1)}
                           disabled={!inviteName.trim() || !inviteEmail.trim()}
-                          className="flex-1 bg-primary text-primary-foreground text-sm px-4 py-2.5 rounded-lg hover:opacity-90 disabled:opacity-40 flex items-center justify-center gap-1"
+                          className="flex-1 bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground text-sm px-4 py-2.5 rounded-lg hover:opacity-90 disabled:opacity-40 flex items-center justify-center gap-1"
                         >
                           Siguiente <ArrowRight size={14} />
                         </button>
@@ -1826,17 +1825,17 @@ const SettingsPage = () => {
 
                   {inviteStep === 1 && (
                     <div className="space-y-3 animate-fade-in">
-                      <h4 className="text-lg font-bold text-foreground">Horario de {inviteName.split(' ')[0]}</h4>
-                      <p className="text-xs text-muted-foreground">Configura los días y horarios en que estará disponible para citas.</p>
+                      <h4 className="rx-page-title">Horario de {inviteName.split(' ')[0]}</h4>
+                      <p className="text-xs text-[var(--rx-t2)]">Configura los días y horarios en que estará disponible para citas.</p>
                       <AvailabilityWizard value={inviteAvailability} onChange={setInviteAvailability} />
                       <div className="flex gap-2 pt-2">
-                        <button onClick={() => setInviteStep(0)} className="flex-1 bg-secondary text-secondary-foreground text-sm px-4 py-2.5 rounded-lg hover:opacity-90 flex items-center justify-center gap-1">
+                        <button onClick={() => setInviteStep(0)} className="flex-1 bg-[var(--rx-s2)] text-secondary-foreground text-sm px-4 py-2.5 rounded-lg hover:opacity-90 flex items-center justify-center gap-1">
                           <ArrowLeft size={14} /> Atrás
                         </button>
                         <button
                           onClick={handleInviteMember}
                           disabled={inviting}
-                          className="flex-1 bg-primary text-primary-foreground text-sm px-4 py-2.5 rounded-lg hover:opacity-90 disabled:opacity-40 flex items-center justify-center gap-2"
+                          className="flex-1 bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground text-sm px-4 py-2.5 rounded-lg hover:opacity-90 disabled:opacity-40 flex items-center justify-center gap-2"
                         >
                           {inviting && <Loader2 size={14} className="animate-spin" />}
                           {invitePassword.length >= 6 ? 'Crear miembro' : 'Enviar invitación'}
@@ -1862,7 +1861,7 @@ const SettingsPage = () => {
 
         {activeSection === 'ai' && (
           <div className="max-w-2xl">
-            <h3 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2"><Brain size={20} className="text-primary" /> IA y Automatización</h3>
+            <h3 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2"><Brain size={20} className="text-[var(--rx-brand)]" /> IA y Automatización</h3>
             <div className="space-y-4">
               {[
                 { module: 'Resúmenes de chat', desc: 'Generar resúmenes diarios/semanales de canales', enabled: true },
@@ -1871,12 +1870,12 @@ const SettingsPage = () => {
                 { module: 'Insights operativos', desc: 'Alertas de tareas sin dueño, bloqueos, etc.', enabled: false },
                 { module: 'Knowledge Base IA', desc: 'Sugerir artículos cuando se detecta info repetida', enabled: false },
               ].map(item => (
-                <div key={item.module} className="bg-card border border-border rounded-xl p-4 flex items-center justify-between">
+                <div key={item.module} className="rx-panel">
                   <div>
                     <h4 className="text-sm font-semibold text-foreground">{item.module}</h4>
-                    <p className="text-xs text-muted-foreground mt-0.5">{item.desc}</p>
+                    <p className="text-xs text-[var(--rx-t2)] mt-0.5">{item.desc}</p>
                   </div>
-                  <div className={`w-10 h-6 rounded-full flex items-center cursor-pointer transition-colors ${item.enabled ? 'bg-primary justify-end' : 'bg-muted justify-start'}`}>
+                  <div className={`w-10 h-6 rounded-full flex items-center cursor-pointer transition-colors ${item.enabled ? 'bg-[var(--rx-brand)] justify-end' : 'bg-[var(--rx-s2)] justify-start'}`}>
                     <div className="w-4 h-4 bg-card rounded-full mx-1 shadow-sm" />
                   </div>
                 </div>
@@ -1890,14 +1889,14 @@ const SettingsPage = () => {
             <h3 className="text-lg font-bold text-foreground mb-4">
               {activeSection === 'notifications' ? 'Notificaciones' : 'Datos y Privacidad'}
             </h3>
-            <div className="bg-card border border-border rounded-xl p-6 text-center">
-              <Globe size={40} className="mx-auto text-muted-foreground mb-3" />
-              <p className="text-sm text-muted-foreground">
+            <div className="rx-panel">
+              <Globe size={40} className="mx-auto text-[var(--rx-t2)] mb-3" />
+              <p className="text-sm text-[var(--rx-t2)]">
                 {activeSection === 'notifications'
                   ? 'Configura qué notificaciones recibir por email, push y dentro de la app.'
                   : 'Gestiona exportación de datos, políticas de retención y configuración de privacidad.'}
               </p>
-              <p className="text-xs text-muted-foreground mt-2">Próximamente</p>
+              <p className="text-xs text-[var(--rx-t2)] mt-2">Próximamente</p>
             </div>
           </div>
         )}

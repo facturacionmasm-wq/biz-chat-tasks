@@ -116,12 +116,12 @@ const AssistantAdminPage = () => {
   if (!isAdmin) {
     return (
       <div className="flex items-center justify-center h-full">
-        <p className="text-muted-foreground">No tienes permisos para acceder a esta sección.</p>
+        <p className="text-[var(--rx-t2)]">No tienes permisos para acceder a esta sección.</p>
       </div>
     );
   }
 
-  const inputClass = "w-full bg-secondary rounded-lg px-3 py-2 text-sm outline-none border border-border focus:border-primary text-foreground placeholder:text-muted-foreground";
+  const inputClass = "w-full bg-[var(--rx-s2)] rounded-lg px-3 py-2 text-sm outline-none border border-[var(--rx-b1)] focus:border-primary text-foreground placeholder:text-[var(--rx-t2)]";
 
   const tabs = [
     { id: 'settings', label: 'Configuración', icon: Settings2 },
@@ -130,27 +130,27 @@ const AssistantAdminPage = () => {
   ] as const;
 
   return (
-    <div className="p-4 sm:p-6 max-w-5xl mx-auto">
+    <div className="rx-page">
       <div className="flex items-center gap-3 mb-6">
         <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-          <Bot size={22} className="text-primary" />
+          <Bot size={22} className="text-[var(--rx-brand)]" />
         </div>
         <div>
-          <h1 className="text-lg font-bold text-foreground">Administración del Asistente IA</h1>
-          <p className="text-xs text-muted-foreground">Configura, monitorea y entrena a Aria</p>
+          <h1 className="rx-page-title">Administración del Asistente IA</h1>
+          <p className="text-xs text-[var(--rx-t2)]">Configura, monitorea y entrena a Aria</p>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-6 border-b border-border">
+      <div className="flex gap-1 mb-6 border-b border-[var(--rx-b1)]">
         {tabs.map(tab => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
             className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
               activeTab === tab.id
-                ? 'border-primary text-primary'
-                : 'border-transparent text-muted-foreground hover:text-foreground'
+                ? 'border-primary text-[var(--rx-brand)]'
+                : 'border-transparent text-[var(--rx-t2)] hover:text-foreground'
             }`}
           >
             <tab.icon size={16} />
@@ -161,31 +161,31 @@ const AssistantAdminPage = () => {
 
       {loading ? (
         <div className="flex items-center justify-center py-20">
-          <Loader2 size={24} className="animate-spin text-muted-foreground" />
+          <Loader2 size={24} className="animate-spin text-[var(--rx-t2)]" />
         </div>
       ) : (
         <>
           {/* Settings Tab */}
           {activeTab === 'settings' && (
             <div className="space-y-6 max-w-2xl">
-              <div className="bg-card border border-border rounded-xl p-5 space-y-4">
+              <div className="rx-panel">
                 <h3 className="text-sm font-semibold text-foreground">General</h3>
 
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium text-foreground">Asistente habilitado</p>
-                    <p className="text-xs text-muted-foreground">Muestra el widget de Aria para todos los usuarios</p>
+                    <p className="text-xs text-[var(--rx-t2)]">Muestra el widget de Aria para todos los usuarios</p>
                   </div>
                   <button
                     onClick={() => setEnabled(!enabled)}
-                    className={`w-11 h-6 rounded-full transition-colors relative ${enabled ? 'bg-primary' : 'bg-muted'}`}
+                    className={`w-11 h-6 rounded-full transition-colors relative ${enabled ? 'bg-[var(--rx-brand)]' : 'bg-[var(--rx-s2)]'}`}
                   >
                     <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-card shadow-sm transition-transform ${enabled ? 'left-[22px]' : 'left-0.5'}`} />
                   </button>
                 </div>
 
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground mb-1 block">Nivel de autonomía</label>
+                  <label className="text-xs font-medium text-[var(--rx-t2)] mb-1 block">Nivel de autonomía</label>
                   <select
                     value={autonomyLevel}
                     onChange={e => setAutonomyLevel(e.target.value)}
@@ -200,20 +200,20 @@ const AssistantAdminPage = () => {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium text-foreground">Ejecución automática de tareas</p>
-                    <p className="text-xs text-muted-foreground">Permite al asistente ejecutar acciones tras confirmación</p>
+                    <p className="text-xs text-[var(--rx-t2)]">Permite al asistente ejecutar acciones tras confirmación</p>
                   </div>
                   <button
                     onClick={() => setAutoExecute(!autoExecute)}
-                    className={`w-11 h-6 rounded-full transition-colors relative ${autoExecute ? 'bg-primary' : 'bg-muted'}`}
+                    className={`w-11 h-6 rounded-full transition-colors relative ${autoExecute ? 'bg-[var(--rx-brand)]' : 'bg-[var(--rx-s2)]'}`}
                   >
                     <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-card shadow-sm transition-transform ${autoExecute ? 'left-[22px]' : 'left-0.5'}`} />
                   </button>
                 </div>
               </div>
 
-              <div className="bg-card border border-border rounded-xl p-5 space-y-4">
+              <div className="rx-panel">
                 <h3 className="text-sm font-semibold text-foreground">Instrucciones personalizadas</h3>
-                <p className="text-xs text-muted-foreground">Agrega contexto específico de tu empresa para que Aria dé respuestas más relevantes.</p>
+                <p className="text-xs text-[var(--rx-t2)]">Agrega contexto específico de tu empresa para que Aria dé respuestas más relevantes.</p>
                 <textarea
                   value={customInstructions}
                   onChange={e => setCustomInstructions(e.target.value)}
@@ -221,13 +221,13 @@ const AssistantAdminPage = () => {
                   placeholder="Ej: Somos una clínica dental en CDMX. Nuestros servicios principales son limpieza, ortodoncia y blanqueamiento. Horario: L-V 9am-7pm, S 9am-2pm."
                   maxLength={2000}
                 />
-                <p className="text-[10px] text-muted-foreground text-right">{customInstructions.length}/2000</p>
+                <p className="text-[10px] text-[var(--rx-t2)] text-right">{customInstructions.length}/2000</p>
               </div>
 
               <button
                 onClick={handleSaveSettings}
                 disabled={saving}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-50"
+                className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground text-sm font-medium hover:opacity-90 disabled:opacity-50"
               >
                 {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
                 Guardar configuración
@@ -239,36 +239,36 @@ const AssistantAdminPage = () => {
           {activeTab === 'conversations' && (
             <div className="space-y-2">
               {conversations.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-12">No hay conversaciones aún.</p>
+                <p className="text-sm text-[var(--rx-t2)] text-center py-12">No hay conversaciones aún.</p>
               ) : (
                 conversations.map(conv => (
-                  <div key={conv.id} className="bg-card border border-border rounded-xl overflow-hidden">
+                  <div key={conv.id} className="rx-panel">
                     <button
                       onClick={() => handleExpandConversation(conv.id)}
-                      className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-secondary/50 transition-colors"
+                      className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-[var(--rx-s2)]/50 transition-colors"
                     >
                       <div className="flex items-center gap-3 min-w-0">
-                        <MessageSquare size={16} className="text-muted-foreground shrink-0" />
+                        <MessageSquare size={16} className="text-[var(--rx-t2)] shrink-0" />
                         <div className="min-w-0">
                           <p className="text-sm font-medium text-foreground truncate">{conv.title}</p>
-                          <p className="text-[10px] text-muted-foreground">
+                          <p className="text-[10px] text-[var(--rx-t2)]">
                             {new Date(conv.created_at).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                           </p>
                         </div>
                       </div>
-                      {expandedConv === conv.id ? <ChevronUp size={16} className="text-muted-foreground" /> : <ChevronDown size={16} className="text-muted-foreground" />}
+                      {expandedConv === conv.id ? <ChevronUp size={16} className="text-[var(--rx-t2)]" /> : <ChevronDown size={16} className="text-[var(--rx-t2)]" />}
                     </button>
                     {expandedConv === conv.id && (
-                      <div className="border-t border-border px-4 py-3 space-y-3 max-h-80 overflow-y-auto scrollbar-thin bg-secondary/30">
+                      <div className="border-t border-[var(--rx-b1)] px-4 py-3 space-y-3 max-h-80 overflow-y-auto scrollbar-thin bg-[var(--rx-s2)]/30">
                         {loadingMessages ? (
-                          <div className="flex justify-center py-4"><Loader2 size={16} className="animate-spin text-muted-foreground" /></div>
+                          <div className="flex justify-center py-4"><Loader2 size={16} className="animate-spin text-[var(--rx-t2)]" /></div>
                         ) : convMessages.length === 0 ? (
-                          <p className="text-xs text-muted-foreground text-center">Sin mensajes</p>
+                          <p className="text-xs text-[var(--rx-t2)] text-center">Sin mensajes</p>
                         ) : (
                           convMessages.map(msg => (
                             <div key={msg.id} className={`text-xs ${msg.role === 'user' ? 'text-right' : 'text-left'}`}>
                               <span className={`inline-block px-3 py-2 rounded-xl max-w-[90%] ${
-                                msg.role === 'user' ? 'bg-primary/10 text-foreground' : 'bg-card text-foreground border border-border'
+                                msg.role === 'user' ? 'bg-primary/10 text-foreground' : 'bg-card text-foreground border border-[var(--rx-b1)]'
                               }`}>
                                 {msg.role === 'user' ? msg.content : (
                                   <div className="prose prose-xs max-w-none [&_p]:my-0.5">
@@ -276,7 +276,7 @@ const AssistantAdminPage = () => {
                                   </div>
                                 )}
                               </span>
-                              <p className="text-[9px] text-muted-foreground mt-0.5">
+                              <p className="text-[9px] text-[var(--rx-t2)] mt-0.5">
                                 {msg.role === 'user' ? '👤 Usuario' : '🤖 Aria'} · {new Date(msg.created_at).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
                               </p>
                             </div>
@@ -293,17 +293,17 @@ const AssistantAdminPage = () => {
           {/* Metrics Tab */}
           {activeTab === 'metrics' && (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="bg-card border border-border rounded-xl p-5 text-center">
-                <p className="text-3xl font-bold text-primary">{metrics.totalConvs}</p>
-                <p className="text-xs text-muted-foreground mt-1">Conversaciones totales</p>
+              <div className="rx-panel">
+                <p className="text-3xl font-bold text-[var(--rx-brand)]">{metrics.totalConvs}</p>
+                <p className="text-xs text-[var(--rx-t2)] mt-1">Conversaciones totales</p>
               </div>
-              <div className="bg-card border border-border rounded-xl p-5 text-center">
-                <p className="text-3xl font-bold text-primary">{metrics.totalMessages}</p>
-                <p className="text-xs text-muted-foreground mt-1">Mensajes totales</p>
+              <div className="rx-panel">
+                <p className="text-3xl font-bold text-[var(--rx-brand)]">{metrics.totalMessages}</p>
+                <p className="text-xs text-[var(--rx-t2)] mt-1">Mensajes totales</p>
               </div>
-              <div className="bg-card border border-border rounded-xl p-5 text-center">
-                <p className="text-3xl font-bold text-primary">{metrics.activeUsers}</p>
-                <p className="text-xs text-muted-foreground mt-1">Usuarios activos</p>
+              <div className="rx-panel">
+                <p className="text-3xl font-bold text-[var(--rx-brand)]">{metrics.activeUsers}</p>
+                <p className="text-xs text-[var(--rx-t2)] mt-1">Usuarios activos</p>
               </div>
             </div>
           )}

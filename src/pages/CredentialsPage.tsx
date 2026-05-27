@@ -135,10 +135,10 @@ const CredentialsPage = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-            <KeyRound className="text-primary" size={24} />
+            <KeyRound className="text-[var(--rx-brand)]" size={24} />
             Credenciales Compartidas
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">
+          <p className="text-sm text-[var(--rx-t2)] mt-1">
             Credenciales de acceso a plataformas compartidas con todo el equipo
           </p>
         </div>
@@ -178,16 +178,16 @@ const CredentialsPage = () => {
 
       {/* Search */}
       <div className="relative w-full sm:max-w-sm">
-        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--rx-t2)]" />
         <Input placeholder="Buscar plataforma..." className="pl-9" value={search} onChange={e => setSearch(e.target.value)} />
       </div>
 
       {/* Credentials list */}
       {loading ? (
-        <p className="text-muted-foreground text-sm">Cargando...</p>
+        <p className="text-[var(--rx-t2)] text-sm">Cargando...</p>
       ) : filtered.length === 0 ? (
         <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+          <CardContent className="flex flex-col items-center justify-center py-12 text-[var(--rx-t2)]">
             <KeyRound size={48} className="mb-4 opacity-30" />
             <p className="text-lg font-medium">No hay credenciales guardadas</p>
             <p className="text-sm">Agrega una desde aquí o envíalas por WhatsApp al bot</p>
@@ -202,14 +202,14 @@ const CredentialsPage = () => {
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-2">
-                      <Globe size={16} className="text-primary shrink-0" />
+                      <Globe size={16} className="text-[var(--rx-brand)] shrink-0" />
                       <CardTitle className="text-sm font-semibold">{cred.platform_name}</CardTitle>
                     </div>
                     <div className="flex gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                      <button onClick={() => handleEdit(cred)} className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground">
+                      <button onClick={() => handleEdit(cred)} className="p-1 rounded hover:bg-[var(--rx-s2)] text-[var(--rx-t2)] hover:text-foreground">
                         <Edit2 size={14} />
                       </button>
-                      <button onClick={() => handleDelete(cred.id)} className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive">
+                      <button onClick={() => handleDelete(cred.id)} className="p-1 rounded hover:bg-destructive/10 text-[var(--rx-t2)] hover:text-[var(--rx-rose)]">
                         <Trash2 size={14} />
                       </button>
                     </div>
@@ -217,32 +217,32 @@ const CredentialsPage = () => {
                 </CardHeader>
                 <CardContent className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">Usuario</span>
+                    <span className="text-xs text-[var(--rx-t2)]">Usuario</span>
                     <div className="flex items-center gap-1">
                       <span className="text-sm font-mono">{cred.username}</span>
-                      <button onClick={() => copyToClipboard(cred.username, 'Usuario')} className="p-0.5 text-muted-foreground hover:text-foreground">
+                      <button onClick={() => copyToClipboard(cred.username, 'Usuario')} className="p-0.5 text-[var(--rx-t2)] hover:text-foreground">
                         <Copy size={12} />
                       </button>
                     </div>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">Contraseña</span>
+                    <span className="text-xs text-[var(--rx-t2)]">Contraseña</span>
                     <div className="flex items-center gap-1">
                       <span className="text-sm font-mono">
                         {revealed ? ((cred as any)._decrypted || cred.password_encrypted) : '••••••••'}
                       </span>
-                      <button onClick={() => toggleReveal(cred.id)} className="p-0.5 text-muted-foreground hover:text-foreground">
+                      <button onClick={() => toggleReveal(cred.id)} className="p-0.5 text-[var(--rx-t2)] hover:text-foreground">
                         {revealed ? <EyeOff size={12} /> : <Eye size={12} />}
                       </button>
-                      <button onClick={() => copyToClipboard(revealed ? ((cred as any)._decrypted || cred.password_encrypted) : cred.password_encrypted, 'Contraseña')} className="p-0.5 text-muted-foreground hover:text-foreground">
+                      <button onClick={() => copyToClipboard(revealed ? ((cred as any)._decrypted || cred.password_encrypted) : cred.password_encrypted, 'Contraseña')} className="p-0.5 text-[var(--rx-t2)] hover:text-foreground">
                         <Copy size={12} />
                       </button>
                     </div>
                   </div>
                   {cred.notes && (
-                    <p className="text-xs text-muted-foreground border-t border-border pt-2 mt-2">{cred.notes}</p>
+                    <p className="text-xs text-[var(--rx-t2)] border-t border-[var(--rx-b1)] pt-2 mt-2">{cred.notes}</p>
                   )}
-                  <p className="text-[10px] text-muted-foreground/60">{new Date(cred.created_at).toLocaleDateString('es-MX')}</p>
+                  <p className="text-[10px] text-[var(--rx-t2)]/60">{new Date(cred.created_at).toLocaleDateString('es-MX')}</p>
                 </CardContent>
               </Card>
             );

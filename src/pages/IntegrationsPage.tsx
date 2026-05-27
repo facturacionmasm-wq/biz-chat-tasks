@@ -297,40 +297,40 @@ const IntegrationsPage = () => {
 
 
   return (
-    <div className="p-4 sm:p-6 max-w-5xl mx-auto">
+    <div className="rx-page">
       <div className="mb-6">
         <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
-          <Plug size={20} className="text-primary" /> Integraciones
+          <Plug size={20} className="text-[var(--rx-brand)]" /> Integraciones
         </h1>
-        <p className="text-sm text-muted-foreground mt-1">Conecta herramientas externas para potenciar tu espacio de trabajo.</p>
+        <p className="text-sm text-[var(--rx-t2)] mt-1">Conecta herramientas externas para potenciar tu espacio de trabajo.</p>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {integrations.map(int => (
-          <div key={int.id} className="bg-card border border-border rounded-xl p-5 shadow-sm">
+          <div key={int.id} className="rx-panel">
             <div className="flex items-start justify-between mb-3">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                  <int.icon size={20} className="text-primary" />
+                  <int.icon size={20} className="text-[var(--rx-brand)]" />
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold text-foreground">{int.name}</h3>
-                  <p className="text-xs text-muted-foreground">{int.category}</p>
+                  <p className="text-xs text-[var(--rx-t2)]">{int.category}</p>
                 </div>
               </div>
               {int.connected ? (
-                <span className="flex items-center gap-1 text-xs text-success font-medium"><CheckCircle2 size={12} /> Conectado</span>
+                <span className="flex items-center gap-1 text-xs text-[var(--rx-emerald)] font-medium"><CheckCircle2 size={12} /> Conectado</span>
               ) : (
-                <span className="flex items-center gap-1 text-xs text-muted-foreground"><Circle size={12} /> Desconectado</span>
+                <span className="flex items-center gap-1 text-xs text-[var(--rx-t2)]"><Circle size={12} /> Desconectado</span>
               )}
             </div>
-            <p className="text-sm text-muted-foreground mb-4">{int.description}</p>
+            <p className="text-sm text-[var(--rx-t2)] mb-4">{int.description}</p>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => handleIntegrationClick(int.id)}
                 disabled={int.id === 'voice-agent' && voiceAgentLoading}
                 className={`text-xs font-medium px-4 py-2 rounded-lg flex items-center gap-1.5 transition-colors disabled:opacity-50 ${
-                  int.connected ? 'bg-secondary text-secondary-foreground hover:bg-secondary/80' : 'bg-primary text-primary-foreground hover:opacity-90'
+                  int.connected ? 'bg-[var(--rx-s2)] text-secondary-foreground hover:bg-[var(--rx-s2)]/80' : 'bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground hover:opacity-90'
                 }`}
               >
                 {int.id === 'voice-agent' && voiceAgentLoading ? (
@@ -342,7 +342,7 @@ const IntegrationsPage = () => {
               {int.connected && (int.id === 'google-calendar' || int.id === 'whatsapp' || int.id === 'voice-agent') && (
                 <button
                   onClick={() => handleDisconnect(int.id)}
-                  className="text-xs font-medium px-3 py-2 rounded-lg border border-destructive/30 text-destructive hover:bg-destructive/10 transition-colors flex items-center gap-1.5"
+                  className="text-xs font-medium px-3 py-2 rounded-lg border border-destructive/30 text-[var(--rx-rose)] hover:bg-destructive/10 transition-colors flex items-center gap-1.5"
                 >
                   <X size={12} /> Desconectar
                 </button>
@@ -353,51 +353,51 @@ const IntegrationsPage = () => {
       </div>
 
       {/* Voice Agent Info */}
-      <div className="mt-8 bg-card border border-border rounded-xl p-6 shadow-sm">
+      <div className="mt-8 bg-card border border-[var(--rx-b1)] rounded-xl p-6 shadow-sm">
         <h2 className="text-lg font-bold text-foreground flex items-center gap-2 mb-3">
-          <Phone size={18} className="text-primary" /> Agente de Voz IA
+          <Phone size={18} className="text-[var(--rx-brand)]" /> Agente de Voz IA
         </h2>
-        <p className="text-sm text-muted-foreground mb-4">
+        <p className="text-sm text-[var(--rx-t2)] mb-4">
           Conecta tu número de Twilio directamente con ElevenLabs para que el agente de voz IA
           maneje llamadas entrantes automáticamente. ElevenLabs configura los webhooks de Twilio por ti.
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-          <div className="bg-muted/50 rounded-lg p-3">
+          <div className="bg-[var(--rx-s2)]/50 rounded-lg p-3">
             <p className="font-semibold text-foreground mb-1">📞 Llamadas entrantes</p>
-            <p className="text-muted-foreground">El agente IA contesta y conversa con los clientes automáticamente</p>
+            <p className="text-[var(--rx-t2)]">El agente IA contesta y conversa con los clientes automáticamente</p>
           </div>
-          <div className="bg-muted/50 rounded-lg p-3">
+          <div className="bg-[var(--rx-s2)]/50 rounded-lg p-3">
             <p className="font-semibold text-foreground mb-1">🧠 Base de conocimiento</p>
-            <p className="text-muted-foreground">Usa tu Knowledge Hub para dar respuestas precisas y personalizadas</p>
+            <p className="text-[var(--rx-t2)]">Usa tu Knowledge Hub para dar respuestas precisas y personalizadas</p>
           </div>
-          <div className="bg-muted/50 rounded-lg p-3">
+          <div className="bg-[var(--rx-s2)]/50 rounded-lg p-3">
             <p className="font-semibold text-foreground mb-1">⚡ Configuración nativa</p>
-            <p className="text-muted-foreground">ElevenLabs configura automáticamente los webhooks de Twilio</p>
+            <p className="text-[var(--rx-t2)]">ElevenLabs configura automáticamente los webhooks de Twilio</p>
           </div>
         </div>
       </div>
 
       {/* WhatsApp Info */}
-      <div className="mt-8 bg-card border border-border rounded-xl p-6 shadow-sm">
+      <div className="mt-8 bg-card border border-[var(--rx-b1)] rounded-xl p-6 shadow-sm">
         <h2 className="text-lg font-bold text-foreground flex items-center gap-2 mb-3">
-          <MessageSquare size={18} className="text-success" /> WhatsApp Business
+          <MessageSquare size={18} className="text-[var(--rx-emerald)]" /> WhatsApp Business
         </h2>
-        <p className="text-sm text-muted-foreground mb-4">
+        <p className="text-sm text-[var(--rx-t2)] mb-4">
           Conecta un número de WhatsApp Business para capturar automáticamente mensajes, detectar compromisos,
           crear tareas y alimentar la base de conocimiento con información extraída por IA.
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-          <div className="bg-muted/50 rounded-lg p-3">
+          <div className="bg-[var(--rx-s2)]/50 rounded-lg p-3">
             <p className="font-semibold text-foreground mb-1">📩 Captura automática</p>
-            <p className="text-muted-foreground">Mensajes entrantes se guardan con contacto, fecha y adjuntos</p>
+            <p className="text-[var(--rx-t2)]">Mensajes entrantes se guardan con contacto, fecha y adjuntos</p>
           </div>
-          <div className="bg-muted/50 rounded-lg p-3">
+          <div className="bg-[var(--rx-s2)]/50 rounded-lg p-3">
             <p className="font-semibold text-foreground mb-1">🤖 Extracción IA</p>
-            <p className="text-muted-foreground">Detecta tareas, decisiones, fechas y responsables automáticamente</p>
+            <p className="text-[var(--rx-t2)]">Detecta tareas, decisiones, fechas y responsables automáticamente</p>
           </div>
-          <div className="bg-muted/50 rounded-lg p-3">
+          <div className="bg-[var(--rx-s2)]/50 rounded-lg p-3">
             <p className="font-semibold text-foreground mb-1">🔗 Enrutamiento</p>
-            <p className="text-muted-foreground">Asigna conversaciones a canales internos o proyectos</p>
+            <p className="text-[var(--rx-t2)]">Asigna conversaciones a canales internos o proyectos</p>
           </div>
         </div>
       </div>
@@ -407,7 +407,7 @@ const IntegrationsPage = () => {
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Phone size={18} className="text-primary" /> Configurar Agente de Voz
+              <Phone size={18} className="text-[var(--rx-brand)]" /> Configurar Agente de Voz
             </DialogTitle>
             <DialogDescription>
               Sigue el asistente paso a paso para conectar tu número de Twilio con ElevenLabs.
@@ -431,7 +431,7 @@ const IntegrationsPage = () => {
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <MessageSquare size={18} className="text-success" /> Configurar WhatsApp Business
+              <MessageSquare size={18} className="text-[var(--rx-emerald)]" /> Configurar WhatsApp Business
             </DialogTitle>
             <DialogDescription>
               Selecciona el proveedor y configura las credenciales para conectar tu número.
@@ -444,8 +444,8 @@ const IntegrationsPage = () => {
               onClick={() => setWaProvider('meta')}
               className={`flex-1 text-xs font-medium px-3 py-2 rounded-lg border transition-colors ${
                 waProvider === 'meta'
-                  ? 'bg-primary text-primary-foreground border-primary'
-                  : 'bg-secondary text-secondary-foreground border-border hover:bg-secondary/80'
+                  ? 'bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground border-primary'
+                  : 'bg-[var(--rx-s2)] text-secondary-foreground border-[var(--rx-b1)] hover:bg-[var(--rx-s2)]/80'
               }`}
             >
               Meta Cloud API
@@ -454,8 +454,8 @@ const IntegrationsPage = () => {
               onClick={() => setWaProvider('twilio')}
               className={`flex-1 text-xs font-medium px-3 py-2 rounded-lg border transition-colors ${
                 waProvider === 'twilio'
-                  ? 'bg-primary text-primary-foreground border-primary'
-                  : 'bg-secondary text-secondary-foreground border-border hover:bg-secondary/80'
+                  ? 'bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground border-primary'
+                  : 'bg-[var(--rx-s2)] text-secondary-foreground border-[var(--rx-b1)] hover:bg-[var(--rx-s2)]/80'
               }`}
             >
               Twilio
@@ -471,9 +471,9 @@ const IntegrationsPage = () => {
                     value={waConfig.phoneNumberId}
                     onChange={e => setWaConfig(p => ({ ...p, phoneNumberId: e.target.value }))}
                     placeholder="Ej: 123456789012345"
-                    className="w-full bg-secondary rounded-lg px-3 py-2 text-sm outline-none border border-border focus:border-primary"
+                    className="w-full bg-[var(--rx-s2)] rounded-lg px-3 py-2 text-sm outline-none border border-[var(--rx-b1)] focus:border-primary"
                   />
-                  <p className="text-[10px] text-muted-foreground mt-1">Lo encuentras en Meta Business → WhatsApp → Configuración de API</p>
+                  <p className="text-[10px] text-[var(--rx-t2)] mt-1">Lo encuentras en Meta Business → WhatsApp → Configuración de API</p>
                 </div>
 
                 <div>
@@ -482,7 +482,7 @@ const IntegrationsPage = () => {
                     value={waConfig.businessAccountId}
                     onChange={e => setWaConfig(p => ({ ...p, businessAccountId: e.target.value }))}
                     placeholder="Ej: 987654321098765"
-                    className="w-full bg-secondary rounded-lg px-3 py-2 text-sm outline-none border border-border focus:border-primary"
+                    className="w-full bg-[var(--rx-s2)] rounded-lg px-3 py-2 text-sm outline-none border border-[var(--rx-b1)] focus:border-primary"
                   />
                 </div>
 
@@ -493,9 +493,9 @@ const IntegrationsPage = () => {
                     value={waConfig.accessToken}
                     onChange={e => setWaConfig(p => ({ ...p, accessToken: e.target.value }))}
                     placeholder="EAAx..."
-                    className="w-full bg-secondary rounded-lg px-3 py-2 text-sm outline-none border border-border focus:border-primary"
+                    className="w-full bg-[var(--rx-s2)] rounded-lg px-3 py-2 text-sm outline-none border border-[var(--rx-b1)] focus:border-primary"
                   />
-                  <p className="text-[10px] text-muted-foreground mt-1">Token permanente de sistema en Meta Business → Configuración del negocio → Tokens</p>
+                  <p className="text-[10px] text-[var(--rx-t2)] mt-1">Token permanente de sistema en Meta Business → Configuración del negocio → Tokens</p>
                 </div>
 
                 <div>
@@ -504,7 +504,7 @@ const IntegrationsPage = () => {
                     value={waConfig.verifyToken}
                     onChange={e => setWaConfig(p => ({ ...p, verifyToken: e.target.value }))}
                     placeholder="Ej: mi_token_secreto"
-                    className="w-full bg-secondary rounded-lg px-3 py-2 text-sm outline-none border border-border focus:border-primary"
+                    className="w-full bg-[var(--rx-s2)] rounded-lg px-3 py-2 text-sm outline-none border border-[var(--rx-b1)] focus:border-primary"
                   />
                 </div>
 
@@ -514,21 +514,21 @@ const IntegrationsPage = () => {
                     <input
                       value={webhookUrl}
                       readOnly
-                      className="flex-1 bg-muted rounded-lg px-3 py-2 text-sm outline-none border border-border text-muted-foreground"
+                      className="flex-1 bg-[var(--rx-s2)] rounded-lg px-3 py-2 text-sm outline-none border border-[var(--rx-b1)] text-[var(--rx-t2)]"
                     />
                     <button
                       onClick={() => { navigator.clipboard.writeText(webhookUrl); toast.success('URL copiada'); }}
-                      className="text-xs bg-secondary text-secondary-foreground px-3 py-2 rounded-lg hover:bg-secondary/80 shrink-0"
+                      className="text-xs bg-[var(--rx-s2)] text-secondary-foreground px-3 py-2 rounded-lg hover:bg-[var(--rx-s2)]/80 shrink-0"
                     >
                       Copiar
                     </button>
                   </div>
-                  <p className="text-[10px] text-muted-foreground mt-1">Pega esta URL en Meta Business → WhatsApp → Configuración → Webhooks</p>
+                  <p className="text-[10px] text-[var(--rx-t2)] mt-1">Pega esta URL en Meta Business → WhatsApp → Configuración → Webhooks</p>
                 </div>
               </>
             ) : (
               <div className="space-y-4">
-                <div className="bg-muted/50 rounded-lg p-3 text-xs text-muted-foreground">
+                <div className="bg-[var(--rx-s2)]/50 rounded-lg p-3 text-xs text-[var(--rx-t2)]">
                   Para configurar Twilio usa el asistente de configuración automática.
                 </div>
                 <Button
@@ -543,7 +543,7 @@ const IntegrationsPage = () => {
             <button
               onClick={handleSaveWaConfig}
               disabled={saving}
-              className="w-full bg-primary text-primary-foreground text-sm font-medium px-4 py-2.5 rounded-lg hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
+              className="w-full bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground text-sm font-medium px-4 py-2.5 rounded-lg hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
             >
               <Save size={14} />
               {saving ? 'Guardando...' : 'Guardar configuración'}
@@ -557,7 +557,7 @@ const IntegrationsPage = () => {
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <MessageSquare size={18} className="text-success" /> Configurar Twilio para WhatsApp
+              <MessageSquare size={18} className="text-[var(--rx-emerald)]" /> Configurar Twilio para WhatsApp
             </DialogTitle>
             <DialogDescription>
               Sigue los pasos para conectar tu cuenta de Twilio automáticamente.

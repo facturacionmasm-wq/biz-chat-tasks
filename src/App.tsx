@@ -33,35 +33,44 @@ import UsagePage from "./pages/UsagePage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 import SchemaDocsPage from "./pages/SchemaDocsPage";
 import NotFound from "./pages/NotFound";
+import ContactsPage from "./pages/ContactsPage";
+import AnalyticsPage from "./pages/AnalyticsPage";
 import { Loader2 } from "lucide-react";
+import CommandPalette from "./components/CommandPalette";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: { staleTime: 30_000, retry: 1, refetchOnWindowFocus: false },
+  },
+});
 
 type RouteGuardProps = { children: React.ReactNode };
 
+const LoadingScreen = () => (
+  <div className="min-h-screen flex items-center justify-center bg-background">
+    <Loader2 className="animate-spin text-primary" size={32} />
+  </div>
+);
+
 const ProtectedRoute = forwardRef<HTMLDivElement, RouteGuardProps>(({ children }, _ref) => {
   const { user, loading, onboardingCompleted, subscriptionStatus, userRole, profileStatus } = useAuth();
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="animate-spin text-primary" size={32} />
-      </div>
-    );
-  }
-
+  if (loading) return <LoadingScreen />;
   if (!user) return <Navigate to="/auth" replace />;
   if (profileStatus === 'pending_approval') return <Navigate to="/pending-approval" replace />;
   if (onboardingCompleted === false) return <Navigate to="/onboarding" replace />;
-
-  // Super admins bypass subscription checks
-  if (userRole !== 'super_admin' && subscriptionStatus?.is_blocked) {
-    return <Navigate to="/blocked" replace />;
-  }
-
+  if (userRole !== 'super_admin' && subscriptionStatus?.is_blocked) return <Navigate to="/blocked" replace />;
   return <>{children}</>;
 });
 ProtectedRoute.displayName = 'ProtectedRoute';
+
+const AdminRoute = forwardRef<HTMLDivElement, RouteGuardProps>(({ children }, _ref) => {
+  const { user, loading, userRole } = useAuth();
+  if (loading) return <LoadingScreen />;
+  if (!user) return <Navigate to="/auth" replace />;
+  if (userRole !== 'super_admin') return <Navigate to="/" replace />;
+  return <>{children}</>;
+});
+AdminRoute.displayName = 'AdminRoute';
 
 const OnboardingRoute = forwardRef<HTMLDivElement, RouteGuardProps>(({ children }, _ref) => {
   const { user, loading, onboardingCompleted } = useAuth();
@@ -76,10 +85,7 @@ const BlockedRoute = forwardRef<HTMLDivElement, RouteGuardProps>(({ children }, 
   const { user, loading, subscriptionStatus, userRole } = useAuth();
   if (loading) return null;
   if (!user) return <Navigate to="/auth" replace />;
-  // If not blocked, redirect to app
-  if (userRole === 'super_admin' || !subscriptionStatus?.is_blocked) {
-    return <Navigate to="/" replace />;
-  }
+  if (userRole === 'super_admin' || !subscriptionStatus?.is_blocked) return <Navigate to="/" replace />;
   return <>{children}</>;
 });
 BlockedRoute.displayName = 'BlockedRoute';
@@ -101,37 +107,65 @@ const PendingApprovalRoute = forwardRef<HTMLDivElement, RouteGuardProps>(({ chil
 });
 PendingApprovalRoute.displayName = 'PendingApprovalRoute';
 
+const P = ({ children }: { children: React.ReactNode }) => (
+  <ProtectedRoute><AppLayout>{children}</AppLayout></ProtectedRoute>
+);
+
 const AppRoutes = () => (
   <Routes>
     <Route path="/auth" element={<AuthRoute><AuthPage /></AuthRoute>} />
+    <Route path="/install" element={<InstallPage />} />
+    <Route path="/reset-password" element={<ResetPasswordPage />} />
     <Route path="/onboarding" element={<OnboardingRoute><OnboardingPage /></OnboardingRoute>} />
     <Route path="/blocked" element={<BlockedRoute><SubscriptionBlockedPage /></BlockedRoute>} />
     <Route path="/pending-approval" element={<PendingApprovalRoute><PendingApprovalPage /></PendingApprovalRoute>} />
-    <Route path="/" element={<ProtectedRoute><AppLayout><Dashboard /></AppLayout></ProtectedRoute>} />
-    <Route path="/calls" element={<ProtectedRoute><AppLayout><CallsPage /></AppLayout></ProtectedRoute>} />
-    <Route path="/whatsapp" element={<ProtectedRoute><AppLayout><WhatsAppInboxPage /></AppLayout></ProtectedRoute>} />
-    <Route path="/appointments" element={<ProtectedRoute><AppLayout><AppointmentsPage /></AppLayout></ProtectedRoute>} />
-    <Route path="/chat" element={<ProtectedRoute><AppLayout><ChatPage /></AppLayout></ProtectedRoute>} />
-    <Route path="/calendar" element={<ProtectedRoute><AppLayout><CalendarPage /></AppLayout></ProtectedRoute>} />
-    <Route path="/projects" element={<ProtectedRoute><AppLayout><ProjectsPage /></AppLayout></ProtectedRoute>} />
-    <Route path="/knowledge" element={<ProtectedRoute><AppLayout><KnowledgePage /></AppLayout></ProtectedRoute>} />
-    <Route path="/okrs" element={<ProtectedRoute><AppLayout><OKRsPage /></AppLayout></ProtectedRoute>} />
-    <Route path="/integrations" element={<ProtectedRoute><AppLayout><IntegrationsPage /></AppLayout></ProtectedRoute>} />
-    <Route path="/audit" element={<ProtectedRoute><AppLayout><AuditLogPage /></AppLayout></ProtectedRoute>} />
-    <Route path="/ai-training" element={<ProtectedRoute><AppLayout><AITrainingPage /></AppLayout></ProtectedRoute>} />
-    <Route path="/expenses" element={<ProtectedRoute><AppLayout><ExpensesPage /></AppLayout></ProtectedRoute>} />
-    <Route path="/settings" element={<ProtectedRoute><AppLayout><SettingsPage /></AppLayout></ProtectedRoute>} />
-    <Route path="/credentials" element={<ProtectedRoute><AppLayout><CredentialsPage /></AppLayout></ProtectedRoute>} />
-    <Route path="/assistant-admin" element={<ProtectedRoute><AppLayout><AssistantAdminPage /></AppLayout></ProtectedRoute>} />
-    <Route path="/reminders" element={<ProtectedRoute><AppLayout><RemindersPage /></AppLayout></ProtectedRoute>} />
-    <Route path="/super-admin" element={<ProtectedRoute><AppLayout><SuperAdminPage /></AppLayout></ProtectedRoute>} />
-    <Route path="/usage" element={<ProtectedRoute><AppLayout><UsagePage /></AppLayout></ProtectedRoute>} />
-    <Route path="/schema-docs" element={<ProtectedRoute><AppLayout><SchemaDocsPage /></AppLayout></ProtectedRoute>} />
-    <Route path="/install" element={<InstallPage />} />
-    <Route path="/reset-password" element={<ResetPasswordPage />} />
+    <Route path="/" element={<P><Dashboard /></P>} />
+    <Route path="/calls" element={<P><CallsPage /></P>} />
+    <Route path="/whatsapp" element={<P><WhatsAppInboxPage /></P>} />
+    <Route path="/appointments" element={<P><AppointmentsPage /></P>} />
+    <Route path="/contacts" element={<P><ContactsPage /></P>} />
+    <Route path="/analytics" element={<P><AnalyticsPage /></P>} />
+    <Route path="/chat" element={<P><ChatPage /></P>} />
+    <Route path="/calendar" element={<P><CalendarPage /></P>} />
+    <Route path="/projects" element={<P><ProjectsPage /></P>} />
+    <Route path="/knowledge" element={<P><KnowledgePage /></P>} />
+    <Route path="/okrs" element={<P><OKRsPage /></P>} />
+    <Route path="/ai-training" element={<P><AITrainingPage /></P>} />
+    <Route path="/expenses" element={<P><ExpensesPage /></P>} />
+    <Route path="/settings" element={<P><SettingsPage /></P>} />
+    <Route path="/credentials" element={<P><CredentialsPage /></P>} />
+    <Route path="/assistant-admin" element={<P><AssistantAdminPage /></P>} />
+    <Route path="/reminders" element={<P><RemindersPage /></P>} />
+    <Route path="/integrations" element={<P><IntegrationsPage /></P>} />
+    <Route path="/audit" element={<P><AuditLogPage /></P>} />
+    <Route path="/usage" element={<P><UsagePage /></P>} />
+    <Route path="/super-admin" element={<AdminRoute><AppLayout><SuperAdminPage /></AppLayout></AdminRoute>} />
+    <Route path="/schema-docs" element={<AdminRoute><AppLayout><SchemaDocsPage /></AppLayout></AdminRoute>} />
     <Route path="*" element={<NotFound />} />
   </Routes>
 );
+
+const AppWithPalette = () => {
+  const [paletteOpen, setPaletteOpen] = React.useState(false);
+
+  React.useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setPaletteOpen(prev => !prev);
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, []);
+
+  return (
+    <>
+      <AppRoutes />
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+    </>
+  );
+};
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -140,7 +174,7 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
-          <AppRoutes />
+          <AppWithPalette />
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>

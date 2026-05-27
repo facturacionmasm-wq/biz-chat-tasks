@@ -61,8 +61,8 @@ const ResetPasswordPage = () => {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <div className="text-center">
-          <p className="text-muted-foreground">Enlace inválido o expirado.</p>
-          <button onClick={() => navigate('/auth')} className="text-primary hover:underline mt-2 text-sm font-medium">
+          <p className="text-[var(--rx-t2)]">Enlace inválido o expirado.</p>
+          <button onClick={() => navigate('/auth')} className="text-[var(--rx-brand)] hover:underline mt-2 text-sm font-medium">
             Volver al login
           </button>
         </div>
@@ -77,22 +77,22 @@ const ResetPasswordPage = () => {
           {branding.logoUrl ? (
             <img src={branding.logoUrl} alt={branding.orgName} className="h-16 mx-auto mb-4 object-contain" />
           ) : (
-            <div className="w-14 h-14 bg-primary rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <Building2 size={28} className="text-primary-foreground" />
+            <div className="w-14 h-14 bg-[var(--rx-brand)] rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <Building2 size={28} className="text-[var(--rx-brand)]-foreground" />
             </div>
           )}
-          <h1 className="text-2xl font-bold text-foreground">Nueva contraseña</h1>
-          <p className="text-sm text-muted-foreground mt-1">Ingresa tu nueva contraseña</p>
+          <h1 className="rx-page-title">Nueva contraseña</h1>
+          <p className="text-sm text-[var(--rx-t2)] mt-1">Ingresa tu nueva contraseña</p>
         </div>
 
         {success ? (
-          <div className="bg-card border border-border rounded-xl p-6 text-center space-y-3">
-            <CheckCircle2 size={48} className="text-primary mx-auto" />
+          <div className="rx-panel">
+            <CheckCircle2 size={48} className="text-[var(--rx-brand)] mx-auto" />
             <p className="text-foreground font-medium">Contraseña actualizada</p>
-            <p className="text-sm text-muted-foreground">Redirigiendo al login...</p>
+            <p className="text-sm text-[var(--rx-t2)]">Redirigiendo al login...</p>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="bg-card border border-border rounded-xl p-6 space-y-4">
+          <form onSubmit={handleSubmit} className="rx-panel">
             <div>
               <label className="text-sm font-medium text-foreground block mb-1">Nueva contraseña</label>
               <input
@@ -102,7 +102,7 @@ const ResetPasswordPage = () => {
                 required
                 minLength={6}
                 placeholder="••••••••"
-                className="w-full bg-secondary rounded-lg px-3 py-2.5 text-sm outline-none border border-border focus:border-primary text-foreground placeholder:text-muted-foreground"
+                className="w-full bg-[var(--rx-s2)] rounded-lg px-3 py-2.5 text-sm outline-none border border-[var(--rx-b1)] focus:border-primary text-foreground placeholder:text-[var(--rx-t2)]"
               />
             </div>
             <div>
@@ -114,13 +114,13 @@ const ResetPasswordPage = () => {
                 required
                 minLength={6}
                 placeholder="••••••••"
-                className="w-full bg-secondary rounded-lg px-3 py-2.5 text-sm outline-none border border-border focus:border-primary text-foreground placeholder:text-muted-foreground"
+                className="w-full bg-[var(--rx-s2)] rounded-lg px-3 py-2.5 text-sm outline-none border border-[var(--rx-b1)] focus:border-primary text-foreground placeholder:text-[var(--rx-t2)]"
               />
             </div>
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-primary text-primary-foreground font-medium text-sm px-4 py-2.5 rounded-lg hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
+              className="w-full bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground font-medium text-sm px-4 py-2.5 rounded-lg hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
             >
               {loading && <Loader2 size={16} className="animate-spin" />}
               Actualizar contraseña

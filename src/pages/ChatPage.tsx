@@ -178,15 +178,15 @@ const ChatPage = () => {
   }, [activeChannelId, teamMembers]);
 
   if (loading) {
-    return <div className="flex items-center justify-center h-full text-muted-foreground">Cargando chat...</div>;
+    return <div className="flex items-center justify-center h-full text-[var(--rx-t2)]">Cargando chat...</div>;
   }
 
   if (isMobile) {
     if (showChat) {
       return (
         <div className="flex flex-col h-full">
-          <div className="shrink-0 h-10 flex items-center px-3 border-b border-border bg-card">
-            <button onClick={() => setShowChat(false)} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+          <div className="shrink-0 h-10 flex items-center px-3 border-b border-[var(--rx-b1)] bg-card">
+            <button onClick={() => setShowChat(false)} className="flex items-center gap-1 text-sm text-[var(--rx-t2)] hover:text-foreground">
               <ArrowLeft size={16} /> Canales
             </button>
             <span className="ml-2 text-sm font-medium text-foreground">{activeChannel ? `#${activeChannel.name}` : 'Sin canal'}</span>
@@ -203,7 +203,7 @@ const ChatPage = () => {
                 onRemoveMember={handleRemoveMember}
               />
             ) : (
-              <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
+              <div className="h-full flex items-center justify-center text-sm text-[var(--rx-t2)]">
                 No hay canales aún. Crea uno nuevo desde la lista.
               </div>
             )}
@@ -235,7 +235,7 @@ const ChatPage = () => {
             onRemoveMember={handleRemoveMember}
           />
         ) : (
-          <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
+          <div className="h-full flex items-center justify-center text-sm text-[var(--rx-t2)]">
             No hay canales aún. Crea uno nuevo para iniciar el chat interno.
           </div>
         )}

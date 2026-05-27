@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Phone, PhoneIncoming, PhoneMissed, PhoneOff, Clock, User, Tag, Play, Pause, CalendarPlus, MessageSquare, ChevronRight, Search, ArrowLeft, CheckCircle2, Edit3, Save, RefreshCw, Activity, Download, Volume2, AlertTriangle, TrendingUp, Hash, Briefcase, Loader2, BarChart3, Shield } from 'lucide-react';
-import { type CallRecord, type CallEvent, type TranscriptEntry } from '@/data/mockCallsData';
+import { type CallRecord, type CallEvent, type TranscriptEntry } from '@/types/app';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import VoiceAgent from '@/components/VoiceAgent';
@@ -61,17 +61,17 @@ const dbRowToCallEvent = (row: any): CallEvent => ({
 });
 
 const statusConfig: Record<string, { icon: any; label: string; className: string }> = {
-  completed: { icon: Phone, label: 'Completada', className: 'text-success bg-success/10' },
-  in_progress: { icon: Phone, label: 'En curso', className: 'text-primary bg-primary/10 animate-pulse' },
-  initiated: { icon: Phone, label: 'Iniciada', className: 'text-primary bg-primary/10' },
-  ringing: { icon: PhoneIncoming, label: 'Sonando', className: 'text-warning bg-warning/10 animate-pulse' },
-  missed: { icon: PhoneMissed, label: 'Perdida', className: 'text-destructive bg-destructive/10' },
-  no_answer: { icon: PhoneMissed, label: 'Sin respuesta', className: 'text-destructive bg-destructive/10' },
-  busy: { icon: PhoneOff, label: 'Ocupado', className: 'text-warning bg-warning/10' },
-  failed: { icon: PhoneOff, label: 'Fallida', className: 'text-destructive bg-destructive/10' },
-  canceled: { icon: PhoneOff, label: 'Cancelada', className: 'text-muted-foreground bg-muted' },
-  voicemail: { icon: Phone, label: 'Buzón', className: 'text-muted-foreground bg-muted' },
-  pending: { icon: Clock, label: 'Pendiente', className: 'text-muted-foreground bg-muted' },
+  completed: { icon: Phone, label: 'Completada', className: 'text-[var(--rx-emerald)] bg-[rgba(0,232,122,.1)]' },
+  in_progress: { icon: Phone, label: 'En curso', className: 'text-[var(--rx-brand)] bg-primary/10 animate-pulse' },
+  initiated: { icon: Phone, label: 'Iniciada', className: 'text-[var(--rx-brand)] bg-primary/10' },
+  ringing: { icon: PhoneIncoming, label: 'Sonando', className: 'text-[var(--rx-amber)] bg-warning/10 animate-pulse' },
+  missed: { icon: PhoneMissed, label: 'Perdida', className: 'text-[var(--rx-rose)] bg-destructive/10' },
+  no_answer: { icon: PhoneMissed, label: 'Sin respuesta', className: 'text-[var(--rx-rose)] bg-destructive/10' },
+  busy: { icon: PhoneOff, label: 'Ocupado', className: 'text-[var(--rx-amber)] bg-warning/10' },
+  failed: { icon: PhoneOff, label: 'Fallida', className: 'text-[var(--rx-rose)] bg-destructive/10' },
+  canceled: { icon: PhoneOff, label: 'Cancelada', className: 'text-[var(--rx-t2)] bg-[var(--rx-s2)]' },
+  voicemail: { icon: Phone, label: 'Buzón', className: 'text-[var(--rx-t2)] bg-[var(--rx-s2)]' },
+  pending: { icon: Clock, label: 'Pendiente', className: 'text-[var(--rx-t2)] bg-[var(--rx-s2)]' },
 };
 
 const formatDuration = (seconds: number) => {
@@ -105,14 +105,14 @@ const AudioPlayer = ({ url }: { url: string }) => {
   };
 
   return (
-    <div className="flex items-center gap-3 bg-muted/50 rounded-lg px-3 py-2">
-      <button onClick={toggle} className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center shrink-0">
+    <div className="flex items-center gap-3 bg-[var(--rx-s2)]/50 rounded-lg px-3 py-2">
+      <button onClick={toggle} className="w-8 h-8 rounded-full bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground flex items-center justify-center shrink-0">
         {playing ? <Pause size={14} /> : <Play size={14} />}
       </button>
       <div className="flex-1 h-1.5 bg-border rounded-full overflow-hidden">
-        <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${progress}%` }} />
+        <div className="h-full bg-[var(--rx-brand)] rounded-full transition-all" style={{ width: `${progress}%` }} />
       </div>
-      <a href={url} download className="text-muted-foreground hover:text-foreground">
+      <a href={url} download className="text-[var(--rx-t2)] hover:text-foreground">
         <Download size={14} />
       </a>
     </div>
@@ -122,7 +122,7 @@ const AudioPlayer = ({ url }: { url: string }) => {
 // Event Timeline Component
 const EventTimeline = ({ events }: { events: CallEvent[] }) => {
   if (events.length === 0) return (
-    <p className="text-xs text-muted-foreground text-center py-4">Sin eventos registrados</p>
+    <p className="text-xs text-[var(--rx-t2)] text-center py-4">Sin eventos registrados</p>
   );
 
   return (
@@ -141,12 +141,12 @@ const EventTimeline = ({ events }: { events: CallEvent[] }) => {
             <div className="min-w-0 flex-1 pb-1">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-medium text-foreground">{cfg.label}</span>
-                <span className="text-[10px] text-muted-foreground">
+                <span className="text-[10px] text-[var(--rx-t2)]">
                   {format(event.createdAt, 'HH:mm:ss', { locale: es })}
                 </span>
               </div>
               {event.twilioCallSid && (
-                <p className="text-[10px] text-muted-foreground font-mono truncate">{event.twilioCallSid}</p>
+                <p className="text-[10px] text-[var(--rx-t2)] font-mono truncate">{event.twilioCallSid}</p>
               )}
             </div>
           </div>
@@ -391,8 +391,8 @@ const CallsPage = () => {
     return (
       <div className="flex flex-col h-full">
         {/* Header */}
-        <div className="shrink-0 border-b border-border p-4 sm:p-5 bg-card">
-          <button onClick={() => { setSelectedCall(null); setEditingSummary(false); setCallEvents([]); }} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-3">
+        <div className="shrink-0 border-b border-[var(--rx-b1)] p-4 sm:p-5 bg-card">
+          <button onClick={() => { setSelectedCall(null); setEditingSummary(false); setCallEvents([]); }} className="flex items-center gap-1 text-sm text-[var(--rx-t2)] hover:text-foreground mb-3">
             <ArrowLeft size={14} /> Volver
           </button>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -401,21 +401,21 @@ const CallsPage = () => {
                 <h2 className="text-lg sm:text-xl font-bold text-foreground">{selectedCall.extractedData.contactName || selectedCall.fromNumber || 'Llamada'}</h2>
                 <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${sc.className}`}>{sc.label}</span>
               </div>
-              <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-3 text-xs text-[var(--rx-t2)]">
                 <span className="flex items-center gap-1"><PhoneIncoming size={12} /> {selectedCall.fromNumber}</span>
                 <span className="flex items-center gap-1"><Clock size={12} /> {formatDuration(selectedCall.duration)}</span>
                 <span className="flex items-center gap-1"><User size={12} /> {selectedCall.agentName}</span>
                 <span>{format(selectedCall.startedAt, "d MMM yyyy 'a las' HH:mm", { locale: es })}</span>
                 {selectedCall.externalCallId && (
-                  <span className="font-mono text-[10px] bg-muted px-1.5 py-0.5 rounded">{selectedCall.externalCallId.substring(0, 16)}...</span>
+                  <span className="font-mono text-[10px] bg-[var(--rx-s2)] px-1.5 py-0.5 rounded">{selectedCall.externalCallId.substring(0, 16)}...</span>
                 )}
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <button className="flex items-center gap-1.5 bg-primary text-primary-foreground text-xs sm:text-sm px-3 py-2 rounded-lg hover:opacity-90">
+              <button className="flex items-center gap-1.5 bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground text-xs sm:text-sm px-3 py-2 rounded-lg hover:opacity-90">
                 <CalendarPlus size={14} /> Agendar
               </button>
-              <button className="flex items-center gap-1.5 bg-success text-success-foreground text-xs sm:text-sm px-3 py-2 rounded-lg hover:opacity-90">
+              <button className="flex items-center gap-1.5 bg-success text-[var(--rx-emerald)]-foreground text-xs sm:text-sm px-3 py-2 rounded-lg hover:opacity-90">
                 <MessageSquare size={14} /> WhatsApp
               </button>
             </div>
@@ -423,7 +423,7 @@ const CallsPage = () => {
           {selectedCall.tags.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mt-3">
               {selectedCall.tags.map(tag => (
-                <span key={tag} className="text-xs bg-secondary text-secondary-foreground px-2 py-0.5 rounded-full flex items-center gap-1">
+                <span key={tag} className="text-xs bg-[var(--rx-s2)] text-secondary-foreground px-2 py-0.5 rounded-full flex items-center gap-1">
                   <Tag size={10} /> {tag}
                 </span>
               ))}
@@ -438,7 +438,7 @@ const CallsPage = () => {
             <div className="lg:col-span-2 space-y-4 sm:space-y-5">
               {/* Audio Player */}
               {selectedCall.audioUrl && (
-                <div className="bg-card border border-border rounded-xl p-4 sm:p-5 shadow-sm">
+                <div className="rx-panel">
                   <h3 className="font-semibold text-foreground mb-3 flex items-center gap-2">
                     <Volume2 size={16} /> Grabación
                   </h3>
@@ -447,23 +447,23 @@ const CallsPage = () => {
               )}
 
               {/* AI Summary */}
-              <div className="bg-card border border-border rounded-xl p-4 sm:p-5 shadow-sm">
+              <div className="rx-panel">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="font-semibold text-foreground">📝 Resumen IA</h3>
                   <div className="flex items-center gap-2">
                     {selectedCall.summaryHuman && (
-                      <span className="text-xs bg-success/10 text-success px-2 py-0.5 rounded-full flex items-center gap-1">
+                      <span className="text-xs bg-[rgba(0,232,122,.1)] text-[var(--rx-emerald)] px-2 py-0.5 rounded-full flex items-center gap-1">
                         <CheckCircle2 size={10} /> Editado
                       </span>
                     )}
                     {selectedCall.transcript && (
-                      <button onClick={regenerateSummary} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
+                      <button onClick={regenerateSummary} className="text-xs text-[var(--rx-t2)] hover:text-foreground flex items-center gap-1">
                         <RefreshCw size={10} /> Regenerar
                       </button>
                     )}
                     <button
                       onClick={() => { setEditingSummary(!editingSummary); setHumanSummary(selectedCall.summaryHuman || selectedCall.summarySystem); }}
-                      className="text-xs text-primary hover:underline flex items-center gap-1"
+                      className="text-xs text-[var(--rx-brand)] hover:underline flex items-center gap-1"
                     >
                       <Edit3 size={10} /> {editingSummary ? 'Cancelar' : 'Editar'}
                     </button>
@@ -471,20 +471,20 @@ const CallsPage = () => {
                 </div>
                 {editingSummary ? (
                   <div>
-                    <textarea value={humanSummary} onChange={e => setHumanSummary(e.target.value)} className="w-full bg-secondary rounded-lg px-3 py-2 text-sm outline-none border border-border focus:border-primary min-h-[200px] resize-y" />
-                    <button onClick={handleSaveSummary} className="mt-2 flex items-center gap-1 bg-primary text-primary-foreground text-sm px-3 py-1.5 rounded-lg">
+                    <textarea value={humanSummary} onChange={e => setHumanSummary(e.target.value)} className="w-full bg-[var(--rx-s2)] rounded-lg px-3 py-2 text-sm outline-none border border-[var(--rx-b1)] focus:border-primary min-h-[200px] resize-y" />
+                    <button onClick={handleSaveSummary} className="mt-2 flex items-center gap-1 bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground text-sm px-3 py-1.5 rounded-lg">
                       <Save size={12} /> Aprobar resumen
                     </button>
                   </div>
                 ) : (
                   <div className="prose prose-sm text-foreground whitespace-pre-line text-sm leading-relaxed">
                     {selectedCall.summaryHuman || selectedCall.summarySystem || (
-                      <div className="text-center py-6 text-muted-foreground">
+                      <div className="text-center py-6 text-[var(--rx-t2)]">
                         <MessageSquare size={24} className="mx-auto mb-2 opacity-30" />
                         <p className="text-sm font-medium">Sin resumen disponible</p>
                         <p className="text-xs mt-1">El resumen se generará automáticamente al finalizar la llamada y completar la transcripción.</p>
                         {selectedCall.transcript && (
-                          <button onClick={regenerateSummary} className="mt-3 inline-flex items-center gap-1.5 bg-primary text-primary-foreground text-xs px-3 py-1.5 rounded-lg hover:opacity-90">
+                          <button onClick={regenerateSummary} className="mt-3 inline-flex items-center gap-1.5 bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground text-xs px-3 py-1.5 rounded-lg hover:opacity-90">
                             <RefreshCw size={12} /> Generar resumen ahora
                           </button>
                         )}
@@ -495,21 +495,21 @@ const CallsPage = () => {
               </div>
 
               {/* Transcript with search */}
-              <div className="bg-card border border-border rounded-xl p-4 sm:p-5 shadow-sm">
+              <div className="rx-panel">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="font-semibold text-foreground">💬 Transcripción</h3>
                   {selectedCall.transcript && (
-                    <div className="flex items-center gap-2 bg-muted rounded-lg px-2 py-1">
-                      <Search size={12} className="text-muted-foreground" />
+                    <div className="flex items-center gap-2 bg-[var(--rx-s2)] rounded-lg px-2 py-1">
+                      <Search size={12} className="text-[var(--rx-t2)]" />
                       <input
                         type="text"
                         placeholder="Buscar en transcripción..."
                         value={transcriptSearch}
                         onChange={e => setTranscriptSearch(e.target.value)}
-                        className="bg-transparent text-xs outline-none w-40 text-foreground placeholder:text-muted-foreground"
+                        className="bg-transparent text-xs outline-none w-40 text-foreground placeholder:text-[var(--rx-t2)]"
                       />
                       {transcriptSearch && (
-                        <span className="text-[10px] text-muted-foreground">
+                        <span className="text-[10px] text-[var(--rx-t2)]">
                           {selectedCall.transcriptStructured.filter(e => e.text.toLowerCase().includes(transcriptSearch.toLowerCase())).length} resultados
                         </span>
                       )}
@@ -543,12 +543,12 @@ const CallsPage = () => {
                           matchesSearch ? 'ring-1 ring-warning/50' : ''
                         } ${
                           isAgent ? 'bg-primary/5 border-l-2 border-primary' :
-                          isUser ? 'bg-muted/50 border-l-2 border-muted-foreground/30' :
-                          'bg-muted/30'
+                          isUser ? 'bg-[var(--rx-s2)]/50 border-l-2 border-muted-foreground/30' :
+                          'bg-[var(--rx-s2)]/30'
                         }`}>
-                          <span className="text-[10px] text-muted-foreground font-mono shrink-0 pt-0.5">{formatTs(entry.timestamp)}</span>
+                          <span className="text-[10px] text-[var(--rx-t2)] font-mono shrink-0 pt-0.5">{formatTs(entry.timestamp)}</span>
                           <div className="min-w-0">
-                            <span className="text-xs font-semibold text-muted-foreground">{entry.role}:</span>
+                            <span className="text-xs font-semibold text-[var(--rx-t2)]">{entry.role}:</span>
                             <p className="text-foreground mt-0.5">{highlightText(entry.text)}</p>
                           </div>
                         </div>
@@ -556,12 +556,12 @@ const CallsPage = () => {
                     })}
                   </div>
                 ) : (
-                  <div className="text-center py-8 text-muted-foreground">
+                  <div className="text-center py-8 text-[var(--rx-t2)]">
                     <Phone size={28} className="mx-auto mb-2 opacity-20" />
                     <p className="text-sm font-medium">Sin transcripción disponible</p>
                     <p className="text-xs mt-1">La transcripción aparecerá aquí automáticamente una vez que la llamada finalice y se procese el audio.</p>
                     {selectedCall.status === 'completed' && (
-                      <div className="mt-3 flex items-center justify-center gap-1.5 text-xs text-warning">
+                      <div className="mt-3 flex items-center justify-center gap-1.5 text-xs text-[var(--rx-amber)]">
                         <Loader2 size={12} className="animate-spin" />
                         <span>Procesando transcripción...</span>
                       </div>
@@ -576,23 +576,23 @@ const CallsPage = () => {
               {/* Sentiment Indicator */}
               {selectedCall.extractedData.sentiment && (
                 <div className={`rounded-xl p-4 shadow-sm border ${
-                  selectedCall.extractedData.sentiment === 'positivo' ? 'bg-success/10 border-success/20' :
+                  selectedCall.extractedData.sentiment === 'positivo' ? 'bg-[rgba(0,232,122,.1)] border-success/20' :
                   selectedCall.extractedData.sentiment === 'negativo' ? 'bg-destructive/10 border-destructive/20' :
-                  'bg-muted border-border'
+                  'bg-[var(--rx-s2)] border-[var(--rx-b1)]'
                 }`}>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <TrendingUp size={16} className={
-                        selectedCall.extractedData.sentiment === 'positivo' ? 'text-success' :
-                        selectedCall.extractedData.sentiment === 'negativo' ? 'text-destructive' :
-                        'text-muted-foreground'
+                        selectedCall.extractedData.sentiment === 'positivo' ? 'text-[var(--rx-emerald)]' :
+                        selectedCall.extractedData.sentiment === 'negativo' ? 'text-[var(--rx-rose)]' :
+                        'text-[var(--rx-t2)]'
                       } />
                       <span className="text-sm font-semibold text-foreground capitalize">{selectedCall.extractedData.sentiment}</span>
                     </div>
                     {selectedCall.extractedData.sentimentScore !== undefined && (
                       <span className={`text-lg font-bold ${
-                        selectedCall.extractedData.sentimentScore >= 7 ? 'text-success' :
-                        selectedCall.extractedData.sentimentScore <= 3 ? 'text-destructive' :
+                        selectedCall.extractedData.sentimentScore >= 7 ? 'text-[var(--rx-emerald)]' :
+                        selectedCall.extractedData.sentimentScore <= 3 ? 'text-[var(--rx-rose)]' :
                         'text-foreground'
                       }`}>{selectedCall.extractedData.sentimentScore}/10</span>
                     )}
@@ -604,18 +604,18 @@ const CallsPage = () => {
               {((selectedCall.extractedData.risks && selectedCall.extractedData.risks.length > 0) ||
                 (selectedCall.extractedData.alerts && selectedCall.extractedData.alerts.length > 0)) && (
                 <div className="bg-destructive/5 border border-destructive/20 rounded-xl p-4 sm:p-5 shadow-sm">
-                  <h3 className="font-semibold text-destructive mb-3 flex items-center gap-2">
+                  <h3 className="font-semibold text-[var(--rx-rose)] mb-3 flex items-center gap-2">
                     <AlertTriangle size={16} /> Riesgos y alertas
                   </h3>
                   <ul className="space-y-2">
                     {(selectedCall.extractedData.risks || []).map((r, i) => (
                       <li key={`risk-${i}`} className="text-sm text-foreground flex items-start gap-2">
-                        <AlertTriangle size={12} className="text-destructive shrink-0 mt-0.5" />{r}
+                        <AlertTriangle size={12} className="text-[var(--rx-rose)] shrink-0 mt-0.5" />{r}
                       </li>
                     ))}
                     {(selectedCall.extractedData.alerts || []).map((a, i) => (
                       <li key={`alert-${i}`} className="text-sm text-foreground flex items-start gap-2">
-                        <AlertTriangle size={12} className="text-warning shrink-0 mt-0.5" />{a}
+                        <AlertTriangle size={12} className="text-[var(--rx-amber)] shrink-0 mt-0.5" />{a}
                       </li>
                     ))}
                   </ul>
@@ -624,39 +624,39 @@ const CallsPage = () => {
 
               {/* Key Topics */}
               {selectedCall.extractedData.keyTopics && selectedCall.extractedData.keyTopics.length > 0 && (
-                <div className="bg-card border border-border rounded-xl p-4 sm:p-5 shadow-sm">
+                <div className="rx-panel">
                   <h3 className="font-semibold text-foreground mb-3 flex items-center gap-2">
                     <Hash size={16} /> Temas principales
                   </h3>
                   <div className="flex flex-wrap gap-1.5">
                     {selectedCall.extractedData.keyTopics.map((topic, i) => (
-                      <span key={i} className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full">{topic}</span>
+                      <span key={i} className="text-xs bg-primary/10 text-[var(--rx-brand)] px-2 py-1 rounded-full">{topic}</span>
                     ))}
                   </div>
                 </div>
               )}
 
               {/* Extracted Data */}
-              <div className="bg-card border border-border rounded-xl p-4 sm:p-5 shadow-sm">
+              <div className="rx-panel">
                 <h3 className="font-semibold text-foreground mb-3">📊 Datos extraídos</h3>
                 <div className="space-y-3 text-sm">
-                  {selectedCall.extractedData.contactName && (<div><p className="text-xs text-muted-foreground">Contacto</p><p className="font-medium text-foreground">{selectedCall.extractedData.contactName}</p></div>)}
-                  {selectedCall.extractedData.reason && (<div><p className="text-xs text-muted-foreground">Motivo</p><p className="font-medium text-foreground">{selectedCall.extractedData.reason}</p></div>)}
-                  {selectedCall.extractedData.intent && (<div><p className="text-xs text-muted-foreground">Intención</p><p className="font-medium text-foreground capitalize">{selectedCall.extractedData.intent}</p></div>)}
-                  {selectedCall.extractedData.budget && (<div><p className="text-xs text-muted-foreground">Presupuesto</p><p className="font-medium text-foreground">{selectedCall.extractedData.budget}</p></div>)}
-                  {selectedCall.extractedData.urgency && (<div><p className="text-xs text-muted-foreground">Urgencia</p><p className="font-medium text-foreground capitalize">{selectedCall.extractedData.urgency}</p></div>)}
-                  {selectedCall.extractedData.followUp && (<div><p className="text-xs text-muted-foreground">Seguimiento</p><p className="font-medium text-primary">{format(new Date(selectedCall.extractedData.followUp), "d MMM yyyy", { locale: es })}</p></div>)}
-                  {Object.keys(selectedCall.extractedData).filter(k => !['suggestedTags', 'sentiment', 'sentimentScore', 'keyTopics', 'risks', 'alerts'].includes(k)).length === 0 && (<p className="text-muted-foreground text-xs">Sin datos extraídos</p>)}
+                  {selectedCall.extractedData.contactName && (<div><p className="text-xs text-[var(--rx-t2)]">Contacto</p><p className="font-medium text-foreground">{selectedCall.extractedData.contactName}</p></div>)}
+                  {selectedCall.extractedData.reason && (<div><p className="text-xs text-[var(--rx-t2)]">Motivo</p><p className="font-medium text-foreground">{selectedCall.extractedData.reason}</p></div>)}
+                  {selectedCall.extractedData.intent && (<div><p className="text-xs text-[var(--rx-t2)]">Intención</p><p className="font-medium text-foreground capitalize">{selectedCall.extractedData.intent}</p></div>)}
+                  {selectedCall.extractedData.budget && (<div><p className="text-xs text-[var(--rx-t2)]">Presupuesto</p><p className="font-medium text-foreground">{selectedCall.extractedData.budget}</p></div>)}
+                  {selectedCall.extractedData.urgency && (<div><p className="text-xs text-[var(--rx-t2)]">Urgencia</p><p className="font-medium text-foreground capitalize">{selectedCall.extractedData.urgency}</p></div>)}
+                  {selectedCall.extractedData.followUp && (<div><p className="text-xs text-[var(--rx-t2)]">Seguimiento</p><p className="font-medium text-[var(--rx-brand)]">{format(new Date(selectedCall.extractedData.followUp), "d MMM yyyy", { locale: es })}</p></div>)}
+                  {Object.keys(selectedCall.extractedData).filter(k => !['suggestedTags', 'sentiment', 'sentimentScore', 'keyTopics', 'risks', 'alerts'].includes(k)).length === 0 && (<p className="text-[var(--rx-t2)] text-xs">Sin datos extraídos</p>)}
                 </div>
               </div>
 
               {/* Agreements */}
               {selectedCall.extractedData.agreements && selectedCall.extractedData.agreements.length > 0 && (
-                <div className="bg-card border border-border rounded-xl p-4 sm:p-5 shadow-sm">
+                <div className="rx-panel">
                   <h3 className="font-semibold text-foreground mb-3">✅ Acuerdos</h3>
                   <ul className="space-y-2">
                     {selectedCall.extractedData.agreements.map((a, i) => (
-                      <li key={i} className="text-sm text-foreground flex items-start gap-2"><CheckCircle2 size={14} className="text-success shrink-0 mt-0.5" />{a}</li>
+                      <li key={i} className="text-sm text-foreground flex items-start gap-2"><CheckCircle2 size={14} className="text-[var(--rx-emerald)] shrink-0 mt-0.5" />{a}</li>
                     ))}
                   </ul>
                 </div>
@@ -666,18 +666,18 @@ const CallsPage = () => {
               {callAppointments.length > 0 && (
                 <div className="bg-success/5 border border-success/20 rounded-xl p-4 sm:p-5 shadow-sm">
                   <h3 className="font-semibold text-foreground mb-3 flex items-center gap-2">
-                    <CalendarPlus size={16} className="text-success" /> Citas asociadas
+                    <CalendarPlus size={16} className="text-[var(--rx-emerald)]" /> Citas asociadas
                   </h3>
                   <div className="space-y-2">
                     {callAppointments.map((apt: any) => (
-                      <div key={apt.id} className="flex items-center justify-between bg-card rounded-lg px-3 py-2 border border-border">
+                      <div key={apt.id} className="flex items-center justify-between bg-card rounded-lg px-3 py-2 border border-[var(--rx-b1)]">
                         <div>
                           <p className="text-sm font-medium text-foreground">{apt.contact_name}</p>
-                          <p className="text-xs text-muted-foreground">
+                          <p className="text-xs text-[var(--rx-t2)]">
                             {format(new Date(apt.start_at), "d MMM yyyy HH:mm", { locale: es })} · {apt.service_type || 'General'}
                           </p>
                         </div>
-                        <span className={`text-xs px-2 py-0.5 rounded-full ${apt.status === 'scheduled' ? 'bg-primary/10 text-primary' : apt.status === 'completed' ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground'}`}>
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${apt.status === 'scheduled' ? 'bg-primary/10 text-[var(--rx-brand)]' : apt.status === 'completed' ? 'bg-[rgba(0,232,122,.1)] text-[var(--rx-emerald)]' : 'bg-[var(--rx-s2)] text-[var(--rx-t2)]'}`}>
                           {apt.status}
                         </span>
                       </div>
@@ -688,32 +688,32 @@ const CallsPage = () => {
 
               {/* Pipeline Jobs */}
               {callJobs.length > 0 && (
-                <div className="bg-card border border-border rounded-xl p-4 sm:p-5 shadow-sm">
+                <div className="rx-panel">
                   <h3 className="font-semibold text-foreground mb-3 flex items-center gap-2">
                     <Briefcase size={16} /> Pipeline de procesamiento
                   </h3>
                   <div className="space-y-1.5">
                     {callJobs.map((job: any) => (
                       <div key={job.id} className="flex items-center gap-2 text-xs">
-                        {job.status === 'success' && <CheckCircle2 size={12} className="text-success" />}
-                        {job.status === 'queued' && <Clock size={12} className="text-muted-foreground" />}
-                        {job.status === 'running' && <Loader2 size={12} className="text-primary animate-spin" />}
-                        {job.status === 'error' && <AlertTriangle size={12} className="text-destructive" />}
+                        {job.status === 'success' && <CheckCircle2 size={12} className="text-[var(--rx-emerald)]" />}
+                        {job.status === 'queued' && <Clock size={12} className="text-[var(--rx-t2)]" />}
+                        {job.status === 'running' && <Loader2 size={12} className="text-[var(--rx-brand)] animate-spin" />}
+                        {job.status === 'error' && <AlertTriangle size={12} className="text-[var(--rx-rose)]" />}
                         <span className="text-foreground font-medium">{job.job_type.replace(/_/g, ' ')}</span>
                         {job.status === 'error' && (
                           <button
                             onClick={() => retryFailedJob(job.id)}
-                            className="text-[10px] bg-destructive/10 text-destructive hover:bg-destructive/20 px-1.5 py-0.5 rounded flex items-center gap-1 transition-colors"
+                            className="text-[10px] bg-destructive/10 text-[var(--rx-rose)] hover:bg-destructive/20 px-1.5 py-0.5 rounded flex items-center gap-1 transition-colors"
                             title={job.last_error || 'Reintentar'}
                           >
                             <RefreshCw size={10} /> Reintentar
                           </button>
                         )}
                         <span className={`ml-auto px-1.5 py-0.5 rounded ${
-                          job.status === 'success' ? 'bg-success/10 text-success' :
-                          job.status === 'error' ? 'bg-destructive/10 text-destructive' :
-                          job.status === 'running' ? 'bg-primary/10 text-primary' :
-                          'bg-muted text-muted-foreground'
+                          job.status === 'success' ? 'bg-[rgba(0,232,122,.1)] text-[var(--rx-emerald)]' :
+                          job.status === 'error' ? 'bg-destructive/10 text-[var(--rx-rose)]' :
+                          job.status === 'running' ? 'bg-primary/10 text-[var(--rx-brand)]' :
+                          'bg-[var(--rx-s2)] text-[var(--rx-t2)]'
                         }`}>{job.status}</span>
                       </div>
                     ))}
@@ -722,7 +722,7 @@ const CallsPage = () => {
               )}
 
               {/* Event Timeline */}
-              <div className="bg-card border border-border rounded-xl p-4 sm:p-5 shadow-sm">
+              <div className="rx-panel">
                 <h3 className="font-semibold text-foreground mb-3 flex items-center gap-2">
                   <Activity size={16} /> Timeline de eventos
                 </h3>
@@ -745,7 +745,7 @@ const CallsPage = () => {
   // ===== PAYMENT GATE =====
   if (!paymentLoading && !canUseService('voice')) {
     return (
-      <div className="p-4 sm:p-6 max-w-7xl mx-auto">
+      <div className="rx-page">
         <PaymentGateCard
           serviceName="Voice Agent IA"
           serviceType="voice"
@@ -762,7 +762,7 @@ const CallsPage = () => {
       <VoiceAgent onCallEnd={handleCallEnd} />
 
       {/* Main tab navigation */}
-      <div className="flex items-center gap-1 border-b border-border pb-0">
+      <div className="flex items-center gap-1 border-b border-[var(--rx-b1)] pb-0">
         {mainTabs.map(tab => {
           const Icon = tab.icon;
           return (
@@ -771,8 +771,8 @@ const CallsPage = () => {
               onClick={() => setActiveTab(tab.key)}
               className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
                 activeTab === tab.key
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
+                  ? 'border-primary text-[var(--rx-brand)]'
+                  : 'border-transparent text-[var(--rx-t2)] hover:text-foreground hover:border-[var(--rx-b1)]'
               }`}
             >
               <Icon size={16} />
@@ -801,8 +801,8 @@ const CallsPage = () => {
       {activeCalls.length > 0 && (
         <div className="bg-primary/10 border border-primary/20 rounded-xl p-3 sm:p-4">
           <div className="flex items-center gap-2 mb-2">
-            <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-            <span className="text-sm font-semibold text-primary">{activeCalls.length} llamada(s) activa(s)</span>
+            <div className="w-2 h-2 rounded-full bg-[var(--rx-brand)] animate-pulse" />
+            <span className="text-sm font-semibold text-[var(--rx-brand)]">{activeCalls.length} llamada(s) activa(s)</span>
           </div>
           <div className="space-y-1">
             {activeCalls.map(call => {
@@ -811,7 +811,7 @@ const CallsPage = () => {
                 <button key={call.id} onClick={() => setSelectedCall(call)} className="w-full flex items-center gap-3 bg-card/50 rounded-lg px-3 py-2 text-left hover:bg-card transition-colors">
                   <span className={`text-xs px-2 py-0.5 rounded-full ${cfg.className}`}>{cfg.label}</span>
                   <span className="text-sm text-foreground">{call.extractedData.contactName || call.fromNumber || 'Llamada'}</span>
-                  <ChevronRight size={14} className="ml-auto text-muted-foreground" />
+                  <ChevronRight size={14} className="ml-auto text-[var(--rx-t2)]" />
                 </button>
               );
             })}
@@ -821,49 +821,49 @@ const CallsPage = () => {
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
-        <div className="bg-card border border-border rounded-xl p-3 sm:p-4 shadow-sm">
-          <p className="text-xs sm:text-sm text-muted-foreground">Total llamadas</p>
+        <div className="rx-panel">
+          <p className="text-xs sm:text-sm text-[var(--rx-t2)]">Total llamadas</p>
           <p className="text-xl sm:text-2xl font-bold text-foreground">{stats.total}</p>
         </div>
-        <div className="bg-card border border-border rounded-xl p-3 sm:p-4 shadow-sm">
-          <p className="text-xs sm:text-sm text-muted-foreground">Completadas</p>
-          <p className="text-xl sm:text-2xl font-bold text-success">{stats.completed}</p>
+        <div className="rx-panel">
+          <p className="text-xs sm:text-sm text-[var(--rx-t2)]">Completadas</p>
+          <p className="text-xl sm:text-2xl font-bold text-[var(--rx-emerald)]">{stats.completed}</p>
         </div>
-        <div className="bg-card border border-border rounded-xl p-3 sm:p-4 shadow-sm">
-          <p className="text-xs sm:text-sm text-muted-foreground">Perdidas</p>
-          <p className="text-xl sm:text-2xl font-bold text-destructive">{stats.missed}</p>
+        <div className="rx-panel">
+          <p className="text-xs sm:text-sm text-[var(--rx-t2)]">Perdidas</p>
+          <p className="text-xl sm:text-2xl font-bold text-[var(--rx-rose)]">{stats.missed}</p>
         </div>
-        <div className="bg-card border border-border rounded-xl p-3 sm:p-4 shadow-sm">
-          <p className="text-xs sm:text-sm text-muted-foreground">Duración promedio</p>
+        <div className="rx-panel">
+          <p className="text-xs sm:text-sm text-[var(--rx-t2)]">Duración promedio</p>
           <p className="text-xl sm:text-2xl font-bold text-foreground">{formatDuration(stats.avgDuration)}</p>
         </div>
       </div>
 
       {/* Filters */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-        <div className="flex-1 flex items-center gap-2 bg-card border border-border rounded-lg px-3 py-2">
-          <Search size={16} className="text-muted-foreground" />
-          <input type="text" placeholder="Buscar por nombre, teléfono o transcripción..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="bg-transparent text-sm outline-none flex-1 text-foreground placeholder:text-muted-foreground" />
+        <div className="flex-1 flex items-center gap-2 bg-card border border-[var(--rx-b1)] rounded-lg px-3 py-2">
+          <Search size={16} className="text-[var(--rx-t2)]" />
+          <input type="text" placeholder="Buscar por nombre, teléfono o transcripción..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="bg-transparent text-sm outline-none flex-1 text-foreground placeholder:text-[var(--rx-t2)]" />
         </div>
         <ManualCallDialog onCallRegistered={loadDbCalls} />
         <div className="flex items-center gap-1 overflow-x-auto">
-          <button onClick={() => setStatusFilter(null)} className={`text-xs px-3 py-1.5 rounded-full transition-colors shrink-0 ${!statusFilter ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}>Todas</button>
+          <button onClick={() => setStatusFilter(null)} className={`text-xs px-3 py-1.5 rounded-full transition-colors shrink-0 ${!statusFilter ? 'bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground' : 'bg-[var(--rx-s2)] text-[var(--rx-t2)] hover:bg-[var(--rx-s2)]/80'}`}>Todas</button>
           {['completed', 'in_progress', 'missed', 'no_answer', 'failed'].map(key => {
             const cfg = statusConfig[key];
             return (
-              <button key={key} onClick={() => setStatusFilter(statusFilter === key ? null : key)} className={`text-xs px-3 py-1.5 rounded-full transition-colors shrink-0 ${statusFilter === key ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}>{cfg.label}</button>
+              <button key={key} onClick={() => setStatusFilter(statusFilter === key ? null : key)} className={`text-xs px-3 py-1.5 rounded-full transition-colors shrink-0 ${statusFilter === key ? 'bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground' : 'bg-[var(--rx-s2)] text-[var(--rx-t2)] hover:bg-[var(--rx-s2)]/80'}`}>{cfg.label}</button>
             );
           })}
         </div>
-        <button onClick={loadDbCalls} className="p-2 rounded-lg bg-muted hover:bg-muted/80 text-muted-foreground self-end sm:self-auto">
+        <button onClick={loadDbCalls} className="p-2 rounded-lg bg-[var(--rx-s2)] hover:bg-[var(--rx-s2)]/80 text-[var(--rx-t2)] self-end sm:self-auto">
           <RefreshCw size={16} />
         </button>
       </div>
 
       {/* Call list */}
-      <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
+      <div className="rx-panel">
         {filtered.length === 0 ? (
-          <div className="p-8 text-center text-muted-foreground">
+          <div className="p-8 text-center text-[var(--rx-t2)]">
             <Phone size={32} className="mx-auto mb-2 opacity-50" />
             <p className="text-sm">No hay llamadas registradas</p>
             <p className="text-xs mt-1">Inicia una llamada con el Voice Agent para comenzar</p>
@@ -877,7 +877,7 @@ const CallsPage = () => {
               <button
                 key={call.id}
                 onClick={() => setSelectedCall(call)}
-                className={`w-full flex items-center gap-3 sm:gap-4 px-4 py-3 border-b border-border last:border-b-0 hover:bg-secondary/30 transition-colors text-left ${isLive ? 'bg-primary/5' : ''}`}
+                className={`w-full flex items-center gap-3 sm:gap-4 px-4 py-3 border-b border-[var(--rx-b1)] last:border-b-0 hover:bg-[var(--rx-s2)]/30 transition-colors text-left ${isLive ? 'bg-primary/5' : ''}`}
               >
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${cfg.className}`}>
                   <StatusIcon size={14} />
@@ -885,10 +885,10 @@ const CallsPage = () => {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <p className="text-sm font-medium text-foreground truncate">{call.extractedData.contactName || call.fromNumber || 'Sin número'}</p>
-                    {isLive && <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />}
-                    {call.audioUrl && <Volume2 size={12} className="text-muted-foreground shrink-0" />}
+                    {isLive && <span className="w-1.5 h-1.5 rounded-full bg-[var(--rx-brand)] animate-pulse" />}
+                    {call.audioUrl && <Volume2 size={12} className="text-[var(--rx-t2)] shrink-0" />}
                   </div>
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <div className="flex items-center gap-1.5 text-xs text-[var(--rx-t2)]">
                     <span>{call.channel === 'voice_agent' ? 'Voice Agent' : 'Twilio'}</span>
                     <span>·</span>
                     <span>{format(call.startedAt, "d MMM HH:mm", { locale: es })}</span>
@@ -901,16 +901,16 @@ const CallsPage = () => {
                 </div>
                 <div className="text-right shrink-0 hidden sm:block">
                   <p className="text-sm text-foreground">{formatDuration(call.duration)}</p>
-                  <p className="text-xs text-muted-foreground">{cfg.label}</p>
+                  <p className="text-xs text-[var(--rx-t2)]">{cfg.label}</p>
                 </div>
                 {call.tags.length > 0 && !isMobile && (
                   <div className="flex gap-1 shrink-0 max-w-[150px] overflow-hidden">
                     {call.tags.slice(0, 2).map(tag => (
-                      <span key={tag} className="text-[10px] bg-secondary text-secondary-foreground px-1.5 py-0.5 rounded-full">{tag}</span>
+                      <span key={tag} className="text-[10px] bg-[var(--rx-s2)] text-secondary-foreground px-1.5 py-0.5 rounded-full">{tag}</span>
                     ))}
                   </div>
                 )}
-                <ChevronRight size={16} className="text-muted-foreground shrink-0" />
+                <ChevronRight size={16} className="text-[var(--rx-t2)] shrink-0" />
               </button>
             );
           })

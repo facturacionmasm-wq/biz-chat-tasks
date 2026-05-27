@@ -2,10 +2,9 @@ import { useState, useCallback, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { lovable } from '@/integrations/lovable';
 import { toast } from 'sonner';
-import { Loader2, Building2, Eye, EyeOff } from 'lucide-react';
+import { Loader2, Eye, EyeOff } from 'lucide-react';
 import { useBranding } from '@/hooks/useBranding';
-
-// ─── Helpers (outside component to avoid re-creation) ───
+import { useRybixTheme } from '@/hooks/useRybixTheme';
 
 const checkEmailExists = async (email: string): Promise<boolean> => {
   try {
@@ -14,14 +13,10 @@ const checkEmailExists = async (email: string): Promise<boolean> => {
     });
     if (error) return false;
     return data?.exists === true;
-  } catch {
-    return false;
-  }
+  } catch { return false; }
 };
 
 const validateEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-
-// ─── Stable sub-components (defined OUTSIDE AuthPage to prevent remounting) ───
 
 const GoogleIcon = () => (
   <svg width="18" height="18" viewBox="0 0 24 24">
@@ -32,357 +27,305 @@ const GoogleIcon = () => (
   </svg>
 );
 
-const AppleIcon = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-    <path d="M17.05 20.28c-.98.95-2.05.88-3.08.4-1.09-.5-2.08-.48-3.24 0-1.44.62-2.2.44-3.06-.4C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/>
-  </svg>
-);
-
-interface OAuthButtonsProps {
-  onOAuth: (provider: 'google' | 'apple') => void;
-  oauthLoading: string | null;
-  disabled: boolean;
-}
-
-const OAuthButtons = ({ onOAuth, oauthLoading, disabled }: OAuthButtonsProps) => (
-  <div className="space-y-2">
-    <button
-      type="button"
-      onClick={() => onOAuth('google')}
-      disabled={disabled}
-      className="w-full flex items-center justify-center gap-3 bg-card border border-border rounded-xl px-4 py-2.5 text-sm font-medium text-foreground hover:bg-secondary transition-colors disabled:opacity-50"
-    >
-      {oauthLoading === 'google' ? <Loader2 size={18} className="animate-spin" /> : <GoogleIcon />}
-      Continuar con Google
-    </button>
-    <button
-      type="button"
-      onClick={() => onOAuth('apple')}
-      disabled={disabled}
-      className="w-full flex items-center justify-center gap-3 bg-card border border-border rounded-xl px-4 py-2.5 text-sm font-medium text-foreground hover:bg-secondary transition-colors disabled:opacity-50"
-    >
-      {oauthLoading === 'apple' ? <Loader2 size={18} className="animate-spin" /> : <AppleIcon />}
-      Continuar con Apple
-    </button>
-  </div>
-);
-
-const Divider = () => (
-  <div className="flex items-center gap-3 my-4">
-    <div className="h-px flex-1 bg-border" />
-    <span className="text-xs text-muted-foreground">o con email</span>
-    <div className="h-px flex-1 bg-border" />
-  </div>
-);
-
-interface PasswordInputProps {
-  id: string;
-  name: string;
-  value: string;
-  onChange: (v: string) => void;
-  label: string;
-  placeholder?: string;
-  autoComplete?: string;
-  showPassword: boolean;
-  onToggleShow: () => void;
-}
-
-const PasswordInput = ({
-  id, name, value, onChange, label, placeholder = "••••••••",
-  autoComplete = "current-password", showPassword, onToggleShow,
-}: PasswordInputProps) => (
-  <div>
-    <label htmlFor={id} className="text-sm font-medium text-foreground block mb-1">{label}</label>
-    <div className="relative">
-      <input
-        id={id}
-        name={name}
-        type={showPassword ? 'text' : 'password'}
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        required
-        minLength={6}
-        placeholder={placeholder}
-        autoComplete={autoComplete}
-        autoCapitalize="off"
-        autoCorrect="off"
-        spellCheck={false}
-        enterKeyHint="done"
-        className="w-full bg-secondary rounded-lg px-3 py-2.5 text-sm outline-none border border-border focus:border-primary text-foreground placeholder:text-muted-foreground pr-10"
-      />
-      <button
-        type="button"
-        onMouseDown={e => e.preventDefault()}
-        onTouchStart={e => e.preventDefault()}
-        onClick={onToggleShow}
-        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-        tabIndex={-1}
-        aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-      >
-        {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-      </button>
-    </div>
-  </div>
-);
-
-// ─── Tab selector (avoids Radix Tabs unmount/remount issues on mobile) ───
-
-interface TabSelectorProps {
-  activeTab: string;
-  onTabChange: (tab: string) => void;
-}
-
-const TabSelector = ({ activeTab, onTabChange }: TabSelectorProps) => (
-  <div className="grid grid-cols-2 bg-muted rounded-md p-1 mb-4">
-    <button
-      type="button"
-      onClick={() => onTabChange('login')}
-      className={`rounded-sm px-3 py-1.5 text-sm font-medium transition-all ${
-        activeTab === 'login'
-          ? 'bg-background text-foreground shadow-sm'
-          : 'text-muted-foreground'
-      }`}
-    >
-      Login
-    </button>
-    <button
-      type="button"
-      onClick={() => onTabChange('signup')}
-      className={`rounded-sm px-3 py-1.5 text-sm font-medium transition-all ${
-        activeTab === 'signup'
-          ? 'bg-background text-foreground shadow-sm'
-          : 'text-muted-foreground'
-      }`}
-    >
-      Sign Up
-    </button>
-  </div>
-);
-
-// ─── Main Component ───
-
-const AuthPage = () => {
-  const [activeTab, setActiveTab] = useState<string>('login');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [name, setName] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(() => {
-    return localStorage.getItem('rybix_remember_me') !== 'false';
-  });
-  const [loading, setLoading] = useState(false);
-  const [oauthLoading, setOauthLoading] = useState<string | null>(null);
-  const [forgotMode, setForgotMode] = useState(false);
+export default function AuthPage() {
   const branding = useBranding();
+  const { isDay, toggle } = useRybixTheme();
+  const [mode, setMode]           = useState<'login' | 'register' | 'forgot'>('login');
+  const [email, setEmail]         = useState('');
+  const [password, setPassword]   = useState('');
+  const [name, setName]           = useState('');
+  const [showPass, setShowPass]   = useState(false);
+  const [loading, setLoading]     = useState(false);
+  const [oauthLoading, setOAuth]  = useState<string | null>(null);
+  const [forgotSent, setForgotSent] = useState(false);
 
-  // Persist remember-me preference
-  const handleRememberMe = useCallback((checked: boolean) => {
-    setRememberMe(checked);
-    localStorage.setItem('rybix_remember_me', String(checked));
-  }, []);
-
-  const toggleShowPassword = useCallback(() => setShowPassword(prev => !prev), []);
-
-  const handleLogin = useCallback(async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validateEmail(email)) { toast.error('Formato de email inválido'); return; }
+    if (!validateEmail(email)) { toast.error('Email inválido'); return; }
     setLoading(true);
     try {
-      const exists = await checkEmailExists(email);
-      if (!exists) {
-        toast.error('Esta cuenta no existe. Regístrate para continuar.');
-        setActiveTab('signup');
-        return;
-      }
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) {
-        toast.error(error.message.includes('Invalid login credentials')
-          ? 'Contraseña incorrecta. Intenta nuevamente.' : error.message);
+      if (mode === 'login') {
+        const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+        if (error) throw error;
+      } else if (mode === 'register') {
+        if (!name.trim()) { toast.error('El nombre es obligatorio'); return; }
+        const exists = await checkEmailExists(email.trim());
+        if (exists) { toast.error('Este email ya está registrado'); return; }
+        const { error } = await supabase.auth.signUp({
+          email: email.trim(), password,
+          options: { data: { name: name.trim() } },
+        });
+        if (error) throw error;
+        toast.success('¡Revisa tu email para confirmar tu cuenta!');
       } else {
-        toast.success('Sesión iniciada');
+        const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+          redirectTo: `${window.location.origin}/reset-password`,
+        });
+        if (error) throw error;
+        setForgotSent(true);
+        toast.success('Instrucciones enviadas a tu email');
       }
     } catch (err: any) {
       toast.error(err.message || 'Error de autenticación');
     } finally {
       setLoading(false);
     }
-  }, [email, password]);
+  };
 
-  const handleSignUp = useCallback(async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!validateEmail(email)) { toast.error('Formato de email inválido'); return; }
-    if (password.length < 6) { toast.error('La contraseña debe tener al menos 6 caracteres'); return; }
-    if (password !== confirmPassword) { toast.error('Las contraseñas no coinciden'); return; }
-    setLoading(true);
+  const handleOAuth = async (provider: 'google' | 'apple') => {
+    setOAuth(provider);
     try {
-      const exists = await checkEmailExists(email);
-      if (exists) {
-        toast.error('Esta cuenta ya está registrada. Inicia sesión.');
-        setActiveTab('login');
-        return;
-      }
-      const { error } = await supabase.auth.signUp({
-        email, password,
-        options: { data: { name: name || undefined }, emailRedirectTo: window.location.origin },
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: { redirectTo: `${window.location.origin}/` },
       });
       if (error) throw error;
-      toast.success('Cuenta creada correctamente');
     } catch (err: any) {
-      toast.error(err.message || 'Error al crear cuenta');
-    } finally {
-      setLoading(false);
+      toast.error(err.message || 'Error OAuth');
+      setOAuth(null);
     }
-  }, [email, password, confirmPassword, name]);
+  };
 
-  const handleForgotPassword = useCallback(async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!validateEmail(email)) { toast.error('Ingresa un email válido'); return; }
-    setLoading(true);
-    try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/reset-password`,
-      });
-      if (error) throw error;
-      toast.success('Te enviamos un enlace de recuperación a tu email');
-      setForgotMode(false);
-    } catch (err: any) {
-      toast.error(err.message || 'Error al enviar enlace');
-    } finally {
-      setLoading(false);
-    }
-  }, [email]);
+  const titles: Record<typeof mode, string> = {
+    login: 'Bienvenido de vuelta',
+    register: 'Crea tu cuenta',
+    forgot: 'Recuperar acceso',
+  };
 
-  const handleOAuth = useCallback(async (provider: 'google' | 'apple') => {
-    setOauthLoading(provider);
-    try {
-      const result = await lovable.auth.signInWithOAuth(provider, { redirect_uri: window.location.origin });
-      if (result.error) toast.error(result.error.message || `Error al iniciar con ${provider}`);
-    } catch (err: any) {
-      toast.error(err.message || `Error al iniciar con ${provider}`);
-    } finally {
-      setOauthLoading(null);
-    }
-  }, []);
-
-  // ─── Header (memoized to prevent re-creation on every keystroke) ───
-  const header = useMemo(() => (
-    <div className="text-center mb-6">
-      {branding.logoUrl ? (
-        <img src={branding.logoUrl} alt={branding.orgName} className="h-16 mx-auto mb-4 object-contain" />
-      ) : (
-        <div className="w-14 h-14 bg-primary rounded-2xl flex items-center justify-center mx-auto mb-4">
-          <Building2 size={28} className="text-primary-foreground" />
-        </div>
-      )}
-      <h1 className="text-2xl font-bold text-foreground">{branding.orgName}</h1>
-      {branding.slogan && <p className="text-xs text-muted-foreground mt-0.5">{branding.slogan}</p>}
-    </div>
-  ), [branding.logoUrl, branding.orgName, branding.slogan]);
-
-  // ─── FORGOT PASSWORD VIEW ───
-  if (forgotMode) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <div className="w-full max-w-sm">
-          {header}
-          <p className="text-sm text-muted-foreground text-center mb-4">Te enviaremos un enlace a tu email</p>
-          <form onSubmit={handleForgotPassword} className="bg-card border border-border rounded-xl p-6 space-y-4">
-            <div>
-              <label htmlFor="forgot-email" className="text-sm font-medium text-foreground block mb-1">Email</label>
-              <input id="forgot-email" name="email" type="email" value={email} onChange={e => setEmail(e.target.value)} required autoComplete="email"
-                placeholder="tu@email.com"
-                className="w-full bg-secondary rounded-lg px-3 py-2.5 text-sm outline-none border border-border focus:border-primary text-foreground placeholder:text-muted-foreground" />
-            </div>
-            <button type="submit" disabled={loading}
-              className="w-full bg-primary text-primary-foreground font-medium text-sm px-4 py-2.5 rounded-lg hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2">
-              {loading && <Loader2 size={16} className="animate-spin" />}
-              Enviar enlace
-            </button>
-          </form>
-          <p className="text-center text-sm text-muted-foreground mt-4">
-            <button type="button" onClick={() => setForgotMode(false)} className="text-primary hover:underline font-medium">Volver al login</button>
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  // ─── MAIN AUTH VIEW ───
-  // Using plain div-based tabs instead of Radix Tabs to prevent
-  // unmount/remount of form inputs that causes keyboard dismissal on mobile.
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      <div className="w-full max-w-sm">
-        {header}
+    <div style={{
+      minHeight: '100vh',
+      background: 'var(--rx-bg)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: '24px 16px',
+      position: 'relative',
+    }}>
+      {/* Background orbs */}
+      <div style={{
+        position: 'fixed', inset: 0, pointerEvents: 'none', overflow: 'hidden', zIndex: 0,
+      }}>
+        <div style={{
+          position: 'absolute', width: 400, height: 400, borderRadius: '50%',
+          background: 'radial-gradient(circle, rgba(0,255,198,.12), transparent)',
+          filter: 'blur(80px)', top: '-10%', left: '-5%',
+        }} />
+        <div style={{
+          position: 'absolute', width: 300, height: 300, borderRadius: '50%',
+          background: 'radial-gradient(circle, rgba(163,116,255,.1), transparent)',
+          filter: 'blur(80px)', bottom: '0%', right: '-5%',
+        }} />
+      </div>
 
-        <TabSelector activeTab={activeTab} onTabChange={setActiveTab} />
+      {/* Theme toggle */}
+      <button
+        onClick={toggle}
+        style={{
+          position: 'fixed', top: 20, right: 20,
+          background: 'var(--rx-s1)', border: '1px solid var(--rx-b1)',
+          borderRadius: 99, padding: '6px 14px',
+          fontSize: 12, fontWeight: 600, color: 'var(--rx-t2)',
+          cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
+          zIndex: 10,
+        }}
+      >
+        {isDay ? '🌙 Noche' : '☀️ Día'}
+      </button>
 
-        {/* ─── LOGIN TAB ─── */}
-        <div style={{ display: activeTab === 'login' ? 'block' : 'none' }}>
-          <OAuthButtons onOAuth={handleOAuth} oauthLoading={oauthLoading} disabled={!!oauthLoading || loading} />
-          <Divider />
-          <form onSubmit={handleLogin} className="bg-card border border-border rounded-xl p-6 space-y-4">
-            <div>
-              <label htmlFor="login-email" className="text-sm font-medium text-foreground block mb-1">Email</label>
-              <input id="login-email" name="email" type="email" value={email} onChange={e => setEmail(e.target.value)} required autoComplete="email"
-                placeholder="tu@email.com"
-                className="w-full bg-secondary rounded-lg px-3 py-2.5 text-sm outline-none border border-border focus:border-primary text-foreground placeholder:text-muted-foreground" />
-            </div>
-            <PasswordInput id="login-password" name="password" value={password} onChange={setPassword} label="Contraseña"
-              autoComplete="current-password" showPassword={showPassword} onToggleShow={toggleShowPassword} />
-            <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={rememberMe}
-                  onChange={e => handleRememberMe(e.target.checked)}
-                  className="w-4 h-4 rounded border-border text-primary focus:ring-primary accent-primary"
-                />
-                <span className="text-xs text-muted-foreground">Recordarme</span>
-              </label>
-              <button type="button" onClick={() => setForgotMode(true)}
-                className="text-xs text-primary hover:underline font-medium">¿Olvidaste tu contraseña?</button>
-            </div>
-            <button type="submit" disabled={loading}
-              className="w-full bg-primary text-primary-foreground font-medium text-sm px-4 py-2.5 rounded-lg hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2">
-              {loading && <Loader2 size={16} className="animate-spin" />}
-              Iniciar sesión
-            </button>
-          </form>
+      {/* Auth card */}
+      <div style={{
+        width: '100%', maxWidth: 420, position: 'relative', zIndex: 1,
+        animation: 'rxFadeUp .4s cubic-bezier(.16,1,.3,1) both',
+      }}>
+
+        {/* Logo */}
+        <div style={{ textAlign: 'center', marginBottom: 32 }}>
+          <div style={{
+            width: 52, height: 52, borderRadius: 14, margin: '0 auto 14px',
+            background: 'linear-gradient(135deg, var(--rx-brand), var(--rx-brand2))',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: '0 0 24px rgba(0,255,198,.3)',
+          }}>
+            <svg width="22" height="22" viewBox="0 0 16 16" fill="none">
+              <path d="M3 8L7 12L13 4" stroke="#000" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </div>
+          <div style={{
+            fontFamily: 'var(--rx-font-display)',
+            fontSize: 22, fontWeight: 800, color: 'var(--rx-t1)',
+            letterSpacing: '-.03em', marginBottom: 4,
+          }}>
+            {branding.orgName || 'RYBIX'}
+          </div>
+          <div style={{ fontSize: 13, color: 'var(--rx-t2)' }}>
+            {titles[mode]}
+          </div>
         </div>
 
-        {/* ─── SIGN UP TAB ─── */}
-        <div style={{ display: activeTab === 'signup' ? 'block' : 'none' }}>
-          <OAuthButtons onOAuth={handleOAuth} oauthLoading={oauthLoading} disabled={!!oauthLoading || loading} />
-          <Divider />
-          <form onSubmit={handleSignUp} className="bg-card border border-border rounded-xl p-6 space-y-4">
-            <div>
-              <label htmlFor="signup-name" className="text-sm font-medium text-foreground block mb-1">Nombre</label>
-              <input id="signup-name" name="name" type="text" value={name} onChange={e => setName(e.target.value)} autoComplete="name"
-                placeholder="Tu nombre (opcional)"
-                className="w-full bg-secondary rounded-lg px-3 py-2.5 text-sm outline-none border border-border focus:border-primary text-foreground placeholder:text-muted-foreground" />
+        {/* Card */}
+        <div style={{
+          background: 'var(--rx-s1)',
+          border: '1px solid var(--rx-b1)',
+          borderRadius: 20,
+          padding: 28,
+          boxShadow: 'var(--rx-shadow-md)',
+        }}>
+
+          {/* OAuth */}
+          {mode !== 'forgot' && (
+            <>
+              <button
+                onClick={() => handleOAuth('google')}
+                disabled={!!loading || !!oauthLoading}
+                style={{
+                  width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+                  background: 'var(--rx-s2)', border: '1px solid var(--rx-b1)', borderRadius: 12,
+                  padding: '10px 16px', fontSize: 13, fontWeight: 600, color: 'var(--rx-t1)',
+                  cursor: 'pointer', marginBottom: 10, transition: 'border-color .15s',
+                }}
+              >
+                {oauthLoading === 'google' ? <Loader2 size={16} className="animate-spin" /> : <GoogleIcon />}
+                Continuar con Google
+              </button>
+
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 12, margin: '18px 0',
+              }}>
+                <div style={{ flex: 1, height: 1, background: 'var(--rx-b1)' }} />
+                <span style={{ fontSize: 11, color: 'var(--rx-t3)', fontWeight: 600 }}>O con email</span>
+                <div style={{ flex: 1, height: 1, background: 'var(--rx-b1)' }} />
+              </div>
+            </>
+          )}
+
+          {/* Form */}
+          {forgotSent && mode === 'forgot' ? (
+            <div style={{ textAlign: 'center', padding: '20px 0' }}>
+              <div style={{ fontSize: 32, marginBottom: 12 }}>📬</div>
+              <div style={{ fontFamily: 'var(--rx-font-display)', fontSize: 15, fontWeight: 700, color: 'var(--rx-t1)', marginBottom: 6 }}>
+                Email enviado
+              </div>
+              <div style={{ fontSize: 12.5, color: 'var(--rx-t2)', marginBottom: 20 }}>
+                Revisa tu bandeja de entrada para restablecer tu contraseña.
+              </div>
+              <button onClick={() => { setMode('login'); setForgotSent(false); }} className="rx-btn rx-btn-ghost" style={{ width: '100%', justifyContent: 'center' }}>
+                Volver al login
+              </button>
             </div>
-            <div>
-              <label htmlFor="signup-email" className="text-sm font-medium text-foreground block mb-1">Email</label>
-              <input id="signup-email" name="email" type="email" value={email} onChange={e => setEmail(e.target.value)} required autoComplete="email"
-                placeholder="tu@email.com"
-                className="w-full bg-secondary rounded-lg px-3 py-2.5 text-sm outline-none border border-border focus:border-primary text-foreground placeholder:text-muted-foreground" />
+          ) : (
+            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {mode === 'register' && (
+                <div>
+                  <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--rx-t2)', display: 'block', marginBottom: 5 }}>
+                    Nombre completo
+                  </label>
+                  <input
+                    type="text" value={name}
+                    onChange={e => setName(e.target.value)}
+                    placeholder="Tu nombre"
+                    className="rx-input"
+                    required
+                  />
+                </div>
+              )}
+
+              <div>
+                <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--rx-t2)', display: 'block', marginBottom: 5 }}>
+                  Email
+                </label>
+                <input
+                  type="email" value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  placeholder="tu@email.com"
+                  className="rx-input"
+                  required
+                />
+              </div>
+
+              {mode !== 'forgot' && (
+                <div>
+                  <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--rx-t2)', display: 'block', marginBottom: 5 }}>
+                    Contraseña
+                  </label>
+                  <div style={{ position: 'relative' }}>
+                    <input
+                      type={showPass ? 'text' : 'password'}
+                      value={password}
+                      onChange={e => setPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="rx-input"
+                      style={{ paddingRight: 42 }}
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPass(!showPass)}
+                      style={{
+                        position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
+                        background: 'none', border: 'none', cursor: 'pointer',
+                        color: 'var(--rx-t3)', display: 'flex', alignItems: 'center',
+                      }}
+                    >
+                      {showPass ? <EyeOff size={15} /> : <Eye size={15} />}
+                    </button>
+                  </div>
+                  {mode === 'login' && (
+                    <div style={{ textAlign: 'right', marginTop: 5 }}>
+                      <button type="button" onClick={() => setMode('forgot')} style={{
+                        background: 'none', border: 'none', cursor: 'pointer',
+                        fontSize: 11.5, color: 'var(--rx-brand)', fontWeight: 600,
+                      }}>
+                        ¿Olvidaste tu contraseña?
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="rx-btn rx-btn-primary"
+                style={{ width: '100%', justifyContent: 'center', padding: '11px', marginTop: 4 }}
+              >
+                {loading ? <Loader2 size={16} className="animate-spin" /> : null}
+                {mode === 'login' ? 'Iniciar sesión'
+                  : mode === 'register' ? 'Crear cuenta'
+                  : 'Enviar instrucciones'}
+              </button>
+            </form>
+          )}
+
+          {/* Mode switcher */}
+          {!forgotSent && (
+            <div style={{ textAlign: 'center', marginTop: 18, fontSize: 12.5, color: 'var(--rx-t2)' }}>
+              {mode === 'login' ? (
+                <>¿No tienes cuenta?{' '}
+                  <button onClick={() => setMode('register')} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--rx-brand)', fontWeight:700 }}>
+                    Regístrate
+                  </button>
+                </>
+              ) : mode === 'register' ? (
+                <>¿Ya tienes cuenta?{' '}
+                  <button onClick={() => setMode('login')} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--rx-brand)', fontWeight:700 }}>
+                    Inicia sesión
+                  </button>
+                </>
+              ) : (
+                <button onClick={() => setMode('login')} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--rx-brand)', fontWeight:700 }}>
+                  ← Volver al login
+                </button>
+              )}
             </div>
-            <PasswordInput id="signup-password" name="new-password" value={password} onChange={setPassword} label="Contraseña"
-              autoComplete="new-password" showPassword={showPassword} onToggleShow={toggleShowPassword} />
-            <PasswordInput id="signup-confirm-password" name="confirm-password" value={confirmPassword} onChange={setConfirmPassword} label="Confirmar contraseña"
-              autoComplete="new-password" showPassword={showPassword} onToggleShow={toggleShowPassword} />
-            <button type="submit" disabled={loading}
-              className="w-full bg-primary text-primary-foreground font-medium text-sm px-4 py-2.5 rounded-lg hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2">
-              {loading && <Loader2 size={16} className="animate-spin" />}
-              Crear cuenta
-            </button>
-          </form>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{ textAlign: 'center', marginTop: 20, fontSize: 11, color: 'var(--rx-t3)' }}>
+          Plataforma de gestión empresarial inteligente
         </div>
       </div>
     </div>
   );
-};
-
-export default AuthPage;
+}

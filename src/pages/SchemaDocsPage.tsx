@@ -562,11 +562,11 @@ const SchemaDocsPage = () => {
           main { height: auto !important; overflow: visible !important; }
           
           #schema-docs { padding: 0.5cm !important; max-width: 100% !important; }
-          .bg-card, .bg-background, [class*="bg-secondary"] { background: white !important; border-color: #ccc !important; }
+          .bg-card, .bg-background, [class*="bg-[var(--rx-s2)]"] { background: white !important; border-color: #ccc !important; }
           code { background: #f0f0f0 !important; color: #333 !important; }
           .text-foreground, h1, h2, h3, h4, span, p, td, th { color: black !important; }
-          .text-muted-foreground { color: #555 !important; }
-          .text-primary { color: #1d4ed8 !important; }
+          .text-[var(--rx-t2)] { color: #555 !important; }
+          .text-[var(--rx-brand)] { color: #1d4ed8 !important; }
           button { display: none !important; }
           input { display: none !important; }
           .relative:has(input) { display: none !important; }
@@ -581,19 +581,19 @@ const SchemaDocsPage = () => {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
-            <Database size={22} className="text-primary" />
+            <Database size={22} className="text-[var(--rx-brand)]" />
             Documentación Técnica — Schema
           </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
+          <p className="text-sm text-[var(--rx-t2)] mt-0.5">
             {tables.length} tablas · {helperFunctions.length} funciones helper · RLS completo
           </p>
         </div>
         <div className="flex gap-2 no-print">
-          <button onClick={exportPdf} className="flex items-center gap-2 bg-secondary text-foreground text-sm px-4 py-2 rounded-lg hover:bg-secondary/80 transition-opacity font-medium border border-border">
+          <button onClick={exportPdf} className="flex items-center gap-2 bg-[var(--rx-s2)] text-foreground text-sm px-4 py-2 rounded-lg hover:bg-[var(--rx-s2)]/80 transition-opacity font-medium border border-[var(--rx-b1)]">
             <FileDown size={16} />
             Descargar PDF
           </button>
-          <button onClick={copyAll} className="flex items-center gap-2 bg-primary text-primary-foreground text-sm px-4 py-2 rounded-lg hover:opacity-90 transition-opacity font-medium">
+          <button onClick={copyAll} className="flex items-center gap-2 bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground text-sm px-4 py-2 rounded-lg hover:opacity-90 transition-opacity font-medium">
             {copiedId === 'all' ? <Check size={16} /> : <Copy size={16} />}
             {copiedId === 'all' ? 'Copiado' : 'Copiar Markdown'}
           </button>
@@ -602,34 +602,34 @@ const SchemaDocsPage = () => {
 
       {/* Search */}
       <div className="relative">
-        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--rx-t2)]" />
         <input
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="Buscar tabla..."
-          className="w-full pl-9 pr-4 py-2 text-sm rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+          className="w-full pl-9 pr-4 py-2 text-sm rounded-lg border border-[var(--rx-b1)] bg-background text-foreground placeholder:text-[var(--rx-t2)] focus:outline-none focus:ring-2 focus:ring-primary/30"
         />
       </div>
 
       {/* Architecture Summary */}
-      <div className="bg-card border border-border rounded-xl p-5 print-break-avoid">
+      <div className="rx-panel">
         <h2 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-          <Server size={16} className="text-primary" /> Resumen de Arquitectura
+          <Server size={16} className="text-[var(--rx-brand)]" /> Resumen de Arquitectura
         </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-muted-foreground">
-          <div className="p-3 rounded-lg border border-border bg-background">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-[var(--rx-t2)]">
+          <div className="p-3 rounded-lg border border-[var(--rx-b1)] bg-background">
             <p className="font-semibold text-foreground mb-1">Multi-Tenancy</p>
-            <p>Aislamiento estricto por <code className="bg-secondary px-1 rounded">tenant_id</code>. Cada organización opera en su silo de datos con RLS en todas las tablas.</p>
+            <p>Aislamiento estricto por <code className="bg-[var(--rx-s2)] px-1 rounded">tenant_id</code>. Cada organización opera en su silo de datos con RLS en todas las tablas.</p>
           </div>
-          <div className="p-3 rounded-lg border border-border bg-background">
+          <div className="p-3 rounded-lg border border-[var(--rx-b1)] bg-background">
             <p className="font-semibold text-foreground mb-1">RBAC Granular</p>
-            <p>Roles en tabla separada <code className="bg-secondary px-1 rounded">user_roles</code>. Jerarquía: super_admin &gt; owner &gt; admin &gt; moderator &gt; user.</p>
+            <p>Roles en tabla separada <code className="bg-[var(--rx-s2)] px-1 rounded">user_roles</code>. Jerarquía: super_admin &gt; owner &gt; admin &gt; moderator &gt; user.</p>
           </div>
-          <div className="p-3 rounded-lg border border-border bg-background">
+          <div className="p-3 rounded-lg border border-[var(--rx-b1)] bg-background">
             <p className="font-semibold text-foreground mb-1">Multi-Región / Multi-Moneda</p>
-            <p>Tasas FX diarias (<code className="bg-secondary px-1 rounded">fx_rates</code>), precios localizados (<code className="bg-secondary px-1 rounded">global_plan_pricing</code>), y métricas SaaS por región.</p>
+            <p>Tasas FX diarias (<code className="bg-[var(--rx-s2)] px-1 rounded">fx_rates</code>), precios localizados (<code className="bg-[var(--rx-s2)] px-1 rounded">global_plan_pricing</code>), y métricas SaaS por región.</p>
           </div>
-          <div className="p-3 rounded-lg border border-border bg-background">
+          <div className="p-3 rounded-lg border border-[var(--rx-b1)] bg-background">
             <p className="font-semibold text-foreground mb-1">Stack Tecnológico</p>
             <p>React + Vite + Tailwind (frontend). Postgres + Edge Functions + Realtime (backend). Stripe, Twilio, ElevenLabs, Google Calendar (integraciones).</p>
           </div>
@@ -637,54 +637,54 @@ const SchemaDocsPage = () => {
       </div>
 
       {/* Security Patterns */}
-      <div className="bg-card border border-border rounded-xl p-5">
+      <div className="rx-panel">
         <h2 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-          <Shield size={16} className="text-primary" /> Patrones de Seguridad
+          <Shield size={16} className="text-[var(--rx-brand)]" /> Patrones de Seguridad
         </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-muted-foreground">
-          <div className="flex items-start gap-2"><span className="text-primary font-bold">1.</span> Aislamiento estricto por <code className="bg-secondary px-1 rounded">tenant_id</code> en todas las tablas</div>
-          <div className="flex items-start gap-2"><span className="text-primary font-bold">2.</span> RBAC separado en <code className="bg-secondary px-1 rounded">user_roles</code> (nunca en profiles)</div>
-          <div className="flex items-start gap-2"><span className="text-primary font-bold">3.</span> Funciones <code className="bg-secondary px-1 rounded">SECURITY DEFINER</code> para evitar recursión RLS</div>
-          <div className="flex items-start gap-2"><span className="text-primary font-bold">4.</span> Soft-delete con <code className="bg-secondary px-1 rounded">deleted_at</code> en entidades críticas</div>
-          <div className="flex items-start gap-2"><span className="text-primary font-bold">5.</span> OTP sellado — <code className="bg-secondary px-1 rounded">otp_challenges</code> con RLS <code className="bg-secondary px-1 rounded">false</code></div>
-          <div className="flex items-start gap-2"><span className="text-primary font-bold">6.</span> PINs con PBKDF2, credenciales con AES-GCM, webhooks con HMAC</div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-[var(--rx-t2)]">
+          <div className="flex items-start gap-2"><span className="text-[var(--rx-brand)] font-bold">1.</span> Aislamiento estricto por <code className="bg-[var(--rx-s2)] px-1 rounded">tenant_id</code> en todas las tablas</div>
+          <div className="flex items-start gap-2"><span className="text-[var(--rx-brand)] font-bold">2.</span> RBAC separado en <code className="bg-[var(--rx-s2)] px-1 rounded">user_roles</code> (nunca en profiles)</div>
+          <div className="flex items-start gap-2"><span className="text-[var(--rx-brand)] font-bold">3.</span> Funciones <code className="bg-[var(--rx-s2)] px-1 rounded">SECURITY DEFINER</code> para evitar recursión RLS</div>
+          <div className="flex items-start gap-2"><span className="text-[var(--rx-brand)] font-bold">4.</span> Soft-delete con <code className="bg-[var(--rx-s2)] px-1 rounded">deleted_at</code> en entidades críticas</div>
+          <div className="flex items-start gap-2"><span className="text-[var(--rx-brand)] font-bold">5.</span> OTP sellado — <code className="bg-[var(--rx-s2)] px-1 rounded">otp_challenges</code> con RLS <code className="bg-[var(--rx-s2)] px-1 rounded">false</code></div>
+          <div className="flex items-start gap-2"><span className="text-[var(--rx-brand)] font-bold">6.</span> PINs con PBKDF2, credenciales con AES-GCM, webhooks con HMAC</div>
         </div>
       </div>
 
       {/* Enum Types */}
-      <div className="bg-card border border-border rounded-xl p-5">
+      <div className="rx-panel">
         <h2 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-          <Zap size={16} className="text-primary" /> Tipos Enum
+          <Zap size={16} className="text-[var(--rx-brand)]" /> Tipos Enum
         </h2>
         <div className="text-sm">
-          <code className="bg-secondary px-2 py-1 rounded text-foreground">app_role</code>
-          <span className="text-muted-foreground ml-2">= super_admin | owner | admin | moderator | user</span>
+          <code className="bg-[var(--rx-s2)] px-2 py-1 rounded text-foreground">app_role</code>
+          <span className="text-[var(--rx-t2)] ml-2">= super_admin | owner | admin | moderator | user</span>
         </div>
       </div>
 
       {/* Helper Functions */}
-      <div className="bg-card border border-border rounded-xl p-5">
+      <div className="rx-panel">
         <h2 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
-          <FileCode size={16} className="text-primary" /> Funciones Helper ({helperFunctions.length})
+          <FileCode size={16} className="text-[var(--rx-brand)]" /> Funciones Helper ({helperFunctions.length})
         </h2>
         <div className="space-y-3">
           {helperFunctions.map(fn => (
-            <div key={fn.name} className="p-3 rounded-lg border border-border bg-background">
+            <div key={fn.name} className="p-3 rounded-lg border border-[var(--rx-b1)] bg-background">
               <div className="flex items-center gap-2 flex-wrap">
                 <code className="text-sm font-semibold text-foreground">{fn.name}</code>
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium">{fn.security}</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-[var(--rx-brand)] font-medium">{fn.security}</span>
               </div>
-              <p className="text-xs text-muted-foreground mt-1">{fn.description}</p>
-              <code className="text-[11px] text-muted-foreground block mt-1">{fn.signature}</code>
+              <p className="text-xs text-[var(--rx-t2)] mt-1">{fn.description}</p>
+              <code className="text-[11px] text-[var(--rx-t2)] block mt-1">{fn.signature}</code>
             </div>
           ))}
         </div>
       </div>
 
       {/* RPC Functions */}
-      <div className="bg-card border border-border rounded-xl p-5 print-break-avoid">
+      <div className="rx-panel">
         <h2 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
-          <Terminal size={16} className="text-primary" /> Funciones RPC
+          <Terminal size={16} className="text-[var(--rx-brand)]" /> Funciones RPC
         </h2>
         <div className="space-y-3">
           {[
@@ -693,58 +693,58 @@ const SchemaDocsPage = () => {
             { name: 'block_expired_trials', signature: 'block_expired_trials() → void', security: 'SECURITY DEFINER', description: 'Marca como "blocked" todas las suscripciones en trial vencido. Ejecutada por cron job.' },
             { name: 'calculate_next_retry', signature: 'calculate_next_retry(_retry_count int, _base_delay_minutes int) → timestamptz', security: 'IMMUTABLE', description: 'Calcula timestamp del siguiente reintento con backoff exponencial (base * 2^n).' },
           ].map(fn => (
-            <div key={fn.name} className="p-3 rounded-lg border border-border bg-background">
+            <div key={fn.name} className="p-3 rounded-lg border border-[var(--rx-b1)] bg-background">
               <div className="flex items-center gap-2 flex-wrap">
                 <code className="text-sm font-semibold text-foreground">{fn.name}</code>
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium">{fn.security}</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-[var(--rx-brand)] font-medium">{fn.security}</span>
               </div>
-              <p className="text-xs text-muted-foreground mt-1">{fn.description}</p>
-              <code className="text-[11px] text-muted-foreground block mt-1">{fn.signature}</code>
+              <p className="text-xs text-[var(--rx-t2)] mt-1">{fn.description}</p>
+              <code className="text-[11px] text-[var(--rx-t2)] block mt-1">{fn.signature}</code>
             </div>
           ))}
         </div>
       </div>
 
       {/* Triggers */}
-      <div className="bg-card border border-border rounded-xl p-5 print-break-avoid">
+      <div className="rx-panel">
         <h2 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
-          <RefreshCw size={16} className="text-primary" /> Triggers
+          <RefreshCw size={16} className="text-[var(--rx-brand)]" /> Triggers
         </h2>
         <div className="space-y-3">
           {[
             { name: 'on_auth_user_created', table: 'auth.users', event: 'AFTER INSERT', fn: 'handle_new_user()', description: 'Crea tenant + profile + user_role automáticamente al registrarse. Super admin se asigna al email configurado en vault.' },
             { name: 'update_updated_at_*', table: 'Múltiples tablas', event: 'BEFORE UPDATE', fn: 'update_updated_at_column()', description: 'Actualiza automáticamente el campo updated_at en cada UPDATE. Aplicado a: profiles, contacts, expenses, call_records, knowledge_items, etc.' },
           ].map(t => (
-            <div key={t.name} className="p-3 rounded-lg border border-border bg-background">
+            <div key={t.name} className="p-3 rounded-lg border border-[var(--rx-b1)] bg-background">
               <div className="flex items-center gap-2 flex-wrap">
                 <code className="text-sm font-semibold text-foreground">{t.name}</code>
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-warning/20 text-warning font-medium">{t.event}</span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">ON {t.table}</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-warning/20 text-[var(--rx-amber)] font-medium">{t.event}</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--rx-s2)] text-[var(--rx-t2)]">ON {t.table}</span>
               </div>
-              <p className="text-xs text-muted-foreground mt-1">{t.description}</p>
-              <code className="text-[11px] text-muted-foreground block mt-1">→ {t.fn}</code>
+              <p className="text-xs text-[var(--rx-t2)] mt-1">{t.description}</p>
+              <code className="text-[11px] text-[var(--rx-t2)] block mt-1">→ {t.fn}</code>
             </div>
           ))}
         </div>
       </div>
 
       {/* Views */}
-      <div className="bg-card border border-border rounded-xl p-5 print-break-avoid">
+      <div className="rx-panel">
         <h2 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-          <Eye size={16} className="text-primary" /> Vistas
+          <Eye size={16} className="text-[var(--rx-brand)]" /> Vistas
         </h2>
-        <div className="text-xs text-muted-foreground space-y-2">
+        <div className="text-xs text-[var(--rx-t2)] space-y-2">
           <p>El sistema no utiliza vistas SQL personalizadas. Todo el acceso a datos se realiza mediante:</p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mt-2">
-            <div className="p-2 rounded border border-border bg-background text-center">
+            <div className="p-2 rounded border border-[var(--rx-b1)] bg-background text-center">
               <p className="font-semibold text-foreground">Queries directas</p>
               <p>via Supabase SDK + RLS</p>
             </div>
-            <div className="p-2 rounded border border-border bg-background text-center">
+            <div className="p-2 rounded border border-[var(--rx-b1)] bg-background text-center">
               <p className="font-semibold text-foreground">Funciones RPC</p>
               <p>SECURITY DEFINER para agregaciones</p>
             </div>
-            <div className="p-2 rounded border border-border bg-background text-center">
+            <div className="p-2 rounded border border-[var(--rx-b1)] bg-background text-center">
               <p className="font-semibold text-foreground">Edge Functions</p>
               <p>Para lógica compleja con service_role</p>
             </div>
@@ -753,62 +753,62 @@ const SchemaDocsPage = () => {
       </div>
 
       {/* Storage Buckets */}
-      <div className="bg-card border border-border rounded-xl p-5 print-break-avoid">
+      <div className="rx-panel">
         <h2 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
-          <HardDrive size={16} className="text-primary" /> Storage Buckets
+          <HardDrive size={16} className="text-[var(--rx-brand)]" /> Storage Buckets
         </h2>
         <div className="space-y-3">
           {[
             { name: 'branding', public: true, description: 'Logos y assets de marca por tenant. Acceso público para renderizado en UI sin autenticación.', policies: 'Autenticados pueden subir a su carpeta tenant_id/. Lectura pública.' },
             { name: 'call-recordings', public: false, description: 'Grabaciones de llamadas (audio). Acceso restringido por tenant_id.', policies: 'Solo usuarios del mismo tenant pueden leer. Escritura solo via service_role (Edge Functions).' },
           ].map(b => (
-            <div key={b.name} className="p-3 rounded-lg border border-border bg-background">
+            <div key={b.name} className="p-3 rounded-lg border border-[var(--rx-b1)] bg-background">
               <div className="flex items-center gap-2 flex-wrap">
                 <code className="text-sm font-semibold text-foreground">{b.name}</code>
-                <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${b.public ? 'bg-success/20 text-success' : 'bg-destructive/20 text-destructive'}`}>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${b.public ? 'bg-success/20 text-[var(--rx-emerald)]' : 'bg-destructive/20 text-[var(--rx-rose)]'}`}>
                   {b.public ? 'PÚBLICO' : 'PRIVADO'}
                 </span>
               </div>
-              <p className="text-xs text-muted-foreground mt-1">{b.description}</p>
-              <p className="text-[11px] text-muted-foreground mt-1 font-mono">Políticas: {b.policies}</p>
+              <p className="text-xs text-[var(--rx-t2)] mt-1">{b.description}</p>
+              <p className="text-[11px] text-[var(--rx-t2)] mt-1 font-mono">Políticas: {b.policies}</p>
             </div>
           ))}
         </div>
       </div>
 
       {/* Realtime */}
-      <div className="bg-card border border-border rounded-xl p-5 print-break-avoid">
+      <div className="rx-panel">
         <h2 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-          <Radio size={16} className="text-primary" /> Realtime
+          <Radio size={16} className="text-[var(--rx-brand)]" /> Realtime
         </h2>
-        <div className="text-xs text-muted-foreground space-y-2">
+        <div className="text-xs text-[var(--rx-t2)] space-y-2">
           <p>Tablas habilitadas para Postgres Changes (supabase_realtime publication):</p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
             {['internal_messages', 'message_read_receipts', 'call_records', 'appointments', 'assistant_messages', 'whatsapp_messages'].map(t => (
-              <div key={t} className="p-2 rounded border border-border bg-background text-center">
+              <div key={t} className="p-2 rounded border border-[var(--rx-b1)] bg-background text-center">
                 <code className="text-foreground text-[11px]">{t}</code>
               </div>
             ))}
           </div>
-          <p className="mt-2">Protocolo: <code className="bg-secondary px-1 rounded">supabase.channel().on('postgres_changes', ...)</code>. RLS aplica automáticamente — los usuarios solo reciben eventos de su tenant.</p>
+          <p className="mt-2">Protocolo: <code className="bg-[var(--rx-s2)] px-1 rounded">supabase.channel().on('postgres_changes', ...)</code>. RLS aplica automáticamente — los usuarios solo reciben eventos de su tenant.</p>
         </div>
       </div>
 
       {/* RBAC Matrix */}
-      <div className="bg-card border border-border rounded-xl p-5">
+      <div className="rx-panel">
         <h2 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
-          <Lock size={16} className="text-primary" /> Matriz RBAC
+          <Lock size={16} className="text-[var(--rx-brand)]" /> Matriz RBAC
         </h2>
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b border-border text-left">
-                <th className="py-2 px-2 font-medium text-muted-foreground">Módulo</th>
-                <th className="py-2 px-1 font-medium text-muted-foreground text-center">user</th>
-                <th className="py-2 px-1 font-medium text-muted-foreground text-center">moderator</th>
-                <th className="py-2 px-1 font-medium text-muted-foreground text-center">admin</th>
-                <th className="py-2 px-1 font-medium text-muted-foreground text-center">owner</th>
-                <th className="py-2 px-1 font-medium text-muted-foreground text-center">super_admin</th>
+              <tr className="border-b border-[var(--rx-b1)] text-left">
+                <th className="py-2 px-2 font-medium text-[var(--rx-t2)]">Módulo</th>
+                <th className="py-2 px-1 font-medium text-[var(--rx-t2)] text-center">user</th>
+                <th className="py-2 px-1 font-medium text-[var(--rx-t2)] text-center">moderator</th>
+                <th className="py-2 px-1 font-medium text-[var(--rx-t2)] text-center">admin</th>
+                <th className="py-2 px-1 font-medium text-[var(--rx-t2)] text-center">owner</th>
+                <th className="py-2 px-1 font-medium text-[var(--rx-t2)] text-center">super_admin</th>
               </tr>
             </thead>
             <tbody>
@@ -829,67 +829,67 @@ const SchemaDocsPage = () => {
                 { module: 'SuperAdmin Panel', user: '—', mod: '—', admin: '—', owner: '—', super: 'CRUD' },
                 { module: 'Fraude/Churn', user: '—', mod: '—', admin: '—', owner: '—', super: 'CRUD' },
               ].map(row => (
-                <tr key={row.module} className="border-b border-border/50">
+                <tr key={row.module} className="border-b border-[var(--rx-b1)]/50">
                   <td className="py-1.5 px-2 font-medium text-foreground">{row.module}</td>
-                  <td className="py-1.5 px-1 text-center text-muted-foreground">{row.user}</td>
-                  <td className="py-1.5 px-1 text-center text-muted-foreground">{row.mod}</td>
-                  <td className="py-1.5 px-1 text-center text-muted-foreground">{row.admin}</td>
-                  <td className="py-1.5 px-1 text-center text-muted-foreground">{row.owner}</td>
-                  <td className="py-1.5 px-1 text-center font-medium text-primary">{row.super}</td>
+                  <td className="py-1.5 px-1 text-center text-[var(--rx-t2)]">{row.user}</td>
+                  <td className="py-1.5 px-1 text-center text-[var(--rx-t2)]">{row.mod}</td>
+                  <td className="py-1.5 px-1 text-center text-[var(--rx-t2)]">{row.admin}</td>
+                  <td className="py-1.5 px-1 text-center text-[var(--rx-t2)]">{row.owner}</td>
+                  <td className="py-1.5 px-1 text-center font-medium text-[var(--rx-brand)]">{row.super}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-        <p className="text-[10px] text-muted-foreground mt-3">C=Create R=Read U=Update D=Delete. "(own)" = solo registros propios. "Cross" = acceso cross-tenant.</p>
+        <p className="text-[10px] text-[var(--rx-t2)] mt-3">C=Create R=Read U=Update D=Delete. "(own)" = solo registros propios. "Cross" = acceso cross-tenant.</p>
       </div>
 
       {/* Tables */}
       <div className="space-y-3">
         <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
-          <Database size={16} className="text-primary" /> Tablas ({filtered.length})
+          <Database size={16} className="text-[var(--rx-brand)]" /> Tablas ({filtered.length})
         </h2>
         {filtered.map(table => {
           const isOpen = expanded[table.name];
           return (
-            <div key={table.name} className="bg-card border border-border rounded-xl overflow-hidden print-break-avoid">
+            <div key={table.name} className="rx-panel">
               <button
                 onClick={() => toggle(table.name)}
-                className="w-full flex items-center gap-3 p-4 text-left hover:bg-secondary/30 transition-colors"
+                className="w-full flex items-center gap-3 p-4 text-left hover:bg-[var(--rx-s2)]/30 transition-colors"
               >
-                {isOpen ? <ChevronDown size={16} className="text-muted-foreground shrink-0" /> : <ChevronRight size={16} className="text-muted-foreground shrink-0" />}
+                {isOpen ? <ChevronDown size={16} className="text-[var(--rx-t2)] shrink-0" /> : <ChevronRight size={16} className="text-[var(--rx-t2)] shrink-0" />}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <code className="text-sm font-semibold text-foreground">{table.name}</code>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium">{table.columns.length} cols</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-[var(--rx-brand)] font-medium">{table.columns.length} cols</span>
                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/10 text-green-600 font-medium">{table.rls.length} RLS</span>
                     {table.fks.length > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600 font-medium">{table.fks.length} FK</span>}
                     {table.blockedActions && <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-600 font-medium">⛔ {table.blockedActions.length} blocked</span>}
                   </div>
-                  <p className="text-xs text-muted-foreground mt-0.5 truncate">{table.description}</p>
+                  <p className="text-xs text-[var(--rx-t2)] mt-0.5 truncate">{table.description}</p>
                 </div>
               </button>
 
               {isOpen && (
-                <div className="border-t border-border p-4 space-y-4">
+                <div className="border-t border-[var(--rx-b1)] p-4 space-y-4">
                   {/* Columns */}
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs">
                       <thead>
-                        <tr className="border-b border-border text-left">
-                          <th className="py-1.5 px-2 font-medium text-muted-foreground">Columna</th>
-                          <th className="py-1.5 px-2 font-medium text-muted-foreground">Tipo</th>
-                          <th className="py-1.5 px-2 font-medium text-muted-foreground">Nullable</th>
-                          <th className="py-1.5 px-2 font-medium text-muted-foreground">Default</th>
+                        <tr className="border-b border-[var(--rx-b1)] text-left">
+                          <th className="py-1.5 px-2 font-medium text-[var(--rx-t2)]">Columna</th>
+                          <th className="py-1.5 px-2 font-medium text-[var(--rx-t2)]">Tipo</th>
+                          <th className="py-1.5 px-2 font-medium text-[var(--rx-t2)]">Nullable</th>
+                          <th className="py-1.5 px-2 font-medium text-[var(--rx-t2)]">Default</th>
                         </tr>
                       </thead>
                       <tbody>
                         {table.columns.map(col => (
-                          <tr key={col.name} className="border-b border-border/50">
+                          <tr key={col.name} className="border-b border-[var(--rx-b1)]/50">
                             <td className="py-1.5 px-2 font-mono text-foreground">{col.name}</td>
-                            <td className="py-1.5 px-2 text-muted-foreground">{col.type}</td>
+                            <td className="py-1.5 px-2 text-[var(--rx-t2)]">{col.type}</td>
                             <td className="py-1.5 px-2">{col.nullable ? <span className="text-amber-600">Sí</span> : <span className="text-green-600">No</span>}</td>
-                            <td className="py-1.5 px-2 text-muted-foreground font-mono">{col.default_val || '—'}</td>
+                            <td className="py-1.5 px-2 text-[var(--rx-t2)] font-mono">{col.default_val || '—'}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -903,13 +903,13 @@ const SchemaDocsPage = () => {
                     </h4>
                     <div className="space-y-2">
                       {table.rls.map((policy, i) => (
-                        <div key={i} className="p-2 rounded border border-border bg-secondary/20 text-xs">
+                        <div key={i} className="p-2 rounded border border-[var(--rx-b1)] bg-[var(--rx-s2)]/20 text-xs">
                           <div className="flex items-center gap-2">
                             <span className="font-medium text-foreground">{policy.name}</span>
-                            <span className="text-[10px] px-1 rounded bg-muted text-muted-foreground">{policy.command}</span>
+                            <span className="text-[10px] px-1 rounded bg-[var(--rx-s2)] text-[var(--rx-t2)]">{policy.command}</span>
                           </div>
-                          {policy.using && <p className="text-muted-foreground mt-1 font-mono text-[11px]">USING: {policy.using}</p>}
-                          {policy.check && <p className="text-muted-foreground mt-1 font-mono text-[11px]">WITH CHECK: {policy.check}</p>}
+                          {policy.using && <p className="text-[var(--rx-t2)] mt-1 font-mono text-[11px]">USING: {policy.using}</p>}
+                          {policy.check && <p className="text-[var(--rx-t2)] mt-1 font-mono text-[11px]">WITH CHECK: {policy.check}</p>}
                         </div>
                       ))}
                     </div>
@@ -927,7 +927,7 @@ const SchemaDocsPage = () => {
                     <div>
                       <h4 className="text-xs font-semibold text-foreground mb-1">Foreign Keys</h4>
                       {table.fks.map((fk, i) => (
-                        <p key={i} className="text-xs text-muted-foreground font-mono">
+                        <p key={i} className="text-xs text-[var(--rx-t2)] font-mono">
                           {table.name}.{fk.column} → {fk.ref_table}.{fk.ref_column}
                         </p>
                       ))}
@@ -941,15 +941,15 @@ const SchemaDocsPage = () => {
       </div>
 
       {/* ══════════ SYSTEM FLOWCHART ══════════ */}
-      <div className="bg-card border border-border rounded-xl p-5 print-page-break">
+      <div className="rx-panel">
         <h2 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
-          <Zap size={16} className="text-primary" /> Flowchart del Sistema
+          <Zap size={16} className="text-[var(--rx-brand)]" /> Flowchart del Sistema
         </h2>
 
         {/* 1. Llamada Inbound */}
         <div className="mb-6">
           <h3 className="text-xs font-semibold text-foreground mb-2">1. Flujo de Llamada Entrante (Inbound Call)</h3>
-          <div className="text-[11px] font-mono text-muted-foreground leading-relaxed bg-secondary/30 rounded p-3 overflow-x-auto">
+          <div className="text-[11px] font-mono text-[var(--rx-t2)] leading-relaxed bg-[var(--rx-s2)]/30 rounded p-3 overflow-x-auto">
             <pre className="whitespace-pre">{`
 ┌─────────┐     ┌──────────────────┐     ┌─────────────────────┐
 │  PSTN   │────▶│  Twilio Webhook  │────▶│ call-inbound-webhook│
@@ -1004,7 +1004,7 @@ const SchemaDocsPage = () => {
         {/* 2. WhatsApp Bot */}
         <div className="mb-6">
           <h3 className="text-xs font-semibold text-foreground mb-2">2. Flujo WhatsApp Bot</h3>
-          <div className="text-[11px] font-mono text-muted-foreground leading-relaxed bg-secondary/30 rounded p-3 overflow-x-auto">
+          <div className="text-[11px] font-mono text-[var(--rx-t2)] leading-relaxed bg-[var(--rx-s2)]/30 rounded p-3 overflow-x-auto">
             <pre className="whitespace-pre">{`
 ┌──────────┐     ┌──────────────────┐     ┌─────────────────┐
 │ WhatsApp │────▶│ Twilio/Meta      │────▶│ whatsapp-webhook│
@@ -1037,7 +1037,7 @@ const SchemaDocsPage = () => {
         {/* 3. Billing & Subscription */}
         <div className="mb-6">
           <h3 className="text-xs font-semibold text-foreground mb-2">3. Flujo de Billing y Suscripciones</h3>
-          <div className="text-[11px] font-mono text-muted-foreground leading-relaxed bg-secondary/30 rounded p-3 overflow-x-auto">
+          <div className="text-[11px] font-mono text-[var(--rx-t2)] leading-relaxed bg-[var(--rx-s2)]/30 rounded p-3 overflow-x-auto">
             <pre className="whitespace-pre">{`
 ┌─────────────┐     ┌──────────────────┐     ┌──────────────────┐
 │ Admin/Owner │────▶│  stripe-billing  │────▶│  Stripe API      │
@@ -1079,7 +1079,7 @@ const SchemaDocsPage = () => {
         {/* 4. Auth & Onboarding */}
         <div className="mb-6">
           <h3 className="text-xs font-semibold text-foreground mb-2">4. Flujo de Autenticación y Onboarding</h3>
-          <div className="text-[11px] font-mono text-muted-foreground leading-relaxed bg-secondary/30 rounded p-3 overflow-x-auto">
+          <div className="text-[11px] font-mono text-[var(--rx-t2)] leading-relaxed bg-[var(--rx-s2)]/30 rounded p-3 overflow-x-auto">
             <pre className="whitespace-pre">{`
 ┌──────────┐     ┌───────────────┐     ┌──────────────────────────────┐
 │ Usuario  │────▶│  AuthPage     │────▶│  Supabase Auth               │
@@ -1116,7 +1116,7 @@ const SchemaDocsPage = () => {
         {/* 5. AI Assistant */}
         <div className="mb-6">
           <h3 className="text-xs font-semibold text-foreground mb-2">5. Flujo del Copiloto IA Interno</h3>
-          <div className="text-[11px] font-mono text-muted-foreground leading-relaxed bg-secondary/30 rounded p-3 overflow-x-auto">
+          <div className="text-[11px] font-mono text-[var(--rx-t2)] leading-relaxed bg-[var(--rx-s2)]/30 rounded p-3 overflow-x-auto">
             <pre className="whitespace-pre">{`
 ┌──────────┐     ┌───────────────────┐     ┌──────────────────┐
 │ Usuario  │────▶│ AIAssistantWidget │────▶│ ai-copilot       │
@@ -1144,7 +1144,7 @@ const SchemaDocsPage = () => {
         {/* 6. Churn & Pricing Engine */}
         <div className="mb-6">
           <h3 className="text-xs font-semibold text-foreground mb-2">6. Motor de Retención y Pricing Dinámico</h3>
-          <div className="text-[11px] font-mono text-muted-foreground leading-relaxed bg-secondary/30 rounded p-3 overflow-x-auto">
+          <div className="text-[11px] font-mono text-[var(--rx-t2)] leading-relaxed bg-[var(--rx-s2)]/30 rounded p-3 overflow-x-auto">
             <pre className="whitespace-pre">{`
 ┌──────────────┐     ┌──────────────────┐     ┌──────────────────┐
 │ CRON / Admin │────▶│ churn-engine     │────▶│ Lovable AI       │
@@ -1176,7 +1176,7 @@ const SchemaDocsPage = () => {
         {/* 7. Overview Architecture */}
         <div>
           <h3 className="text-xs font-semibold text-foreground mb-2">7. Arquitectura General del Sistema</h3>
-          <div className="text-[11px] font-mono text-muted-foreground leading-relaxed bg-secondary/30 rounded p-3 overflow-x-auto">
+          <div className="text-[11px] font-mono text-[var(--rx-t2)] leading-relaxed bg-[var(--rx-s2)]/30 rounded p-3 overflow-x-auto">
             <pre className="whitespace-pre">{`
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                        FRONTEND (React + Vite)                         │
@@ -1228,11 +1228,11 @@ const SchemaDocsPage = () => {
       </div>
 
       {/* Entity Relationship Diagram */}
-      <div className="bg-card border border-border rounded-xl p-5 print-page-break">
+      <div className="rx-panel">
         <h2 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
-          <Database size={16} className="text-primary" /> Diagrama de Relación de Entidades (ERD)
+          <Database size={16} className="text-[var(--rx-brand)]" /> Diagrama de Relación de Entidades (ERD)
         </h2>
-        <div className="text-xs font-mono text-muted-foreground space-y-1 leading-relaxed">
+        <div className="text-xs font-mono text-[var(--rx-t2)] space-y-1 leading-relaxed">
           <p className="font-semibold text-foreground text-sm mb-3">Relaciones principales:</p>
           
           <div className="space-y-4">

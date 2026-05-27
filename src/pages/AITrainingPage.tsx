@@ -333,10 +333,10 @@ const AITrainingPage = () => {
     <div className="h-full flex flex-col p-6">
       <div className="mb-6">
         <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
-          <Bot size={22} className="text-primary" />
+          <Bot size={22} className="text-[var(--rx-brand)]" />
           Entrenamiento IA
         </h1>
-        <p className="text-sm text-muted-foreground mt-1">
+        <p className="text-sm text-[var(--rx-t2)] mt-1">
           Prueba al bot Aria con el mismo motor que usa en WhatsApp. Aprueba respuestas para que aprenda y mejore.
         </p>
       </div>
@@ -356,29 +356,29 @@ const AITrainingPage = () => {
           {/* Status bar */}
           <div className="flex items-center justify-between mb-2 px-1">
             <div className="flex items-center gap-3">
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <div className="flex items-center gap-1.5 text-xs text-[var(--rx-t2)]">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                 Bot conectado al motor real
               </div>
               {simulatedRole && (
-                <span className={`text-xs px-2 py-0.5 rounded-full ${simulatedRole === 'employee' ? 'bg-primary/10 text-primary' : 'bg-accent text-accent-foreground'}`}>
+                <span className={`text-xs px-2 py-0.5 rounded-full ${simulatedRole === 'employee' ? 'bg-primary/10 text-[var(--rx-brand)]' : 'bg-accent text-accent-foreground'}`}>
                   Modo: {simulatedRole === 'employee' ? '👨‍💼 Empleado' : '👤 Cliente'}
                 </span>
               )}
-              <span className="text-xs text-muted-foreground">
-                Estado: <code className="bg-muted px-1 rounded">{botState}</code>
+              <span className="text-xs text-[var(--rx-t2)]">
+                Estado: <code className="bg-[var(--rx-s2)] px-1 rounded">{botState}</code>
               </span>
             </div>
           </div>
 
-          <div className="flex-1 flex flex-col bg-card border border-border rounded-xl overflow-hidden">
+          <div className="flex-1 flex flex-col bg-card border border-[var(--rx-b1)] rounded-xl overflow-hidden">
             {/* Chat messages */}
             <div className="flex-1 overflow-y-auto p-4 space-y-3 scrollbar-thin">
               {waMessages.length === 0 && (
                 <div className="flex flex-col items-center justify-center h-full text-center py-12">
-                  <Sparkles size={40} className="text-muted-foreground/30 mb-3" />
-                  <p className="text-sm text-muted-foreground font-medium">Sandbox conectado al bot real de Aria</p>
-                  <p className="text-xs text-muted-foreground mt-1">Escribe "hola" para iniciar. Aprueba las buenas respuestas para que Aria aprenda.</p>
+                  <Sparkles size={40} className="text-[var(--rx-t2)]/30 mb-3" />
+                  <p className="text-sm text-[var(--rx-t2)] font-medium">Sandbox conectado al bot real de Aria</p>
+                  <p className="text-xs text-[var(--rx-t2)] mt-1">Escribe "hola" para iniciar. Aprueba las buenas respuestas para que Aria aprenda.</p>
                 </div>
               )}
               {waMessages.map((msg, i) => (
@@ -387,12 +387,12 @@ const AITrainingPage = () => {
                     <div
                       className={`px-3.5 py-2.5 rounded-2xl text-sm ${
                         msg.role === 'user'
-                          ? 'bg-primary text-primary-foreground rounded-br-md'
-                          : 'bg-muted text-foreground rounded-bl-md'
+                          ? 'bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground rounded-br-md'
+                          : 'bg-[var(--rx-s2)] text-foreground rounded-bl-md'
                       }`}
                     >
                       <p className="whitespace-pre-wrap">{msg.content}</p>
-                      <p className={`text-[10px] mt-1 ${msg.role === 'user' ? 'text-primary-foreground/60' : 'text-muted-foreground'}`}>
+                      <p className={`text-[10px] mt-1 ${msg.role === 'user' ? 'text-[var(--rx-brand)]-foreground/60' : 'text-[var(--rx-t2)]'}`}>
                         {msg.timestamp.toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })}
                       </p>
                     </div>
@@ -403,14 +403,14 @@ const AITrainingPage = () => {
                         <div className="flex items-center gap-1 mt-1 ml-1">
                           <button
                             onClick={() => handleFeedback(i, true)}
-                            className={`p-1 rounded transition-colors ${msg.approved === true ? 'text-emerald-500 bg-emerald-500/10' : 'text-muted-foreground hover:text-emerald-500 hover:bg-emerald-500/10'}`}
+                            className={`p-1 rounded transition-colors ${msg.approved === true ? 'text-emerald-500 bg-emerald-500/10' : 'text-[var(--rx-t2)] hover:text-emerald-500 hover:bg-emerald-500/10'}`}
                             title="Buena respuesta"
                           >
                             <ThumbsUp size={13} />
                           </button>
                           <button
                             onClick={() => handleFeedback(i, false)}
-                            className={`p-1 rounded transition-colors ${msg.approved === false ? 'text-destructive bg-destructive/10' : 'text-muted-foreground hover:text-destructive hover:bg-destructive/10'}`}
+                            className={`p-1 rounded transition-colors ${msg.approved === false ? 'text-[var(--rx-rose)] bg-destructive/10' : 'text-[var(--rx-t2)] hover:text-[var(--rx-rose)] hover:bg-destructive/10'}`}
                             title="Respuesta incorrecta"
                           >
                             <ThumbsDown size={13} />
@@ -418,7 +418,7 @@ const AITrainingPage = () => {
                           {msg.approved === true && !msg.saved && (
                             <button
                               onClick={() => saveAsKnowledge(i)}
-                              className="flex items-center gap-1 text-xs text-primary hover:bg-primary/10 px-2 py-0.5 rounded ml-1 transition-colors"
+                              className="flex items-center gap-1 text-xs text-[var(--rx-brand)] hover:bg-primary/10 px-2 py-0.5 rounded ml-1 transition-colors"
                             >
                               <BookOpen size={12} /> Guardar en Knowledge Hub
                             </button>
@@ -430,24 +430,24 @@ const AITrainingPage = () => {
 
                         {msg.correcting && (
                           <div className="mt-2 ml-1 space-y-2">
-                            <p className="text-xs text-muted-foreground">Escribe la respuesta correcta para que Aria aprenda:</p>
+                            <p className="text-xs text-[var(--rx-t2)]">Escribe la respuesta correcta para que Aria aprenda:</p>
                             <textarea
                               value={msg.correction || ''}
                               onChange={e => handleCorrectionChange(i, e.target.value)}
                               placeholder="Escribe aquí la respuesta correcta..."
-                              className="w-full bg-secondary rounded-lg px-3 py-2 text-sm outline-none border border-border focus:border-primary min-h-[60px] resize-y"
+                              className="w-full bg-[var(--rx-s2)] rounded-lg px-3 py-2 text-sm outline-none border border-[var(--rx-b1)] focus:border-primary min-h-[60px] resize-y"
                             />
                             <div className="flex gap-2">
                               <button
                                 onClick={() => saveCorrection(i)}
                                 disabled={!msg.correction?.trim()}
-                                className="flex items-center gap-1 text-xs bg-primary text-primary-foreground px-3 py-1.5 rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity"
+                                className="flex items-center gap-1 text-xs bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground px-3 py-1.5 rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity"
                               >
                                 <BookOpen size={12} /> Guardar corrección
                               </button>
                               <button
                                 onClick={() => setWaMessages(prev => prev.map((m, idx) => idx === i ? { ...m, correcting: false } : m))}
-                                className="text-xs text-muted-foreground hover:text-foreground px-2 py-1.5 transition-colors"
+                                className="text-xs text-[var(--rx-t2)] hover:text-foreground px-2 py-1.5 transition-colors"
                               >
                                 Cancelar
                               </button>
@@ -461,9 +461,9 @@ const AITrainingPage = () => {
               ))}
               {waLoading && (
                 <div className="flex justify-start">
-                  <div className="bg-muted px-4 py-3 rounded-2xl rounded-bl-md flex items-center gap-2">
-                    <Loader2 size={16} className="animate-spin text-muted-foreground" />
-                    <span className="text-xs text-muted-foreground">Aria está pensando...</span>
+                  <div className="bg-[var(--rx-s2)] px-4 py-3 rounded-2xl rounded-bl-md flex items-center gap-2">
+                    <Loader2 size={16} className="animate-spin text-[var(--rx-t2)]" />
+                    <span className="text-xs text-[var(--rx-t2)]">Aria está pensando...</span>
                   </div>
                 </div>
               )}
@@ -471,10 +471,10 @@ const AITrainingPage = () => {
             </div>
 
             {/* Input */}
-            <div className="border-t border-border p-3 flex items-center gap-2">
+            <div className="border-t border-[var(--rx-b1)] p-3 flex items-center gap-2">
               <button
                 onClick={resetSandbox}
-                className="p-2 text-muted-foreground hover:text-destructive transition-colors rounded-md hover:bg-destructive/10"
+                className="p-2 text-[var(--rx-t2)] hover:text-[var(--rx-rose)] transition-colors rounded-md hover:bg-destructive/10"
                 title="Reiniciar conversación"
               >
                 <Trash2 size={16} />
@@ -484,13 +484,13 @@ const AITrainingPage = () => {
                 onChange={e => setWaInput(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendWaMessage()}
                 placeholder="Escribe como si fueras un cliente o empleado..."
-                className="flex-1 bg-secondary rounded-lg px-3 py-2 text-sm outline-none border border-border focus:border-primary"
+                className="flex-1 bg-[var(--rx-s2)] rounded-lg px-3 py-2 text-sm outline-none border border-[var(--rx-b1)] focus:border-primary"
                 disabled={waLoading}
               />
               <button
                 onClick={sendWaMessage}
                 disabled={waLoading || !waInput.trim()}
-                className="p-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity"
+                className="p-2 bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity"
               >
                 <Send size={16} />
               </button>
@@ -500,18 +500,18 @@ const AITrainingPage = () => {
 
         {/* ElevenLabs Voice Tab */}
         <TabsContent value="voice" className="flex-1 flex flex-col min-h-0 mt-4">
-          <div className="flex-1 flex flex-col bg-card border border-border rounded-xl overflow-hidden">
+          <div className="flex-1 flex flex-col bg-card border border-[var(--rx-b1)] rounded-xl overflow-hidden">
             {/* Voice controls */}
-            <div className={`px-5 py-4 flex items-center justify-between ${isVoiceActive ? 'bg-primary/10 border-b border-primary/20' : 'border-b border-border'}`}>
+            <div className={`px-5 py-4 flex items-center justify-between ${isVoiceActive ? 'bg-primary/10 border-b border-primary/20' : 'border-b border-[var(--rx-b1)]'}`}>
               <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isVoiceActive ? 'bg-primary text-primary-foreground animate-pulse' : 'bg-muted text-muted-foreground'}`}>
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isVoiceActive ? 'bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground animate-pulse' : 'bg-[var(--rx-s2)] text-[var(--rx-t2)]'}`}>
                   <Phone size={18} />
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold text-foreground">
                     {isVoiceActive ? 'Llamada de prueba en curso' : 'Probar Voice Agent'}
                   </h3>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-xs text-[var(--rx-t2)]">
                     {isVoiceActive
                       ? conversation.isSpeaking
                         ? 'El agente está hablando...'
@@ -523,7 +523,7 @@ const AITrainingPage = () => {
 
               <div className="flex items-center gap-2">
                 {isVoiceActive && (
-                  <span className="flex items-center gap-1 text-xs text-primary mr-2">
+                  <span className="flex items-center gap-1 text-xs text-[var(--rx-brand)] mr-2">
                     {conversation.isSpeaking ? <Volume2 size={14} className="animate-pulse" /> : <Mic size={14} />}
                   </span>
                 )}
@@ -531,12 +531,12 @@ const AITrainingPage = () => {
                   <button
                     onClick={startVoiceCall}
                     disabled={isConnecting}
-                    className="flex items-center gap-2 bg-primary text-primary-foreground text-sm px-4 py-2 rounded-lg hover:opacity-90 disabled:opacity-50"
+                    className="flex items-center gap-2 bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground text-sm px-4 py-2 rounded-lg hover:opacity-90 disabled:opacity-50"
                   >
                     {isConnecting ? <><Loader2 size={14} className="animate-spin" /> Conectando...</> : <><Phone size={14} /> Iniciar prueba</>}
                   </button>
                 ) : (
-                  <button onClick={endVoiceCall} className="flex items-center gap-2 bg-destructive text-destructive-foreground text-sm px-4 py-2 rounded-lg hover:opacity-90">
+                  <button onClick={endVoiceCall} className="flex items-center gap-2 bg-destructive text-[var(--rx-rose)]-foreground text-sm px-4 py-2 rounded-lg hover:opacity-90">
                     <Phone size={14} /> Finalizar
                   </button>
                 )}
@@ -547,13 +547,13 @@ const AITrainingPage = () => {
             <div className="flex-1 overflow-y-auto p-4 space-y-2 scrollbar-thin">
               {transcriptLines.length === 0 && !isVoiceActive && (
                 <div className="flex flex-col items-center justify-center h-full text-center py-12">
-                  <Phone size={40} className="text-muted-foreground/30 mb-3" />
-                  <p className="text-sm text-muted-foreground">Inicia una llamada de prueba con el Voice Agent</p>
-                  <p className="text-xs text-muted-foreground mt-1">La transcripción aparecerá aquí en tiempo real</p>
+                  <Phone size={40} className="text-[var(--rx-t2)]/30 mb-3" />
+                  <p className="text-sm text-[var(--rx-t2)]">Inicia una llamada de prueba con el Voice Agent</p>
+                  <p className="text-xs text-[var(--rx-t2)] mt-1">La transcripción aparecerá aquí en tiempo real</p>
                 </div>
               )}
               {transcriptLines.length === 0 && isVoiceActive && (
-                <p className="text-sm text-muted-foreground text-center py-8">Esperando conversación...</p>
+                <p className="text-sm text-[var(--rx-t2)] text-center py-8">Esperando conversación...</p>
               )}
               {transcriptLines.map((line, i) => (
                 <div key={i}>
@@ -561,10 +561,10 @@ const AITrainingPage = () => {
                     className={`px-3 py-2 rounded-lg text-sm ${
                       line.role === 'Agente'
                         ? 'bg-primary/5 border-l-2 border-primary'
-                        : 'bg-muted/50 border-l-2 border-muted-foreground/30'
+                        : 'bg-[var(--rx-s2)]/50 border-l-2 border-muted-foreground/30'
                     }`}
                   >
-                    <span className="text-xs font-semibold text-muted-foreground">{line.role}:</span>
+                    <span className="text-xs font-semibold text-[var(--rx-t2)]">{line.role}:</span>
                     <p className="text-foreground mt-0.5">{line.text}</p>
                   </div>
 
@@ -574,14 +574,14 @@ const AITrainingPage = () => {
                       <div className="flex items-center gap-1 mt-1 ml-1">
                         <button
                           onClick={() => handleVoiceFeedback(i, true)}
-                          className={`p-1 rounded transition-colors ${line.approved === true ? 'text-emerald-500 bg-emerald-500/10' : 'text-muted-foreground hover:text-emerald-500 hover:bg-emerald-500/10'}`}
+                          className={`p-1 rounded transition-colors ${line.approved === true ? 'text-emerald-500 bg-emerald-500/10' : 'text-[var(--rx-t2)] hover:text-emerald-500 hover:bg-emerald-500/10'}`}
                           title="Buena respuesta"
                         >
                           <ThumbsUp size={13} />
                         </button>
                         <button
                           onClick={() => handleVoiceFeedback(i, false)}
-                          className={`p-1 rounded transition-colors ${line.approved === false ? 'text-destructive bg-destructive/10' : 'text-muted-foreground hover:text-destructive hover:bg-destructive/10'}`}
+                          className={`p-1 rounded transition-colors ${line.approved === false ? 'text-[var(--rx-rose)] bg-destructive/10' : 'text-[var(--rx-t2)] hover:text-[var(--rx-rose)] hover:bg-destructive/10'}`}
                           title="Respuesta incorrecta"
                         >
                           <ThumbsDown size={13} />
@@ -589,7 +589,7 @@ const AITrainingPage = () => {
                         {line.approved === true && !line.saved && (
                           <button
                             onClick={() => saveVoiceAsKnowledge(i)}
-                            className="flex items-center gap-1 text-xs text-primary hover:bg-primary/10 px-2 py-0.5 rounded ml-1 transition-colors"
+                            className="flex items-center gap-1 text-xs text-[var(--rx-brand)] hover:bg-primary/10 px-2 py-0.5 rounded ml-1 transition-colors"
                           >
                             <BookOpen size={12} /> Guardar en Knowledge Hub
                           </button>
@@ -601,24 +601,24 @@ const AITrainingPage = () => {
 
                       {line.correcting && (
                         <div className="mt-2 ml-1 space-y-2">
-                          <p className="text-xs text-muted-foreground">Escribe la respuesta correcta para que el agente de voz aprenda:</p>
+                          <p className="text-xs text-[var(--rx-t2)]">Escribe la respuesta correcta para que el agente de voz aprenda:</p>
                           <textarea
                             value={line.correction || ''}
                             onChange={e => handleVoiceCorrectionChange(i, e.target.value)}
                             placeholder="Escribe aquí la respuesta correcta..."
-                            className="w-full bg-secondary rounded-lg px-3 py-2 text-sm outline-none border border-border focus:border-primary min-h-[60px] resize-y"
+                            className="w-full bg-[var(--rx-s2)] rounded-lg px-3 py-2 text-sm outline-none border border-[var(--rx-b1)] focus:border-primary min-h-[60px] resize-y"
                           />
                           <div className="flex gap-2">
                             <button
                               onClick={() => saveVoiceCorrection(i)}
                               disabled={!line.correction?.trim()}
-                              className="flex items-center gap-1 text-xs bg-primary text-primary-foreground px-3 py-1.5 rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity"
+                              className="flex items-center gap-1 text-xs bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground px-3 py-1.5 rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity"
                             >
                               <BookOpen size={12} /> Guardar corrección
                             </button>
                             <button
                               onClick={() => setTranscriptLines(prev => prev.map((l, idx) => idx === i ? { ...l, correcting: false } : l))}
-                              className="text-xs text-muted-foreground hover:text-foreground px-2 py-1.5 transition-colors"
+                              className="text-xs text-[var(--rx-t2)] hover:text-foreground px-2 py-1.5 transition-colors"
                             >
                               Cancelar
                             </button>
@@ -633,10 +633,10 @@ const AITrainingPage = () => {
 
             {/* Clear button */}
             {transcriptLines.length > 0 && !isVoiceActive && (
-              <div className="border-t border-border p-3 flex justify-end">
+              <div className="border-t border-[var(--rx-b1)] p-3 flex justify-end">
                 <button
                   onClick={() => setTranscriptLines([])}
-                  className="flex items-center gap-2 text-sm text-muted-foreground hover:text-destructive transition-colors"
+                  className="flex items-center gap-2 text-sm text-[var(--rx-t2)] hover:text-[var(--rx-rose)] transition-colors"
                 >
                   <Trash2 size={14} /> Limpiar transcripción
                 </button>
@@ -645,7 +645,7 @@ const AITrainingPage = () => {
 
             {voiceError && (
               <div className="px-5 py-3 bg-destructive/10 border-t border-destructive/20">
-                <p className="text-xs text-destructive">{voiceError}</p>
+                <p className="text-xs text-[var(--rx-rose)]">{voiceError}</p>
               </div>
             )}
           </div>

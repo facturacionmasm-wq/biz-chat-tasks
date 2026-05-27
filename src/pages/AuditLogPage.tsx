@@ -15,14 +15,14 @@ const mockAuditEvents = [
 ];
 
 const eventTypeLabels: Record<string, { label: string; color: string }> = {
-  'call.created': { label: 'Llamada registrada', color: 'bg-primary/10 text-primary' },
+  'call.created': { label: 'Llamada registrada', color: 'bg-primary/10 text-[var(--rx-brand)]' },
   'call.summary_generated': { label: 'Resumen generado', color: 'bg-accent text-accent-foreground' },
-  'appointment.created': { label: 'Cita agendada', color: 'bg-success/10 text-success' },
-  'whatsapp.message_sent': { label: 'WhatsApp enviado', color: 'bg-success/10 text-success' },
-  'otp.requested': { label: 'OTP solicitado', color: 'bg-warning/10 text-warning' },
-  'notification.whatsapp_unread': { label: 'Alerta no leído', color: 'bg-warning/10 text-warning' },
-  'knowledge.article_created': { label: 'Artículo creado', color: 'bg-primary/10 text-primary' },
-  'user.role_changed': { label: 'Rol cambiado', color: 'bg-destructive/10 text-destructive' },
+  'appointment.created': { label: 'Cita agendada', color: 'bg-[rgba(0,232,122,.1)] text-[var(--rx-emerald)]' },
+  'whatsapp.message_sent': { label: 'WhatsApp enviado', color: 'bg-[rgba(0,232,122,.1)] text-[var(--rx-emerald)]' },
+  'otp.requested': { label: 'OTP solicitado', color: 'bg-warning/10 text-[var(--rx-amber)]' },
+  'notification.whatsapp_unread': { label: 'Alerta no leído', color: 'bg-warning/10 text-[var(--rx-amber)]' },
+  'knowledge.article_created': { label: 'Artículo creado', color: 'bg-primary/10 text-[var(--rx-brand)]' },
+  'user.role_changed': { label: 'Rol cambiado', color: 'bg-destructive/10 text-[var(--rx-rose)]' },
 };
 
 const AuditLogPage = () => {
@@ -33,47 +33,47 @@ const AuditLogPage = () => {
   );
 
   return (
-    <div className="p-4 sm:p-6 max-w-5xl mx-auto">
+    <div className="rx-page">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
-            <Shield size={20} className="text-primary" /> Log de Auditoría
+            <Shield size={20} className="text-[var(--rx-brand)]" /> Log de Auditoría
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">Registro completo de acciones por usuario y sistema</p>
+          <p className="text-sm text-[var(--rx-t2)] mt-1">Registro completo de acciones por usuario y sistema</p>
         </div>
       </div>
 
       <div className="flex items-center gap-3 mb-4">
-        <div className="flex-1 flex items-center gap-2 bg-card border border-border rounded-lg px-3 py-2">
-          <Search size={16} className="text-muted-foreground" />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar por actor o tipo de evento..." className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground" />
+        <div className="flex-1 flex items-center gap-2 bg-card border border-[var(--rx-b1)] rounded-lg px-3 py-2">
+          <Search size={16} className="text-[var(--rx-t2)]" />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar por actor o tipo de evento..." className="flex-1 bg-transparent text-sm outline-none placeholder:text-[var(--rx-t2)]" />
         </div>
       </div>
 
       {/* Desktop table */}
-      <div className="hidden md:block bg-card border border-border rounded-xl overflow-hidden shadow-sm">
+      <div className="hidden md:block bg-card border border-[var(--rx-b1)] rounded-xl overflow-hidden shadow-sm">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-border bg-muted/30">
-              <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">Fecha</th>
-              <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">Actor</th>
-              <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">Evento</th>
-              <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">Recurso</th>
-              <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase">Detalles</th>
+            <tr className="border-b border-[var(--rx-b1)] bg-[var(--rx-s2)]/30">
+              <th className="text-left px-4 py-3 text-xs font-semibold text-[var(--rx-t2)] uppercase">Fecha</th>
+              <th className="text-left px-4 py-3 text-xs font-semibold text-[var(--rx-t2)] uppercase">Actor</th>
+              <th className="text-left px-4 py-3 text-xs font-semibold text-[var(--rx-t2)] uppercase">Evento</th>
+              <th className="text-left px-4 py-3 text-xs font-semibold text-[var(--rx-t2)] uppercase">Recurso</th>
+              <th className="text-left px-4 py-3 text-xs font-semibold text-[var(--rx-t2)] uppercase">Detalles</th>
             </tr>
           </thead>
           <tbody>
             {filtered.map(event => {
-              const cfg = eventTypeLabels[event.eventType] || { label: event.eventType, color: 'bg-muted text-muted-foreground' };
+              const cfg = eventTypeLabels[event.eventType] || { label: event.eventType, color: 'bg-[var(--rx-s2)] text-[var(--rx-t2)]' };
               return (
-                <tr key={event.id} className="border-b border-border last:border-b-0 hover:bg-secondary/30">
-                  <td className="px-4 py-3 text-muted-foreground text-xs whitespace-nowrap">{format(event.createdAt, "d MMM HH:mm:ss", { locale: es })}</td>
+                <tr key={event.id} className="border-b border-[var(--rx-b1)] last:border-b-0 hover:bg-[var(--rx-s2)]/30">
+                  <td className="px-4 py-3 text-[var(--rx-t2)] text-xs whitespace-nowrap">{format(event.createdAt, "d MMM HH:mm:ss", { locale: es })}</td>
                   <td className="px-4 py-3 font-medium text-foreground">{event.actor}</td>
                   <td className="px-4 py-3">
                     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${cfg.color}`}>{cfg.label}</span>
                   </td>
-                  <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{event.resourceType}/{event.resourceId}</td>
-                  <td className="px-4 py-3 text-xs text-muted-foreground max-w-[200px] truncate">{JSON.stringify(event.payload)}</td>
+                  <td className="px-4 py-3 text-[var(--rx-t2)] font-mono text-xs">{event.resourceType}/{event.resourceId}</td>
+                  <td className="px-4 py-3 text-xs text-[var(--rx-t2)] max-w-[200px] truncate">{JSON.stringify(event.payload)}</td>
                 </tr>
               );
             })}
@@ -84,15 +84,15 @@ const AuditLogPage = () => {
       {/* Mobile cards */}
       <div className="md:hidden space-y-3">
         {filtered.map(event => {
-          const cfg = eventTypeLabels[event.eventType] || { label: event.eventType, color: 'bg-muted text-muted-foreground' };
+          const cfg = eventTypeLabels[event.eventType] || { label: event.eventType, color: 'bg-[var(--rx-s2)] text-[var(--rx-t2)]' };
           return (
-            <div key={event.id} className="bg-card border border-border rounded-xl p-4 shadow-sm space-y-2">
+            <div key={event.id} className="rx-panel">
               <div className="flex items-center justify-between">
                 <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${cfg.color}`}>{cfg.label}</span>
-                <span className="text-[10px] text-muted-foreground">{format(event.createdAt, "d MMM HH:mm", { locale: es })}</span>
+                <span className="text-[10px] text-[var(--rx-t2)]">{format(event.createdAt, "d MMM HH:mm", { locale: es })}</span>
               </div>
               <p className="text-sm font-medium text-foreground">{event.actor}</p>
-              <p className="text-xs text-muted-foreground font-mono">{event.resourceType}/{event.resourceId}</p>
+              <p className="text-xs text-[var(--rx-t2)] font-mono">{event.resourceType}/{event.resourceId}</p>
             </div>
           );
         })}

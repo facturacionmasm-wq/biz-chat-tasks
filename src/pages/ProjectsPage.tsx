@@ -21,25 +21,25 @@ interface RealTeamMember {
 }
 
 const statusLabels: Record<string, { label: string; className: string }> = {
-  planning: { label: 'Planificación', className: 'bg-muted text-muted-foreground' },
-  active: { label: 'Activo', className: 'bg-primary/10 text-primary' },
-  completed: { label: 'Completado', className: 'bg-success/10 text-success' },
-  on_hold: { label: 'En pausa', className: 'bg-warning/10 text-warning' },
+  planning: { label: 'Planificación', className: 'bg-[var(--rx-s2)] text-[var(--rx-t2)]' },
+  active: { label: 'Activo', className: 'bg-primary/10 text-[var(--rx-brand)]' },
+  completed: { label: 'Completado', className: 'bg-[rgba(0,232,122,.1)] text-[var(--rx-emerald)]' },
+  on_hold: { label: 'En pausa', className: 'bg-warning/10 text-[var(--rx-amber)]' },
 };
 
 const projectStatuses = ['planning', 'active', 'on_hold', 'completed'] as const;
 
 const taskStatusConfig: Record<string, { icon: any; label: string; dotClass: string }> = {
-  todo: { icon: Circle, label: 'Por hacer', dotClass: 'bg-muted-foreground' },
+  todo: { icon: Circle, label: 'Por hacer', dotClass: 'bg-[var(--rx-s2)]-foreground' },
   in_progress: { icon: Clock, label: 'En progreso', dotClass: 'bg-warning' },
   done: { icon: CheckCircle2, label: 'Hecho', dotClass: 'bg-success' },
   blocked: { icon: AlertOctagon, label: 'Bloqueado', dotClass: 'bg-destructive' },
 };
 
 const priorityConfig: Record<string, { icon: any; className: string; label: string }> = {
-  high: { icon: ArrowUpCircle, className: 'text-destructive', label: 'Alta' },
-  medium: { icon: ArrowRightCircle, className: 'text-warning', label: 'Media' },
-  low: { icon: ArrowDownCircle, className: 'text-muted-foreground', label: 'Baja' },
+  high: { icon: ArrowUpCircle, className: 'text-[var(--rx-rose)]', label: 'Alta' },
+  medium: { icon: ArrowRightCircle, className: 'text-[var(--rx-amber)]', label: 'Media' },
+  low: { icon: ArrowDownCircle, className: 'text-[var(--rx-t2)]', label: 'Baja' },
 };
 
 const columns: Task['status'][] = ['todo', 'in_progress', 'blocked', 'done'];
@@ -272,18 +272,18 @@ const ProjectsPage = () => {
         <div className="bg-card rounded-t-3xl sm:rounded-3xl w-full sm:max-w-lg max-h-[85vh] overflow-auto shadow-elevated animate-in slide-in-from-bottom-4" onClick={e => e.stopPropagation()}>
           <div className="sticky top-0 bg-card p-4 flex items-start justify-between gap-3 z-10">
             <div className="min-w-0 flex-1">
-              <h3 className="text-lg font-bold text-foreground">{task.title}</h3>
-              {task.description && <p className="text-sm text-muted-foreground mt-1">{task.description}</p>}
+              <h3 className="rx-page-title">{task.title}</h3>
+              {task.description && <p className="text-sm text-[var(--rx-t2)] mt-1">{task.description}</p>}
             </div>
             <div className="flex items-center gap-1 shrink-0">
-              <button onClick={() => handleDeleteTask(task.id)} className="p-1.5 rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive" title="Eliminar tarea"><Trash2 size={16} /></button>
-              <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground"><X size={18} /></button>
+              <button onClick={() => handleDeleteTask(task.id)} className="p-1.5 rounded-lg hover:bg-destructive/10 text-[var(--rx-t2)] hover:text-[var(--rx-rose)]" title="Eliminar tarea"><Trash2 size={16} /></button>
+              <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-[var(--rx-s2)] text-[var(--rx-t2)]"><X size={18} /></button>
             </div>
           </div>
           <div className="p-4 space-y-5">
             {/* Status */}
             <div>
-              <p className="text-xs text-muted-foreground mb-2 font-medium">Estado</p>
+              <p className="text-xs text-[var(--rx-t2)] mb-2 font-medium">Estado</p>
               <div className="flex flex-wrap gap-2">
                 {columns.map(status => {
                   const cfg = taskStatusConfig[status];
@@ -291,7 +291,7 @@ const ProjectsPage = () => {
                   const isActive = task.status === status;
                   return (
                     <button key={status} onClick={() => setTaskStatus(task.id, status)}
-                      className={`flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg border transition-all ${isActive ? 'border-primary bg-primary/10 text-primary font-semibold' : 'border-border text-muted-foreground hover:border-primary/40 hover:bg-muted'}`}>
+                      className={`flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg border transition-all ${isActive ? 'border-primary bg-primary/10 text-[var(--rx-brand)] font-semibold' : 'border-[var(--rx-b1)] text-[var(--rx-t2)] hover:border-primary/40 hover:bg-[var(--rx-s2)]'}`}>
                       <Icon size={12} />{cfg.label}
                     </button>
                   );
@@ -300,30 +300,30 @@ const ProjectsPage = () => {
             </div>
             {/* Assignee */}
             <div>
-              <p className="text-xs text-muted-foreground mb-2 font-medium">Asignado a</p>
-              <div className="flex items-center gap-3 bg-muted/50 rounded-lg px-3 py-2.5">
-                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-sm font-bold text-primary">
+              <p className="text-xs text-[var(--rx-t2)] mb-2 font-medium">Asignado a</p>
+              <div className="flex items-center gap-3 bg-[var(--rx-s2)]/50 rounded-lg px-3 py-2.5">
+                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-sm font-bold text-[var(--rx-brand)]">
                   {task.assignee.split(' ').map(n => n[0]).join('')}
                 </div>
                 <div>
                   <p className="text-sm font-medium text-foreground">{task.assignee}</p>
-                  <p className="text-xs text-muted-foreground">Responsable</p>
+                  <p className="text-xs text-[var(--rx-t2)]">Responsable</p>
                 </div>
               </div>
             </div>
             {/* Priority & Hours */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <p className="text-xs text-muted-foreground mb-2 font-medium">Prioridad</p>
+                <p className="text-xs text-[var(--rx-t2)] mb-2 font-medium">Prioridad</p>
                 <div className={`flex items-center gap-2 text-sm ${pConfig.className}`}>
                   <PIcon size={16} /><span className="font-medium">{pConfig.label}</span>
                 </div>
               </div>
               {task.estimatedHours != null && task.estimatedHours > 0 && (
                 <div>
-                  <p className="text-xs text-muted-foreground mb-2 font-medium">Tiempo estimado</p>
+                  <p className="text-xs text-[var(--rx-t2)] mb-2 font-medium">Tiempo estimado</p>
                   <div className="flex items-center gap-2 text-sm text-foreground">
-                    <Timer size={14} className="text-muted-foreground" />
+                    <Timer size={14} className="text-[var(--rx-t2)]" />
                     <span>{task.estimatedHours}h</span>
                   </div>
                 </div>
@@ -332,12 +332,12 @@ const ProjectsPage = () => {
             {/* Due date */}
             {task.dueDate && (
               <div>
-                <p className="text-xs text-muted-foreground mb-2 font-medium">Fecha límite</p>
+                <p className="text-xs text-[var(--rx-t2)] mb-2 font-medium">Fecha límite</p>
                 <div className="flex items-center gap-2 text-sm text-foreground">
-                  <Calendar size={14} className="text-muted-foreground" />
+                  <Calendar size={14} className="text-[var(--rx-t2)]" />
                   <span>{format(task.dueDate, "d 'de' MMMM yyyy", { locale: es })}</span>
                   {task.dueDate < new Date() && task.status !== 'done' && (
-                    <span className="text-[10px] bg-destructive/10 text-destructive px-1.5 py-0.5 rounded-full">Vencida</span>
+                    <span className="text-[10px] bg-destructive/10 text-[var(--rx-rose)] px-1.5 py-0.5 rounded-full">Vencida</span>
                   )}
                 </div>
               </div>
@@ -346,11 +346,11 @@ const ProjectsPage = () => {
             {task.status === 'done' && (
               <div className="bg-success/5 border border-success/20 rounded-lg p-3">
                 <div className="flex items-center gap-2 mb-1">
-                  <CheckCircle2 size={14} className="text-success" />
-                  <span className="text-sm font-semibold text-success">Completada</span>
+                  <CheckCircle2 size={14} className="text-[var(--rx-emerald)]" />
+                  <span className="text-sm font-semibold text-[var(--rx-emerald)]">Completada</span>
                 </div>
                 {task.completedBy && (
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-xs text-[var(--rx-t2)]">
                     Por <span className="font-medium text-foreground">{task.completedBy}</span>
                     {task.completedAt && <> el {format(task.completedAt, "d MMM yyyy HH:mm", { locale: es })}</>}
                   </p>
@@ -360,9 +360,9 @@ const ProjectsPage = () => {
             {/* Action */}
             <button onClick={() => cycleTaskStatus(task.id)}
               className={`w-full py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                task.status === 'done' ? 'bg-muted text-muted-foreground hover:bg-muted/80'
-                  : task.status === 'in_progress' ? 'bg-success text-success-foreground hover:opacity-90'
-                    : 'bg-primary text-primary-foreground hover:opacity-90'
+                task.status === 'done' ? 'bg-[var(--rx-s2)] text-[var(--rx-t2)] hover:bg-[var(--rx-s2)]/80'
+                  : task.status === 'in_progress' ? 'bg-success text-[var(--rx-emerald)]-foreground hover:opacity-90'
+                    : 'bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground hover:opacity-90'
               }`}>
               {task.status === 'todo' && '▶ Iniciar tarea'}
               {task.status === 'in_progress' && '✅ Marcar como completada'}
@@ -376,7 +376,7 @@ const ProjectsPage = () => {
   };
 
   if (dbLoading) {
-    return <div className="flex items-center justify-center h-full text-muted-foreground">Cargando proyectos...</div>;
+    return <div className="flex items-center justify-center h-full text-[var(--rx-t2)]">Cargando proyectos...</div>;
   }
 
   // ===== PROJECT DETAIL VIEW =====
@@ -387,7 +387,7 @@ const ProjectsPage = () => {
         {/* Header */}
         <div className="shrink-0 p-4 sm:p-5 bg-card shadow-soft">
           <div className="flex items-center gap-3 mb-2">
-            <button onClick={() => setSelectedProjectId(null)} className="text-muted-foreground hover:text-foreground text-sm flex items-center gap-1">
+            <button onClick={() => setSelectedProjectId(null)} className="text-[var(--rx-t2)] hover:text-foreground text-sm flex items-center gap-1">
               <ArrowLeft size={14} /> Proyectos
             </button>
             {/* Status selector */}
@@ -402,14 +402,14 @@ const ProjectsPage = () => {
             </select>
           </div>
           <h2 className="text-lg sm:text-xl font-bold text-foreground">{selectedProject.name}</h2>
-          <p className="text-sm text-muted-foreground mt-1">{selectedProject.description}</p>
+          <p className="text-sm text-[var(--rx-t2)] mt-1">{selectedProject.description}</p>
 
           {/* Meta row */}
-          <div className="flex flex-wrap items-center gap-4 sm:gap-6 mt-3 text-xs text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-4 sm:gap-6 mt-3 text-xs text-[var(--rx-t2)]">
             <span className="flex items-center gap-1"><Calendar size={12} /> {format(selectedProject.startDate, 'd MMM', { locale: es })} → {format(selectedProject.endDate, 'd MMM yyyy', { locale: es })}</span>
             <span className="flex items-center gap-1"><Users size={12} /> {selectedProject.teamIds.length} miembros</span>
             <div className="flex items-center gap-2">
-              <div className="w-24 h-1.5 bg-secondary rounded-full overflow-hidden"><div className="h-full bg-primary rounded-full transition-all" style={{ width: `${pct}%` }} /></div>
+              <div className="w-24 h-1.5 bg-[var(--rx-s2)] rounded-full overflow-hidden"><div className="h-full bg-[var(--rx-brand)] rounded-full transition-all" style={{ width: `${pct}%` }} /></div>
               <span>{pct}%</span>
             </div>
           </div>
@@ -419,18 +419,18 @@ const ProjectsPage = () => {
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mt-4">
               {[
                 { label: 'Total', value: projectStats.total, icon: BarChart3, color: 'text-foreground' },
-                { label: 'En progreso', value: projectStats.inProgress, icon: Clock, color: 'text-warning' },
-                { label: 'Completadas', value: projectStats.done, icon: CheckCircle2, color: 'text-success' },
-                { label: 'Bloqueadas', value: projectStats.blocked, icon: AlertOctagon, color: 'text-destructive' },
-                { label: 'Vencidas', value: projectStats.overdue, icon: Calendar, color: projectStats.overdue > 0 ? 'text-destructive' : 'text-muted-foreground' },
+                { label: 'En progreso', value: projectStats.inProgress, icon: Clock, color: 'text-[var(--rx-amber)]' },
+                { label: 'Completadas', value: projectStats.done, icon: CheckCircle2, color: 'text-[var(--rx-emerald)]' },
+                { label: 'Bloqueadas', value: projectStats.blocked, icon: AlertOctagon, color: 'text-[var(--rx-rose)]' },
+                { label: 'Vencidas', value: projectStats.overdue, icon: Calendar, color: projectStats.overdue > 0 ? 'text-[var(--rx-rose)]' : 'text-[var(--rx-t2)]' },
               ].map(stat => {
                 const SIcon = stat.icon;
                 return (
-                  <div key={stat.label} className="bg-muted/50 rounded-xl px-3 py-2.5 flex items-center gap-2">
+                  <div key={stat.label} className="bg-[var(--rx-s2)]/50 rounded-xl px-3 py-2.5 flex items-center gap-2">
                     <SIcon size={14} className={stat.color} />
                     <div>
                       <p className={`text-sm font-bold ${stat.color}`}>{stat.value}</p>
-                      <p className="text-[10px] text-muted-foreground">{stat.label}</p>
+                      <p className="text-[10px] text-[var(--rx-t2)]">{stat.label}</p>
                     </div>
                   </div>
                 );
@@ -440,11 +440,11 @@ const ProjectsPage = () => {
 
           {/* Estimated hours */}
           {projectStats && projectStats.totalEstHours > 0 && (
-            <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+            <div className="mt-2 flex items-center gap-2 text-xs text-[var(--rx-t2)]">
               <Timer size={12} />
               <span>{projectStats.completedEstHours}h / {projectStats.totalEstHours}h estimadas completadas</span>
-              <div className="w-20 h-1 bg-secondary rounded-full overflow-hidden">
-                <div className="h-full bg-primary rounded-full" style={{ width: `${Math.round((projectStats.completedEstHours / projectStats.totalEstHours) * 100)}%` }} />
+              <div className="w-20 h-1 bg-[var(--rx-s2)] rounded-full overflow-hidden">
+                <div className="h-full bg-[var(--rx-brand)] rounded-full" style={{ width: `${Math.round((projectStats.completedEstHours / projectStats.totalEstHours) * 100)}%` }} />
               </div>
             </div>
           )}
@@ -452,47 +452,47 @@ const ProjectsPage = () => {
           {/* Milestones */}
           <div className="mt-4">
             <div className="flex items-center gap-2 mb-2">
-              <Target size={14} className="text-primary" />
+              <Target size={14} className="text-[var(--rx-brand)]" />
               <span className="text-xs font-semibold text-foreground">Hitos</span>
-              <button onClick={() => setShowNewMilestone(true)} className="ml-auto text-xs text-primary hover:underline flex items-center gap-1"><Plus size={12} /> Agregar</button>
+              <button onClick={() => setShowNewMilestone(true)} className="ml-auto text-xs text-[var(--rx-brand)] hover:underline flex items-center gap-1"><Plus size={12} /> Agregar</button>
             </div>
             {selectedProject.milestones.length > 0 ? (
               <div className="flex items-center gap-2 overflow-x-auto pb-1">
                 {selectedProject.milestones.map((m, i) => (
                   <div key={m.id} className="flex items-center gap-1.5 shrink-0">
                     <button onClick={() => toggleMilestone(selectedProject.id, m.id)}
-                      className={`inline-flex items-center gap-2 rounded-full border px-2 py-1 text-xs transition-colors ${m.completed ? 'border-success/30 bg-success/10 text-success' : 'border-border text-muted-foreground hover:border-success/40'}`}>
-                      <span className={`w-2.5 h-2.5 rounded-full border ${m.completed ? 'bg-success border-success' : 'border-border bg-card'}`} />
+                      className={`inline-flex items-center gap-2 rounded-full border px-2 py-1 text-xs transition-colors ${m.completed ? 'border-success/30 bg-[rgba(0,232,122,.1)] text-[var(--rx-emerald)]' : 'border-[var(--rx-b1)] text-[var(--rx-t2)] hover:border-success/40'}`}>
+                      <span className={`w-2.5 h-2.5 rounded-full border ${m.completed ? 'bg-success border-success' : 'border-[var(--rx-b1)] bg-card'}`} />
                       <span className={m.completed ? 'line-through' : ''}>{m.name}</span>
                       <span className="text-[10px]">{format(m.date, 'd MMM', { locale: es })}</span>
                     </button>
-                    <button onClick={() => handleDeleteMilestone(selectedProject.id, m.id)} className="p-0.5 text-muted-foreground hover:text-destructive"><X size={12} /></button>
+                    <button onClick={() => handleDeleteMilestone(selectedProject.id, m.id)} className="p-0.5 text-[var(--rx-t2)] hover:text-[var(--rx-rose)]"><X size={12} /></button>
                     {i < selectedProject.milestones.length - 1 && <div className="w-4 h-px bg-border" />}
                   </div>
                 ))}
               </div>
             ) : (
-              <p className="text-xs text-muted-foreground">Sin hitos definidos</p>
+              <p className="text-xs text-[var(--rx-t2)]">Sin hitos definidos</p>
             )}
           </div>
 
           {/* Tab toggle: Tareas | Documentos */}
           <div className="flex items-center justify-between mt-4">
             <div className="flex items-center gap-1">
-              <button onClick={() => setActiveDetailTab('tasks')} className={`text-xs px-3.5 py-1.5 rounded-xl font-medium transition-all ${activeDetailTab === 'tasks' ? 'bg-primary text-primary-foreground shadow-soft' : 'text-muted-foreground hover:bg-secondary'}`}>
+              <button onClick={() => setActiveDetailTab('tasks')} className={`text-xs px-3.5 py-1.5 rounded-xl font-medium transition-all ${activeDetailTab === 'tasks' ? 'bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground shadow-soft' : 'text-[var(--rx-t2)] hover:bg-[var(--rx-s2)]'}`}>
                 <span className="flex items-center gap-1.5"><FolderKanban size={13} /> Tareas</span>
               </button>
-              <button onClick={() => setActiveDetailTab('documents')} className={`text-xs px-3.5 py-1.5 rounded-xl font-medium transition-all ${activeDetailTab === 'documents' ? 'bg-primary text-primary-foreground shadow-soft' : 'text-muted-foreground hover:bg-secondary'}`}>
+              <button onClick={() => setActiveDetailTab('documents')} className={`text-xs px-3.5 py-1.5 rounded-xl font-medium transition-all ${activeDetailTab === 'documents' ? 'bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground shadow-soft' : 'text-[var(--rx-t2)] hover:bg-[var(--rx-s2)]'}`}>
                 <span className="flex items-center gap-1.5"><FileText size={13} /> Documentos</span>
               </button>
             </div>
             {activeDetailTab === 'tasks' && (
               <div className="flex items-center gap-2">
                 <div className="flex items-center gap-1">
-                  <button onClick={() => setView('board')} className={`text-xs px-3 py-1.5 rounded-xl font-medium transition-all ${view === 'board' ? 'bg-secondary text-foreground' : 'text-muted-foreground hover:bg-secondary/50'}`}>Kanban</button>
-                  <button onClick={() => setView('list')} className={`text-xs px-3 py-1.5 rounded-xl font-medium transition-all ${view === 'list' ? 'bg-secondary text-foreground' : 'text-muted-foreground hover:bg-secondary/50'}`}>Lista</button>
+                  <button onClick={() => setView('board')} className={`text-xs px-3 py-1.5 rounded-xl font-medium transition-all ${view === 'board' ? 'bg-[var(--rx-s2)] text-foreground' : 'text-[var(--rx-t2)] hover:bg-[var(--rx-s2)]/50'}`}>Kanban</button>
+                  <button onClick={() => setView('list')} className={`text-xs px-3 py-1.5 rounded-xl font-medium transition-all ${view === 'list' ? 'bg-[var(--rx-s2)] text-foreground' : 'text-[var(--rx-t2)] hover:bg-[var(--rx-s2)]/50'}`}>Lista</button>
                 </div>
-                <button onClick={() => setShowNewTask(true)} className="flex items-center gap-1.5 bg-primary text-primary-foreground text-xs font-semibold px-4 py-2 rounded-xl hover:opacity-90 shadow-soft active:scale-95 transition-all">
+                <button onClick={() => setShowNewTask(true)} className="flex items-center gap-1.5 bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground text-xs font-semibold px-4 py-2 rounded-xl hover:opacity-90 shadow-soft active:scale-95 transition-all">
                   <Plus size={14} /> Nueva Tarea
                 </button>
               </div>
@@ -506,9 +506,9 @@ const ProjectsPage = () => {
             <ProjectDocumentsTab projectId={selectedProject.id} projectName={selectedProject.name} />
           ) : projectTasks.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
-              <FolderKanban size={40} className="text-muted-foreground/30 mb-3" />
-              <p className="text-sm text-muted-foreground mb-3">Este proyecto aún no tiene tareas</p>
-              <button onClick={() => setShowNewTask(true)} className="flex items-center gap-1.5 bg-primary text-primary-foreground text-sm font-medium px-4 py-2 rounded-lg hover:opacity-90">
+              <FolderKanban size={40} className="text-[var(--rx-t2)]/30 mb-3" />
+              <p className="text-sm text-[var(--rx-t2)] mb-3">Este proyecto aún no tiene tareas</p>
+              <button onClick={() => setShowNewTask(true)} className="flex items-center gap-1.5 bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground text-sm font-medium px-4 py-2 rounded-lg hover:opacity-90">
                 <Plus size={16} /> Crear primera tarea
               </button>
             </div>
@@ -522,7 +522,7 @@ const ProjectsPage = () => {
                     <div className="flex items-center gap-2 mb-3 px-1">
                       <div className={`w-2 h-2 rounded-full ${config.dotClass}`} />
                       <span className="text-sm font-semibold text-foreground">{config.label}</span>
-                      <span className="text-xs text-muted-foreground bg-muted rounded-full w-5 h-5 flex items-center justify-center">{colTasks.length}</span>
+                      <span className="text-xs text-[var(--rx-t2)] bg-[var(--rx-s2)] rounded-full w-5 h-5 flex items-center justify-center">{colTasks.length}</span>
                     </div>
                     <div className="space-y-2 overflow-y-auto scrollbar-thin">
                       {colTasks.map(task => {
@@ -531,18 +531,18 @@ const ProjectsPage = () => {
                           <button key={task.id} onClick={() => setSelectedTask(task)}
                             className="w-full text-left bg-card rounded-2xl p-3.5 shadow-soft hover:shadow-card transition-all active:scale-[0.98]">
                             <div className="flex items-start justify-between mb-1.5">
-                              <h4 className={`text-sm font-medium leading-tight ${task.status === 'done' ? 'line-through text-muted-foreground' : 'text-foreground'}`}>{task.title}</h4>
+                              <h4 className={`text-sm font-medium leading-tight ${task.status === 'done' ? 'line-through text-[var(--rx-t2)]' : 'text-foreground'}`}>{task.title}</h4>
                               <PIcon size={14} className={`shrink-0 ml-2 ${priorityConfig[task.priority].className}`} />
                             </div>
-                            {task.description && <p className="text-xs text-muted-foreground mb-2 line-clamp-2">{task.description}</p>}
+                            {task.description && <p className="text-xs text-[var(--rx-t2)] mb-2 line-clamp-2">{task.description}</p>}
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-1.5">
-                                <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary">{task.assignee.split(' ').map(n => n[0]).join('')}</div>
-                                <span className="text-xs text-muted-foreground">{task.assignee.split(' ')[0]}</span>
+                                <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-[var(--rx-brand)]">{task.assignee.split(' ').map(n => n[0]).join('')}</div>
+                                <span className="text-xs text-[var(--rx-t2)]">{task.assignee.split(' ')[0]}</span>
                               </div>
                               <div className="flex items-center gap-2">
-                                {(task as TaskWithMeta).estimatedHours && <span className="text-[10px] text-muted-foreground">{(task as TaskWithMeta).estimatedHours}h</span>}
-                                {task.dueDate && <span className="text-xs text-muted-foreground">{format(task.dueDate, 'd MMM', { locale: es })}</span>}
+                                {(task as TaskWithMeta).estimatedHours && <span className="text-[10px] text-[var(--rx-t2)]">{(task as TaskWithMeta).estimatedHours}h</span>}
+                                {task.dueDate && <span className="text-xs text-[var(--rx-t2)]">{format(task.dueDate, 'd MMM', { locale: es })}</span>}
                               </div>
                             </div>
                           </button>
@@ -563,46 +563,46 @@ const ProjectsPage = () => {
                     className="w-full bg-card rounded-2xl p-3.5 flex items-center gap-3 sm:gap-4 shadow-soft hover:shadow-card transition-all text-left active:scale-[0.98]">
                     <button onClick={(e) => cycleTaskStatus(task.id, e)}
                       className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 border-2 transition-all hover:scale-110 ${
-                        task.status === 'done' ? 'bg-success border-success text-success-foreground'
+                        task.status === 'done' ? 'bg-success border-success text-[var(--rx-emerald)]-foreground'
                           : task.status === 'in_progress' ? 'border-warning bg-warning/10'
-                            : task.status === 'blocked' ? 'border-destructive bg-destructive/10' : 'border-border hover:border-primary'
+                            : task.status === 'blocked' ? 'border-destructive bg-destructive/10' : 'border-[var(--rx-b1)] hover:border-primary'
                       }`} title={`Cambiar a: ${taskStatusConfig[nextStatus[task.status]].label}`}>
                       {task.status === 'done' && <CheckCircle2 size={12} />}
-                      {task.status === 'in_progress' && <Clock size={10} className="text-warning" />}
-                      {task.status === 'blocked' && <AlertOctagon size={10} className="text-destructive" />}
+                      {task.status === 'in_progress' && <Clock size={10} className="text-[var(--rx-amber)]" />}
+                      {task.status === 'blocked' && <AlertOctagon size={10} className="text-[var(--rx-rose)]" />}
                     </button>
                     <div className="flex-1 min-w-0">
-                      <p className={`text-sm font-medium truncate ${task.status === 'done' ? 'line-through text-muted-foreground' : 'text-foreground'}`}>{task.title}</p>
-                      {task.description && <p className="text-xs text-muted-foreground truncate">{task.description}</p>}
+                      <p className={`text-sm font-medium truncate ${task.status === 'done' ? 'line-through text-[var(--rx-t2)]' : 'text-foreground'}`}>{task.title}</p>
+                      {task.description && <p className="text-xs text-[var(--rx-t2)] truncate">{task.description}</p>}
                       {task.status === 'done' && (task as TaskWithMeta).completedBy && (
-                        <p className="text-[10px] text-success mt-0.5">
+                        <p className="text-[10px] text-[var(--rx-emerald)] mt-0.5">
                           Completada por {(task as TaskWithMeta).completedBy}
                           {(task as TaskWithMeta).completedAt && ` · ${format((task as TaskWithMeta).completedAt!, 'd MMM HH:mm', { locale: es })}`}
                         </p>
                       )}
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
-                      <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary">
+                      <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-[var(--rx-brand)]">
                         {task.assignee.split(' ').map(n => n[0]).join('')}
                       </div>
-                      <span className="text-xs text-muted-foreground hidden sm:block max-w-[80px] truncate">{task.assignee.split(' ')[0]}</span>
+                      <span className="text-xs text-[var(--rx-t2)] hidden sm:block max-w-[80px] truncate">{task.assignee.split(' ')[0]}</span>
                     </div>
                     <PIcon size={14} className={`shrink-0 ${priorityConfig[task.priority].className}`} />
                     {(task as TaskWithMeta).estimatedHours && (
-                      <span className="text-xs text-muted-foreground shrink-0 hidden sm:block">{(task as TaskWithMeta).estimatedHours}h</span>
+                      <span className="text-xs text-[var(--rx-t2)] shrink-0 hidden sm:block">{(task as TaskWithMeta).estimatedHours}h</span>
                     )}
                     {task.dueDate && (
-                      <span className={`text-xs shrink-0 hidden sm:block ${task.dueDate < new Date() && task.status !== 'done' ? 'text-destructive font-medium' : 'text-muted-foreground'}`}>
+                      <span className={`text-xs shrink-0 hidden sm:block ${task.dueDate < new Date() && task.status !== 'done' ? 'text-[var(--rx-rose)] font-medium' : 'text-[var(--rx-t2)]'}`}>
                         {format(task.dueDate, 'd MMM', { locale: es })}
                       </span>
                     )}
                     <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 hidden sm:block ${
-                      task.status === 'done' ? 'bg-success/10 text-success' :
-                      task.status === 'in_progress' ? 'bg-warning/10 text-warning' :
-                      task.status === 'blocked' ? 'bg-destructive/10 text-destructive' :
-                      'bg-muted text-muted-foreground'
+                      task.status === 'done' ? 'bg-[rgba(0,232,122,.1)] text-[var(--rx-emerald)]' :
+                      task.status === 'in_progress' ? 'bg-warning/10 text-[var(--rx-amber)]' :
+                      task.status === 'blocked' ? 'bg-destructive/10 text-[var(--rx-rose)]' :
+                      'bg-[var(--rx-s2)] text-[var(--rx-t2)]'
                     }`}>{sConfig.label}</span>
-                    <ChevronRight size={14} className="text-muted-foreground shrink-0" />
+                    <ChevronRight size={14} className="text-[var(--rx-t2)] shrink-0" />
                   </button>
                 );
               })}
@@ -613,21 +613,21 @@ const ProjectsPage = () => {
         {selectedTask && <TaskDetailPanel task={selectedTask} onClose={() => setSelectedTask(null)} />}
         {showNewTask && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowNewTask(false)}>
-            <div className="bg-card border border-border rounded-2xl w-full max-w-lg p-6 shadow-lg animate-in zoom-in-95 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="rx-panel" onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-bold text-foreground">Nueva Tarea</h3>
-                <button onClick={() => setShowNewTask(false)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground"><X size={18} /></button>
+                <h3 className="rx-page-title">Nueva Tarea</h3>
+                <button onClick={() => setShowNewTask(false)} className="p-1.5 rounded-lg hover:bg-[var(--rx-s2)] text-[var(--rx-t2)]"><X size={18} /></button>
               </div>
               <div className="space-y-4">
                 <div>
                   <label className="text-sm font-medium text-foreground mb-1.5 block">Título *</label>
                   <input autoFocus value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleCreateTask()}
-                    placeholder="Ej: Implementar autenticación" className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring" />
+                    placeholder="Ej: Implementar autenticación" className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-[var(--rx-t2)] focus:outline-none focus:ring-2 focus:ring-ring" />
                 </div>
                 <div>
                   <label className="text-sm font-medium text-foreground mb-1.5 block">Descripción</label>
                   <textarea value={newTaskDesc} onChange={e => setNewTaskDesc(e.target.value)} placeholder="Detalla el alcance de la tarea..." rows={2}
-                    className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none" />
+                    className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-[var(--rx-t2)] focus:outline-none focus:ring-2 focus:ring-ring resize-none" />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -657,12 +657,12 @@ const ProjectsPage = () => {
                   <div>
                     <label className="text-sm font-medium text-foreground mb-1.5 block">Horas estimadas</label>
                     <input type="number" min="0" step="0.5" value={newTaskEstHours} onChange={e => setNewTaskEstHours(e.target.value)} placeholder="Ej: 8"
-                      className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring" />
+                      className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-[var(--rx-t2)] focus:outline-none focus:ring-2 focus:ring-ring" />
                   </div>
                 </div>
                 <div className="flex gap-2 justify-end pt-2">
-                  <button onClick={() => setShowNewTask(false)} className="px-4 py-2 text-sm rounded-lg border border-border text-muted-foreground hover:bg-muted">Cancelar</button>
-                  <button onClick={handleCreateTask} className="px-4 py-2 text-sm rounded-lg bg-primary text-primary-foreground font-medium hover:opacity-90">Crear Tarea</button>
+                  <button onClick={() => setShowNewTask(false)} className="px-4 py-2 text-sm rounded-lg border border-[var(--rx-b1)] text-[var(--rx-t2)] hover:bg-[var(--rx-s2)]">Cancelar</button>
+                  <button onClick={handleCreateTask} className="px-4 py-2 text-sm rounded-lg bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground font-medium hover:opacity-90">Crear Tarea</button>
                 </div>
               </div>
             </div>
@@ -670,16 +670,16 @@ const ProjectsPage = () => {
         )}
         {showNewMilestone && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowNewMilestone(false)}>
-            <div className="bg-card border border-border rounded-2xl w-full max-w-sm p-6 shadow-lg animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
+            <div className="rx-panel" onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-bold text-foreground">Nuevo Hito</h3>
-                <button onClick={() => setShowNewMilestone(false)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground"><X size={18} /></button>
+                <h3 className="rx-page-title">Nuevo Hito</h3>
+                <button onClick={() => setShowNewMilestone(false)} className="p-1.5 rounded-lg hover:bg-[var(--rx-s2)] text-[var(--rx-t2)]"><X size={18} /></button>
               </div>
               <div className="space-y-4">
                 <div>
                   <label className="text-sm font-medium text-foreground mb-1.5 block">Nombre del hito *</label>
                   <input autoFocus value={newMilestoneName} onChange={e => setNewMilestoneName(e.target.value)}
-                    placeholder="Ej: Beta Launch" className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring" />
+                    placeholder="Ej: Beta Launch" className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-[var(--rx-t2)] focus:outline-none focus:ring-2 focus:ring-ring" />
                 </div>
                 <div>
                   <label className="text-sm font-medium text-foreground mb-1.5 block">Fecha *</label>
@@ -687,8 +687,8 @@ const ProjectsPage = () => {
                     className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
                 </div>
                 <div className="flex gap-2 justify-end">
-                  <button onClick={() => setShowNewMilestone(false)} className="px-4 py-2 text-sm rounded-lg border border-border text-muted-foreground hover:bg-muted">Cancelar</button>
-                  <button onClick={handleCreateMilestone} className="px-4 py-2 text-sm rounded-lg bg-primary text-primary-foreground font-medium hover:opacity-90">Agregar Hito</button>
+                  <button onClick={() => setShowNewMilestone(false)} className="px-4 py-2 text-sm rounded-lg border border-[var(--rx-b1)] text-[var(--rx-t2)] hover:bg-[var(--rx-s2)]">Cancelar</button>
+                  <button onClick={handleCreateMilestone} className="px-4 py-2 text-sm rounded-lg bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground font-medium hover:opacity-90">Agregar Hito</button>
                 </div>
               </div>
             </div>
@@ -703,7 +703,7 @@ const ProjectsPage = () => {
      <div className="p-4 sm:p-6 max-w-7xl mx-auto animate-fade-in">
        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
          <h1 className="text-2xl font-extrabold text-foreground">Proyectos</h1>
-         <button onClick={() => setShowNewProject(true)} className="flex items-center gap-1.5 bg-primary text-primary-foreground text-sm font-semibold px-5 py-2.5 rounded-xl hover:opacity-90 shadow-soft active:scale-95 transition-all w-fit">
+         <button onClick={() => setShowNewProject(true)} className="flex items-center gap-1.5 bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground text-sm font-semibold px-5 py-2.5 rounded-xl hover:opacity-90 shadow-soft active:scale-95 transition-all w-fit">
            <Plus size={16} /> Nuevo Proyecto
         </button>
       </div>
@@ -711,21 +711,21 @@ const ProjectsPage = () => {
       {/* Modal nuevo proyecto */}
       {showNewProject && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowNewProject(false)}>
-          <div className="bg-card border border-border rounded-2xl w-full max-w-lg p-6 shadow-lg animate-in zoom-in-95 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+          <div className="rx-panel" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-foreground">Nuevo Proyecto</h3>
-              <button onClick={() => setShowNewProject(false)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground"><X size={18} /></button>
+              <h3 className="rx-page-title">Nuevo Proyecto</h3>
+              <button onClick={() => setShowNewProject(false)} className="p-1.5 rounded-lg hover:bg-[var(--rx-s2)] text-[var(--rx-t2)]"><X size={18} /></button>
             </div>
             <div className="space-y-4">
               <div>
                 <label className="text-sm font-medium text-foreground mb-1.5 block">Nombre *</label>
                 <input autoFocus value={newProjectName} onChange={e => setNewProjectName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleCreateProject()}
-                  placeholder="Ej: Rediseño del sitio web" className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring" />
+                  placeholder="Ej: Rediseño del sitio web" className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-[var(--rx-t2)] focus:outline-none focus:ring-2 focus:ring-ring" />
               </div>
               <div>
                 <label className="text-sm font-medium text-foreground mb-1.5 block">Descripción</label>
                 <textarea value={newProjectDesc} onChange={e => setNewProjectDesc(e.target.value)} placeholder="Describe brevemente el proyecto..." rows={2}
-                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none" />
+                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-[var(--rx-t2)] focus:outline-none focus:ring-2 focus:ring-ring resize-none" />
               </div>
               <div>
                 <label className="text-sm font-medium text-foreground mb-1.5 block">Estado inicial</label>
@@ -755,8 +755,8 @@ const ProjectsPage = () => {
                     const selected = newProjectTeam.includes(m.id);
                     return (
                       <button key={m.id} onClick={() => toggleTeamMember(m.id)}
-                        className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border transition-all ${selected ? 'border-primary bg-primary/10 text-primary font-medium' : 'border-border text-muted-foreground hover:border-primary/40'}`}>
-                        <div className="w-4 h-4 rounded-full bg-primary/10 flex items-center justify-center text-[8px] font-bold text-primary">
+                        className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border transition-all ${selected ? 'border-primary bg-primary/10 text-[var(--rx-brand)] font-medium' : 'border-[var(--rx-b1)] text-[var(--rx-t2)] hover:border-primary/40'}`}>
+                        <div className="w-4 h-4 rounded-full bg-primary/10 flex items-center justify-center text-[8px] font-bold text-[var(--rx-brand)]">
                           {m.name.split(' ').map(n => n[0]).join('')}
                         </div>
                         {m.name.split(' ')[0]}
@@ -766,8 +766,8 @@ const ProjectsPage = () => {
                 </div>
               </div>
               <div className="flex gap-2 justify-end pt-2">
-                <button onClick={() => setShowNewProject(false)} className="px-4 py-2 text-sm rounded-lg border border-border text-muted-foreground hover:bg-muted">Cancelar</button>
-                <button onClick={handleCreateProject} className="px-4 py-2 text-sm rounded-lg bg-primary text-primary-foreground font-medium hover:opacity-90">Crear Proyecto</button>
+                <button onClick={() => setShowNewProject(false)} className="px-4 py-2 text-sm rounded-lg border border-[var(--rx-b1)] text-[var(--rx-t2)] hover:bg-[var(--rx-s2)]">Cancelar</button>
+                <button onClick={handleCreateProject} className="px-4 py-2 text-sm rounded-lg bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground font-medium hover:opacity-90">Crear Proyecto</button>
               </div>
             </div>
           </div>
@@ -784,31 +784,31 @@ const ProjectsPage = () => {
             <button key={proj.id} onClick={() => setSelectedProjectId(proj.id)} className="bg-card rounded-2xl p-5 shadow-card hover:shadow-elevated transition-all active:scale-[0.98] text-left">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
-                  <FolderKanban size={16} className="text-primary" />
+                  <FolderKanban size={16} className="text-[var(--rx-brand)]" />
                   <h3 className="font-semibold text-foreground">{proj.name}</h3>
                 </div>
                 <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusLabels[proj.status].className}`}>{statusLabels[proj.status].label}</span>
               </div>
-              <p className="text-sm text-muted-foreground mb-3 line-clamp-2">{proj.description}</p>
+              <p className="text-sm text-[var(--rx-t2)] mb-3 line-clamp-2">{proj.description}</p>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <div className="w-24 h-1.5 bg-secondary rounded-full overflow-hidden"><div className="h-full bg-primary rounded-full transition-all" style={{ width: `${computedProgress}%` }} /></div>
-                  <span className="text-xs text-muted-foreground">{computedProgress}%</span>
+                  <div className="w-24 h-1.5 bg-[var(--rx-s2)] rounded-full overflow-hidden"><div className="h-full bg-[var(--rx-brand)] rounded-full transition-all" style={{ width: `${computedProgress}%` }} /></div>
+                  <span className="text-xs text-[var(--rx-t2)]">{computedProgress}%</span>
                 </div>
-                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                <div className="flex items-center gap-3 text-xs text-[var(--rx-t2)]">
                   {projTasks.length > 0 && (
                     <span className="flex items-center gap-1">
-                      <CheckCircle2 size={12} className="text-success" /> {doneTasks}/{projTasks.length}
+                      <CheckCircle2 size={12} className="text-[var(--rx-emerald)]" /> {doneTasks}/{projTasks.length}
                     </span>
                   )}
                   {/* Avatars */}
                   <div className="flex -space-x-1.5">
                     {members.slice(0, 3).map(m => (
-                      <div key={m.id} className="w-5 h-5 rounded-full bg-primary/10 border border-card flex items-center justify-center text-[8px] font-bold text-primary">
+                      <div key={m.id} className="w-5 h-5 rounded-full bg-primary/10 border border-card flex items-center justify-center text-[8px] font-bold text-[var(--rx-brand)]">
                         {m.name.split(' ').map(n => n[0]).join('')}
                       </div>
                     ))}
-                    {members.length > 3 && <div className="w-5 h-5 rounded-full bg-muted border border-card flex items-center justify-center text-[8px] text-muted-foreground">+{members.length - 3}</div>}
+                    {members.length > 3 && <div className="w-5 h-5 rounded-full bg-[var(--rx-s2)] border border-card flex items-center justify-center text-[8px] text-[var(--rx-t2)]">+{members.length - 3}</div>}
                   </div>
                 </div>
               </div>

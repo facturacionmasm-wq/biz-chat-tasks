@@ -15,28 +15,28 @@ const PendingApprovalPage = () => {
         </div>
 
         <div className="space-y-2">
-          <h1 className="text-2xl font-bold text-foreground">
+          <h1 className="rx-page-title">
             Solicitud pendiente
           </h1>
-          <p className="text-muted-foreground">
+          <p className="text-[var(--rx-t2)]">
             Tu solicitud para unirte a <span className="font-semibold text-foreground">{orgName}</span> está
             pendiente de aprobación por un administrador.
           </p>
         </div>
 
-        <div className="bg-card border border-border rounded-xl p-4 text-left space-y-2">
-          <p className="text-sm text-muted-foreground">
+        <div className="rx-panel">
+          <p className="text-sm text-[var(--rx-t2)]">
             <span className="font-medium text-foreground">Email:</span>{' '}
             {user?.email}
           </p>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-[var(--rx-t2)]">
             Recibirás acceso una vez que un administrador apruebe tu solicitud.
           </p>
         </div>
 
         <button
           onClick={signOut}
-          className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          className="inline-flex items-center gap-2 text-sm text-[var(--rx-t2)] hover:text-foreground transition-colors"
         >
           <LogOut size={14} />
           Cerrar sesión

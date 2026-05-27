@@ -100,3 +100,49 @@ export interface KnowledgeArticle {
   updatedAt: Date;
   isPublic: boolean;
 }
+
+
+// ─── Call Records ──────────────────────────────────────────
+export interface TranscriptEntry {
+  role: string;
+  text: string;
+  timestamp: number;
+}
+
+export interface CallRecord {
+  id: string;
+  externalCallId: string;
+  fromNumber: string;
+  toNumber: string;
+  startedAt: Date;
+  endedAt: Date;
+  duration: number;
+  status: 'completed' | 'missed' | 'in_progress' | 'failed' | 'no_answer' | 'busy' | 'canceled' | 'voicemail' | 'initiated' | 'ringing' | 'pending';
+  channel: string;
+  tags: string[];
+  agentName: string;
+  transcript: string;
+  transcriptStructured: TranscriptEntry[];
+  summarySystem: string;
+  summaryHuman: string | null;
+  extractedData: {
+    contact_name?: string;
+    contact_phone?: string;
+    appointment_date?: string;
+    appointment_time?: string;
+    service_type?: string;
+    notes?: string;
+    [key: string]: string | undefined;
+  };
+  audioUrl: string | null;
+}
+
+export interface CallEvent {
+  id: string;
+  callRecordId: string;
+  tenantId: string;
+  eventType: string;
+  eventData: Record<string, any>;
+  twilioCallSid: string | null;
+  createdAt: Date;
+}

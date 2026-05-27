@@ -23,15 +23,15 @@ const fmt = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits
 const fmtPct = (n: number) => `${n.toFixed(1)}%`;
 
 const severityColor: Record<string, string> = {
-  critical: 'bg-destructive/10 text-destructive',
-  warning: 'bg-warning/10 text-warning',
-  info: 'bg-primary/10 text-primary',
+  critical: 'bg-destructive/10 text-[var(--rx-rose)]',
+  warning: 'bg-warning/10 text-[var(--rx-amber)]',
+  info: 'bg-primary/10 text-[var(--rx-brand)]',
 };
 
 const riskColor: Record<string, string> = {
-  high: 'text-destructive',
-  medium: 'text-warning',
-  low: 'text-success',
+  high: 'text-[var(--rx-rose)]',
+  medium: 'text-[var(--rx-amber)]',
+  low: 'text-[var(--rx-emerald)]',
 };
 
 const REGION_COLORS: Record<string, string> = {
@@ -44,7 +44,7 @@ const REGION_COLORS: Record<string, string> = {
 const SuperAdminPage = () => {
   const { userRole, loading } = useAuth();
 
-  if (loading) return <div className="flex items-center justify-center h-full"><Loader2 className="animate-spin text-primary" size={32} /></div>;
+  if (loading) return <div className="flex items-center justify-center h-full"><Loader2 className="animate-spin text-[var(--rx-brand)]" size={32} /></div>;
   if (userRole !== 'super_admin') return <Navigate to="/" replace />;
 
   return <SuperAdminDashboard />;
@@ -59,7 +59,7 @@ const SuperAdminDashboard = () => {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <Loader2 className="animate-spin text-primary" size={32} />
+        <Loader2 className="animate-spin text-[var(--rx-brand)]" size={32} />
       </div>
     );
   }
@@ -86,9 +86,9 @@ const SuperAdminDashboard = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-foreground flex items-center gap-2">
-            <Globe size={24} className="text-primary" /> Panel SuperAdmin Global
+            <Globe size={24} className="text-[var(--rx-brand)]" /> Panel SuperAdmin Global
           </h1>
-          <p className="text-muted-foreground text-sm mt-1">Métricas financieras, KPIs unicornio, fraude, churn y proyecciones.</p>
+          <p className="text-[var(--rx-t2)] text-sm mt-1">Métricas financieras, KPIs unicornio, fraude, churn y proyecciones.</p>
         </div>
         <Button
           variant="outline"
@@ -103,7 +103,7 @@ const SuperAdminDashboard = () => {
       </div>
 
       <Tabs defaultValue="global" className="space-y-4">
-        <TabsList className="bg-muted/50">
+        <TabsList className="bg-[var(--rx-s2)]/50">
           <TabsTrigger value="global" className="gap-1.5"><Globe size={14} /> Métricas Globales</TabsTrigger>
           <TabsTrigger value="consumption" className="gap-1.5"><Package size={14} /> Consumo</TabsTrigger>
           <TabsTrigger value="operations" className="gap-1.5"><Activity size={14} /> Operaciones</TabsTrigger>
@@ -125,17 +125,17 @@ const SuperAdminDashboard = () => {
         <TabsContent value="operations" className="space-y-6">
           {/* KPI Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-            <KPICard icon={DollarSign} label="Ingreso MTD" value={fmt(totals.totalRevenue)} trend={totals.totalRevenue > 0} color="text-primary" />
-            <KPICard icon={TrendingUp} label="Margen MTD" value={fmt(totals.totalMargin)} subtitle={fmtPct(totals.avgMarginPct)} trend={totals.avgMarginPct > 20} color="text-success" />
-            <KPICard icon={ShieldAlert} label="Alertas fraude" value={String(fraudAlerts.data?.length ?? 0)} trend={false} color="text-destructive" />
-            <KPICard icon={Users} label="Tenants en riesgo" value={String(churnScores.data?.filter(c => c.risk_category === 'high').length ?? 0)} trend={false} color="text-warning" />
+            <KPICard icon={DollarSign} label="Ingreso MTD" value={fmt(totals.totalRevenue)} trend={totals.totalRevenue > 0} color="text-[var(--rx-brand)]" />
+            <KPICard icon={TrendingUp} label="Margen MTD" value={fmt(totals.totalMargin)} subtitle={fmtPct(totals.avgMarginPct)} trend={totals.avgMarginPct > 20} color="text-[var(--rx-emerald)]" />
+            <KPICard icon={ShieldAlert} label="Alertas fraude" value={String(fraudAlerts.data?.length ?? 0)} trend={false} color="text-[var(--rx-rose)]" />
+            <KPICard icon={Users} label="Tenants en riesgo" value={String(churnScores.data?.filter(c => c.risk_category === 'high').length ?? 0)} trend={false} color="text-[var(--rx-amber)]" />
           </div>
 
           {/* Charts */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-            <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+            <div className="rx-panel">
               <h3 className="font-semibold text-foreground flex items-center gap-2 mb-4">
-                <Activity size={16} className="text-primary" /> Tendencia Ingresos vs Costos (30d)
+                <Activity size={16} className="text-[var(--rx-brand)]" /> Tendencia Ingresos vs Costos (30d)
               </h3>
               {projectionData.length > 0 ? (
                 <ResponsiveContainer width="100%" height={220}>
@@ -149,13 +149,13 @@ const SuperAdminDashboard = () => {
                   </AreaChart>
                 </ResponsiveContainer>
               ) : (
-                <p className="text-sm text-muted-foreground text-center py-10">Sin datos de métricas aún.</p>
+                <p className="text-sm text-[var(--rx-t2)] text-center py-10">Sin datos de métricas aún.</p>
               )}
             </div>
 
-            <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+            <div className="rx-panel">
               <h3 className="font-semibold text-foreground flex items-center gap-2 mb-4">
-                <BarChart3 size={16} className="text-primary" /> Margen % por Tenant (Top 10)
+                <BarChart3 size={16} className="text-[var(--rx-brand)]" /> Margen % por Tenant (Top 10)
               </h3>
               {tenantChartData.length > 0 ? (
                 <ResponsiveContainer width="100%" height={220}>
@@ -172,53 +172,53 @@ const SuperAdminDashboard = () => {
                   </BarChart>
                 </ResponsiveContainer>
               ) : (
-                <p className="text-sm text-muted-foreground text-center py-10">Sin datos de margen por tenant.</p>
+                <p className="text-sm text-[var(--rx-t2)] text-center py-10">Sin datos de margen por tenant.</p>
               )}
             </div>
           </div>
 
           {/* Tenant Table */}
-          <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+          <div className="rx-panel">
             <h3 className="font-semibold text-foreground flex items-center gap-2 mb-4">
-              <DollarSign size={16} className="text-primary" /> Margen por Tenant — Tiempo Real
+              <DollarSign size={16} className="text-[var(--rx-brand)]" /> Margen por Tenant — Tiempo Real
             </h3>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-border text-left">
-                    <th className="py-2 px-3 font-medium text-muted-foreground">Tenant</th>
-                    <th className="py-2 px-3 font-medium text-muted-foreground text-right">Llamadas</th>
-                    <th className="py-2 px-3 font-medium text-muted-foreground text-right">Minutos</th>
-                    <th className="py-2 px-3 font-medium text-muted-foreground text-right">Ingresos</th>
-                    <th className="py-2 px-3 font-medium text-muted-foreground text-right">Costos</th>
-                    <th className="py-2 px-3 font-medium text-muted-foreground text-right">Margen</th>
-                    <th className="py-2 px-3 font-medium text-muted-foreground text-right">%</th>
-                    <th className="py-2 px-3 font-medium text-muted-foreground text-center">Estado</th>
+                  <tr className="border-b border-[var(--rx-b1)] text-left">
+                    <th className="py-2 px-3 font-medium text-[var(--rx-t2)]">Tenant</th>
+                    <th className="py-2 px-3 font-medium text-[var(--rx-t2)] text-right">Llamadas</th>
+                    <th className="py-2 px-3 font-medium text-[var(--rx-t2)] text-right">Minutos</th>
+                    <th className="py-2 px-3 font-medium text-[var(--rx-t2)] text-right">Ingresos</th>
+                    <th className="py-2 px-3 font-medium text-[var(--rx-t2)] text-right">Costos</th>
+                    <th className="py-2 px-3 font-medium text-[var(--rx-t2)] text-right">Margen</th>
+                    <th className="py-2 px-3 font-medium text-[var(--rx-t2)] text-right">%</th>
+                    <th className="py-2 px-3 font-medium text-[var(--rx-t2)] text-center">Estado</th>
                   </tr>
                 </thead>
                 <tbody>
                   {(margins.data || []).map(t => (
-                    <tr key={t.tenant_id} className="border-b border-border/50 hover:bg-secondary/30 transition-colors">
+                    <tr key={t.tenant_id} className="border-b border-[var(--rx-b1)]/50 hover:bg-[var(--rx-s2)]/30 transition-colors">
                       <td className="py-2 px-3 font-medium text-foreground">{t.tenant_name}</td>
-                      <td className="py-2 px-3 text-right text-muted-foreground">{t.current_month_calls}</td>
-                      <td className="py-2 px-3 text-right text-muted-foreground">{Number(t.current_month_minutes).toFixed(0)}</td>
+                      <td className="py-2 px-3 text-right text-[var(--rx-t2)]">{t.current_month_calls}</td>
+                      <td className="py-2 px-3 text-right text-[var(--rx-t2)]">{Number(t.current_month_minutes).toFixed(0)}</td>
                       <td className="py-2 px-3 text-right text-foreground">{fmt(Number(t.current_month_revenue))}</td>
-                      <td className="py-2 px-3 text-right text-muted-foreground">{fmt(Number(t.current_month_cost))}</td>
+                      <td className="py-2 px-3 text-right text-[var(--rx-t2)]">{fmt(Number(t.current_month_cost))}</td>
                       <td className="py-2 px-3 text-right font-semibold text-foreground">{fmt(Number(t.current_month_margin))}</td>
-                      <td className={`py-2 px-3 text-right font-semibold ${Number(t.current_month_margin_pct) >= 20 ? 'text-success' : Number(t.current_month_margin_pct) >= 10 ? 'text-warning' : 'text-destructive'}`}>
+                      <td className={`py-2 px-3 text-right font-semibold ${Number(t.current_month_margin_pct) >= 20 ? 'text-[var(--rx-emerald)]' : Number(t.current_month_margin_pct) >= 10 ? 'text-[var(--rx-amber)]' : 'text-[var(--rx-rose)]'}`}>
                         {fmtPct(Number(t.current_month_margin_pct))}
                       </td>
                       <td className="py-2 px-3 text-center">
                         {t.margin_alert_active ? (
-                          <span className="text-xs font-bold bg-destructive/10 text-destructive px-2 py-0.5 rounded-full">⚠ Alerta</span>
+                          <span className="text-xs font-bold bg-destructive/10 text-[var(--rx-rose)] px-2 py-0.5 rounded-full">⚠ Alerta</span>
                         ) : (
-                          <span className="text-xs font-bold bg-success/10 text-success px-2 py-0.5 rounded-full">OK</span>
+                          <span className="text-xs font-bold bg-[rgba(0,232,122,.1)] text-[var(--rx-emerald)] px-2 py-0.5 rounded-full">OK</span>
                         )}
                       </td>
                     </tr>
                   ))}
                   {(margins.data?.length ?? 0) === 0 && (
-                    <tr><td colSpan={8} className="py-6 text-center text-muted-foreground">Sin datos de tenants.</td></tr>
+                    <tr><td colSpan={8} className="py-6 text-center text-[var(--rx-t2)]">Sin datos de tenants.</td></tr>
                   )}
                 </tbody>
               </table>
@@ -227,46 +227,46 @@ const SuperAdminDashboard = () => {
 
           {/* Retention & Pricing */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-            <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+            <div className="rx-panel">
               <h3 className="font-semibold text-foreground flex items-center gap-2 mb-4">
-                <Gift size={16} className="text-primary" /> Ofertas de Retención Pendientes
+                <Gift size={16} className="text-[var(--rx-brand)]" /> Ofertas de Retención Pendientes
               </h3>
               {(retentionOffers.data?.length ?? 0) === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-6">Sin ofertas pendientes.</p>
+                <p className="text-sm text-[var(--rx-t2)] text-center py-6">Sin ofertas pendientes.</p>
               ) : (
                 <div className="space-y-2 max-h-64 overflow-y-auto">
                   {retentionOffers.data?.map(offer => (
-                    <div key={offer.id} className="p-3 rounded-lg border border-border hover:bg-secondary/30 transition-colors">
+                    <div key={offer.id} className="p-3 rounded-lg border border-[var(--rx-b1)] hover:bg-[var(--rx-s2)]/30 transition-colors">
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-sm font-medium text-foreground capitalize">{offer.offer_type.replace(/_/g, ' ')}</span>
                         {offer.discount_pct && (
-                          <span className="text-xs font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full">-{offer.discount_pct}%</span>
+                          <span className="text-xs font-bold text-[var(--rx-brand)] bg-primary/10 px-2 py-0.5 rounded-full">-{offer.discount_pct}%</span>
                         )}
                       </div>
-                      <p className="text-xs text-muted-foreground">{offer.description || `Tenant: ${offer.tenant_id.slice(0, 8)}…`}</p>
+                      <p className="text-xs text-[var(--rx-t2)]">{offer.description || `Tenant: ${offer.tenant_id.slice(0, 8)}…`}</p>
                     </div>
                   ))}
                 </div>
               )}
             </div>
 
-            <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+            <div className="rx-panel">
               <h3 className="font-semibold text-foreground flex items-center gap-2 mb-4">
-                <TrendingUp size={16} className="text-primary" /> Evaluaciones de Pricing
+                <TrendingUp size={16} className="text-[var(--rx-brand)]" /> Evaluaciones de Pricing
               </h3>
               {(pricingEvals.data?.length ?? 0) === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-6">Sin evaluaciones recientes.</p>
+                <p className="text-sm text-[var(--rx-t2)] text-center py-6">Sin evaluaciones recientes.</p>
               ) : (
                 <div className="space-y-2 max-h-64 overflow-y-auto">
                   {pricingEvals.data?.map(ev => (
-                    <div key={ev.id} className="p-3 rounded-lg border border-border hover:bg-secondary/30 transition-colors">
+                    <div key={ev.id} className="p-3 rounded-lg border border-[var(--rx-b1)] hover:bg-[var(--rx-s2)]/30 transition-colors">
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-sm font-medium text-foreground capitalize">{ev.recommended_action.replace(/_/g, ' ')}</span>
-                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${ev.action_applied ? 'bg-success/10 text-success' : 'bg-warning/10 text-warning'}`}>
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${ev.action_applied ? 'bg-[rgba(0,232,122,.1)] text-[var(--rx-emerald)]' : 'bg-warning/10 text-[var(--rx-amber)]'}`}>
                           {ev.action_applied ? 'Aplicado' : 'Pendiente'}
                         </span>
                       </div>
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-xs text-[var(--rx-t2)]">
                         Tier: {ev.usage_tier} · Margen 3m: {fmtPct(Number(ev.avg_margin_pct_3m))} · Crecimiento: {fmtPct(Number(ev.growth_rate_pct))}
                       </p>
                     </div>
@@ -280,22 +280,22 @@ const SuperAdminDashboard = () => {
         {/* === RISK TAB === */}
         <TabsContent value="risk" className="space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-            <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+            <div className="rx-panel">
               <h3 className="font-semibold text-foreground flex items-center gap-2 mb-4">
-                <ShieldAlert size={16} className="text-destructive" /> Alertas de Fraude Activas
+                <ShieldAlert size={16} className="text-[var(--rx-rose)]" /> Alertas de Fraude Activas
               </h3>
               {(fraudAlerts.data?.length ?? 0) === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-6">✅ Sin alertas activas</p>
+                <p className="text-sm text-[var(--rx-t2)] text-center py-6">✅ Sin alertas activas</p>
               ) : (
                 <div className="space-y-2 max-h-80 overflow-y-auto">
                   {fraudAlerts.data?.map(alert => (
-                    <div key={alert.id} className="flex items-start gap-3 p-3 rounded-lg border border-border hover:bg-secondary/30 transition-colors">
+                    <div key={alert.id} className="flex items-start gap-3 p-3 rounded-lg border border-[var(--rx-b1)] hover:bg-[var(--rx-s2)]/30 transition-colors">
                       <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${severityColor[alert.severity] || severityColor.info}`}>
                         {alert.severity}
                       </span>
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium text-foreground">{alert.detection_type.replace(/_/g, ' ')}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">
+                        <p className="text-xs text-[var(--rx-t2)] mt-0.5">
                           Tenant: {alert.tenant_id.slice(0, 8)}… · {format(new Date(alert.created_at), 'd MMM HH:mm', { locale: es })}
                         </p>
                       </div>
@@ -305,27 +305,27 @@ const SuperAdminDashboard = () => {
               )}
             </div>
 
-            <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+            <div className="rx-panel">
               <h3 className="font-semibold text-foreground flex items-center gap-2 mb-4">
-                <AlertTriangle size={16} className="text-warning" /> Riesgo de Churn
+                <AlertTriangle size={16} className="text-[var(--rx-amber)]" /> Riesgo de Churn
               </h3>
               {(churnScores.data?.length ?? 0) === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-6">Sin evaluaciones de churn.</p>
+                <p className="text-sm text-[var(--rx-t2)] text-center py-6">Sin evaluaciones de churn.</p>
               ) : (
                 <div className="space-y-2 max-h-80 overflow-y-auto">
                   {churnScores.data?.map(score => (
-                    <div key={score.id} className="flex items-center gap-3 p-3 rounded-lg border border-border hover:bg-secondary/30 transition-colors">
-                      <div className={`text-lg font-bold ${riskColor[score.risk_category] || 'text-muted-foreground'}`}>
+                    <div key={score.id} className="flex items-center gap-3 p-3 rounded-lg border border-[var(--rx-b1)] hover:bg-[var(--rx-s2)]/30 transition-colors">
+                      <div className={`text-lg font-bold ${riskColor[score.risk_category] || 'text-[var(--rx-t2)]'}`}>
                         {(score.churn_probability * 100).toFixed(0)}%
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium text-foreground">Tenant {score.tenant_id.slice(0, 8)}…</p>
-                        <p className="text-xs text-muted-foreground capitalize">{score.risk_category} · {format(new Date(score.calculated_at), 'd MMM', { locale: es })}</p>
+                        <p className="text-xs text-[var(--rx-t2)] capitalize">{score.risk_category} · {format(new Date(score.calculated_at), 'd MMM', { locale: es })}</p>
                       </div>
                       <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                        score.risk_category === 'high' ? 'bg-destructive/10 text-destructive' :
-                        score.risk_category === 'medium' ? 'bg-warning/10 text-warning' :
-                        'bg-success/10 text-success'
+                        score.risk_category === 'high' ? 'bg-destructive/10 text-[var(--rx-rose)]' :
+                        score.risk_category === 'medium' ? 'bg-warning/10 text-[var(--rx-amber)]' :
+                        'bg-[rgba(0,232,122,.1)] text-[var(--rx-emerald)]'
                       }`}>
                         {score.risk_category}
                       </span>
@@ -338,31 +338,31 @@ const SuperAdminDashboard = () => {
 
           {/* LTV Estimates */}
           {(globalData.ltvEstimates.data?.length ?? 0) > 0 && (
-            <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+            <div className="rx-panel">
               <h3 className="font-semibold text-foreground flex items-center gap-2 mb-4">
-                <TrendingUp size={16} className="text-primary" /> Top LTV por Tenant (USD)
+                <TrendingUp size={16} className="text-[var(--rx-brand)]" /> Top LTV por Tenant (USD)
               </h3>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-border text-left">
-                      <th className="py-2 px-3 font-medium text-muted-foreground">Tenant</th>
-                      <th className="py-2 px-3 font-medium text-muted-foreground text-right">LTV (USD)</th>
-                      <th className="py-2 px-3 font-medium text-muted-foreground text-right">Rev Mensual</th>
-                      <th className="py-2 px-3 font-medium text-muted-foreground text-right">Vida (meses)</th>
-                      <th className="py-2 px-3 font-medium text-muted-foreground text-right">Churn Prob</th>
-                      <th className="py-2 px-3 font-medium text-muted-foreground text-right">Riesgo País</th>
+                    <tr className="border-b border-[var(--rx-b1)] text-left">
+                      <th className="py-2 px-3 font-medium text-[var(--rx-t2)]">Tenant</th>
+                      <th className="py-2 px-3 font-medium text-[var(--rx-t2)] text-right">LTV (USD)</th>
+                      <th className="py-2 px-3 font-medium text-[var(--rx-t2)] text-right">Rev Mensual</th>
+                      <th className="py-2 px-3 font-medium text-[var(--rx-t2)] text-right">Vida (meses)</th>
+                      <th className="py-2 px-3 font-medium text-[var(--rx-t2)] text-right">Churn Prob</th>
+                      <th className="py-2 px-3 font-medium text-[var(--rx-t2)] text-right">Riesgo País</th>
                     </tr>
                   </thead>
                   <tbody>
                     {globalData.ltvEstimates.data?.slice(0, 10).map(ltv => (
-                      <tr key={ltv.id} className="border-b border-border/50 hover:bg-secondary/30 transition-colors">
+                      <tr key={ltv.id} className="border-b border-[var(--rx-b1)]/50 hover:bg-[var(--rx-s2)]/30 transition-colors">
                         <td className="py-2 px-3 font-medium text-foreground">{ltv.tenant_id.slice(0, 8)}…</td>
                         <td className="py-2 px-3 text-right font-semibold text-foreground">{fmt(Number(ltv.estimated_ltv_usd))}</td>
-                        <td className="py-2 px-3 text-right text-muted-foreground">{fmt(Number(ltv.avg_monthly_revenue))}</td>
-                        <td className="py-2 px-3 text-right text-muted-foreground">{Number(ltv.estimated_lifetime_months).toFixed(0)}</td>
-                        <td className="py-2 px-3 text-right text-muted-foreground">{fmtPct(Number(ltv.churn_probability) * 100)}</td>
-                        <td className="py-2 px-3 text-right text-muted-foreground">×{Number(ltv.country_risk_factor).toFixed(2)}</td>
+                        <td className="py-2 px-3 text-right text-[var(--rx-t2)]">{fmt(Number(ltv.avg_monthly_revenue))}</td>
+                        <td className="py-2 px-3 text-right text-[var(--rx-t2)]">{Number(ltv.estimated_lifetime_months).toFixed(0)}</td>
+                        <td className="py-2 px-3 text-right text-[var(--rx-t2)]">{fmtPct(Number(ltv.churn_probability) * 100)}</td>
+                        <td className="py-2 px-3 text-right text-[var(--rx-t2)]">×{Number(ltv.country_risk_factor).toFixed(2)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -418,30 +418,30 @@ const GlobalMetricsTab = ({ globalData }: { globalData: ReturnType<typeof useGlo
 
       {/* Secondary KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
-          <p className="text-xs text-muted-foreground">NRR</p>
-          <p className="text-xl font-bold text-foreground">{fmtPct(Number(latest?.net_revenue_retention_pct ?? 100))}</p>
+        <div className="rx-panel">
+          <p className="text-xs text-[var(--rx-t2)]">NRR</p>
+          <p className="rx-page-title">{fmtPct(Number(latest?.net_revenue_retention_pct ?? 100))}</p>
         </div>
-        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
-          <p className="text-xs text-muted-foreground">LTV/CAC</p>
-          <p className="text-xl font-bold text-foreground">{Number(latest?.ltv_cac_ratio ?? 0).toFixed(1)}x</p>
+        <div className="rx-panel">
+          <p className="text-xs text-[var(--rx-t2)]">LTV/CAC</p>
+          <p className="rx-page-title">{Number(latest?.ltv_cac_ratio ?? 0).toFixed(1)}x</p>
         </div>
-        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
-          <p className="text-xs text-muted-foreground">Tenants Activos</p>
-          <p className="text-xl font-bold text-foreground">{latest?.active_tenants ?? 0} / {latest?.total_tenants ?? 0}</p>
+        <div className="rx-panel">
+          <p className="text-xs text-[var(--rx-t2)]">Tenants Activos</p>
+          <p className="rx-page-title">{latest?.active_tenants ?? 0} / {latest?.total_tenants ?? 0}</p>
         </div>
-        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
-          <p className="text-xs text-muted-foreground">Revenue USD (MTD)</p>
-          <p className="text-xl font-bold text-foreground">{fmt(Number(latest?.total_revenue_usd ?? 0))}</p>
+        <div className="rx-panel">
+          <p className="text-xs text-[var(--rx-t2)]">Revenue USD (MTD)</p>
+          <p className="rx-page-title">{fmt(Number(latest?.total_revenue_usd ?? 0))}</p>
         </div>
       </div>
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
         {/* MRR Trend */}
-        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+        <div className="rx-panel">
           <h3 className="font-semibold text-foreground flex items-center gap-2 mb-4">
-            <TrendingUp size={16} className="text-primary" /> Tendencia MRR (14d)
+            <TrendingUp size={16} className="text-[var(--rx-brand)]" /> Tendencia MRR (14d)
           </h3>
           {mrrTrend.length > 0 ? (
             <ResponsiveContainer width="100%" height={220}>
@@ -454,14 +454,14 @@ const GlobalMetricsTab = ({ globalData }: { globalData: ReturnType<typeof useGlo
               </AreaChart>
             </ResponsiveContainer>
           ) : (
-            <p className="text-sm text-muted-foreground text-center py-10">Sin historial de MRR. Ejecuta "Calcular métricas".</p>
+            <p className="text-sm text-[var(--rx-t2)] text-center py-10">Sin historial de MRR. Ejecuta "Calcular métricas".</p>
           )}
         </div>
 
         {/* MRR by Region */}
-        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+        <div className="rx-panel">
           <h3 className="font-semibold text-foreground flex items-center gap-2 mb-4">
-            <MapPin size={16} className="text-primary" /> MRR por Región
+            <MapPin size={16} className="text-[var(--rx-brand)]" /> MRR por Región
           </h3>
           {regionData.length > 0 ? (
             <div className="flex items-center gap-6">
@@ -481,32 +481,32 @@ const GlobalMetricsTab = ({ globalData }: { globalData: ReturnType<typeof useGlo
                     <span className="font-medium text-foreground">{r.region}</span>
                     <div className="text-right">
                       <span className="font-semibold text-foreground">{fmt(Number(r.mrr))}</span>
-                      <span className="text-xs text-muted-foreground ml-2">{r.active_tenants} tenants</span>
+                      <span className="text-xs text-[var(--rx-t2)] ml-2">{r.active_tenants} tenants</span>
                     </div>
                   </div>
                 ))}
               </div>
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground text-center py-10">Sin datos por región.</p>
+            <p className="text-sm text-[var(--rx-t2)] text-center py-10">Sin datos por región.</p>
           )}
         </div>
       </div>
 
       {/* Regional Targets */}
       {(globalData.regionalTargets.data?.length ?? 0) > 0 && (
-        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+        <div className="rx-panel">
           <h3 className="font-semibold text-foreground flex items-center gap-2 mb-4">
-            <Target size={16} className="text-primary" /> Objetivos por Región
+            <Target size={16} className="text-[var(--rx-brand)]" /> Objetivos por Región
           </h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {globalData.regionalTargets.data?.map(t => (
-              <div key={t.id} className="p-3 rounded-lg border border-border">
+              <div key={t.id} className="p-3 rounded-lg border border-[var(--rx-b1)]">
                 <p className="text-sm font-semibold text-foreground">{t.region}</p>
-                <p className="text-xs text-muted-foreground mt-1">
+                <p className="text-xs text-[var(--rx-t2)] mt-1">
                   Margen objetivo: <span className="font-bold text-foreground">{fmtPct(Number(t.target_gross_margin_pct))}</span>
                 </p>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-xs text-[var(--rx-t2)]">
                   Máx cambio: {fmtPct(Number(t.max_price_change_pct))} · Riesgo: ×{Number(t.country_risk_multiplier).toFixed(2)}
                 </p>
               </div>
@@ -517,31 +517,31 @@ const GlobalMetricsTab = ({ globalData }: { globalData: ReturnType<typeof useGlo
 
       {/* WhatsApp Usage Costs - Global */}
       {(globalData.usageCosts.data?.length ?? 0) > 0 && (
-        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+        <div className="rx-panel">
           <h3 className="font-semibold text-foreground flex items-center gap-2 mb-4">
-            <Repeat size={16} className="text-primary" /> Costos WhatsApp Reconciliados (Global)
+            <Repeat size={16} className="text-[var(--rx-brand)]" /> Costos WhatsApp Reconciliados (Global)
           </h3>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-border text-left">
-                  <th className="py-2 px-3 font-medium text-muted-foreground">Periodo</th>
-                  <th className="py-2 px-3 font-medium text-muted-foreground">Región</th>
-                  <th className="py-2 px-3 font-medium text-muted-foreground text-right">Unidades</th>
-                  <th className="py-2 px-3 font-medium text-muted-foreground text-right">Costo USD</th>
-                  <th className="py-2 px-3 font-medium text-muted-foreground text-right">Revenue USD</th>
-                  <th className="py-2 px-3 font-medium text-muted-foreground text-right">Margen %</th>
+                <tr className="border-b border-[var(--rx-b1)] text-left">
+                  <th className="py-2 px-3 font-medium text-[var(--rx-t2)]">Periodo</th>
+                  <th className="py-2 px-3 font-medium text-[var(--rx-t2)]">Región</th>
+                  <th className="py-2 px-3 font-medium text-[var(--rx-t2)] text-right">Unidades</th>
+                  <th className="py-2 px-3 font-medium text-[var(--rx-t2)] text-right">Costo USD</th>
+                  <th className="py-2 px-3 font-medium text-[var(--rx-t2)] text-right">Revenue USD</th>
+                  <th className="py-2 px-3 font-medium text-[var(--rx-t2)] text-right">Margen %</th>
                 </tr>
               </thead>
               <tbody>
                 {globalData.usageCosts.data?.slice(0, 20).map(c => (
-                  <tr key={c.id} className="border-b border-border/50 hover:bg-secondary/30 transition-colors">
+                  <tr key={c.id} className="border-b border-[var(--rx-b1)]/50 hover:bg-[var(--rx-s2)]/30 transition-colors">
                     <td className="py-2 px-3 text-foreground">{c.period_start}</td>
-                    <td className="py-2 px-3 text-muted-foreground">{c.region}</td>
-                    <td className="py-2 px-3 text-right text-muted-foreground">{c.total_units}</td>
+                    <td className="py-2 px-3 text-[var(--rx-t2)]">{c.region}</td>
+                    <td className="py-2 px-3 text-right text-[var(--rx-t2)]">{c.total_units}</td>
                     <td className="py-2 px-3 text-right text-foreground">{fmt(Number(c.real_cost_usd))}</td>
                     <td className="py-2 px-3 text-right text-foreground">{fmt(Number(c.revenue_usd))}</td>
-                    <td className={`py-2 px-3 text-right font-semibold ${Number(c.margin_pct) >= 20 ? 'text-success' : 'text-warning'}`}>
+                    <td className={`py-2 px-3 text-right font-semibold ${Number(c.margin_pct) >= 20 ? 'text-[var(--rx-emerald)]' : 'text-[var(--rx-amber)]'}`}>
                       {fmtPct(Number(c.margin_pct))}
                     </td>
                   </tr>
@@ -556,37 +556,37 @@ const GlobalMetricsTab = ({ globalData }: { globalData: ReturnType<typeof useGlo
 };
 
 const UnicornKPI = ({ label, value, icon: Icon, negative }: { label: string; value: string; icon: any; negative?: boolean }) => (
-  <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+  <div className="rx-panel">
     <div className="flex items-center justify-between mb-1">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <Icon size={14} className={negative ? 'text-destructive' : 'text-primary'} />
+      <span className="text-xs text-[var(--rx-t2)]">{label}</span>
+      <Icon size={14} className={negative ? 'text-[var(--rx-rose)]' : 'text-[var(--rx-brand)]'} />
     </div>
-    <p className={`text-lg font-bold ${negative ? 'text-destructive' : 'text-foreground'}`}>{value}</p>
+    <p className={`text-lg font-bold ${negative ? 'text-[var(--rx-rose)]' : 'text-foreground'}`}>{value}</p>
   </div>
 );
 
 const KPICard = ({ icon: Icon, label, value, subtitle, trend, color }: {
   icon: any; label: string; value: string; subtitle?: string; trend: boolean; color: string;
 }) => (
-  <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+  <div className="rx-panel">
     <div className="flex items-center justify-between mb-2">
-      <span className="text-sm text-muted-foreground">{label}</span>
+      <span className="text-sm text-[var(--rx-t2)]">{label}</span>
       <Icon size={18} className={color} />
     </div>
-    <p className="text-2xl font-bold text-foreground">{value}</p>
+    <p className="rx-page-title">{value}</p>
     {subtitle && (
       <div className="flex items-center gap-1 mt-1">
-        {trend ? <ArrowUpRight size={14} className="text-success" /> : <ArrowDownRight size={14} className="text-destructive" />}
-        <span className="text-xs text-muted-foreground">{subtitle}</span>
+        {trend ? <ArrowUpRight size={14} className="text-[var(--rx-emerald)]" /> : <ArrowDownRight size={14} className="text-[var(--rx-rose)]" />}
+        <span className="text-xs text-[var(--rx-t2)]">{subtitle}</span>
       </div>
     )}
   </div>
 );
 
 const confidenceLabel = (score: number) => {
-  if (score >= 0.8) return { text: 'Alta', color: 'text-success' };
-  if (score >= 0.5) return { text: 'Media', color: 'text-warning' };
-  return { text: 'Baja', color: 'text-destructive' };
+  if (score >= 0.8) return { text: 'Alta', color: 'text-[var(--rx-emerald)]' };
+  if (score >= 0.5) return { text: 'Media', color: 'text-[var(--rx-amber)]' };
+  return { text: 'Baja', color: 'text-[var(--rx-rose)]' };
 };
 
 const horizonLabel: Record<number, string> = { 30: '30 días', 60: '60 días', 90: '90 días' };
@@ -608,7 +608,7 @@ const ProjectionsSection = ({
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="font-semibold text-foreground flex items-center gap-2">
-          <Brain size={18} className="text-primary" /> Proyecciones Financieras IA
+          <Brain size={18} className="text-[var(--rx-brand)]" /> Proyecciones Financieras IA
         </h3>
         <Button variant="outline" size="sm" onClick={onGenerate} disabled={isGenerating} className="gap-2">
           {isGenerating ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
@@ -617,12 +617,12 @@ const ProjectionsSection = ({
       </div>
 
       {isLoading ? (
-        <div className="flex items-center justify-center py-10"><Loader2 className="animate-spin text-primary" size={24} /></div>
+        <div className="flex items-center justify-center py-10"><Loader2 className="animate-spin text-[var(--rx-brand)]" size={24} /></div>
       ) : latest.length === 0 ? (
-        <div className="bg-card border border-border rounded-xl p-8 text-center">
-          <Brain size={32} className="mx-auto text-muted-foreground mb-3" />
-          <p className="text-sm text-muted-foreground">No hay proyecciones generadas aún.</p>
-          <p className="text-xs text-muted-foreground mt-1">Haz clic en "Generar proyecciones" para crear el análisis con IA.</p>
+        <div className="rx-panel">
+          <Brain size={32} className="mx-auto text-[var(--rx-t2)] mb-3" />
+          <p className="text-sm text-[var(--rx-t2)]">No hay proyecciones generadas aún.</p>
+          <p className="text-xs text-[var(--rx-t2)] mt-1">Haz clic en "Generar proyecciones" para crear el análisis con IA.</p>
         </div>
       ) : (
         <>
@@ -631,40 +631,40 @@ const ProjectionsSection = ({
               const HIcon = horizonIcon[p.horizon_days] || Calendar;
               const conf = confidenceLabel(Number(p.confidence_score));
               return (
-                <div key={p.id} className="bg-card border border-border rounded-xl p-5 shadow-sm">
+                <div key={p.id} className="rx-panel">
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2">
-                      <HIcon size={16} className="text-primary" />
+                      <HIcon size={16} className="text-[var(--rx-brand)]" />
                       <span className="font-semibold text-foreground">{horizonLabel[p.horizon_days]}</span>
                     </div>
                     <span className={`text-xs font-semibold ${conf.color}`}>Confianza: {conf.text}</span>
                   </div>
                   <div className="space-y-2">
                     <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Ingresos</span>
+                      <span className="text-sm text-[var(--rx-t2)]">Ingresos</span>
                       <span className="text-sm font-semibold text-foreground">{fmt(Number(p.projected_revenue))}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Costos</span>
-                      <span className="text-sm text-muted-foreground">{fmt(Number(p.projected_cost))}</span>
+                      <span className="text-sm text-[var(--rx-t2)]">Costos</span>
+                      <span className="text-sm text-[var(--rx-t2)]">{fmt(Number(p.projected_cost))}</span>
                     </div>
-                    <div className="flex justify-between border-t border-border pt-2">
+                    <div className="flex justify-between border-t border-[var(--rx-b1)] pt-2">
                       <span className="text-sm font-medium text-foreground">Margen</span>
-                      <span className={`text-sm font-bold ${Number(p.projected_margin_pct) >= 20 ? 'text-success' : Number(p.projected_margin_pct) >= 10 ? 'text-warning' : 'text-destructive'}`}>
+                      <span className={`text-sm font-bold ${Number(p.projected_margin_pct) >= 20 ? 'text-[var(--rx-emerald)]' : Number(p.projected_margin_pct) >= 10 ? 'text-[var(--rx-amber)]' : 'text-[var(--rx-rose)]'}`}>
                         {fmt(Number(p.projected_margin))} ({fmtPct(Number(p.projected_margin_pct))})
                       </span>
                     </div>
-                    <div className="flex justify-between text-xs text-muted-foreground pt-1">
+                    <div className="flex justify-between text-xs text-[var(--rx-t2)] pt-1">
                       <span>📞 {p.projected_calls} llamadas</span>
                       <span>⏱ {Number(p.projected_minutes).toFixed(0)} min</span>
                     </div>
                   </div>
                   {(p.risk_factors as any[])?.length > 0 && (
-                    <div className="mt-3 pt-3 border-t border-border">
-                      <p className="text-xs font-semibold text-muted-foreground mb-1">Riesgos:</p>
+                    <div className="mt-3 pt-3 border-t border-[var(--rx-b1)]">
+                      <p className="text-xs font-semibold text-[var(--rx-t2)] mb-1">Riesgos:</p>
                       {(p.risk_factors as any[]).slice(0, 2).map((r, i) => (
-                        <p key={i} className="text-xs text-muted-foreground">
-                          <span className={`font-bold ${r.impact === 'high' ? 'text-destructive' : r.impact === 'medium' ? 'text-warning' : 'text-muted-foreground'}`}>
+                        <p key={i} className="text-xs text-[var(--rx-t2)]">
+                          <span className={`font-bold ${r.impact === 'high' ? 'text-[var(--rx-rose)]' : r.impact === 'medium' ? 'text-[var(--rx-amber)]' : 'text-[var(--rx-t2)]'}`}>
                             {r.impact === 'high' ? '🔴' : r.impact === 'medium' ? '🟡' : '🟢'}
                           </span>{' '}{r.description}
                         </p>
@@ -673,9 +673,9 @@ const ProjectionsSection = ({
                   )}
                   {(p.opportunities as any[])?.length > 0 && (
                     <div className="mt-2">
-                      <p className="text-xs font-semibold text-muted-foreground mb-1">Oportunidades:</p>
+                      <p className="text-xs font-semibold text-[var(--rx-t2)] mb-1">Oportunidades:</p>
                       {(p.opportunities as any[]).slice(0, 2).map((o, i) => (
-                        <p key={i} className="text-xs text-muted-foreground">💡 {o.description} ({fmt(o.potential_revenue)})</p>
+                        <p key={i} className="text-xs text-[var(--rx-t2)]">💡 {o.description} ({fmt(o.potential_revenue)})</p>
                       ))}
                     </div>
                   )}
@@ -687,13 +687,13 @@ const ProjectionsSection = ({
           {narrative && (
             <div className="bg-primary/5 border border-primary/15 rounded-xl p-5">
               <div className="flex items-center gap-2 mb-2">
-                <Brain size={16} className="text-primary" />
+                <Brain size={16} className="text-[var(--rx-brand)]" />
                 <span className="text-sm font-semibold text-foreground">Análisis Ejecutivo IA</span>
-                <span className="text-xs text-muted-foreground ml-auto">
+                <span className="text-xs text-[var(--rx-t2)] ml-auto">
                   {latestDate && format(new Date(latestDate), "d MMM yyyy", { locale: es })}
                 </span>
               </div>
-              <p className="text-sm text-muted-foreground leading-relaxed">{narrative}</p>
+              <p className="text-sm text-[var(--rx-t2)] leading-relaxed">{narrative}</p>
             </div>
           )}
         </>
