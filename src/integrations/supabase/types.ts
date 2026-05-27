@@ -4356,6 +4356,14 @@ export type Database = {
         Args: { _base_delay_minutes?: number; _retry_count: number }
         Returns: string
       }
+      can_assign_role: {
+        Args: {
+          _assigner: string
+          _target_role: Database["public"]["Enums"]["app_role"]
+          _tenant_id: string
+        }
+        Returns: boolean
+      }
       cleanup_expired_nonces: { Args: never; Returns: undefined }
       get_tenant_branding: { Args: { _tenant_id: string }; Returns: Json }
       get_tenant_subscription_status: {
