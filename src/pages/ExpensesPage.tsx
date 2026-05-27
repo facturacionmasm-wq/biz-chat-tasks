@@ -47,6 +47,7 @@ const ExpensesPage = () => {
   const [periodFilter, setPeriodFilter] = useState<'day' | 'month' | 'year' | 'all'>('all');
   const [typeFilter, setTypeFilter] = useState<'all' | 'expense' | 'budget'>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'paid' | 'pending_approval' | 'approved' | 'rejected'>('all');
+  const [search, setSearch] = useState('');
 
   useEffect(() => {
     fetchExpenses();
