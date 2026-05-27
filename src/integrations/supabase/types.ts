@@ -4021,7 +4021,7 @@ export type Database = {
           id: string
           metadata: Json | null
           stage: string
-          tenant_id: string | null
+          tenant_id: string
         }
         Insert: {
           call_sid: string
@@ -4031,7 +4031,7 @@ export type Database = {
           id?: string
           metadata?: Json | null
           stage: string
-          tenant_id?: string | null
+          tenant_id: string
         }
         Update: {
           call_sid?: string
@@ -4041,7 +4041,7 @@ export type Database = {
           id?: string
           metadata?: Json | null
           stage?: string
-          tenant_id?: string | null
+          tenant_id?: string
         }
         Relationships: [
           {
