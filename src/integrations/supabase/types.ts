@@ -4021,7 +4021,7 @@ export type Database = {
           id: string
           metadata: Json | null
           stage: string
-          tenant_id: string | null
+          tenant_id: string
         }
         Insert: {
           call_sid: string
@@ -4031,7 +4031,7 @@ export type Database = {
           id?: string
           metadata?: Json | null
           stage: string
-          tenant_id?: string | null
+          tenant_id: string
         }
         Update: {
           call_sid?: string
@@ -4041,7 +4041,7 @@ export type Database = {
           id?: string
           metadata?: Json | null
           stage?: string
-          tenant_id?: string | null
+          tenant_id?: string
         }
         Relationships: [
           {
@@ -4299,6 +4299,44 @@ export type Database = {
       }
     }
     Views: {
+      google_calendar_connection_status: {
+        Row: {
+          calendar_id: string | null
+          created_at: string | null
+          status: string | null
+          tenant_id: string | null
+          token_expires_at: string | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          calendar_id?: string | null
+          created_at?: string | null
+          status?: string | null
+          tenant_id?: string | null
+          token_expires_at?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          calendar_id?: string | null
+          created_at?: string | null
+          status?: string | null
+          tenant_id?: string | null
+          token_expires_at?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "google_calendar_tokens_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles_safe: {
         Row: {
           avatar_url: string | null
