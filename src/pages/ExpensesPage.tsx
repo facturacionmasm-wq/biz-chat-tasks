@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Receipt, DollarSign, Calendar, TrendingUp, Loader2, FileText, ExternalLink, CheckCircle, XCircle, Clock, AlertCircle } from 'lucide-react';
+import { Receipt, DollarSign, Calendar, TrendingUp, Loader2, FileText, ExternalLink, CheckCircle, XCircle, Clock, AlertCircle, Search, X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
