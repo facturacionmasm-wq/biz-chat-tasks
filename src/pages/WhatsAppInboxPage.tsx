@@ -192,31 +192,31 @@ const WhatsAppInboxPage = () => {
 
   const chatView = (
     <div className="flex-1 flex flex-col min-w-0">
-      <div className="shrink-0 h-14 border-b border-[var(--rx-b1)] flex items-center justify-between px-3 sm:px-5 bg-card">
-        <div className="flex items-center gap-3">
+      <div className="shrink-0 h-14 border-b border-[var(--rx-b1)] flex items-center justify-between gap-2 px-3 sm:px-5 bg-card">
+        <div className="flex items-center gap-3 min-w-0 flex-1">
           {isMobile && (
-            <button onClick={() => setSelectedConvId(null)} className="p-1 text-[var(--rx-t2)] hover:text-foreground"><ArrowLeft size={18} /></button>
+            <button onClick={() => setSelectedConvId(null)} className="p-1 shrink-0 text-[var(--rx-t2)] hover:text-foreground"><ArrowLeft size={18} /></button>
           )}
-          <div className="w-8 h-8 rounded-full bg-[rgba(0,232,122,.1)] flex items-center justify-center text-xs font-bold text-[var(--rx-emerald)]">
+          <div className="w-8 h-8 shrink-0 rounded-full bg-[rgba(0,232,122,.1)] flex items-center justify-center text-xs font-bold text-[var(--rx-emerald)]">
             {(selectedConv?.contact_name || '?').split(' ').map(n => n[0]).join('').slice(0, 2)}
           </div>
-          <div>
-            <h3 className="text-sm font-semibold text-foreground">{selectedConv?.contact_name || selectedConv?.contact_phone}</h3>
-            <p className="text-[10px] text-[var(--rx-t2)]">{selectedConv?.contact_phone}</p>
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold text-foreground truncate">{selectedConv?.contact_name || selectedConv?.contact_phone}</h3>
+            <p className="text-[10px] text-[var(--rx-t2)] truncate">{selectedConv?.contact_phone}</p>
           </div>
         </div>
-        <div className="flex items-center gap-1 sm:gap-2">
+        <div className="flex items-center gap-1 shrink-0">
           {selectedConv?.status !== 'closed' ? (
-            <button onClick={handleCloseConversation} className="flex items-center gap-1 px-2 py-1.5 rounded-md text-xs font-medium text-[var(--rx-rose)] hover:bg-destructive/10"><AlertCircle size={14} /> <span className="hidden sm:inline">Cerrar</span></button>
+            <button onClick={handleCloseConversation} title="Cerrar conversación" className="flex items-center gap-1 px-2 py-1.5 rounded-md text-xs font-medium text-[var(--rx-rose)] hover:bg-destructive/10"><AlertCircle size={14} /> <span className="hidden lg:inline">Cerrar</span></button>
           ) : (
-            <button onClick={handleReopenConversation} className="flex items-center gap-1 px-2 py-1.5 rounded-md text-xs font-medium text-[var(--rx-emerald)] hover:bg-[rgba(0,232,122,.1)]"><Circle size={14} /> <span className="hidden sm:inline">Reabrir</span></button>
+            <button onClick={handleReopenConversation} title="Reabrir conversación" className="flex items-center gap-1 px-2 py-1.5 rounded-md text-xs font-medium text-[var(--rx-emerald)] hover:bg-[rgba(0,232,122,.1)]"><Circle size={14} /> <span className="hidden lg:inline">Reabrir</span></button>
           )}
           <button onClick={() => { setDeletingConvId(selectedConvId); setShowDeleteConfirm(true); }} className="flex items-center gap-1 px-2 py-1.5 rounded-md text-xs font-medium text-[var(--rx-rose)] hover:bg-destructive/10" title="Eliminar chat">
-            <Trash2 size={14} /> <span className="hidden sm:inline">Eliminar</span>
+            <Trash2 size={14} /> <span className="hidden lg:inline">Eliminar</span>
           </button>
-          <button className="p-2 rounded-md text-[var(--rx-t2)] hover:text-foreground hover:bg-[var(--rx-s2)] hidden sm:block"><Phone size={16} /></button>
-          <button className="p-2 rounded-md text-[var(--rx-t2)] hover:text-foreground hover:bg-[var(--rx-s2)] hidden sm:block"><CalendarPlus size={16} /></button>
-          <button onClick={() => setShowNotes(!showNotes)} className={`p-2 rounded-md transition-colors hidden sm:block ${showNotes ? 'text-[var(--rx-brand)] bg-primary/10' : 'text-[var(--rx-t2)] hover:text-foreground hover:bg-[var(--rx-s2)]'}`}>
+          <button title="Llamar" className="p-2 rounded-md text-[var(--rx-t2)] hover:text-foreground hover:bg-[var(--rx-s2)] hidden md:block"><Phone size={16} /></button>
+          <button title="Agendar" className="p-2 rounded-md text-[var(--rx-t2)] hover:text-foreground hover:bg-[var(--rx-s2)] hidden md:block"><CalendarPlus size={16} /></button>
+          <button onClick={() => setShowNotes(!showNotes)} title="Notas" className={`p-2 rounded-md transition-colors hidden md:block ${showNotes ? 'text-[var(--rx-brand)] bg-primary/10' : 'text-[var(--rx-t2)] hover:text-foreground hover:bg-[var(--rx-s2)]'}`}>
             <StickyNote size={16} />
           </button>
         </div>
