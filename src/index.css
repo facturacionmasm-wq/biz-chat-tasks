@@ -340,6 +340,11 @@
     transition: var(--rx-transition), border-color .18s, box-shadow .18s, transform .18s;
     box-shadow: var(--rx-shadow-sm);
   }
+  /* Panels used as standalone cards (no inner header/tabs) get default padding
+     so their content doesn't sit flush against the rounded edge. */
+  .rx-panel:not(:has(> .rx-panel-header)):not(:has(> [role="tablist"])) {
+    padding: clamp(14px, 2vw, 20px);
+  }
   .rx-panel:hover { border-color: var(--rx-b2); box-shadow: var(--rx-shadow-md); }
   .rx-panel-header {
     display: flex; align-items: center; justify-content: space-between;
