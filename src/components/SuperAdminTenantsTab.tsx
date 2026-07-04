@@ -35,7 +35,10 @@ type PendingAction =
   | { kind: 'extend_trial'; tenant: AdminTenantRow; days: number }
   | { kind: 'set_status'; tenant: AdminTenantRow; status: 'active' | 'trialing' | 'past_due' }
   | { kind: 'block'; tenant: AdminTenantRow }
-  | { kind: 'activate'; tenant: AdminTenantRow };
+  | { kind: 'activate'; tenant: AdminTenantRow }
+  | { kind: 'change_plan'; tenant: AdminTenantRow; plan_slug: string };
+
+interface PlanOption { slug: string; name: string; }
 
 const statusBadge = (status: string, isBlocked: boolean) => {
   if (isBlocked) return 'bg-destructive/10 text-[var(--rx-rose)]';
