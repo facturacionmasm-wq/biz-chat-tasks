@@ -604,6 +604,14 @@ const IntegrationsPage = () => {
           />
         </DialogContent>
       </Dialog>
+
+      {/* Tenant self-service number purchase wizard */}
+      <TenantNumberPurchaseWizard
+        open={purchaseWizardOpen}
+        onOpenChange={setPurchaseWizardOpen}
+        defaultCountry={tenantCountry}
+        onPurchased={async () => { await loadIntegrationStatus(); }}
+      />
     </div>
   );
 };
