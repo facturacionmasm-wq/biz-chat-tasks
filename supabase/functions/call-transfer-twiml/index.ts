@@ -45,6 +45,30 @@ Deno.serve(async (req) => {
       });
     }
 
+    if (action === "whisper_only") {
+      // Whisper played to the answering party (employee) before bridging.
+      // Used as the `url` attribute on a <Number> verb in a live-call redirect.
+      const whisper = url.searchParams.get("whisper") || "Llamada transferida.";
+      const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Pause length="1"/>
+  <Say voice="Polly.Mia-Neural" language="es-MX">
+    Atención. Transferencia de llamada entrante.
+  </Say>
+  <Pause length="1"/>
+  <Say voice="Polly.Mia-Neural" language="es-MX">
+    ${escapeXml(whisper)}
+  </Say>
+  <Pause length="1"/>
+  <Say voice="Polly.Mia-Neural" language="es-MX">
+    Conectando con el cliente ahora.
+  </Say>
+</Response>`;
+      return new Response(twiml, {
+        headers: { ...corsHeaders, "Content-Type": "application/xml" },
+      });
+    }
+
     if (action === "join") {
       // Caller joins the conference (hears hold music until employee finishes whisper)
       const twiml = `<?xml version="1.0" encoding="UTF-8"?>
