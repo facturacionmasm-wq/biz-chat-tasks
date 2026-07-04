@@ -1646,23 +1646,23 @@ const SettingsPage = () => {
                             <span className="text-[10px] text-amber-600 bg-amber-500/10 px-2 py-0.5 rounded-full">Pendiente</span>
                           )}
                           {isSuperAdmin && !isSelf && (
-                            <>
-                              <button
-                                onClick={() => setExpandedUserId(isExpanded ? null : m.user_id)}
-                                className="p-1.5 rounded hover:bg-[var(--rx-s2)] transition-colors text-[var(--rx-t2)] hover:text-foreground"
-                                title="Permisos"
-                              >
-                                {isExpanded ? <ChevronUp size={14} /> : <Settings2 size={14} />}
-                              </button>
-                              <button
-                                onClick={() => handleDeleteMember(m.user_id)}
-                                disabled={deletingUserId === m.user_id}
-                                className="text-[var(--rx-rose)] hover:text-[var(--rx-rose)]/80 disabled:opacity-40 p-1.5 rounded hover:bg-destructive/10 transition-colors"
-                                title="Eliminar miembro"
-                              >
-                                {deletingUserId === m.user_id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                              </button>
-                            </>
+                            <button
+                              onClick={() => setExpandedUserId(isExpanded ? null : m.user_id)}
+                              className="p-1.5 rounded hover:bg-[var(--rx-s2)] transition-colors text-[var(--rx-t2)] hover:text-foreground"
+                              title="Permisos"
+                            >
+                              {isExpanded ? <ChevronUp size={14} /> : <Settings2 size={14} />}
+                            </button>
+                          )}
+                          {!isSelf && (isSuperAdmin || userRole === 'owner' || userRole === 'admin') && (
+                            <button
+                              onClick={() => handleDeleteMember(m.user_id)}
+                              disabled={deletingUserId === m.user_id}
+                              className="text-[var(--rx-rose)] hover:text-[var(--rx-rose)]/80 disabled:opacity-40 p-1.5 rounded hover:bg-destructive/10 transition-colors"
+                              title="Eliminar miembro"
+                            >
+                              {deletingUserId === m.user_id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                            </button>
                           )}
                           {isSelf && <span className="text-[10px] text-[var(--rx-t2)] bg-[var(--rx-s2)] px-2 py-0.5 rounded-full">Tú</span>}
                         </div>
