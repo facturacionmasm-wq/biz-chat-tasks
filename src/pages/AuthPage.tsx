@@ -216,10 +216,10 @@ export default function AuthPage() {
               </button>
             </div>
           ) : (
-            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               {mode === 'register' && (
                 <div>
-                  <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--rx-t2)', display: 'block', marginBottom: 5 }}>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--rx-t2)', display: 'block', marginBottom: 6 }}>
                     Nombre completo
                   </label>
                   <input
@@ -233,7 +233,7 @@ export default function AuthPage() {
               )}
 
               <div>
-                <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--rx-t2)', display: 'block', marginBottom: 5 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--rx-t2)', display: 'block', marginBottom: 6 }}>
                   Email
                 </label>
                 <input
@@ -247,9 +247,19 @@ export default function AuthPage() {
 
               {mode !== 'forgot' && (
                 <div>
-                  <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--rx-t2)', display: 'block', marginBottom: 5 }}>
-                    Contraseña
-                  </label>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--rx-t2)' }}>
+                      Contraseña
+                    </label>
+                    {mode === 'login' && (
+                      <button type="button" onClick={() => setMode('forgot')} style={{
+                        background: 'none', border: 'none', cursor: 'pointer',
+                        fontSize: 11.5, color: 'var(--rx-brand)', fontWeight: 600, padding: 0,
+                      }}>
+                        ¿Olvidaste tu contraseña?
+                      </button>
+                    )}
+                  </div>
                   <div style={{ position: 'relative' }}>
                     <input
                       type={showPass ? 'text' : 'password'}
@@ -257,31 +267,23 @@ export default function AuthPage() {
                       onChange={e => setPassword(e.target.value)}
                       placeholder="••••••••"
                       className="rx-input"
-                      style={{ paddingRight: 42 }}
+                      style={{ paddingRight: 44 }}
                       required
                     />
                     <button
                       type="button"
                       onClick={() => setShowPass(!showPass)}
+                      aria-label={showPass ? 'Ocultar contraseña' : 'Mostrar contraseña'}
                       style={{
-                        position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
+                        position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
                         background: 'none', border: 'none', cursor: 'pointer',
                         color: 'var(--rx-t3)', display: 'flex', alignItems: 'center',
+                        padding: 6, borderRadius: 8,
                       }}
                     >
                       {showPass ? <EyeOff size={15} /> : <Eye size={15} />}
                     </button>
                   </div>
-                  {mode === 'login' && (
-                    <div style={{ textAlign: 'right', marginTop: 5 }}>
-                      <button type="button" onClick={() => setMode('forgot')} style={{
-                        background: 'none', border: 'none', cursor: 'pointer',
-                        fontSize: 11.5, color: 'var(--rx-brand)', fontWeight: 600,
-                      }}>
-                        ¿Olvidaste tu contraseña?
-                      </button>
-                    </div>
-                  )}
                 </div>
               )}
 
@@ -289,7 +291,7 @@ export default function AuthPage() {
                 type="submit"
                 disabled={loading}
                 className="rx-btn rx-btn-primary"
-                style={{ width: '100%', justifyContent: 'center', padding: '11px', marginTop: 4, opacity: loading ? 0.7 : 1 }}
+                style={{ width: '100%', justifyContent: 'center', padding: '12px', marginTop: 8, fontSize: 14 }}
               >
                 {loading ? <Loader2 size={16} className="animate-spin" /> : null}
                 {mode === 'login' ? 'Iniciar sesión'
