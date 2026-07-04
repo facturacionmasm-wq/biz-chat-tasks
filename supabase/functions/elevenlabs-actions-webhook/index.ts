@@ -138,21 +138,59 @@ serve(async (req) => {
 
       case 'transfer_call':
       case 'transferir_llamada': {
-        // Transfer is handled differently — via Twilio API
+        // Transfer is executed by redirecting the LIVE Twilio call (call_sid)
+        // to the target phone via call-transfer's internal server-to-server mode.
         const targetPhone = toolParams.target_phone || toolParams.telefono_destino || '';
+        const targetName = toolParams.target_name || toolParams.nombre_destino || toolParams.employee_name || 'Agente';
+
         if (!targetPhone) {
-          return jsonResp({ success: false, message: 'Necesito el número de teléfono de destino.' });
+          return jsonResp({ success: false, message: 'Necesito el número de teléfono de destino para transferir la llamada.' });
         }
-        // Invoke the call-transfer function
+        if (!callSid) {
+          return jsonResp({ success: false, message: 'No se pudo identificar la llamada en curso (call_sid ausente).' });
+        }
+
+        // Fetch caller_phone and transcript from the call record (for whisper context)
+        let callerPhone: string | null = null;
+        let callTranscript: string | null = null;
+        if (callRecordId) {
+          const { data: cr } = await supabase
+            .from('call_records')
+            .select('from_number, transcript')
+            .eq('id', callRecordId)
+            .maybeSingle();
+          callerPhone = cr?.from_number ?? null;
+          callTranscript = cr?.transcript ?? null;
+        }
+
         try {
           const transferRes = await fetch(`${SUPABASE_URL}/functions/v1/call-transfer`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
-            body: JSON.stringify({ call_sid: callSid, target_phone: targetPhone, tenant_id: resolvedTenantId }),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+            },
+            body: JSON.stringify({
+              tenant_id: resolvedTenantId,
+              call_sid: callSid,
+              target_phone: targetPhone,
+              target_name: targetName,
+              caller_phone: callerPhone,
+              transcript: callTranscript,
+              call_record_id: callRecordId,
+            }),
           });
           const transferData = await transferRes.json();
+          if (!transferRes.ok) {
+            console.error('[el-actions] call-transfer error:', transferData);
+            return jsonResp({
+              success: false,
+              message: transferData?.error || 'Error al transferir la llamada.',
+            }, transferRes.status);
+          }
           return jsonResp(transferData);
         } catch (e) {
+          console.error('[el-actions] transfer_call exception:', e);
           return jsonResp({ success: false, message: 'Error al transferir la llamada.' }, 500);
         }
       }
