@@ -1,0 +1,1 @@
+GRANT SELECT ON public.profiles_safe TO authenticated; GRANT SELECT ON public.profiles_safe TO service_role;
