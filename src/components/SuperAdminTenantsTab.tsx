@@ -12,7 +12,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { Loader2, RefreshCw, ShieldOff, ShieldCheck, Clock, CreditCard, Crown, Phone } from 'lucide-react';
+import { Loader2, RefreshCw, ShieldOff, ShieldCheck, Clock, CreditCard, Crown, Phone, Trash2, Package } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -35,7 +35,10 @@ type PendingAction =
   | { kind: 'extend_trial'; tenant: AdminTenantRow; days: number }
   | { kind: 'set_status'; tenant: AdminTenantRow; status: 'active' | 'trialing' | 'past_due' }
   | { kind: 'block'; tenant: AdminTenantRow }
-  | { kind: 'activate'; tenant: AdminTenantRow };
+  | { kind: 'activate'; tenant: AdminTenantRow }
+  | { kind: 'change_plan'; tenant: AdminTenantRow; plan_slug: string };
+
+interface PlanOption { slug: string; name: string; }
 
 const statusBadge = (status: string, isBlocked: boolean) => {
   if (isBlocked) return 'bg-destructive/10 text-[var(--rx-rose)]';
@@ -51,6 +54,12 @@ export default function SuperAdminTenantsTab() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingAction | null>(null);
   const [extendDaysDraft, setExtendDaysDraft] = useState<Record<string, number>>({});
+  const [plans, setPlans] = useState<PlanOption[]>([]);
+
+  // Delete tenant flow
+  const [deleteTarget, setDeleteTarget] = useState<AdminTenantRow | null>(null);
+  const [deleteConfirmName, setDeleteConfirmName] = useState('');
+  const [deleting, setDeleting] = useState(false);
 
   // Twilio provisioning state
   const [provTenant, setProvTenant] = useState<AdminTenantRow | null>(null);
@@ -82,6 +91,37 @@ export default function SuperAdminTenantsTab() {
 
   useEffect(() => { load(); }, [load]);
 
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from('subscription_plans').select('slug, name').order('price_monthly', { ascending: true, nullsFirst: false });
+      setPlans((data || []) as PlanOption[]);
+    })();
+  }, []);
+
+  const handleDeleteTenant = useCallback(async () => {
+    if (!deleteTarget) return;
+    if (deleteConfirmName.trim() !== deleteTarget.tenant_name) {
+      toast.error('El nombre no coincide');
+      return;
+    }
+    setDeleting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('admin-delete-tenant', {
+        body: { tenant_id: deleteTarget.tenant_id, confirm_name: deleteTarget.tenant_name },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      toast.success(`Tenant "${deleteTarget.tenant_name}" eliminado`);
+      setDeleteTarget(null);
+      setDeleteConfirmName('');
+      await load();
+    } catch (err: any) {
+      toast.error(err.message || 'Error al eliminar tenant');
+    } finally {
+      setDeleting(false);
+    }
+  }, [deleteTarget, deleteConfirmName, load]);
+
   const runAction = useCallback(async () => {
     if (!pending) return;
     const { tenant } = pending;
@@ -89,6 +129,7 @@ export default function SuperAdminTenantsTab() {
     try {
       let action: string;
       let extend_days: number | null = null;
+      let new_plan_slug: string | null = null;
       if (pending.kind === 'extend_trial') {
         action = 'extend_trial';
         extend_days = pending.days;
@@ -96,6 +137,9 @@ export default function SuperAdminTenantsTab() {
         action = 'block';
       } else if (pending.kind === 'activate') {
         action = 'activate';
+      } else if (pending.kind === 'change_plan') {
+        action = 'change_plan';
+        new_plan_slug = pending.plan_slug;
       } else {
         action = pending.status === 'active' ? 'activate'
           : pending.status === 'trialing' ? 'set_trialing'
@@ -106,7 +150,8 @@ export default function SuperAdminTenantsTab() {
         _tenant_id: tenant.tenant_id,
         _action: action,
         _extend_days: extend_days,
-      });
+        _new_plan_slug: new_plan_slug,
+      } as any);
       if (error) throw error;
       toast.success('Cambio aplicado');
       setPending(null);
@@ -311,6 +356,33 @@ export default function SuperAdminTenantsTab() {
                         >
                           <Phone size={12} /> Asignar número Twilio
                         </Button>
+
+                        <Select
+                          disabled={busy || t.is_master || plans.length === 0}
+                          value={t.plan_slug || undefined}
+                          onValueChange={(v) => { if (v !== t.plan_slug) setPending({ kind: 'change_plan', tenant: t, plan_slug: v }); }}
+                        >
+                          <SelectTrigger className="h-7 w-[120px] text-xs">
+                            <SelectValue placeholder="Plan…" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {plans.map(p => (
+                              <SelectItem key={p.slug} value={p.slug}>
+                                <Package size={12} className="inline mr-1" /> {p.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+
+                        {!t.is_master && (
+                          <Button
+                            size="sm" variant="outline" className="h-7 gap-1 text-xs text-[var(--rx-rose)]"
+                            disabled={busy}
+                            onClick={() => { setDeleteTarget(t); setDeleteConfirmName(''); }}
+                          >
+                            <Trash2 size={12} /> Eliminar
+                          </Button>
+                        )}
                       </div>
 
                     </td>
@@ -331,6 +403,7 @@ export default function SuperAdminTenantsTab() {
               {pending?.kind === 'block' && `Bloquear a "${pending.tenant.tenant_name}". El tenant no podrá usar servicios (WhatsApp, envíos).`}
               {pending?.kind === 'activate' && `Reactivar a "${pending.tenant.tenant_name}" (status: active).`}
               {pending?.kind === 'set_status' && `Cambiar estado de "${pending.tenant.tenant_name}" a "${pending.status}".`}
+              {pending?.kind === 'change_plan' && `Cambiar plan de "${pending.tenant.tenant_name}" a "${plans.find(p => p.slug === pending.plan_slug)?.name || pending.plan_slug}".`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -342,6 +415,46 @@ export default function SuperAdminTenantsTab() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Delete tenant confirmation */}
+      <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open && !deleting) { setDeleteTarget(null); setDeleteConfirmName(''); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-[var(--rx-rose)] flex items-center gap-2">
+              <Trash2 size={16} /> Eliminar tenant
+            </DialogTitle>
+            <DialogDescription>
+              Esta acción es <strong>irreversible</strong>. Se eliminarán usuarios, suscripciones, números, gastos, documentos y todo dato asociado a <strong>{deleteTarget?.tenant_name}</strong>.
+              Se cancelará su suscripción activa en Stripe si existe.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <label className="text-xs text-[var(--rx-t2)]">
+              Escribe el nombre exacto del tenant para confirmar: <span className="font-mono text-foreground">{deleteTarget?.tenant_name}</span>
+            </label>
+            <Input
+              value={deleteConfirmName}
+              onChange={(e) => setDeleteConfirmName(e.target.value)}
+              placeholder={deleteTarget?.tenant_name || ''}
+              disabled={deleting}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setDeleteTarget(null); setDeleteConfirmName(''); }} disabled={deleting}>
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteTenant}
+              disabled={deleting || deleteConfirmName.trim() !== (deleteTarget?.tenant_name || '__')}
+              className="gap-2"
+            >
+              {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+              Eliminar definitivamente
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Twilio provisioning dialog */}
       <Dialog open={!!provTenant} onOpenChange={(open) => !open && !provPurchasing && setProvTenant(null)}>

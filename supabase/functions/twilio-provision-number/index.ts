@@ -199,13 +199,48 @@ serve(async (req) => {
     }, 500);
   }
 
+  // Lookup monthly fee from pricing catalog and register the number
+  const countryForPricing = (body?.country_code || '').toString().toUpperCase() || 'US';
+  const numberTypeForPricing = (body?.type || 'Local').toString().toLowerCase();
+  let monthlyFee = 0;
+  let currency = 'USD';
+  try {
+    const { data: price } = await supabase
+      .from('phone_number_pricing')
+      .select('monthly_fee, currency')
+      .eq('country_code', countryForPricing)
+      .eq('number_type', numberTypeForPricing)
+      .eq('source', 'twilio_purchase')
+      .eq('active', true)
+      .maybeSingle();
+    if (price) { monthlyFee = Number(price.monthly_fee); currency = price.currency; }
+  } catch (_) { /* pricing optional */ }
+
+  try {
+    await supabase.from('tenant_phone_numbers').upsert({
+      tenant_id,
+      phone_e164: purchasedNumber,
+      provider: 'twilio',
+      label: existingConfig.friendly_name || null,
+      active: true,
+      monthly_fee: monthlyFee,
+      currency,
+      billing_status: monthlyFee > 0 ? 'pending' : 'active',
+      source: 'twilio_purchase',
+      activated_at: new Date().toISOString(),
+      next_billing_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+    }, { onConflict: 'phone_e164' });
+  } catch (regErr) {
+    console.warn('[provision] tenant_phone_numbers register warning:', regErr);
+  }
+
   // audit
   await supabase.from("audit_events").insert({
     tenant_id,
     event_type: "twilio_number_provisioned",
     resource_type: "tenants",
     resource_id: tenant_id,
-    payload: { phone_number: purchasedNumber, incoming_sid: incomingSid, messaging_service_sid: messagingServiceSid },
+    payload: { phone_number: purchasedNumber, incoming_sid: incomingSid, messaging_service_sid: messagingServiceSid, monthly_fee: monthlyFee, currency },
   });
 
   return j({

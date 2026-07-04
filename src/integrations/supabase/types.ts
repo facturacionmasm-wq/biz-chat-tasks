@@ -2294,6 +2294,99 @@ export type Database = {
         }
         Relationships: []
       }
+      phone_number_invoices: {
+        Row: {
+          amount: number
+          created_at: string
+          currency: string
+          id: string
+          invoice_url: string | null
+          period_end: string
+          period_start: string
+          phone_number_id: string | null
+          status: string
+          stripe_invoice_id: string | null
+          tenant_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          currency?: string
+          id?: string
+          invoice_url?: string | null
+          period_end: string
+          period_start: string
+          phone_number_id?: string | null
+          status?: string
+          stripe_invoice_id?: string | null
+          tenant_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          currency?: string
+          id?: string
+          invoice_url?: string | null
+          period_end?: string
+          period_start?: string
+          phone_number_id?: string | null
+          status?: string
+          stripe_invoice_id?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "phone_number_invoices_phone_number_id_fkey"
+            columns: ["phone_number_id"]
+            isOneToOne: false
+            referencedRelation: "tenant_phone_numbers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "phone_number_invoices_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      phone_number_pricing: {
+        Row: {
+          active: boolean
+          country_code: string
+          created_at: string
+          currency: string
+          id: string
+          monthly_fee: number
+          number_type: string
+          source: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          country_code: string
+          created_at?: string
+          currency?: string
+          id?: string
+          monthly_fee?: number
+          number_type?: string
+          source?: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          country_code?: string
+          created_at?: string
+          currency?: string
+          id?: string
+          monthly_fee?: number
+          number_type?: string
+          source?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       plan_change_history: {
         Row: {
           applied_by: string
@@ -3515,34 +3608,58 @@ export type Database = {
       }
       tenant_phone_numbers: {
         Row: {
+          activated_at: string | null
           active: boolean
+          billing_status: string
+          canceled_at: string | null
           created_at: string
+          currency: string
           id: string
           label: string | null
+          monthly_fee: number
+          next_billing_at: string | null
           phone_e164: string
           provider: string
+          source: string
+          stripe_subscription_item_id: string | null
           tenant_id: string
           twilio_subaccount_sid: string | null
           updated_at: string
         }
         Insert: {
+          activated_at?: string | null
           active?: boolean
+          billing_status?: string
+          canceled_at?: string | null
           created_at?: string
+          currency?: string
           id?: string
           label?: string | null
+          monthly_fee?: number
+          next_billing_at?: string | null
           phone_e164: string
           provider?: string
+          source?: string
+          stripe_subscription_item_id?: string | null
           tenant_id: string
           twilio_subaccount_sid?: string | null
           updated_at?: string
         }
         Update: {
+          activated_at?: string | null
           active?: boolean
+          billing_status?: string
+          canceled_at?: string | null
           created_at?: string
+          currency?: string
           id?: string
           label?: string | null
+          monthly_fee?: number
+          next_billing_at?: string | null
           phone_e164?: string
           provider?: string
+          source?: string
+          stripe_subscription_item_id?: string | null
           tenant_id?: string
           twilio_subaccount_sid?: string | null
           updated_at?: string
@@ -4427,10 +4544,20 @@ export type Database = {
           trial_ends_at: string
         }[]
       }
-      admin_manage_tenant_subscription: {
-        Args: { _action: string; _extend_days?: number; _tenant_id: string }
-        Returns: Json
-      }
+      admin_manage_tenant_subscription:
+        | {
+            Args: { _action: string; _extend_days?: number; _tenant_id: string }
+            Returns: Json
+          }
+        | {
+            Args: {
+              _action: string
+              _extend_days?: number
+              _new_plan_slug?: string
+              _tenant_id: string
+            }
+            Returns: Json
+          }
       block_expired_trials: { Args: never; Returns: undefined }
       calculate_next_retry: {
         Args: { _base_delay_minutes?: number; _retry_count: number }

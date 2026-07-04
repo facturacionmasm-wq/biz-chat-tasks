@@ -51,6 +51,35 @@ const UsagePage = () => {
     },
   });
 
+  // Active phone numbers with monthly billing
+  const phoneNumbers = useQuery({
+    queryKey: ['tenant-phone-numbers', tenantId],
+    enabled: !!tenantId,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('tenant_phone_numbers')
+        .select('id, phone_e164, monthly_fee, currency, billing_status, source, next_billing_at, active, created_at')
+        .eq('tenant_id', tenantId!)
+        .eq('active', true)
+        .order('created_at', { ascending: false });
+      return data || [];
+    },
+  });
+
+  const phoneInvoices = useQuery({
+    queryKey: ['phone-invoices', tenantId],
+    enabled: !!tenantId,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('phone_number_invoices')
+        .select('id, phone_number_id, amount, currency, period_start, period_end, status, invoice_url')
+        .eq('tenant_id', tenantId!)
+        .order('period_start', { ascending: false })
+        .limit(12);
+      return data || [];
+    },
+  });
+
   // Active packages
   const packages = useQuery({
     queryKey: ['usage-packages', tenantId],
@@ -329,6 +358,84 @@ const UsagePage = () => {
               </div>
             </div>
           )}
+
+          {/* Active phone numbers with monthly billing */}
+          <div className="rx-panel">
+            <div className="flex items-center gap-2 mb-3">
+              <Phone size={16} className="text-[var(--rx-brand)]" />
+              <h3 className="font-semibold text-foreground">Números activos y renta mensual</h3>
+            </div>
+            {(phoneNumbers.data?.length || 0) === 0 ? (
+              <p className="text-sm text-[var(--rx-t2)]">No tienes números activos. Compra o migra uno desde Integraciones.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-[var(--rx-b1)] text-left">
+                      <th className="py-2 px-3 font-medium text-[var(--rx-t2)]">Número</th>
+                      <th className="py-2 px-3 font-medium text-[var(--rx-t2)]">Origen</th>
+                      <th className="py-2 px-3 font-medium text-[var(--rx-t2)] text-right">Renta mensual</th>
+                      <th className="py-2 px-3 font-medium text-[var(--rx-t2)]">Estado</th>
+                      <th className="py-2 px-3 font-medium text-[var(--rx-t2)]">Próximo cobro</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(phoneNumbers.data || []).map((n: any) => (
+                      <tr key={n.id} className="border-b border-[var(--rx-b1)]/50">
+                        <td className="py-2 px-3 font-mono text-foreground">{n.phone_e164}</td>
+                        <td className="py-2 px-3 text-[var(--rx-t2)]">{n.source}</td>
+                        <td className="py-2 px-3 text-right text-foreground">
+                          {Number(n.monthly_fee) === 0 ? 'Gratis' : `${n.currency} ${Number(n.monthly_fee).toFixed(2)}`}
+                        </td>
+                        <td className="py-2 px-3">
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${n.billing_status === 'active' ? 'bg-[rgba(0,232,122,.1)] text-[var(--rx-emerald)]' : n.billing_status === 'past_due' ? 'bg-warning/10 text-[var(--rx-amber)]' : n.billing_status === 'canceled' ? 'bg-destructive/10 text-[var(--rx-rose)]' : 'bg-muted text-[var(--rx-t2)]'}`}>
+                            {n.billing_status}
+                          </span>
+                        </td>
+                        <td className="py-2 px-3 text-[var(--rx-t2)] text-xs">
+                          {n.next_billing_at ? new Date(n.next_billing_at).toLocaleDateString('es-MX') : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {(phoneInvoices.data?.length || 0) > 0 && (
+              <div className="mt-6">
+                <h4 className="text-sm font-semibold text-foreground mb-2">Historial de facturas</h4>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-[var(--rx-b1)] text-left">
+                        <th className="py-2 px-3 font-medium text-[var(--rx-t2)]">Periodo</th>
+                        <th className="py-2 px-3 font-medium text-[var(--rx-t2)] text-right">Monto</th>
+                        <th className="py-2 px-3 font-medium text-[var(--rx-t2)]">Estado</th>
+                        <th className="py-2 px-3 font-medium text-[var(--rx-t2)]">Recibo</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(phoneInvoices.data || []).map((inv: any) => (
+                        <tr key={inv.id} className="border-b border-[var(--rx-b1)]/50">
+                          <td className="py-2 px-3 text-[var(--rx-t2)]">
+                            {new Date(inv.period_start).toLocaleDateString('es-MX')} – {new Date(inv.period_end).toLocaleDateString('es-MX')}
+                          </td>
+                          <td className="py-2 px-3 text-right text-foreground">{inv.currency} {Number(inv.amount).toFixed(2)}</td>
+                          <td className="py-2 px-3 text-[var(--rx-t2)]">{inv.status}</td>
+                          <td className="py-2 px-3">
+                            {inv.invoice_url ? (
+                              <a href={inv.invoice_url} target="_blank" rel="noreferrer" className="text-[var(--rx-brand)] hover:underline">Ver PDF</a>
+                            ) : '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
         </>
       )}
     </div>
