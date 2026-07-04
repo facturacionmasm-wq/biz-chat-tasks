@@ -506,23 +506,27 @@ export default function Dashboard() {
             {secondaryStats.map(stat => (
               <Link to={stat.link} key={stat.label}>
                 <TiltCard
-                  className="rx-panel"
+                  className="rx-panel flex items-center gap-3 p-4 group"
                   intensity={6}
                 >
-                  <div className="w-11 h-11 rounded-xl bg-primary/10 flex items-center justify-center shrink-0 group-hover:bg-primary/20 transition-colors">
-                    <stat.icon size={19} className="text-[var(--rx-brand)]" />
+                  <div
+                    className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0 transition-colors"
+                    style={{ background: 'var(--rx-brand-soft)' }}
+                  >
+                    <stat.icon size={19} style={{ color: 'var(--rx-brand)' }} />
                   </div>
                   <div className="flex-1">
-                    <div className="text-2xl font-extrabold text-foreground">
-                      {loading ? <div className="h-7 w-8 rounded-md skeleton" /> : <AnimatedNumber value={stat.value} />}
+                    <div className="text-2xl font-extrabold text-foreground" style={{ fontFamily: 'var(--rx-font-display)', letterSpacing: '-0.03em' }}>
+                      {loading ? <div className="h-7 w-8 rounded-md rx-skeleton" /> : <AnimatedNumber value={stat.value} />}
                     </div>
                     <div className="text-xs text-[var(--rx-t2)]">{stat.label}</div>
                   </div>
-                  <ArrowRight size={14} className="text-[var(--rx-t2)]/40 group-hover:text-[var(--rx-brand)] transition-colors shrink-0" />
+                  <ArrowRight size={14} className="text-[var(--rx-t3)] group-hover:text-[var(--rx-brand)] group-hover:translate-x-0.5 transition-all shrink-0" />
                 </TiltCard>
               </Link>
             ))}
           </div>
+
 
           {/* Appointments + Quick Actions grid */}
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 stagger-5">
