@@ -124,10 +124,6 @@ const SuperAdminDashboard = () => {
         </TabsContent>
 
 
-        {/* === GLOBAL METRICS TAB === */}
-        <TabsContent value="global" className="space-y-6">
-          <GlobalMetricsTab globalData={globalData} />
-        </TabsContent>
 
         {/* === CONSUMPTION TAB === */}
         <TabsContent value="consumption" className="space-y-6">
