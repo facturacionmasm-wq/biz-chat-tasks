@@ -280,7 +280,16 @@ export default function SuperAdminTenantsTab() {
                             <ShieldOff size={12} /> Bloquear
                           </Button>
                         )}
+
+                        <Button
+                          size="sm" variant="outline" className="h-7 gap-1 text-xs"
+                          disabled={busy}
+                          onClick={() => openProvision(t)}
+                        >
+                          <Phone size={12} /> Asignar número Twilio
+                        </Button>
                       </div>
+
                     </td>
                   </tr>
                 );
