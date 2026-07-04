@@ -104,9 +104,11 @@ const IntegrationsPage = () => {
       if (profile?.tenant_id) {
         const { data: tenant } = await supabase
           .from('tenants')
-          .select('whatsapp_config')
+          .select('whatsapp_config, country')
           .eq('id', profile.tenant_id)
           .maybeSingle();
+
+        if (tenant?.country) setTenantCountry(String(tenant.country).toUpperCase());
 
         const config = (tenant?.whatsapp_config as Record<string, any> | null) || null;
         if (config) {
@@ -125,6 +127,7 @@ const IntegrationsPage = () => {
           }));
 
           const storedPhone = config.phone_number || '';
+          setTenantPhoneNumber(storedPhone ? String(storedPhone).replace(/^whatsapp:/i, '') : '');
           setTwilioConfig((prev) => ({
             ...prev,
             phoneNumber: storedPhone
@@ -133,6 +136,7 @@ const IntegrationsPage = () => {
           }));
         } else {
           setWaConnected(false);
+          setTenantPhoneNumber('');
         }
       }
 
