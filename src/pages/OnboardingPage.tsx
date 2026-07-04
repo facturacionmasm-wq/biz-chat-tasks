@@ -252,7 +252,7 @@ const OnboardingPage = () => {
             </p>
           </div>
 
-          <form onSubmit={handleCompanySubmit} className="rx-panel">
+          <form onSubmit={handleCompanySubmit} className="rx-panel p-6 space-y-4">
             <div>
               <label className="text-sm font-medium text-foreground block mb-1">
                 Nombre de la empresa
@@ -298,7 +298,7 @@ const OnboardingPage = () => {
             </p>
           </div>
 
-          <div className="rx-panel">
+          <div className="rx-panel p-6 space-y-4">
             <div className="grid grid-cols-2 gap-2">
               {COUNTRIES.map(c => {
                 const isSelected = selectedCountry?.code === c.code;
