@@ -219,47 +219,43 @@ export default function Dashboard() {
   const px = (mousePos.x - 0.5) * 30;
   const py = (mousePos.y - 0.5) * 20;
 
-  // ── Stat cards config ──
+  // ── Stat cards config (colores desde tokens semánticos) ──
   const mainStats = [
     {
       label: 'Llamadas hoy',
       value: stats.callsToday,
       icon: Phone,
       link: '/calls',
-      gradient: 'from-cyan-500 via-teal-500 to-emerald-500',
-      glow: 'rgba(20,184,166,0.45)',
-      bg: 'rgba(20,184,166,0.12)',
-      iconBg: 'rgba(20,184,166,0.25)',
+      accent: 'var(--rx-brand)',
+      glow: 'rgba(45,240,193,0.35)',
+      bg: 'var(--rx-brand-soft)',
     },
     {
       label: 'WhatsApp abiertos',
       value: stats.openWA,
       icon: MessageSquare,
       link: '/whatsapp',
-      gradient: 'from-green-400 via-emerald-500 to-teal-600',
-      glow: 'rgba(16,185,129,0.45)',
-      bg: 'rgba(16,185,129,0.12)',
-      iconBg: 'rgba(16,185,129,0.25)',
+      accent: 'var(--rx-emerald)',
+      glow: 'rgba(34,217,126,0.32)',
+      bg: 'rgba(34,217,126,0.10)',
     },
     {
       label: 'Citas próximas',
       value: stats.upcomingApts,
       icon: CalendarPlus,
       link: '/appointments',
-      gradient: 'from-amber-400 via-orange-500 to-rose-500',
-      glow: 'rgba(245,158,11,0.45)',
-      bg: 'rgba(245,158,11,0.12)',
-      iconBg: 'rgba(245,158,11,0.25)',
+      accent: 'var(--rx-amber)',
+      glow: 'rgba(255,181,32,0.32)',
+      bg: 'rgba(255,181,32,0.10)',
     },
     {
       label: 'Llamadas perdidas',
       value: stats.callsMissed,
       icon: PhoneMissed,
       link: '/calls',
-      gradient: 'from-rose-500 via-pink-500 to-fuchsia-500',
-      glow: 'rgba(244,63,94,0.45)',
-      bg: 'rgba(244,63,94,0.12)',
-      iconBg: 'rgba(244,63,94,0.25)',
+      accent: 'var(--rx-rose)',
+      glow: 'rgba(255,91,122,0.32)',
+      bg: 'rgba(255,91,122,0.10)',
     },
   ];
 
