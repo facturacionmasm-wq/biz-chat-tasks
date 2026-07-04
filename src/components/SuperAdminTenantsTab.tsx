@@ -470,6 +470,7 @@ export default function SuperAdminTenantsTab() {
         </AlertDialogContent>
       </AlertDialog>
     </div>
+    </div>
   );
 }
 
