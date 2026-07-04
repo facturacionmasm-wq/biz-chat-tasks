@@ -89,12 +89,26 @@ const CredentialsPage = () => {
     fetchCredentials();
   };
 
-  const handleEdit = (cred: Credential) => {
+  const handleEdit = async (cred: Credential) => {
+    let password = cred._decrypted || '';
+    if (!password) {
+      try {
+        const { data: result, error } = await supabase.functions.invoke('credential-vault', {
+          body: { action: 'decrypt', id: cred.id },
+        });
+        if (error) throw error;
+        if (result?.error) throw new Error(result.error);
+        password = result.password;
+      } catch (err: any) {
+        toast.error(err.message || 'Error al desencriptar');
+        return;
+      }
+    }
     setEditingId(cred.id);
     setForm({
       platform_name: cred.platform_name,
       username: cred.username,
-      password: cred.password_encrypted,
+      password,
       notes: cred.notes || '',
     });
     setDialogOpen(true);
