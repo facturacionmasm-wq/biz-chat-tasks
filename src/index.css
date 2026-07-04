@@ -98,23 +98,23 @@
     --chat-bubble-own:    166 87% 56%;
     --chat-bubble-other:  240 29% 13%;
     --radius:             var(--rx-r-md);
-    --sidebar-bg:         var(--rx-s1);
-    --sidebar-fg:         var(--rx-t2);
-    --sidebar-fg-bright:  var(--rx-t1);
-    --sidebar-hover:      var(--rx-s2);
-    --sidebar-active:     var(--rx-brand);
-    --sidebar-border:     var(--rx-b1);
-    --sidebar-muted:      var(--rx-t3);
+    --sidebar-bg:         240 27% 8%;
+    --sidebar-fg:         240 22% 70%;
+    --sidebar-fg-bright:  240 53% 97%;
+    --sidebar-hover:      240 29% 13%;
+    --sidebar-active:     166 87% 56%;
+    --sidebar-border:     240 20% 100% / 0.07;
+    --sidebar-muted:      240 15% 50%;
     --shadow-soft:        var(--rx-shadow-sm);
     --shadow-card:        var(--rx-shadow-md);
     --shadow-elevated:    var(--rx-shadow-lg);
-    --sidebar-custom-bg:         var(--rx-s1);
-    --sidebar-custom-fg:         var(--rx-t2);
-    --sidebar-custom-fg-bright:  var(--rx-t1);
-    --sidebar-custom-hover:      var(--rx-s2);
-    --sidebar-custom-active:     var(--rx-brand);
-    --sidebar-custom-border:     var(--rx-b1);
-    --sidebar-custom-muted:      var(--rx-t3);
+    --sidebar-custom-bg:         240 27% 8%;
+    --sidebar-custom-fg:         240 22% 70%;
+    --sidebar-custom-fg-bright:  240 53% 97%;
+    --sidebar-custom-hover:      240 29% 13%;
+    --sidebar-custom-active:     166 87% 56%;
+    --sidebar-custom-border:     240 20% 100% / 0.07;
+    --sidebar-custom-muted:      240 15% 50%;
     --bottom-nav-height: 4.5rem;
   }
 
@@ -171,8 +171,20 @@
     --warning-foreground: 0 0% 100%;
     --chat-bubble-own:    167 100% 30%;
     --chat-bubble-other:  225 36% 96%;
-    --sidebar-bg:         #ffffff;
-    --sidebar-custom-bg:  #ffffff;
+    --sidebar-bg:         0 0% 100%;
+    --sidebar-fg:         236 17% 35%;
+    --sidebar-fg-bright:  237 51% 8%;
+    --sidebar-hover:      225 36% 96%;
+    --sidebar-active:     167 100% 30%;
+    --sidebar-border:     237 51% 8% / 0.10;
+    --sidebar-muted:      236 13% 52%;
+    --sidebar-custom-bg:  0 0% 100%;
+    --sidebar-custom-fg:  236 17% 35%;
+    --sidebar-custom-fg-bright: 237 51% 8%;
+    --sidebar-custom-hover: 225 36% 96%;
+    --sidebar-custom-active: 167 100% 30%;
+    --sidebar-custom-border: 237 51% 8% / 0.10;
+    --sidebar-custom-muted: 236 13% 52%;
   }
 
   /* ════ BASE STYLES ════ */
