@@ -487,9 +487,9 @@ const IntegrationsPage = () => {
             </div>
           </div>
           {calcomConnected ? (
-            <span className="flex items-center gap-1 text-xs text-[var(--rx-emerald)] font-medium"><CheckCircle2 size={12} /> Conectado</span>
+            <span className="flex items-center gap-1 text-xs text-[var(--rx-emerald)] font-medium flex-shrink-0 whitespace-nowrap"><CheckCircle2 size={12} /> Conectado</span>
           ) : (
-            <span className="flex items-center gap-1 text-xs text-[var(--rx-t2)]"><Circle size={12} /> Desconectado</span>
+            <span className="flex items-center gap-1 text-xs text-[var(--rx-t2)] flex-shrink-0 whitespace-nowrap"><Circle size={12} /> Desconectado</span>
           )}
         </div>
         {calcomConnected && calcomLastSync && (
