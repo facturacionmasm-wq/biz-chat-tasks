@@ -474,6 +474,45 @@ const IntegrationsPage = () => {
         ))}
       </div>
 
+      {/* Cal.com panel */}
+      <div className="mt-8 bg-card border border-[var(--rx-b1)] rounded-xl p-6 shadow-sm">
+        <div className="flex items-start justify-between gap-4 mb-3 flex-wrap">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+              <Link2 size={20} className="text-[var(--rx-brand)]" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-foreground">Cal.com</h2>
+              <p className="text-xs text-[var(--rx-t2)]">Recibe reservas de Cal.com directamente en tu agenda</p>
+            </div>
+          </div>
+          {calcomConnected ? (
+            <span className="flex items-center gap-1 text-xs text-[var(--rx-emerald)] font-medium"><CheckCircle2 size={12} /> Conectado</span>
+          ) : (
+            <span className="flex items-center gap-1 text-xs text-[var(--rx-t2)]"><Circle size={12} /> Desconectado</span>
+          )}
+        </div>
+        {calcomConnected && calcomLastSync && (
+          <p className="text-xs text-[var(--rx-t2)] mb-3">Última sincronización: {new Date(calcomLastSync).toLocaleString('es-MX')}</p>
+        )}
+        <div className="flex items-center gap-2 flex-wrap">
+          {calcomConnected ? (
+            <>
+              <button onClick={handlePullCalcomBookings} className="text-xs font-medium px-4 py-2 rounded-lg bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground hover:opacity-90">
+                Sincronizar reservas ahora
+              </button>
+              <button onClick={handleDisconnectCalcom} className="text-xs font-medium px-3 py-2 rounded-lg border border-destructive/30 text-[var(--rx-rose)] hover:bg-destructive/10 flex items-center gap-1.5">
+                <X size={12} /> Desconectar
+              </button>
+            </>
+          ) : (
+            <button onClick={() => setCalcomDialogOpen(true)} className="text-xs font-medium px-4 py-2 rounded-lg bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground hover:opacity-90 flex items-center gap-1.5">
+              Conectar Cal.com <ExternalLink size={12} />
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* Voice Agent Info */}
       <div className="mt-8 bg-card border border-[var(--rx-b1)] rounded-xl p-6 shadow-sm">
         <h2 className="text-lg font-bold text-foreground flex items-center gap-2 mb-3">
