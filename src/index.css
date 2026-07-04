@@ -252,17 +252,17 @@
     word-break: normal;
   }
 
-  /* Table cells default to nowrap+ellipsis. Cells that need wrapping can add `whitespace-normal`. */
+  /* Table cells wrap gracefully; long emails/IDs break instead of pushing width */
   td, th {
-    max-width: 0;
+    overflow-wrap: anywhere;
+    word-break: normal;
+  }
+  /* Opt-in nowrap-with-ellipsis for compact cells */
+  td[data-truncate], th[data-truncate] {
+    max-width: 1px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-  td.whitespace-normal, th.whitespace-normal,
-  td[data-wrap], th[data-wrap] {
-    white-space: normal;
-    max-width: none;
   }
 
   /* Dialog / Sheet / Popover / Card titles never overflow horizontally */
