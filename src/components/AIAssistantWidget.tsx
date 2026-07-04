@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Bot, X, Send, Plus, History, Trash2, Square,
-  Loader2, ChevronDown, Sparkles, MessageSquare
+  Loader2, Sparkles, MessageSquare, BookOpen, Wrench, CircleHelp, Rocket
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { useAIAssistant, type AssistantMessage, type Conversation } from '@/hooks/useAIAssistant';
@@ -13,10 +13,10 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
 };
 
 const QUICK_ACTIONS = [
-  { label: '📖 Manual de Usuario', prompt: 'Genera un manual de usuario interactivo de todos los módulos de la plataforma.' },
-  { label: '🔧 Manual Técnico', prompt: 'Genera un manual técnico detallado de la arquitectura, base de datos e integraciones del sistema.' },
-  { label: '❓ ¿Qué puedo hacer aquí?', prompt: '¿Qué funcionalidades tengo disponibles en esta página?' },
-  { label: '🚀 Guía de inicio', prompt: 'Dame una guía paso a paso para comenzar a usar la plataforma como nuevo usuario.' },
+  { label: 'Manual de usuario', icon: BookOpen, prompt: 'Genera un manual de usuario interactivo de todos los módulos de la plataforma.' },
+  { label: 'Manual técnico', icon: Wrench, prompt: 'Genera un manual técnico detallado de la arquitectura, base de datos e integraciones del sistema.' },
+  { label: '¿Qué puedo hacer?', icon: CircleHelp, prompt: '¿Qué funcionalidades tengo disponibles en esta página?' },
+  { label: 'Guía de inicio', icon: Rocket, prompt: 'Dame una guía paso a paso para comenzar a usar la plataforma como nuevo usuario.' },
 ];
 
 const AIAssistantWidget = () => {
@@ -170,7 +170,7 @@ const AIAssistantWidget = () => {
               <Sparkles size={28} className="text-accent-foreground" />
             </div>
             <div className="text-center">
-              <h4 className="text-sm font-semibold text-foreground mb-1">¡Hola! Soy Aria 👋</h4>
+              <h4 className="text-sm font-semibold text-foreground mb-1">Hola, soy Aria</h4>
               <p className="text-xs text-muted-foreground max-w-[280px]">
                 Tu asistente virtual inteligente. Puedo ayudarte con cualquier tarea, generar manuales, resolver dudas y más.
               </p>
@@ -180,8 +180,9 @@ const AIAssistantWidget = () => {
                 <button
                   key={i}
                   onClick={() => handleQuickAction(action.prompt)}
-                  className="text-left px-3 py-2.5 rounded-lg border border-border bg-secondary hover:bg-accent text-xs text-secondary-foreground transition-colors break-words"
+                  className="flex items-center gap-2 text-left px-3 py-2.5 rounded-lg border border-border bg-secondary hover:bg-accent text-xs text-secondary-foreground transition-colors break-words"
                 >
+                  <action.icon size={13} className="shrink-0 text-primary" />
                   {action.label}
                 </button>
               ))}

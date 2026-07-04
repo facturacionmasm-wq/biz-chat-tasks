@@ -130,7 +130,7 @@ export default function AuthPage() {
           borderRadius: 99,
         }}
       >
-        {isDay ? '🌙 Noche' : '☀️ Día'}
+        {isDay ? 'Modo noche' : 'Modo día'}
       </button>
 
       {/* Auth card */}
@@ -204,7 +204,7 @@ export default function AuthPage() {
           {/* Form */}
           {forgotSent && mode === 'forgot' ? (
             <div style={{ textAlign: 'center', padding: '20px 0' }}>
-              <div style={{ fontSize: 32, marginBottom: 12 }}>📬</div>
+              <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--rx-brand)', marginBottom: 12, textTransform: 'uppercase' }}>Revisa tu correo</div>
               <div style={{ fontFamily: 'var(--rx-font-display)', fontSize: 15, fontWeight: 700, color: 'var(--rx-t1)', marginBottom: 6 }}>
                 Email enviado
               </div>

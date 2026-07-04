@@ -427,8 +427,7 @@ export default function Dashboard() {
                   style={{ backgroundImage: 'linear-gradient(90deg, var(--rx-brand), var(--rx-brand2))' }}
                 >
                   {userName}
-                </span>{' '}
-                👋
+                </span>
               </h1>
               <p className="text-[var(--rx-t2)] text-sm mt-2">
                 {format(new Date(), "EEEE d 'de' MMMM · HH:mm", { locale: es })}
