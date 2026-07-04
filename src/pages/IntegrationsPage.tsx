@@ -313,6 +313,29 @@ const IntegrationsPage = () => {
         <p className="text-sm text-[var(--rx-t2)] mt-1">Conecta herramientas externas para potenciar tu espacio de trabajo.</p>
       </div>
 
+      {/* Tabs */}
+      <div className="flex items-center gap-1 mb-5 border-b border-[var(--rx-b1)]">
+        <button
+          onClick={() => setActiveTab('integrations')}
+          className={`text-sm font-medium px-4 py-2 -mb-px border-b-2 transition-colors ${activeTab === 'integrations' ? 'border-[var(--rx-brand)] text-foreground' : 'border-transparent text-[var(--rx-t2)] hover:text-foreground'}`}
+        >
+          <span className="inline-flex items-center gap-1.5"><Plug size={14} /> Integraciones</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('byon')}
+          className={`text-sm font-medium px-4 py-2 -mb-px border-b-2 transition-colors ${activeTab === 'byon' ? 'border-[var(--rx-brand)] text-foreground' : 'border-transparent text-[var(--rx-t2)] hover:text-foreground'}`}
+        >
+          <span className="inline-flex items-center gap-1.5"><Smartphone size={14} /> Mi Número</span>
+        </button>
+      </div>
+
+      {activeTab === 'byon' ? (
+        <BringYourOwnNumberTab
+          onMetaClick={() => { setWaProvider('meta'); setWaDialogOpen(true); }}
+          onBuyNewClick={() => setPurchaseWizardOpen(true)}
+        />
+      ) : (
+      <>
       {/* Phone number panel (tenant self-service purchase) */}
       <div className="rx-panel mb-4 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
         <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
