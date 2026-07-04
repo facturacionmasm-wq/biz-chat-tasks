@@ -34,7 +34,7 @@ serve(async (req) => {
   }
 
   try {
-    const { to, body, conversationId, tenantId } = await req.json();
+    const { to, body, conversationId, tenantId: bodyTenantId } = await req.json();
 
     if (!to || !body) {
       return new Response(
@@ -49,15 +49,24 @@ serve(async (req) => {
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Resolve tenant (request value first, then by authenticated user)
-    let effectiveTenantId = tenantId as string | undefined;
+    // ALWAYS resolve tenant from the authenticated user's profile — never trust the body.
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("tenant_id")
+      .eq("user_id", userId)
+      .maybeSingle();
+    const effectiveTenantId = profile?.tenant_id as string | undefined;
+
     if (!effectiveTenantId) {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("tenant_id")
-        .eq("user_id", userId)
-        .maybeSingle();
-      effectiveTenantId = profile?.tenant_id || undefined;
+      return new Response(
+        JSON.stringify({ ok: false, error: "No se pudo resolver el tenant del usuario" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // If the caller passed a tenantId that doesn't match the profile, ignore it and log.
+    if (bodyTenantId && bodyTenantId !== effectiveTenantId) {
+      console.warn(`[twilio-send] tenantId mismatch: body=${bodyTenantId} profile=${effectiveTenantId} user=${userId} — using profile tenant`);
     }
 
     // Prefer tenant WhatsApp sender config (same sender as bot conversation)
@@ -140,11 +149,9 @@ serve(async (req) => {
       );
     }
 
-    const finalTenantId = effectiveTenantId || "00000000-0000-0000-0000-000000000001";
-
     if (conversationId) {
       await supabase.from("whatsapp_messages").insert({
-        tenant_id: finalTenantId,
+        tenant_id: effectiveTenantId,
         conversation_id: conversationId,
         direction: "out",
         body: body,
