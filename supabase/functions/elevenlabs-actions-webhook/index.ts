@@ -29,6 +29,21 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // ═══════════ SHARED-SECRET GUARD ═══════════
+  const expectedSecret = Deno.env.get('ELEVENLABS_WEBHOOK_SECRET');
+  if (expectedSecret && expectedSecret.length > 0) {
+    const providedSecret = req.headers.get('x-elevenlabs-secret');
+    if (providedSecret !== expectedSecret) {
+      console.warn('[el-actions] Unauthorized: invalid or missing x-elevenlabs-secret header');
+      return new Response(
+        JSON.stringify({ success: false, message: 'No autorizado (secreto invalido)' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+  } else {
+    console.warn('[el-actions] ELEVENLABS_WEBHOOK_SECRET not configured — webhook is UNPROTECTED');
+  }
+
   const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
   const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
