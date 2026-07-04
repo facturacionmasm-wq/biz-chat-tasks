@@ -121,11 +121,23 @@ export default function SuperAdminTenantsTab() {
   const openProvision = useCallback((t: AdminTenantRow) => {
     setProvTenant(t);
     setProvCountry('US');
+    setProvType('Local');
+    setProvCapSms(true);
+    setProvCapVoice(true);
+    setProvCapMms(false);
     setProvAreaCode('');
     setProvNumbers([]);
     setProvSelected(null);
     setProvConfirm(false);
   }, []);
+
+  const buildCapabilities = useCallback(() => {
+    const caps: string[] = [];
+    if (provCapSms) caps.push('SMS');
+    if (provCapVoice) caps.push('Voice');
+    if (provCapMms) caps.push('MMS');
+    return caps;
+  }, [provCapSms, provCapVoice, provCapMms]);
 
   const listAvailable = useCallback(async () => {
     if (!provTenant) return;
@@ -138,6 +150,8 @@ export default function SuperAdminTenantsTab() {
           tenant_id: provTenant.tenant_id,
           country_code: provCountry.trim().toUpperCase() || undefined,
           areaCode: provAreaCode.trim() || undefined,
+          type: provType,
+          capabilities: buildCapabilities(),
           dryRun: true,
         },
       });
@@ -151,7 +165,7 @@ export default function SuperAdminTenantsTab() {
     } finally {
       setProvListing(false);
     }
-  }, [provTenant, provCountry, provAreaCode]);
+  }, [provTenant, provCountry, provAreaCode, provType, buildCapabilities]);
 
   const purchaseSelected = useCallback(async () => {
     if (!provTenant || !provSelected) return;
@@ -162,6 +176,7 @@ export default function SuperAdminTenantsTab() {
           tenant_id: provTenant.tenant_id,
           country_code: provCountry.trim().toUpperCase() || undefined,
           phoneNumber: provSelected,
+          type: provType,
           dryRun: false,
         },
       });
@@ -177,7 +192,7 @@ export default function SuperAdminTenantsTab() {
     } finally {
       setProvPurchasing(false);
     }
-  }, [provTenant, provSelected, provCountry, load]);
+  }, [provTenant, provSelected, provCountry, provType, load]);
 
 
 
