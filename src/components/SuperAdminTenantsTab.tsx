@@ -92,6 +92,7 @@ export default function SuperAdminTenantsTab() {
     try {
       let action: string;
       let extend_days: number | null = null;
+      let new_plan_slug: string | null = null;
       if (pending.kind === 'extend_trial') {
         action = 'extend_trial';
         extend_days = pending.days;
@@ -99,6 +100,9 @@ export default function SuperAdminTenantsTab() {
         action = 'block';
       } else if (pending.kind === 'activate') {
         action = 'activate';
+      } else if (pending.kind === 'change_plan') {
+        action = 'change_plan';
+        new_plan_slug = pending.plan_slug;
       } else {
         action = pending.status === 'active' ? 'activate'
           : pending.status === 'trialing' ? 'set_trialing'
@@ -109,7 +113,8 @@ export default function SuperAdminTenantsTab() {
         _tenant_id: tenant.tenant_id,
         _action: action,
         _extend_days: extend_days,
-      });
+        _new_plan_slug: new_plan_slug,
+      } as any);
       if (error) throw error;
       toast.success('Cambio aplicado');
       setPending(null);
