@@ -14,10 +14,10 @@ interface Credential {
   id: string;
   platform_name: string;
   username: string;
-  password_encrypted: string;
   notes: string | null;
   created_by: string | null;
   created_at: string;
+  _decrypted?: string;
 }
 
 const CredentialsPage = () => {
