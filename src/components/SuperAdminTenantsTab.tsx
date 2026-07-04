@@ -12,7 +12,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { Loader2, RefreshCw, ShieldOff, ShieldCheck, Clock, CreditCard, Crown, Phone } from 'lucide-react';
+import { Loader2, RefreshCw, ShieldOff, ShieldCheck, Clock, CreditCard, Crown, Phone, Trash2, Package } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
