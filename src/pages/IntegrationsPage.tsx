@@ -461,6 +461,8 @@ const IntegrationsPage = () => {
           </div>
         </div>
       </div>
+      </>
+      )}
 
       {/* Voice Agent Wizard Dialog */}
       <Dialog open={voiceDialogOpen} onOpenChange={setVoiceDialogOpen}>
