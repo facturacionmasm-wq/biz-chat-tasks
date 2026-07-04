@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Plug, MessageSquare, CalendarDays, Brain, Shield, ExternalLink, CheckCircle2, Circle, X, Save, Phone, Loader2, ShoppingCart } from 'lucide-react';
+import { Plug, MessageSquare, CalendarDays, Brain, Shield, ExternalLink, CheckCircle2, Circle, X, Save, Phone, Loader2, ShoppingCart, Smartphone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import TwilioWizard from '@/components/TwilioWizard';
 import VoiceAgentWizard from '@/components/VoiceAgentWizard';
 import TenantNumberPurchaseWizard from '@/components/TenantNumberPurchaseWizard';
+import BringYourOwnNumberTab from '@/components/byon/BringYourOwnNumberTab';
 
 const integrationsMeta = [
   {
