@@ -769,30 +769,63 @@ const IntegrationsPage = () => {
       />
 
       {/* Cal.com Connect Dialog */}
-      <Dialog open={calcomDialogOpen} onOpenChange={setCalcomDialogOpen}>
+      <Dialog open={calcomDialogOpen} onOpenChange={(o) => { setCalcomDialogOpen(o); if (!o) { setCalcomEventTypes([]); setCalcomSelectedEventType(''); } }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Link2 size={18} className="text-[var(--rx-brand)]" /> Conectar Cal.com
             </DialogTitle>
             <DialogDescription>
-              Pega tu API key personal de Cal.com. Registraremos automáticamente el webhook para que cada reserva llegue a tu agenda.
+              Pega tu API key, elige el tipo de evento por defecto y registraremos automáticamente el webhook para que cada reserva llegue a tu agenda.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
               <label className="text-xs font-semibold text-foreground mb-1 block">API Key</label>
-              <input
-                type="password"
-                value={calcomApiKey}
-                onChange={e => setCalcomApiKey(e.target.value)}
-                placeholder="cal_live_..."
-                className="w-full text-sm border border-[var(--rx-b1)] rounded-lg px-3 py-2 bg-background text-foreground"
-              />
+              <div className="flex gap-2">
+                <input
+                  type="password"
+                  value={calcomApiKey}
+                  onChange={e => { setCalcomApiKey(e.target.value); setCalcomEventTypes([]); setCalcomSelectedEventType(''); }}
+                  placeholder="cal_live_..."
+                  className="flex-1 text-sm border border-[var(--rx-b1)] rounded-lg px-3 py-2 bg-background text-foreground"
+                />
+                <button
+                  onClick={handleLoadCalcomEventTypes}
+                  disabled={calcomLoadingTypes || !calcomApiKey.trim()}
+                  className="text-xs font-medium px-3 py-2 rounded-lg border border-[var(--rx-b1)] hover:bg-[var(--rx-s2)] flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  {calcomLoadingTypes ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                  Buscar
+                </button>
+              </div>
               <p className="text-[11px] text-[var(--rx-t2)] mt-1">
                 Genera tu API key en cal.com → Settings → Developer → API Keys.
               </p>
             </div>
+
+            <div>
+              <label className="text-xs font-semibold text-foreground mb-1 block">Tipo de evento por defecto</label>
+              <select
+                value={calcomSelectedEventType}
+                onChange={e => setCalcomSelectedEventType(e.target.value)}
+                disabled={calcomEventTypes.length === 0}
+                className="w-full text-sm border border-[var(--rx-b1)] rounded-lg px-3 py-2 bg-background text-foreground disabled:opacity-50"
+              >
+                <option value="">
+                  {calcomEventTypes.length === 0 ? 'Pega tu API key y presiona Buscar' : 'Selecciona un tipo de evento…'}
+                </option>
+                {calcomEventTypes.map((et) => (
+                  <option key={String(et.id)} value={String(et.id)}>
+                    {et.title}{et.length ? ` · ${et.length} min` : ''}{et.slug ? ` (${et.slug})` : ''}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[11px] text-[var(--rx-t2)] mt-1">
+                Las reservas creadas desde WhatsApp usarán este tipo de evento.
+              </p>
+            </div>
+
             <div className="bg-[var(--rx-s2)]/40 rounded-lg p-3">
               <p className="text-[11px] font-semibold text-foreground mb-1">Webhook URL (por si necesitas configurarlo manualmente)</p>
               <div className="flex items-center gap-2">
@@ -806,13 +839,18 @@ const IntegrationsPage = () => {
             </div>
             <div className="flex justify-end gap-2">
               <button onClick={() => setCalcomDialogOpen(false)} className="text-xs font-medium px-3 py-2 rounded-lg text-[var(--rx-t2)] hover:bg-[var(--rx-s2)]">Cancelar</button>
-              <button onClick={handleConnectCalcom} disabled={calcomSaving} className="text-xs font-medium px-4 py-2 rounded-lg bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground hover:opacity-90 flex items-center gap-1.5 disabled:opacity-50">
+              <button
+                onClick={handleConnectCalcom}
+                disabled={calcomSaving || !calcomApiKey.trim() || !calcomSelectedEventType}
+                className="text-xs font-medium px-4 py-2 rounded-lg bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground hover:opacity-90 flex items-center gap-1.5 disabled:opacity-50"
+              >
                 {calcomSaving ? <><Loader2 size={12} className="animate-spin" /> Conectando...</> : <><Save size={12} /> Conectar</>}
               </button>
             </div>
           </div>
         </DialogContent>
       </Dialog>
+
     </div>
   );
 };
