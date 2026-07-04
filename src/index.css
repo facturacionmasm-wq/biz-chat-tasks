@@ -192,6 +192,14 @@
   *::-webkit-scrollbar-thumb { background: var(--rx-s3); border-radius: 99px; }
   *::-webkit-scrollbar-thumb:hover { background: var(--rx-b3); }
   *::-webkit-scrollbar-track { background: transparent; }
+
+  /* ── Fix: legacy invalid Tailwind arbitrary-value classes used in many
+     pages: `text-[var(--rx-brand)]-foreground` / `bg-[var(--rx-brand)]-foreground`.
+     Tailwind ignores them (the `-foreground` suffix breaks the arbitrary value),
+     leaving text with inherited color (invisible on brand-filled buttons).
+     We alias them to the correct semantic tokens here. ── */
+  .text-\[var\(--rx-brand\)\]-foreground { color: var(--primary-foreground) !important; }
+  .bg-\[var\(--rx-brand\)\]-foreground   { background-color: var(--primary-foreground) !important; }
 }
 
 /* ════════════════════════════════════════
