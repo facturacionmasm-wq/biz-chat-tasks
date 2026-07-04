@@ -319,6 +319,52 @@ const IntegrationsPage = () => {
     }
   };
 
+  const handleConnectCalcom = async () => {
+    if (!calcomApiKey.trim()) { toast.error('Pega tu API key de Cal.com'); return; }
+    setCalcomSaving(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('calcom-sync', {
+        body: { action: 'connect', api_key: calcomApiKey.trim() },
+      });
+      if (error || data?.error) throw new Error(data?.error || error?.message || 'Error');
+      toast.success(data?.webhook_registered ? 'Cal.com conectado y webhook registrado' : 'Cal.com conectado. Registra el webhook manualmente si es necesario.');
+      setCalcomApiKey('');
+      setCalcomDialogOpen(false);
+      await loadIntegrationStatus();
+    } catch (err: any) {
+      toast.error(err?.message || 'Error al conectar Cal.com');
+    } finally {
+      setCalcomSaving(false);
+    }
+  };
+
+  const handleDisconnectCalcom = async () => {
+    if (!confirm('¿Desconectar Cal.com? Se eliminará el webhook de tu cuenta.')) return;
+    try {
+      await supabase.functions.invoke('calcom-sync', { body: { action: 'disconnect' } });
+      toast.success('Cal.com desconectado');
+      setCalcomConnected(false);
+      await loadIntegrationStatus();
+    } catch (err: any) {
+      toast.error(err?.message || 'Error al desconectar');
+    }
+  };
+
+  const handlePullCalcomBookings = async () => {
+    try {
+      toast.info('Sincronizando reservas...');
+      const { data, error } = await supabase.functions.invoke('calcom-sync', { body: { action: 'pull_bookings' } });
+      if (error || data?.error) throw new Error(data?.error || error?.message);
+      toast.success(`Sincronizadas: ${data.created} nuevas, ${data.updated} actualizadas`);
+      await loadIntegrationStatus();
+    } catch (err: any) {
+      toast.error(err?.message || 'Error al sincronizar');
+    }
+  };
+
+
+
+
 
   return (
     <div className="rx-page">
