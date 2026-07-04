@@ -60,6 +60,13 @@ serve(async (req) => {
   const dryRun: boolean = body?.dryRun === true;
   let country_code: string = (body?.country_code || "").toUpperCase();
   const phoneNumberOverride: string | undefined = body?.phoneNumber; // required when purchasing a specific one
+  const rawType: string = String(body?.type || "Local");
+  const type: "Local" | "Mobile" | "TollFree" =
+    rawType === "Mobile" ? "Mobile" : rawType === "TollFree" ? "TollFree" : "Local";
+  const capabilities: string[] = Array.isArray(body?.capabilities) ? body.capabilities : [];
+  const wantSms = capabilities.length === 0 || capabilities.includes("SMS");
+  const wantVoice = capabilities.length === 0 || capabilities.includes("Voice");
+  const wantMms = capabilities.includes("MMS");
 
   if (!tenant_id) return j({ ok: false, error: "tenant_id is required" }, 400);
 
@@ -78,10 +85,11 @@ serve(async (req) => {
 
   // ---------- (a) List available numbers ----------
   const listUrl = new URL(
-    `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/AvailablePhoneNumbers/${country_code}/Local.json`
+    `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/AvailablePhoneNumbers/${country_code}/${type}.json`
   );
-  listUrl.searchParams.set("SmsEnabled", "true");
-  listUrl.searchParams.set("VoiceEnabled", "true");
+  if (wantSms) listUrl.searchParams.set("SmsEnabled", "true");
+  if (wantVoice) listUrl.searchParams.set("VoiceEnabled", "true");
+  if (wantMms) listUrl.searchParams.set("MmsEnabled", "true");
   listUrl.searchParams.set("PageSize", "20");
   if (areaCode) listUrl.searchParams.set("AreaCode", areaCode);
 
@@ -98,6 +106,7 @@ serve(async (req) => {
       ok: true,
       dryRun: true,
       country_code,
+      type,
       areaCode: areaCode || null,
       count: available.length,
       numbers: available.slice(0, 20).map((n) => ({
