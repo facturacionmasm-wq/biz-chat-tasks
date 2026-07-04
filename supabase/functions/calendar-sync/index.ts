@@ -516,6 +516,165 @@ async function getValidToken(
   }
 }
 
+// ==================== Pull events from Google → App ====================
+
+async function pullEventsAllUsers(
+  supabase: any,
+  clientId: string,
+  clientSecret: string,
+): Promise<any> {
+  const { data: tokens } = await supabase
+    .from('google_calendar_tokens')
+    .select('user_id, tenant_id, last_pull_at')
+    .eq('status', 'active');
+
+  if (!tokens || tokens.length === 0) {
+    return { processed: 0, message: 'No active tokens' };
+  }
+
+  const results: any[] = [];
+  for (const t of tokens) {
+    try {
+      const r = await pullEventsForUser(supabase, t.user_id, t.tenant_id, t.last_pull_at, clientId, clientSecret);
+      results.push({ user_id: t.user_id, ...r });
+    } catch (err) {
+      results.push({ user_id: t.user_id, error: err instanceof Error ? err.message : 'unknown' });
+    }
+  }
+  return { processed: results.length, results };
+}
+
+async function pullEventsForUser(
+  supabase: any,
+  userId: string,
+  tenantId: string,
+  lastPullAt: string | null,
+  clientId: string,
+  clientSecret: string,
+): Promise<any> {
+  const tokenResult = await getValidToken(supabase, userId, tenantId, clientId, clientSecret);
+  if (tokenResult.error) return { error: tokenResult.error };
+
+  const calendarId = tokenResult.calendar_id || 'primary';
+  // Window: from max(lastPullAt - 5min, now - 60d) to now + 90d
+  const now = new Date();
+  const defaultFrom = new Date(now.getTime() - 60 * 24 * 3600 * 1000).toISOString();
+  const updatedMin = lastPullAt
+    ? new Date(new Date(lastPullAt).getTime() - 5 * 60 * 1000).toISOString()
+    : defaultFrom;
+  const timeMax = new Date(now.getTime() + 90 * 24 * 3600 * 1000).toISOString();
+
+  const params = new URLSearchParams({
+    singleEvents: 'true',
+    showDeleted: 'true',
+    orderBy: 'updated',
+    maxResults: '250',
+    updatedMin,
+    timeMax,
+  });
+
+  const res = await fetch(
+    `${GOOGLE_CALENDAR_API}/calendars/${encodeURIComponent(calendarId)}/events?${params}`,
+    { headers: { Authorization: `Bearer ${tokenResult.access_token}` } },
+  );
+  const data = await res.json();
+  if (!res.ok) {
+    if (res.status === 401) {
+      await supabase.from('google_calendar_tokens')
+        .update({ status: 'auth_required' })
+        .eq('user_id', userId).eq('tenant_id', tenantId);
+    }
+    return { error: `Google API ${res.status}: ${data.error?.message || 'unknown'}` };
+  }
+
+  const events = data.items || [];
+  let created = 0, updated = 0, skipped = 0, cancelled = 0;
+
+  for (const ev of events) {
+    if (!ev.id) { skipped++; continue; }
+    // Skip all-day events (only date, no dateTime) — we only track timed appointments
+    if (!ev.start?.dateTime || !ev.end?.dateTime) { skipped++; continue; }
+
+    // Anti-echo: events created by our app include "ID: <uuid>" in the description
+    const idMatch = ev.description?.match(/ID:\s*([0-9a-f-]{36})/i);
+    if (idMatch) {
+      const localId = idMatch[1];
+      const { data: existing } = await supabase
+        .from('appointments').select('id, calendar_event_id')
+        .eq('id', localId).maybeSingle();
+      if (existing) {
+        // Ensure calendar_event_id is stored
+        if (!existing.calendar_event_id) {
+          await supabase.from('appointments')
+            .update({ calendar_event_id: ev.id, calendar_sync_status: 'SYNCED' })
+            .eq('id', localId);
+        }
+        skipped++;
+        continue;
+      }
+    }
+
+    // Check if we already imported this Google event
+    const { data: existingByEventId } = await supabase
+      .from('appointments').select('id, status')
+      .eq('tenant_id', tenantId)
+      .eq('calendar_event_id', ev.id)
+      .maybeSingle();
+
+    if (ev.status === 'cancelled') {
+      if (existingByEventId) {
+        await supabase.from('appointments')
+          .update({ status: 'cancelled', calendar_sync_status: 'CANCELLED', updated_at: new Date().toISOString() })
+          .eq('id', existingByEventId.id);
+        cancelled++;
+      } else {
+        skipped++;
+      }
+      continue;
+    }
+
+    const contactName = (ev.summary || 'Evento de Google').slice(0, 200);
+    const startAt = ev.start.dateTime;
+    const endAt = ev.end.dateTime;
+
+    if (existingByEventId) {
+      await supabase.from('appointments')
+        .update({
+          contact_name: contactName,
+          start_at: startAt,
+          end_at: endAt,
+          notes: ev.description || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', existingByEventId.id);
+      updated++;
+    } else {
+      const { error: insErr } = await supabase.from('appointments').insert({
+        tenant_id: tenantId,
+        user_id: userId,
+        contact_name: contactName,
+        start_at: startAt,
+        end_at: endAt,
+        status: 'scheduled',
+        source: 'google_calendar',
+        notes: ev.description || null,
+        calendar_event_id: ev.id,
+        calendar_sync_status: 'SYNCED',
+        sync_attempts: 0,
+      });
+      if (!insErr) created++;
+      else skipped++;
+    }
+  }
+
+  // Update watermark
+  await supabase.from('google_calendar_tokens')
+    .update({ last_pull_at: now.toISOString() })
+    .eq('user_id', userId).eq('tenant_id', tenantId);
+
+  return { created, updated, cancelled, skipped, total: events.length };
+}
+
 // ==================== Utils ====================
 
 async function updateSyncStatus(supabase: any, appointmentId: string, status: string, error?: string) {
