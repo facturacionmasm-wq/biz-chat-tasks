@@ -11,7 +11,7 @@ import {
   DollarSign, TrendingUp, TrendingDown, AlertTriangle, ShieldAlert,
   Users, Gift, BarChart3, Activity, ArrowUpRight, ArrowDownRight,
   Loader2, Brain, RefreshCw, Calendar, Target, Zap, Globe, MapPin,
-  Repeat, PieChart, Package,
+  Repeat, PieChart, Package, Building2,
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
