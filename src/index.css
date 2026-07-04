@@ -43,14 +43,14 @@
     --rx-focus-ring: 0 0 0 2px rgba(45,240,193,0.55), 0 0 0 4px rgba(45,240,193,0.15);
     --rx-disabled-opacity: 0.5;
     /* Fonts */
-    --rx-font-display: 'Outfit', ui-sans-serif, system-ui, sans-serif;
-    --rx-font-body:    'Outfit', ui-sans-serif, system-ui, sans-serif;
-    /* Shadows */
-    --rx-shadow-sm:  0 1px 2px rgba(0,0,0,.35), 0 1px 6px rgba(0,0,0,.20);
-    --rx-shadow-md:  0 4px 12px rgba(0,0,0,.40), 0 2px 4px rgba(0,0,0,.20);
-    --rx-shadow-lg:  0 12px 32px rgba(0,0,0,.50), 0 4px 8px rgba(0,0,0,.25);
-    --rx-shadow-glow: 0 0 0 1px rgba(45,240,193,0.18), 0 8px 24px -8px rgba(45,240,193,0.28);
-    /* Radii */
+    --rx-font-display: 'Syne', ui-sans-serif, system-ui, sans-serif;
+    --rx-font-body:    'DM Sans', ui-sans-serif, system-ui, sans-serif;
+    /* Shadows — refined for depth without noise */
+    --rx-shadow-sm:  0 1px 2px rgba(0,0,0,.30), 0 1px 3px rgba(0,0,0,.18);
+    --rx-shadow-md:  0 6px 18px -4px rgba(0,0,0,.45), 0 2px 6px rgba(0,0,0,.20);
+    --rx-shadow-lg:  0 18px 40px -12px rgba(0,0,0,.55), 0 4px 12px rgba(0,0,0,.25);
+    --rx-shadow-glow: 0 0 0 1px rgba(45,240,193,0.20), 0 10px 28px -10px rgba(45,240,193,0.32);
+    /* Radii — consistent 4/8 progression */
     --rx-r-xs: 6px;
     --rx-r-sm: 8px;
     --rx-r-md: 12px;
@@ -68,7 +68,7 @@
     --rx-sp-10: 40px;
     --rx-sp-12: 48px;
     /* Transitions */
-    --rx-transition: background .25s ease, color .25s ease, border-color .2s ease;
+    --rx-transition: background .25s cubic-bezier(.16,1,.3,1), color .25s cubic-bezier(.16,1,.3,1), border-color .2s ease, box-shadow .2s ease;
     --rx-transition-fast: all .15s cubic-bezier(.16,1,.3,1);
     /* Shadcn/Tailwind mapping — HSL channels. Keep these as HSL values so
        utilities like bg-card, text-foreground and border-border render opaque. */
