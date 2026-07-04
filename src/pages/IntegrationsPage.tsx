@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Plug, MessageSquare, CalendarDays, Brain, Shield, ExternalLink, CheckCircle2, Circle, X, Save, Phone, Loader2 } from 'lucide-react';
+import { Plug, MessageSquare, CalendarDays, Brain, Shield, ExternalLink, CheckCircle2, Circle, X, Save, Phone, Loader2, ShoppingCart } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import TwilioWizard from '@/components/TwilioWizard';
 import VoiceAgentWizard from '@/components/VoiceAgentWizard';
+import TenantNumberPurchaseWizard from '@/components/TenantNumberPurchaseWizard';
 
 const integrationsMeta = [
   {
@@ -55,6 +56,9 @@ const IntegrationsPage = () => {
   const [voiceAgentLoading, setVoiceAgentLoading] = useState(false);
   const [voiceDialogOpen, setVoiceDialogOpen] = useState(false);
   const [voiceCurrentNumber, setVoiceCurrentNumber] = useState('');
+  const [tenantPhoneNumber, setTenantPhoneNumber] = useState<string>('');
+  const [tenantCountry, setTenantCountry] = useState<string>('US');
+  const [purchaseWizardOpen, setPurchaseWizardOpen] = useState(false);
   const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-webhook`;
 
   const integrations = integrationsMeta.map(i => {
