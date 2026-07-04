@@ -243,12 +243,25 @@ const CredentialsPage = () => {
                     <span className="text-xs text-[var(--rx-t2)]">Contraseña</span>
                     <div className="flex items-center gap-1">
                       <span className="text-sm font-mono">
-                        {revealed ? ((cred as any)._decrypted || cred.password_encrypted) : '••••••••'}
+                        {revealed ? (cred._decrypted || '••••••••') : '••••••••'}
                       </span>
                       <button onClick={() => toggleReveal(cred.id)} className="p-0.5 text-[var(--rx-t2)] hover:text-foreground">
                         {revealed ? <EyeOff size={12} /> : <Eye size={12} />}
                       </button>
-                      <button onClick={() => copyToClipboard(revealed ? ((cred as any)._decrypted || cred.password_encrypted) : cred.password_encrypted, 'Contraseña')} className="p-0.5 text-[var(--rx-t2)] hover:text-foreground">
+                      <button
+                        onClick={async () => {
+                          if (cred._decrypted) { copyToClipboard(cred._decrypted, 'Contraseña'); return; }
+                          try {
+                            const { data: result, error } = await supabase.functions.invoke('credential-vault', { body: { action: 'decrypt', id: cred.id } });
+                            if (error) throw error;
+                            if (result?.error) throw new Error(result.error);
+                            copyToClipboard(result.password, 'Contraseña');
+                          } catch (err: any) {
+                            toast.error(err.message || 'Error al desencriptar');
+                          }
+                        }}
+                        className="p-0.5 text-[var(--rx-t2)] hover:text-foreground"
+                      >
                         <Copy size={12} />
                       </button>
                     </div>
