@@ -7,9 +7,12 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog';
+import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { Loader2, RefreshCw, ShieldOff, ShieldCheck, Clock, CreditCard, Crown } from 'lucide-react';
+import { Loader2, RefreshCw, ShieldOff, ShieldCheck, Clock, CreditCard, Crown, Phone } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -46,6 +49,16 @@ export default function SuperAdminTenantsTab() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingAction | null>(null);
   const [extendDaysDraft, setExtendDaysDraft] = useState<Record<string, number>>({});
+
+  // Twilio provisioning state
+  const [provTenant, setProvTenant] = useState<AdminTenantRow | null>(null);
+  const [provCountry, setProvCountry] = useState('US');
+  const [provAreaCode, setProvAreaCode] = useState('');
+  const [provListing, setProvListing] = useState(false);
+  const [provPurchasing, setProvPurchasing] = useState(false);
+  const [provNumbers, setProvNumbers] = useState<Array<{ phone_number: string; friendly_name: string; locality?: string; region?: string }>>([]);
+  const [provSelected, setProvSelected] = useState<string | null>(null);
+  const [provConfirm, setProvConfirm] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -99,6 +112,69 @@ export default function SuperAdminTenantsTab() {
       setBusyId(null);
     }
   }, [pending, load]);
+
+  const openProvision = useCallback((t: AdminTenantRow) => {
+    setProvTenant(t);
+    setProvCountry('US');
+    setProvAreaCode('');
+    setProvNumbers([]);
+    setProvSelected(null);
+    setProvConfirm(false);
+  }, []);
+
+  const listAvailable = useCallback(async () => {
+    if (!provTenant) return;
+    setProvListing(true);
+    setProvNumbers([]);
+    setProvSelected(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('twilio-provision-number', {
+        body: {
+          tenant_id: provTenant.tenant_id,
+          country_code: provCountry.trim().toUpperCase() || undefined,
+          areaCode: provAreaCode.trim() || undefined,
+          dryRun: true,
+        },
+      });
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error || 'Error al listar');
+      setProvNumbers(data.numbers || []);
+      if ((data.numbers || []).length === 0) toast.info('Sin números disponibles con esos filtros');
+    } catch (err: any) {
+      console.error('[provision] list error', err);
+      toast.error(err.message || 'Error al listar números');
+    } finally {
+      setProvListing(false);
+    }
+  }, [provTenant, provCountry, provAreaCode]);
+
+  const purchaseSelected = useCallback(async () => {
+    if (!provTenant || !provSelected) return;
+    setProvPurchasing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('twilio-provision-number', {
+        body: {
+          tenant_id: provTenant.tenant_id,
+          country_code: provCountry.trim().toUpperCase() || undefined,
+          phoneNumber: provSelected,
+          dryRun: false,
+        },
+      });
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error || 'Error al comprar');
+      toast.success(`Número asignado: ${data.phone_number}`);
+      setProvTenant(null);
+      setProvConfirm(false);
+      await load();
+    } catch (err: any) {
+      console.error('[provision] purchase error', err);
+      toast.error(err.message || 'Error al comprar número');
+    } finally {
+      setProvPurchasing(false);
+    }
+  }, [provTenant, provSelected, provCountry, load]);
+
+
 
   return (
     <div className="rx-panel">
@@ -204,7 +280,16 @@ export default function SuperAdminTenantsTab() {
                             <ShieldOff size={12} /> Bloquear
                           </Button>
                         )}
+
+                        <Button
+                          size="sm" variant="outline" className="h-7 gap-1 text-xs"
+                          disabled={busy}
+                          onClick={() => openProvision(t)}
+                        >
+                          <Phone size={12} /> Asignar número Twilio
+                        </Button>
                       </div>
+
                     </td>
                   </tr>
                 );
@@ -234,6 +319,95 @@ export default function SuperAdminTenantsTab() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Twilio provisioning dialog */}
+      <Dialog open={!!provTenant} onOpenChange={(open) => !open && !provPurchasing && setProvTenant(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Asignar número Twilio {provTenant ? `— ${provTenant.tenant_name}` : ''}</DialogTitle>
+            <DialogDescription>
+              Primero lista los números disponibles (sin costo). La compra solo se ejecuta al confirmar y consume saldo de Twilio.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-wrap items-end gap-2 mb-3">
+            <div>
+              <label className="text-xs text-[var(--rx-t2)] block mb-1">País (ISO)</label>
+              <Input value={provCountry} onChange={e => setProvCountry(e.target.value)} className="h-8 w-20 uppercase" maxLength={2} />
+            </div>
+            <div>
+              <label className="text-xs text-[var(--rx-t2)] block mb-1">Área (opcional)</label>
+              <Input value={provAreaCode} onChange={e => setProvAreaCode(e.target.value)} className="h-8 w-24" placeholder="415" />
+            </div>
+            <Button size="sm" onClick={listAvailable} disabled={provListing} className="h-8 gap-2">
+              {provListing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+              Listar disponibles
+            </Button>
+          </div>
+
+          <div className="max-h-72 overflow-y-auto border border-[var(--rx-b1)] rounded-lg">
+            {provNumbers.length === 0 ? (
+              <p className="text-sm text-[var(--rx-t2)] text-center py-8">Sin resultados. Lista los disponibles para elegir uno.</p>
+            ) : (
+              <ul className="divide-y divide-[var(--rx-b1)]">
+                {provNumbers.map(n => (
+                  <li key={n.phone_number}>
+                    <label className="flex items-center gap-3 p-2 px-3 hover:bg-[var(--rx-s2)]/40 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="prov-number"
+                        checked={provSelected === n.phone_number}
+                        onChange={() => setProvSelected(n.phone_number)}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="font-mono text-sm text-foreground">{n.phone_number}</div>
+                        <div className="text-xs text-[var(--rx-t2)] truncate">
+                          {n.friendly_name}{n.locality ? ` · ${n.locality}` : ''}{n.region ? `, ${n.region}` : ''}
+                        </div>
+                      </div>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <p className="text-xs text-[var(--rx-amber)] mt-3">
+            ⚠️ Comprar un número consume saldo real de Twilio y factura mensualmente. Solo procede si estás seguro.
+          </p>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setProvTenant(null)} disabled={provPurchasing}>Cancelar</Button>
+            <Button
+              onClick={() => setProvConfirm(true)}
+              disabled={!provSelected || provPurchasing}
+              className="gap-2"
+            >
+              <Phone size={14} /> Comprar número seleccionado
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={provConfirm} onOpenChange={(open) => !open && !provPurchasing && setProvConfirm(false)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar compra en Twilio</AlertDialogTitle>
+            <AlertDialogDescription>
+              Vas a comprar <span className="font-mono">{provSelected}</span> para el tenant "{provTenant?.tenant_name}".
+              Esta acción consume saldo real de Twilio y genera cobros mensuales recurrentes. ¿Continuar?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={provPurchasing}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={purchaseSelected} disabled={provPurchasing}>
+              {provPurchasing ? <Loader2 size={14} className="animate-spin mr-2" /> : null}
+              Confirmar compra
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
+
