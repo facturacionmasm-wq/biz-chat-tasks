@@ -31,6 +31,30 @@ serve(async (req) => {
 
     console.log(`[BOT] Processing conv=${conversationId} tenant=${tenantId} body_len=${(messageBody || '').length}`);
 
+    // ==================== SUBSCRIPTION GUARD ====================
+    const MASTER_TENANT_ID = '00000000-0000-0000-0000-000000000001';
+    if (tenantId && tenantId !== MASTER_TENANT_ID) {
+      const { data: sub } = await supabase
+        .from('tenant_subscriptions')
+        .select('status, trial_ends_at')
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
+
+      const blocked = !sub
+        || sub.status === 'blocked'
+        || sub.status === 'canceled'
+        || (sub.status === 'trialing' && sub.trial_ends_at && new Date(sub.trial_ends_at) < new Date());
+
+      if (blocked) {
+        console.warn(`[BOT] tenant bloqueado por suscripción tenant=${tenantId} status=${sub?.status || 'no_subscription'}`);
+        return new Response(
+          JSON.stringify({ ok: false, error: 'tenant bloqueado por suscripción' }),
+          { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
+
     // ==================== RESOLVE TENANT FROM-NUMBER ====================
     // Use tenant's configured WhatsApp number instead of global env var
     let fromNumber: string | null = null;
