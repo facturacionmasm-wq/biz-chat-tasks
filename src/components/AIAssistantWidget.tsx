@@ -84,7 +84,7 @@ const AIAssistantWidget = () => {
   }
 
   return (
-    <div className={`fixed z-50 ${isMobile ? 'inset-0' : 'bottom-6 right-6 w-[420px] h-[600px]'} flex flex-col bg-card border border-border rounded-2xl shadow-lg overflow-hidden animate-slide-in`}>
+    <div className={`fixed z-50 ${isMobile ? 'inset-0' : 'bottom-6 right-6 w-[min(420px,calc(100vw-24px))] h-[min(600px,calc(100vh-48px))]'} flex flex-col bg-card text-card-foreground border border-border rounded-2xl shadow-elevated overflow-hidden animate-slide-in`}>
       {/* Header */}
       <div className="shrink-0 bg-primary px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -125,7 +125,7 @@ const AIAssistantWidget = () => {
 
       {/* History sidebar overlay */}
       {showHistory && (
-        <div className="absolute inset-0 top-[60px] z-10 bg-card border-t border-border flex flex-col">
+        <div className="absolute inset-0 top-[60px] z-10 bg-card text-card-foreground border-t border-border flex flex-col">
           <div className="px-4 py-3 border-b border-border flex items-center justify-between">
             <h4 className="text-sm font-semibold text-foreground">Historial</h4>
             <button onClick={() => setShowHistory(false)} className="text-muted-foreground hover:text-foreground">
@@ -166,7 +166,7 @@ const AIAssistantWidget = () => {
       <div className="flex-1 overflow-y-auto scrollbar-thin p-4 space-y-4">
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full gap-4">
-            <div className="w-16 h-16 rounded-full bg-accent flex items-center justify-center">
+          <div className="w-16 h-16 rounded-full bg-accent flex items-center justify-center">
               <Sparkles size={28} className="text-accent-foreground" />
             </div>
             <div className="text-center">
@@ -180,7 +180,7 @@ const AIAssistantWidget = () => {
                 <button
                   key={i}
                   onClick={() => handleQuickAction(action.prompt)}
-                  className="text-left px-3 py-2.5 rounded-lg border border-border bg-secondary/50 hover:bg-secondary text-xs text-foreground transition-colors"
+                  className="text-left px-3 py-2.5 rounded-lg border border-border bg-secondary hover:bg-accent text-xs text-secondary-foreground transition-colors break-words"
                 >
                   {action.label}
                 </button>
@@ -213,7 +213,7 @@ const AIAssistantWidget = () => {
             onKeyDown={handleKeyDown}
             placeholder="Escribe tu pregunta..."
             rows={1}
-            className="flex-1 resize-none bg-secondary rounded-lg px-3 py-2.5 text-sm outline-none border border-border focus:border-primary text-foreground placeholder:text-muted-foreground max-h-24 scrollbar-thin"
+            className="flex-1 resize-none bg-secondary rounded-lg px-3 py-2.5 text-sm outline-none border border-border focus:border-primary text-secondary-foreground placeholder:text-muted-foreground max-h-24 scrollbar-thin"
             style={{ minHeight: '40px' }}
           />
           {isLoading ? (
@@ -247,10 +247,10 @@ const MessageBubble = ({ message }: { message: AssistantMessage }) => {
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-      <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm ${
+      <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm break-words ${
         isUser
           ? 'bg-primary text-primary-foreground rounded-br-md'
-          : 'bg-secondary text-foreground rounded-bl-md'
+          : 'bg-secondary text-secondary-foreground rounded-bl-md border border-border'
       }`}>
         {isUser ? (
           <p className="whitespace-pre-wrap">{message.content}</p>

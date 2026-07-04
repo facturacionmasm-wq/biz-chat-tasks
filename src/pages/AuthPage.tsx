@@ -148,13 +148,13 @@ export default function AuthPage() {
             boxShadow: 'var(--rx-shadow-glow)',
           }}>
             <svg width="24" height="24" viewBox="0 0 16 16" fill="none">
-              <path d="M3 8L7 12L13 4" stroke="var(--primary-foreground)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M3 8L7 12L13 4" stroke="hsl(var(--primary-foreground))" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </div>
           <div style={{
             fontFamily: 'var(--rx-font-display)',
             fontSize: 24, fontWeight: 800, color: 'var(--rx-t1)',
-            letterSpacing: '-.03em', marginBottom: 6, lineHeight: 1.1,
+            letterSpacing: 0, marginBottom: 6, lineHeight: 1.1,
           }}>
             {branding.orgName || 'RYBIX'}
           </div>

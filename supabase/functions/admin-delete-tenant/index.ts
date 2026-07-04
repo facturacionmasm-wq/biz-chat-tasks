@@ -2,12 +2,7 @@
 // Master tenant (00000000-0000-0000-0000-000000000001) is protected.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-};
+import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 
 const MASTER_TENANT = "00000000-0000-0000-0000-000000000001";
 
@@ -135,17 +130,30 @@ serve(async (req) => {
       }
     }
 
-    await admin.from("audit_events").insert({
-      tenant_id: MASTER_TENANT,
-      event_type: "tenant_deleted",
-      actor_id: caller.id,
-      resource_type: "tenants",
-      resource_id: tenant_id,
-      payload: {
-        deleted_tenant_name: tenant.name,
-        users_removed: userIds.length,
-      },
-    });
+    const { data: auditTenant } = await admin
+      .from("profiles")
+      .select("tenant_id")
+      .eq("user_id", caller.id)
+      .not("tenant_id", "eq", tenant_id)
+      .maybeSingle();
+
+    const auditTenantId = auditTenant?.tenant_id || MASTER_TENANT;
+    try {
+      const { error: auditErr } = await admin.from("audit_events").insert({
+        tenant_id: auditTenantId,
+        event_type: "tenant_deleted",
+        actor_id: caller.id,
+        resource_type: "tenants",
+        resource_id: tenant_id,
+        payload: {
+          deleted_tenant_name: tenant.name,
+          users_removed: userIds.length,
+        },
+      });
+      if (auditErr) console.warn("audit insert skipped", auditErr.message);
+    } catch (e) {
+      console.warn("audit insert skipped", e);
+    }
 
     return j({ ok: true, tenant_id, users_removed: userIds.length });
   } catch (err: any) {

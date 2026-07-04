@@ -383,7 +383,7 @@ export default function Dashboard() {
                     boxShadow: 'var(--rx-shadow-glow)',
                   }}
                 >
-                  <Download size={18} style={{ color: 'var(--primary-foreground)' }} />
+                  <Download size={18} style={{ color: 'hsl(var(--primary-foreground))' }} />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-foreground">Instala la app</p>
@@ -598,7 +598,7 @@ export default function Dashboard() {
                           className="w-9 h-9 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0"
                           style={{
                             background: 'linear-gradient(135deg, var(--rx-brand), var(--rx-brand2))',
-                            color: 'var(--primary-foreground)',
+                            color: 'hsl(var(--primary-foreground))',
                           }}
                         >
                           {apt.contact_name.split(' ').map(n => n[0]).join('').slice(0, 2)}
@@ -636,7 +636,7 @@ export default function Dashboard() {
                 style={{
                   background: 'linear-gradient(135deg, var(--rx-brand-strong) 0%, var(--rx-brand2) 100%)',
                   boxShadow: 'var(--rx-shadow-glow)',
-                  color: 'var(--primary-foreground)',
+                  color: 'hsl(var(--primary-foreground))',
                 }}
               >
                 <div className="absolute -right-8 -top-8 w-32 h-32 rounded-full" style={{ background: 'rgba(255,255,255,0.10)' }} />
