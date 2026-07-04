@@ -319,6 +319,95 @@ export default function SuperAdminTenantsTab() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Twilio provisioning dialog */}
+      <Dialog open={!!provTenant} onOpenChange={(open) => !open && !provPurchasing && setProvTenant(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Asignar número Twilio {provTenant ? `— ${provTenant.tenant_name}` : ''}</DialogTitle>
+            <DialogDescription>
+              Primero lista los números disponibles (sin costo). La compra solo se ejecuta al confirmar y consume saldo de Twilio.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-wrap items-end gap-2 mb-3">
+            <div>
+              <label className="text-xs text-[var(--rx-t2)] block mb-1">País (ISO)</label>
+              <Input value={provCountry} onChange={e => setProvCountry(e.target.value)} className="h-8 w-20 uppercase" maxLength={2} />
+            </div>
+            <div>
+              <label className="text-xs text-[var(--rx-t2)] block mb-1">Área (opcional)</label>
+              <Input value={provAreaCode} onChange={e => setProvAreaCode(e.target.value)} className="h-8 w-24" placeholder="415" />
+            </div>
+            <Button size="sm" onClick={listAvailable} disabled={provListing} className="h-8 gap-2">
+              {provListing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+              Listar disponibles
+            </Button>
+          </div>
+
+          <div className="max-h-72 overflow-y-auto border border-[var(--rx-b1)] rounded-lg">
+            {provNumbers.length === 0 ? (
+              <p className="text-sm text-[var(--rx-t2)] text-center py-8">Sin resultados. Lista los disponibles para elegir uno.</p>
+            ) : (
+              <ul className="divide-y divide-[var(--rx-b1)]">
+                {provNumbers.map(n => (
+                  <li key={n.phone_number}>
+                    <label className="flex items-center gap-3 p-2 px-3 hover:bg-[var(--rx-s2)]/40 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="prov-number"
+                        checked={provSelected === n.phone_number}
+                        onChange={() => setProvSelected(n.phone_number)}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="font-mono text-sm text-foreground">{n.phone_number}</div>
+                        <div className="text-xs text-[var(--rx-t2)] truncate">
+                          {n.friendly_name}{n.locality ? ` · ${n.locality}` : ''}{n.region ? `, ${n.region}` : ''}
+                        </div>
+                      </div>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <p className="text-xs text-[var(--rx-amber)] mt-3">
+            ⚠️ Comprar un número consume saldo real de Twilio y factura mensualmente. Solo procede si estás seguro.
+          </p>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setProvTenant(null)} disabled={provPurchasing}>Cancelar</Button>
+            <Button
+              onClick={() => setProvConfirm(true)}
+              disabled={!provSelected || provPurchasing}
+              className="gap-2"
+            >
+              <Phone size={14} /> Comprar número seleccionado
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={provConfirm} onOpenChange={(open) => !open && !provPurchasing && setProvConfirm(false)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar compra en Twilio</AlertDialogTitle>
+            <AlertDialogDescription>
+              Vas a comprar <span className="font-mono">{provSelected}</span> para el tenant "{provTenant?.tenant_name}".
+              Esta acción consume saldo real de Twilio y genera cobros mensuales recurrentes. ¿Continuar?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={provPurchasing}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={purchaseSelected} disabled={provPurchasing}>
+              {provPurchasing ? <Loader2 size={14} className="animate-spin mr-2" /> : null}
+              Confirmar compra
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
+
