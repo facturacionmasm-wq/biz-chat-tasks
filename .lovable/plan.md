@@ -1,88 +1,95 @@
 
-# Compra de números Twilio — Ambos flujos
+# Traer Tu Propio Número (BYON) — Meta + Twilio
 
-Objetivo: dejar totalmente operativa la compra de números para (A) SuperAdmin y (B) el tenant final, reutilizando la edge function ya funcional `twilio-provision-number` y **sin tocar** su contrato ni la lógica de webhooks/WhatsApp/Voice.
+Ampliación **no destructiva** del módulo de Integraciones. Convivirá con el wizard actual de compra de número (Fase anterior) y con los caminos Meta/Twilio del wizard de WhatsApp. Cero cambios en `whatsapp-*`, `twilio-*`, `elevenlabs-*`, `call-transfer*`.
 
-## Estado actual (verificado)
+## Qué verá el tenant
 
-- `supabase/functions/twilio-provision-number/index.ts` ya funciona:
-  - Acepta `tenant_id`, `country_code`, `areaCode`, `dryRun`, `phoneNumber`.
-  - Autoriza `super_admin` por JWT **o** llamada con `service_role`.
-  - Lista disponibles → compra → adjunta a Messaging Service → persiste en `tenants.whatsapp_config` → escribe `audit_events`.
-- `SuperAdminTenantsTab.tsx` ya invoca esa función con selector de país (`provCountry`, default `US`) y area code. **Funciona**, solo le falta pulido (país libre en input, sin lista, sin filtro por capacidad, sin preview de costo).
-- Ningún wizard de tenant (`IntegrationsPage`, `WhatsAppConnectionWizard`, `VoiceAgentWizard`) permite comprar número. Todos asumen que ya existe uno en Twilio.
+Nueva pestaña **"Mi Número"** dentro de `IntegrationsPage` (junto a WhatsApp, Voz, Google, etc.), con dos secciones:
 
-Conclusión: la **estructura backend no se toca**. Solo agregamos UI y una capa de gating.
+**A) "Ya tengo un número y quiero usarlo"** — 4 opciones en tarjetas comparativas:
 
----
+| Opción | Sirve para | Recibe | Envía | Tiempo | Costo | Países |
+|---|---|---|---|---|---|---|
+| **WhatsApp con mi celular (Meta)** | Aria por WhatsApp | Sí | Sí | 5–10 min (auto) | Gratis (plan Meta) | MX / US / CA / global |
+| **Verified Caller ID (Twilio)** | Mostrar mi número como remitente saliente | No | Sí (SMS/voz salientes) | 2–5 min (auto) | Gratis | MX / US / CA |
+| **Hosted SMS (Twilio)** | Recibir/enviar SMS conservando la operadora | Sí (SMS) | Sí (SMS) | 5–15 días hábiles | Setup Twilio + mensual | US / CA (MX no soportado por Twilio) |
+| **Portabilidad total (Port-in)** | Voz + SMS + Agente IA con el mismo número | Sí | Sí | 2–4 semanas | Setup + mensual | US / CA (MX caso a caso) |
 
-## A) SuperAdmin — pulido del flujo existente
+**B) "Prefiero comprar uno nuevo"** — CTA al wizard de compra ya existente (`TenantNumberPurchaseWizard`), sin cambios.
 
-Archivo: `src/components/SuperAdminTenantsTab.tsx` (solo la parte de provisión).
+Cada tarjeta explica: qué obtiene, qué NO obtiene, cuánto tarda, y **requisitos** (ej. LOA + factura reciente del carrier para Hosted/Port-in).
 
-- Reemplazar el input de país por un **`<Select>`** con países soportados por Twilio para números Local (lista curada: US, CA, MX, GB, ES, DE, FR, IT, NL, BE, PT, IE, AT, CH, SE, NO, DK, FI, PL, CZ, BR, AR, CL, CO, PE, AU, NZ, JP, SG, HK, IN, ZA + "Otro" con input libre para el resto).
-- Prellenar el país con `tenant.country` del row si viene definido (leer desde `tenants` en el mismo `admin_list_tenants_with_subscription` — si no lo trae, hacer un `select country` puntual al abrir el diálogo; sin migración).
-- Agregar filtros opcionales para el `dryRun`: **Tipo** (Local / Mobile / Toll‑Free) y **Capacidades** (SMS / Voice / MMS). Requiere extender `twilio-provision-number` para aceptar `type` y `capabilities` opcionales, respetando defaults actuales (mantiene compatibilidad).
-- Mostrar en cada número: `phone_number`, `locality`, `region`, chips de capacidades. Botón "Comprar" pide confirmación explícita ("Esta acción cobra a la cuenta Twilio maestra").
-- Toast + refresh al terminar (ya existe).
+## Flujos por opción
 
-## B) Tenant self-service — nuevo wizard de compra
+### 1) Meta WhatsApp (100% automático, ya existe)
+- Botón "Vincular mi celular con WhatsApp" → abre el `WhatsAppConnectionWizard` en modo **Meta** (ya implementado). Solo agregamos copy y el atajo desde esta pestaña.
+- Sin cambios en edge functions.
 
-### B.1 Gate de billing (regla `billing/access-control`)
+### 2) Verified Caller ID (automático vía Twilio API)
+- Wizard de 3 pasos: capturar número E.164 → Twilio genera código de 6 dígitos → el tenant responde con el código recibido por SMS/llamada.
+- Nueva edge function `twilio-verify-caller-id` (JWT protegida) con dos acciones:
+  - `start`: `POST /OutgoingCallerIds/... /ValidationRequests.json` vía gateway Twilio (usa `TWILIO_ACCOUNT_SID`/`TWILIO_AUTH_TOKEN` ya existentes).
+  - `confirm`: consulta estado y persiste el número en `tenants.settings_json.verified_caller_ids[]`.
+- Registra `audit_events` con `event_type = 'byon_verified_caller_id'`.
 
-Antes de mostrar el wizard, verificar en cliente:
-- Suscripción no bloqueada (`get_tenant_subscription_status`, ya existe).
-- Método de pago activo (leer `stripe_customers` del tenant → requerir `default_payment_method` no nulo). Si falta, mostrar `PaymentGateCard` y CTA a agregar tarjeta.
-- Master tenant (`00000000-0000-0000-0000-000000000001`) bypassa el gate.
+### 3) Hosted SMS y 4) Port-in (semi-automático, requieren papeleo)
+Twilio no automatiza esto por API pública sin cuenta enterprise. Implementamos como **solicitud a soporte**:
+- Formulario con: número, país, carrier actual, capacidades deseadas (SMS/Voz), 3 uploads (foto de factura reciente + LOA firmada + INE/ID del titular) al bucket **nuevo** `byon-requests` (privado, RLS por tenant).
+- Se guarda en tabla **nueva** `byon_requests` (status: `pending → in_review → approved → completed | rejected`).
+- Notificación al super_admin (usa el sistema de notificaciones existente).
+- El super_admin gestiona el trámite manualmente en la consola de Twilio y actualiza el `status` desde el `SuperAdminTenantsTab` (nueva sub-tarjeta "Solicitudes BYON").
+- Cuando el super_admin marca `completed`, el número queda disponible en `tenants.whatsapp_config.phone_number` / `tenant_phone_numbers` (mismos campos que consume hoy el Voice Agent y WhatsApp — no rompe nada).
 
-### B.2 Nueva edge function: `tenant-provision-number`
+## Detalles técnicos
 
-Wrapper delgado, **no reemplaza** a `twilio-provision-number`.
-- Valida JWT del usuario → resuelve su `tenant_id` desde `profiles` (nunca confía en un `tenant_id` del body).
-- Verifica rol `owner` o `admin` en ese tenant.
-- Verifica gate de billing (suscripción activa/trial + payment method, salvo master).
-- Verifica que el tenant **no** tenga ya un número activo en `tenants.whatsapp_config.phone_number` (evita compras duplicadas accidentales). Si ya tiene, devuelve 409 con el número existente.
-- Llama internamente a `twilio-provision-number` con `service_role`, pasando el `tenant_id` resuelto.
-- Registra `audit_events` con `actor_id = auth.uid()`.
+### Nuevos archivos
+- `src/pages/BringYourOwnNumberTab.tsx` — tarjetas comparativas + routers a cada sub-flujo.
+- `src/components/byon/VerifiedCallerIdWizard.tsx`
+- `src/components/byon/HostedNumberRequestForm.tsx` (reusado para Port-in con `type` param)
+- `src/components/byon/ByonRequestsList.tsx` (historial del tenant)
+- `src/components/SuperAdminByonRequests.tsx` (panel super_admin)
+- `src/lib/byon-options.ts` — copy, tiempos y países por opción.
+- `supabase/functions/twilio-verify-caller-id/index.ts` (JWT verificado)
+- `supabase/functions/byon-request/index.ts` — crea solicitud + sube documentos (JWT).
+- `supabase/functions/byon-request-admin/index.ts` — super_admin actualiza status (JWT + role check).
 
-Ventaja: la función `twilio-provision-number` original queda intacta, sigue siendo super_admin-only desde afuera; el wrapper es el único punto público para tenants.
+### Editados (mínimos, solo montar entradas)
+- `src/pages/IntegrationsPage.tsx` — nueva pestaña "Mi Número".
+- `src/components/SuperAdminTenantsTab.tsx` — sub-tab "Solicitudes BYON".
+- `supabase/config.toml` — declarar las 3 funciones nuevas con `verify_jwt = true`.
 
-### B.3 UI: `TenantNumberPurchaseWizard`
+### Migración de base de datos (una sola)
+```text
+CREATE TABLE public.byon_requests (
+  id uuid PK,
+  tenant_id uuid FK tenants,
+  requested_by uuid FK auth.users,
+  request_type text CHECK IN ('hosted_sms','port_in'),
+  phone_number text (E.164),
+  country_code text,
+  current_carrier text,
+  desired_capabilities jsonb, -- {sms,voice,mms}
+  documents jsonb,            -- [{type,storage_path}]
+  status text CHECK IN ('pending','in_review','approved','completed','rejected'),
+  admin_notes text,
+  reviewed_by uuid,
+  reviewed_at timestamptz,
+  created_at, updated_at
+)
++ GRANTs (authenticated + service_role)
++ RLS: tenant lee sus propias solicitudes; super_admin ve todas
++ trigger updated_at
++ storage bucket 'byon-requests' privado con policies por tenant_id
++ audit_events triggers
+```
 
-Nuevo componente en `src/components/TenantNumberPurchaseWizard.tsx`, montado desde `IntegrationsPage.tsx` como paso previo del `WhatsAppConnectionWizard` y del `VoiceAgentWizard` cuando `tenants.whatsapp_config.phone_number` está vacío. Si ya hay número, se muestra un badge "Número asignado: +…" y el botón "Comprar número" queda oculto.
+### Impacto en flujos existentes
+- **Voice Agent / WhatsApp**: leen `tenants.whatsapp_config.phone_number` y `tenant_phone_numbers` como hoy. Solo cambia **el origen** del número (comprado / Meta / hosted / portado); el consumo es idéntico.
+- **Billing gate**: aplica igual — el número debe estar bajo un tenant con `active|trialing`.
+- **`twilio-provision-number` y `tenant-provision-number`**: sin cambios.
 
-Pasos:
-1. **País/Región** — `<Select>` con la misma lista curada de A). Default = `tenant.country` o `US`. Nota clara sobre disponibilidad y regulación local (algunos países requieren address bundle en Twilio; si lo requiere, mostrar aviso "Este país requiere verificación adicional; contáctanos" y bloquear compra en esta fase).
-2. **Tipo y prefijo** — `<Select>` Local / Mobile / Toll‑Free (según país). Input opcional de `areaCode` / prefijo.
-3. **Elegir número** — llama a `tenant-provision-number` con `dryRun: true`, muestra hasta 20 opciones con capacidades y localidad. Selección obligatoria.
-4. **Confirmar y comprar** — muestra número elegido, país, costo mensual estimado (texto informativo: "Twilio cobra ~$1/mes; consulta pricing.twilio.com"), y checkbox "Acepto el cobro recurrente". Botón "Comprar" llama `tenant-provision-number` con `dryRun: false`.
-5. **Éxito** — muestra número asignado, toast, cierra wizard, refresca estado de integración. El siguiente wizard (WhatsApp o Voice) queda desbloqueado automáticamente.
-
-### B.4 Sin cambios en flujos protegidos
-
-No se tocan: `call-transfer`, `call-transfer-twiml`, `elevenlabs-actions-webhook`, `whatsapp-webhook`, `whatsapp-bot/*`, `twilio-send`, `twilio-setup`, `elevenlabs-twilio-setup`, ni sus mappings. El número comprado queda en `tenants.whatsapp_config.phone_number` — que ya es la fuente que consumen esos flujos hoy — más el `incoming_phone_sid` y (si aplica) `messaging_service_sid`.
-
----
-
-## Cambios técnicos resumidos
-
-**Archivos nuevos**
-- `supabase/functions/tenant-provision-number/index.ts` — wrapper con gate de billing y ownership.
-- `src/components/TenantNumberPurchaseWizard.tsx` — wizard de 4 pasos.
-- `src/lib/twilio-countries.ts` — lista curada compartida (SuperAdmin + Tenant).
-
-**Archivos editados (solo UI / params opcionales)**
-- `supabase/functions/twilio-provision-number/index.ts` — aceptar `type` (`Local`|`Mobile`|`TollFree`, default `Local`) y `capabilities` opcionales. Defaults preservan comportamiento actual.
-- `src/components/SuperAdminTenantsTab.tsx` — reemplazar input país por Select, agregar filtros de tipo/capacidad.
-- `src/pages/IntegrationsPage.tsx` — montar `TenantNumberPurchaseWizard` cuando el tenant no tenga número.
-
-**Sin migraciones de DB.** Se reutiliza `tenants.whatsapp_config` y `audit_events`.
-
-**Config Supabase**: `supabase/config.toml` — declarar la nueva función `tenant-provision-number` con `verify_jwt = true` (valida en código además).
-
-## Fuera de alcance (posibles fases siguientes)
-- Portabilidad de números existentes (port-in).
-- Address bundles / regulatory bundles automáticos para países que lo requieren.
-- Cobro directo del costo del número al tenant vía Stripe (hoy lo asume la cuenta Twilio maestra y se factura por consumo, como ya está).
-- Liberar/soltar números (release) desde UI.
-
+## Fuera de alcance
+- Automatización real de Hosted/Port-in (Twilio no lo permite sin BAA/enterprise).
+- Portabilidad de números MX (Twilio no ofrece portabilidad self-service en MX; se ofrece solo como "consultar disponibilidad" y queda en manos de super_admin).
+- Cobro adicional en Stripe por el número portado (se gestionará después con la infraestructura de packages existente).
