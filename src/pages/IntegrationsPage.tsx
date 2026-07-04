@@ -60,6 +60,7 @@ const IntegrationsPage = () => {
   const [tenantPhoneNumber, setTenantPhoneNumber] = useState<string>('');
   const [tenantCountry, setTenantCountry] = useState<string>('US');
   const [purchaseWizardOpen, setPurchaseWizardOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<'integrations' | 'byon'>('integrations');
   const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-webhook`;
 
   const integrations = integrationsMeta.map(i => {
