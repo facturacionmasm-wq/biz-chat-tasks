@@ -48,6 +48,9 @@ verify_jwt = false
 [functions.stripe-webhook]
 verify_jwt = false
 
+[functions.calcom-webhook]
+verify_jwt = false
+
 [functions.ai-assistant]
 verify_jwt = false
 
