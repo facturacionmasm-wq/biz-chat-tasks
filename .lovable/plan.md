@@ -1,127 +1,97 @@
-## Objetivo
+# Plan: cerrar 2 hallazgos criticos de seguridad
 
-Eliminar la duplicación de citas de voz (una creada por `voice-scheduling.book_appointment` desde el agente y otra creada por el webhook de Cal.com cuando ElevenLabs reserva ahí vía su tool nativa) **sin tocar** la configuración, tools ni prompt de ElevenLabs, y **sin tocar** las funciones protegidas.
+Objetivo: bloquear la lectura de `access_token`/`refresh_token` (google_calendar_tokens) y `pin_hash` (profiles) desde el rol `authenticated`, sin romper login PIN, sync de Google Calendar, Cal.com, WhatsApp, ni agente de voz.
 
-## Archivos a modificar
+## Enfoque
 
-- `supabase/functions/calcom-webhook/index.ts` — único archivo con cambios de código.
+Enfoque menos disruptivo: **column-level privileges**. Postgres permite `GRANT SELECT (col_a, col_b)` por columna. Revocamos SELECT total y regrantamos SELECT solo sobre columnas NO secretas para `authenticated`. RLS existente queda igual. `service_role` no se toca (mantiene acceso completo), por lo que TODAS las Edge Functions siguen funcionando sin cambios.
 
-## Archivos que se dejan intactos (confirmado)
+Auditoria del uso actual (ya verificada):
+- Frontend NUNCA hace SELECT de `access_token`/`refresh_token` — solo `.delete()` en `IntegrationsPage.tsx` y `SettingsPage.tsx` (DELETE no requiere SELECT sobre columnas).
+- Frontend NUNCA hace SELECT de `pin_hash` — todos los `.select()` sobre `profiles` piden columnas explicitas (`tenant_id`, `user_id`, `name`, etc.).
+- El estado "calendar connected/email" ya lo entrega la Edge Function `google-calendar-auth` (GET) con service_role.
+- `pin-service` (verify/hash) usa service_role — no afectado.
 
-- `supabase/functions/voice-scheduling/index.ts` — el `book_appointment` sigue insertando con `source='call'`, `calendar_sync_status='PENDING_SYNC'`, `call_record_id`, y **sin** empujar a Cal.com. El `INSERT` queda tal cual está hoy.
-- Configuración ElevenLabs (agent, tools, prompt, webhooks) — sin cambios.
-- Funciones protegidas: `call-transfer`, `call-transfer-twiml`, `elevenlabs-actions-webhook` — sin cambios.
-- `whatsapp-bot/*` y su flujo → Cal.com — sin cambios.
-- `calendar-sync`, `calendar-tools`, `google-calendar-auth` (Google Calendar) — sin cambios.
-- `calcom-sync` (pull periódico) — sin cambios.
-- UI (`IntegrationsPage.tsx`, wizards, etc.) — sin cambios.
-- Migraciones/DB — no se requieren cambios de esquema; `appointments` ya tiene `calendar_event_id`, `calendar_sync_status`, `contact_phone`, `contact_name`, `start_at`, `source`, `tenant_id`, `notes`.
+Conclusion: no hace falta reescribir componentes frontend. Solo migracion SQL + opcionalmente una vista de conveniencia.
 
-## Cambios en `calcom-webhook/index.ts`
+## Cambios
 
-El handler actual, tras validar firma y parsear el payload de `BOOKING_CREATED`:
-1. Calcula `eventId = 'calcom:' + bookingUid`.
-2. Busca `appointments` por `(tenant_id, calendar_event_id = eventId)` → si existe, UPDATE; si no, INSERT nuevo con `source='calcom'`.
+### 1. Migracion SQL (unico archivo nuevo)
 
-Se inserta una **fase de merge** entre el paso 1 y el paso 2, ejecutada solo para eventos de creación (no cancel).
+**a) `google_calendar_tokens`** — revocar acceso de `authenticated` a columnas secretas:
 
-### Nuevo flujo dentro del handler (solo para BOOKING_CREATED / BOOKING_RESCHEDULED, no cancel)
-
-```text
-1. Calcular eventId = 'calcom:' + bookingUid
-2. Idempotencia: SELECT id FROM appointments
-     WHERE tenant_id = X AND calendar_event_id = eventId
-   → si existe, UPDATE campos y responder (comportamiento actual, sin cambios)
-
-3. MERGE por metadata (nuevo):
-   a. Extraer candidateAppointmentId de payload en este orden:
-        - payload.metadata?.appointment_id
-        - payload.payload?.metadata?.appointment_id
-        - p.responses?.appointment_id?.value
-      Si es un UUID válido:
-        SELECT id, calendar_event_id FROM appointments
-          WHERE id = candidateAppointmentId
-            AND tenant_id = X
-            AND deleted_at IS NULL
-        Si encontrado Y calendar_event_id IS NULL (o ya = eventId):
-          → mergeTargetId = ese id, saltar al paso 5.
-
-   b. Fallback difuso (solo si no hubo match por metadata):
-        Ventana temporal: startAt ± 15 min.
-        SELECT id, contact_name, contact_phone, start_at
-          FROM appointments
-         WHERE tenant_id = X
-           AND deleted_at IS NULL
-           AND calendar_event_id IS NULL
-           AND source IN ('call','voice')     -- creadas por voice-scheduling
-           AND status <> 'cancelled'
-           AND start_at BETWEEN (startAt - 15min) AND (startAt + 15min)
-           AND created_at >= now() - interval '6 hours'
-         ORDER BY abs(extract(epoch from (start_at - :startAt))) ASC
-         LIMIT 5
-
-        Scoring en código sobre los candidatos:
-          - +3 si contact_phone normalizado (E.164) coincide con el del payload
-            (p.responses?.phone?.value / p.smsReminderNumber / attendee.phone)
-          - +2 si contact_name normalizado (lower/trim/sin acentos) es igual
-          - +1 si similitud de nombre >= 0.6 (Jaccard sobre tokens) y no hay teléfono
-          - +1 si delta |start_at - payload.start| <= 5 min
-        Elegir mergeTargetId = candidato con score >= 2 y mayor score.
-        Si empate, el más cercano en tiempo.
-
-4. Sin match → INSERT como hoy con source='calcom' (comportamiento actual intacto).
-
-5. Con match (mergeTargetId):
-   UPDATE appointments
-      SET calendar_event_id     = eventId,       -- 'calcom:<uid>'
-          calendar_sync_status  = 'SYNCED',
-          contact_email         = COALESCE(contact_email, :email),
-          contact_phone         = COALESCE(contact_phone, :phone),
-          service_type          = COALESCE(NULLIF(service_type,''), :title),
-          start_at              = :startAt,      -- Cal.com es autoridad final
-          end_at                = :endAt,
-          status                = 'scheduled',
-          notes                 = COALESCE(notes, :additionalNotes),
-          updated_at            = now(),
-          sync_attempts         = COALESCE(sync_attempts,0)
-      WHERE id = mergeTargetId
-        AND tenant_id = X
-        AND (calendar_event_id IS NULL OR calendar_event_id = eventId);
-   -- El AND final evita pisar una cita ya sincronizada con otro booking.
-
-   Si el UPDATE afectó 0 filas (carrera), reintentar el paso 2 y, si tampoco, caer a INSERT como hoy.
-
-6. Registrar en webhook_logs event_type='calcom_booking_merged' con
-   { uid, mergeTargetId, matched_by: 'metadata'|'fuzzy', score } para trazabilidad.
+```sql
+REVOKE SELECT ON public.google_calendar_tokens FROM authenticated;
+GRANT SELECT (
+  id, user_id, tenant_id, email, status,
+  calendar_id, token_expires_at, created_at, updated_at
+) ON public.google_calendar_tokens TO authenticated;
+-- INSERT/UPDATE/DELETE se conservan (usados por DELETE del frontend).
+GRANT INSERT, UPDATE, DELETE ON public.google_calendar_tokens TO authenticated;
+-- service_role intacto (GRANT ALL ya existente).
 ```
 
-### Reglas de idempotencia y seguridad
+Politica RLS actual (`Users can view own calendar connection status`, `Users manage own calendar tokens`) queda igual — sigue restringiendo por `user_id = auth.uid()`, ahora ademas a nivel columna.
 
-- El SELECT del paso 2 sigue siendo la primera línea de defensa: reintentos de Cal.com sobre el mismo `bookingUid` nunca duplican.
-- El merge del paso 3 solo se aplica a filas con `calendar_event_id IS NULL`, así que un segundo webhook con otro `uid` no puede robar una cita ya sincronizada.
-- El fallback difuso exige `source IN ('call','voice')` y ventana temporal + score mínimo para no absorber accidentalmente citas de otro canal (WhatsApp, manual).
-- `BOOKING_RESCHEDULED` y `BOOKING_CANCELLED` mantienen exactamente su lógica actual (buscan por `calendar_event_id`); el merge solo aplica en creación.
+**b) `profiles`** — bloquear `pin_hash` a `authenticated`:
 
-### Helper interno (dentro del mismo archivo, no exportado)
+```sql
+REVOKE SELECT ON public.profiles FROM authenticated;
+GRANT SELECT (
+  id, user_id, tenant_id, name, email, phone, whatsapp_number,
+  avatar_url, status, onboarding_completed, role_hint,
+  created_at, updated_at
+) ON public.profiles TO authenticated;
+GRANT INSERT, UPDATE, DELETE ON public.profiles TO authenticated;
+```
 
-- `extractAppointmentIdFromPayload(payload): string | null` — chequea las tres rutas de metadata.
-- `normalizeName(s): string` y `normalizePhoneE164(s): string | null` — para el scoring.
-- `pickFuzzyMatch(candidates, payload): { id, score } | null`.
+(Confirmar lista exacta de columnas con `\d profiles` antes de aplicar — la migracion listara todas menos `pin_hash`.)
 
-Todo va dentro de `calcom-webhook/index.ts` para no crear módulos nuevos.
+Nota: los UPDATE del usuario sobre su propio perfil siguen funcionando; RLS los limita. Si alguien intenta `UPDATE ... SET pin_hash=...` desde el cliente, tampoco tiene `UPDATE (pin_hash)` — reforzamos con:
 
-## Validación posterior a la implementación
+```sql
+REVOKE UPDATE (pin_hash) ON public.profiles FROM authenticated;
+```
 
-1. Logs de `calcom-webhook`: buscar `calcom_booking_merged` tras una llamada de voz que reserve en Cal.com → debe aparecer con `matched_by`.
-2. Query: `SELECT count(*) FROM appointments WHERE source='call' AND created_at > now() - interval '1 day' AND calendar_event_id IS NOT NULL` → debe crecer 1 por llamada agendada (antes crecía 0 y aparecía un duplicado `source='calcom'`).
-3. Query: `SELECT count(*) FROM appointments WHERE source='calcom' AND created_at > now() - interval '1 day'` → solo debe contar reservas hechas directamente en Cal.com por humanos, no las originadas por voz.
-4. Reenviar manualmente el mismo webhook (mismo `uid`) → no debe crear ni mergear otra vez (idempotencia por `calendar_event_id`).
-5. Reserva directa desde Cal.com sin llamada previa → sigue insertando con `source='calcom'` (fallback intacto).
+`pin-service` usa service_role → sigue leyendo/escribiendo `pin_hash` normal.
+
+### 2. Vista de conveniencia (opcional, para futuro uso limpio)
+
+```sql
+CREATE OR REPLACE VIEW public.calendar_connections_v AS
+SELECT id, user_id, tenant_id, email, status, calendar_id,
+       token_expires_at, created_at, updated_at
+FROM public.google_calendar_tokens;
+
+GRANT SELECT ON public.calendar_connections_v TO authenticated;
+ALTER VIEW public.calendar_connections_v SET (security_invoker = true);
+```
+
+Se documenta pero **no** se obliga a migrar los 2 `.from('google_calendar_tokens' as any).delete()` — siguen validos porque el REVOKE solo aplica a SELECT.
+
+### 3. Archivos frontend
+
+Ninguno requiere cambios funcionales. Los dos `select` ya no existen sobre columnas secretas; los `delete` no requieren SELECT.
+
+Verificacion post-migracion: cargar `IntegrationsPage` y `SettingsPage`, desconectar/reconectar Google Calendar, iniciar sesion por PIN via WhatsApp, ejecutar `calendar-sync` desde el agente de voz.
+
+## Archivos a tocar
+
+- `supabase/migrations/<timestamp>_lock_secret_columns.sql` — NUEVO (unico cambio)
+
+## Archivos intactos (confirmado)
+
+- Edge Functions: `google-calendar-auth`, `calendar-sync`, `calendar-tools`, `voice-scheduling`, `google-drive`, `ai-assistant`, `whatsapp-bot/*`, `pin-service`, `admin-delete-tenant` — todas usan `SUPABASE_SERVICE_ROLE_KEY`, no afectadas.
+- `call-transfer`, `call-transfer-twiml`, `elevenlabs-actions-webhook`, `calcom-webhook` — no leen estas columnas.
+- Frontend: sin cambios de codigo.
+- Configuracion ElevenLabs, Cal.com, Twilio: sin cambios.
 
 ## Confirmaciones
 
-- ElevenLabs (agente, tool nativa de Cal.com, prompt, webhooks): **sin cambios**.
-- `call-transfer`, `call-transfer-twiml`, `elevenlabs-actions-webhook`: **sin cambios**.
-- `voice-scheduling.book_appointment`: **sin cambios** — sigue insertando con `source='call'`, sin empujar a Cal.com.
-- Flujo WhatsApp → Cal.com, Google Calendar sync, UI de Integraciones: **sin cambios**.
-- Único archivo tocado: `supabase/functions/calcom-webhook/index.ts`.
+- **Login PIN**: `pin-service` con service_role → intacto. Cliente nunca leia `pin_hash`.
+- **Sync Google Calendar**: `calendar-sync`, `calendar-tools`, `google-calendar-auth` (callback y GET status) con service_role → intactos. Estado de conexion en UI ya viene de la Edge Function GET, no de SELECT directo.
+- **Agente de voz / Cal.com / WhatsApp**: no tocan estas columnas desde el cliente.
+
+## Rollback
+
+Un solo `GRANT SELECT ON <tabla> TO authenticated;` restaura el estado previo si algo se rompe.
