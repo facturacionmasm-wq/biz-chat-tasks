@@ -61,6 +61,12 @@ const IntegrationsPage = () => {
   const [tenantCountry, setTenantCountry] = useState<string>('US');
   const [purchaseWizardOpen, setPurchaseWizardOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'integrations' | 'byon'>('integrations');
+  const [calcomDialogOpen, setCalcomDialogOpen] = useState(false);
+  const [calcomConnected, setCalcomConnected] = useState(false);
+  const [calcomWebhookUrl, setCalcomWebhookUrl] = useState('');
+  const [calcomLastSync, setCalcomLastSync] = useState<string | null>(null);
+  const [calcomApiKey, setCalcomApiKey] = useState('');
+  const [calcomSaving, setCalcomSaving] = useState(false);
   const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-webhook`;
 
   const integrations = integrationsMeta.map(i => {
