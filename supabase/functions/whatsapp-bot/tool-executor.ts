@@ -488,14 +488,15 @@ async function executeScheduleAppointment(
     employee: employee_name || 'sin asignar',
     confirmation_sent: !!finalContactPhone,
     reminders_scheduled: notificationsToInsert.length,
+    calcom_pushed: calcomPushed,
   };
 
   if (calendarSynced) {
     response.calendar_synced = true;
-    response.message = 'Cita agendada y sincronizada con Google Calendar.' + (finalContactPhone ? ' Se envió confirmación al contacto.' : '');
+    response.message = 'Cita agendada y sincronizada con Google Calendar.' + (calcomPushed ? ' También enviada a Cal.com.' : '') + (finalContactPhone ? ' Se envió confirmación al contacto.' : '');
   } else {
     response.calendar_synced = false;
-    response.message = 'Cita agendada correctamente.' + (finalContactPhone ? ' Se envió confirmación al contacto.' : '') + ' La sincronización con el calendario se completará en breve.';
+    response.message = 'Cita agendada correctamente.' + (calcomPushed ? ' Enviada a Cal.com.' : '') + (finalContactPhone ? ' Se envió confirmación al contacto.' : '') + ' La sincronización con el calendario se completará en breve.';
   }
 
   return JSON.stringify(response);
