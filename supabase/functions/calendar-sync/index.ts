@@ -556,27 +556,31 @@ async function pullEventsForUser(
   if (tokenResult.error) return { error: tokenResult.error };
 
   const calendarId = tokenResult.calendar_id || 'primary';
-  // Window: from max(lastPullAt - 5min, now - 60d) to now + 90d
+  // Google's updatedMin is limited to last ~30 days; use 25d window as safe default.
   const now = new Date();
-  const defaultFrom = new Date(now.getTime() - 60 * 24 * 3600 * 1000).toISOString();
+  const defaultFrom = new Date(now.getTime() - 25 * 24 * 3600 * 1000).toISOString();
   const updatedMin = lastPullAt
-    ? new Date(new Date(lastPullAt).getTime() - 5 * 60 * 1000).toISOString()
+    ? new Date(Math.max(new Date(lastPullAt).getTime() - 5 * 60 * 1000, now.getTime() - 25 * 24 * 3600 * 1000)).toISOString()
     : defaultFrom;
   const timeMax = new Date(now.getTime() + 90 * 24 * 3600 * 1000).toISOString();
 
-  const params = new URLSearchParams({
-    singleEvents: 'true',
-    showDeleted: 'true',
-    orderBy: 'updated',
-    maxResults: '250',
-    updatedMin,
-    timeMax,
-  });
+  const buildUrl = (withUpdatedMin: boolean) => {
+    const p = new URLSearchParams({
+      singleEvents: 'true',
+      showDeleted: 'true',
+      orderBy: 'updated',
+      maxResults: '250',
+      timeMax,
+    });
+    if (withUpdatedMin) p.set('updatedMin', updatedMin);
+    return `${GOOGLE_CALENDAR_API}/calendars/${encodeURIComponent(calendarId)}/events?${p}`;
+  };
 
-  const res = await fetch(
-    `${GOOGLE_CALENDAR_API}/calendars/${encodeURIComponent(calendarId)}/events?${params}`,
-    { headers: { Authorization: `Bearer ${tokenResult.access_token}` } },
-  );
+  let res = await fetch(buildUrl(true), { headers: { Authorization: `Bearer ${tokenResult.access_token}` } });
+  if (res.status === 410) {
+    // updatedMin too old — fall back to timeMin window
+    res = await fetch(buildUrl(false), { headers: { Authorization: `Bearer ${tokenResult.access_token}` } });
+  }
   const data = await res.json();
   if (!res.ok) {
     if (res.status === 401) {
