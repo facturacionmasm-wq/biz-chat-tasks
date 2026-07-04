@@ -430,20 +430,20 @@ const IntegrationsPage = () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {integrations.map(int => (
           <div key={int.id} className="rx-panel">
-            <div className="flex items-start justify-between mb-3">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+            <div className="flex items-start justify-between gap-3 mb-3">
+              <div className="flex items-center gap-3 min-w-0 flex-1">
+                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
                   <int.icon size={20} className="text-[var(--rx-brand)]" />
                 </div>
-                <div>
-                  <h3 className="text-sm font-semibold text-foreground">{int.name}</h3>
-                  <p className="text-xs text-[var(--rx-t2)]">{int.category}</p>
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-sm font-semibold text-foreground truncate">{int.name}</h3>
+                  <p className="text-xs text-[var(--rx-t2)] truncate">{int.category}</p>
                 </div>
               </div>
               {int.connected ? (
-                <span className="flex items-center gap-1 text-xs text-[var(--rx-emerald)] font-medium"><CheckCircle2 size={12} /> Conectado</span>
+                <span className="flex items-center gap-1 text-xs text-[var(--rx-emerald)] font-medium flex-shrink-0 whitespace-nowrap"><CheckCircle2 size={12} /> Conectado</span>
               ) : (
-                <span className="flex items-center gap-1 text-xs text-[var(--rx-t2)]"><Circle size={12} /> Desconectado</span>
+                <span className="flex items-center gap-1 text-xs text-[var(--rx-t2)] flex-shrink-0 whitespace-nowrap"><Circle size={12} /> Desconectado</span>
               )}
             </div>
             <p className="text-sm text-[var(--rx-t2)] mb-4">{int.description}</p>
