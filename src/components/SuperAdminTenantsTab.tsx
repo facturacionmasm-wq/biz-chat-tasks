@@ -50,6 +50,16 @@ export default function SuperAdminTenantsTab() {
   const [pending, setPending] = useState<PendingAction | null>(null);
   const [extendDaysDraft, setExtendDaysDraft] = useState<Record<string, number>>({});
 
+  // Twilio provisioning state
+  const [provTenant, setProvTenant] = useState<AdminTenantRow | null>(null);
+  const [provCountry, setProvCountry] = useState('US');
+  const [provAreaCode, setProvAreaCode] = useState('');
+  const [provListing, setProvListing] = useState(false);
+  const [provPurchasing, setProvPurchasing] = useState(false);
+  const [provNumbers, setProvNumbers] = useState<Array<{ phone_number: string; friendly_name: string; locality?: string; region?: string }>>([]);
+  const [provSelected, setProvSelected] = useState<string | null>(null);
+  const [provConfirm, setProvConfirm] = useState(false);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
