@@ -216,13 +216,13 @@
   .rx-panel {
     background: var(--rx-s1); border: 1px solid var(--rx-b1);
     border-radius: var(--rx-r-xl); overflow: hidden;
-    transition: var(--rx-transition), border-color .15s;
+    transition: var(--rx-transition), border-color .18s, box-shadow .18s, transform .18s;
     box-shadow: var(--rx-shadow-sm);
   }
-  .rx-panel:hover { border-color: var(--rx-b2); }
+  .rx-panel:hover { border-color: var(--rx-b2); box-shadow: var(--rx-shadow-md); }
   .rx-panel-header {
     display: flex; align-items: center; justify-content: space-between;
-    padding: 14px 20px 12px; border-bottom: 1px solid var(--rx-b1);
+    padding: 16px 20px 14px; border-bottom: 1px solid var(--rx-b1);
   }
   .rx-panel-title {
     font-family: var(--rx-font-display);
@@ -232,7 +232,8 @@
   .rx-panel-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
   .rx-panel-action {
     font-size: 11px; font-weight: 650; color: var(--rx-brand);
-    cursor: pointer; opacity: .75; transition: opacity .12s;
+    cursor: pointer; opacity: .8; transition: opacity .15s;
+    background: transparent; border: 0;
   }
   .rx-panel-action:hover { opacity: 1; }
 
@@ -240,66 +241,82 @@
   .rx-badge {
     display: inline-flex; align-items: center; gap: 4px;
     font-size: 10px; font-weight: 700; padding: 3px 9px; border-radius: 99px;
+    letter-spacing: .02em;
   }
-  .rx-badge-brand   { background: rgba(0,255,198,.09);  color: var(--rx-brand);   border: 1px solid rgba(0,255,198,.18); }
-  .rx-badge-violet  { background: rgba(163,116,255,.09); color: var(--rx-violet);  border: 1px solid rgba(163,116,255,.18); }
-  .rx-badge-amber   { background: rgba(255,181,32,.09);  color: var(--rx-amber);   border: 1px solid rgba(255,181,32,.18); }
-  .rx-badge-rose    { background: rgba(255,79,114,.09);  color: var(--rx-rose);    border: 1px solid rgba(255,79,114,.18); }
-  .rx-badge-emerald { background: rgba(0,232,122,.09);   color: var(--rx-emerald); border: 1px solid rgba(0,232,122,.18); }
-  .rx-badge-sky     { background: rgba(56,217,255,.09);  color: var(--rx-sky);     border: 1px solid rgba(56,217,255,.18); }
-  .rx-badge-muted   { background: var(--rx-s3); color: var(--rx-t3); }
+  .rx-badge-brand   { background: var(--rx-brand-soft);         color: var(--rx-brand);   border: 1px solid var(--rx-brand-soft); }
+  .rx-badge-violet  { background: rgba(163,116,255,.10);        color: var(--rx-violet);  border: 1px solid rgba(163,116,255,.20); }
+  .rx-badge-amber   { background: rgba(255,181,32,.10);         color: var(--rx-amber);   border: 1px solid rgba(255,181,32,.20); }
+  .rx-badge-rose    { background: rgba(255,91,122,.10);         color: var(--rx-rose);    border: 1px solid rgba(255,91,122,.20); }
+  .rx-badge-emerald { background: rgba(34,217,126,.10);         color: var(--rx-emerald); border: 1px solid rgba(34,217,126,.20); }
+  .rx-badge-sky     { background: rgba(56,217,255,.10);         color: var(--rx-sky);     border: 1px solid rgba(56,217,255,.20); }
+  .rx-badge-muted   { background: var(--rx-s3);                 color: var(--rx-t2);      border: 1px solid var(--rx-b1); }
 
   /* Inputs */
-  .rx-input {
-    width: 100%; background: var(--rx-s2); border: 1px solid var(--rx-b1);
-    border-radius: var(--rx-r-md); padding: 8px 13px;
-    font-size: 13px; color: var(--rx-t1); font-family: var(--rx-font-body);
-    outline: none; transition: border-color .15s;
+  .rx-input, .rx-textarea, .rx-select {
+    width: 100%; background: var(--rx-s2);
+    border: 1px solid var(--rx-b1);
+    border-radius: var(--rx-r-md);
+    padding: 10px 14px;
+    font-size: 13.5px; color: var(--rx-t1); font-family: var(--rx-font-body);
+    outline: none;
+    transition: border-color .15s, background .15s, box-shadow .15s;
   }
-  .rx-input:focus { border-color: var(--rx-brand); }
-  .rx-input::placeholder { color: var(--rx-t3); }
-  .rx-textarea {
-    width: 100%; background: var(--rx-s2); border: 1px solid var(--rx-b1);
-    border-radius: var(--rx-r-md); padding: 10px 13px;
-    font-size: 13px; color: var(--rx-t1); font-family: var(--rx-font-body);
-    outline: none; resize: vertical; min-height: 80px; transition: border-color .15s;
+  .rx-input:hover, .rx-textarea:hover, .rx-select:hover { border-color: var(--rx-b2); }
+  .rx-input:focus-visible, .rx-textarea:focus-visible, .rx-select:focus-visible {
+    border-color: var(--rx-brand);
+    box-shadow: var(--rx-focus-ring);
   }
-  .rx-textarea:focus { border-color: var(--rx-brand); }
-  .rx-textarea::placeholder { color: var(--rx-t3); }
+  .rx-input::placeholder, .rx-textarea::placeholder { color: var(--rx-t3); }
+  .rx-textarea { resize: vertical; min-height: 88px; }
 
   /* Buttons */
   .rx-btn {
-    display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
     font-family: var(--rx-font-body); font-size: 13px; font-weight: 650;
-    padding: 8px 18px; border-radius: var(--rx-r-md);
-    border: 1px solid transparent; cursor: pointer; transition: all .15s;
+    padding: 9px 18px; border-radius: var(--rx-r-md);
+    border: 1px solid transparent; cursor: pointer;
+    transition: background .15s, color .15s, border-color .15s, box-shadow .15s, transform .12s;
     white-space: nowrap; text-decoration: none;
+    line-height: 1;
   }
+  .rx-btn:active { transform: translateY(0); }
+  .rx-btn:focus-visible { box-shadow: var(--rx-focus-ring); }
+  .rx-btn:disabled { opacity: var(--rx-disabled-opacity); cursor: not-allowed; transform: none !important; box-shadow: none !important; }
+
   .rx-btn-primary {
-    background: var(--rx-brand); color: #000;
-    box-shadow: 0 0 16px rgba(0,255,198,.2);
+    background: var(--rx-brand); color: var(--primary-foreground);
+    box-shadow: var(--rx-shadow-glow);
   }
-  .rx-btn-primary:hover { opacity: .9; transform: translateY(-1px); box-shadow: 0 0 20px rgba(0,255,198,.3); }
+  .rx-btn-primary:hover { background: var(--rx-brand-strong); transform: translateY(-1px); }
+  .rx-btn-primary:active { background: var(--rx-brand-strong); transform: translateY(0); }
+
   .rx-btn-ghost { background: transparent; color: var(--rx-t2); border-color: var(--rx-b1); }
-  .rx-btn-ghost:hover { background: var(--rx-s2); color: var(--rx-t1); border-color: var(--rx-b2); }
-  .rx-btn-danger { background: rgba(255,79,114,.1); color: var(--rx-rose); border-color: rgba(255,79,114,.2); }
-  .rx-btn-danger:hover { background: rgba(255,79,114,.18); }
-  .rx-btn-sm { font-size: 11px; padding: 5px 12px; }
-  .rx-btn-icon { width: 32px; height: 32px; padding: 0; border-radius: var(--rx-r-sm); }
+  .rx-btn-ghost:hover { background: var(--rx-hover); color: var(--rx-t1); border-color: var(--rx-b2); }
+  .rx-btn-ghost:active { background: var(--rx-active); }
+
+  .rx-btn-secondary { background: var(--rx-s2); color: var(--rx-t1); border-color: var(--rx-b1); }
+  .rx-btn-secondary:hover { background: var(--rx-s3); border-color: var(--rx-b2); }
+
+  .rx-btn-danger { background: rgba(255,91,122,.12); color: var(--rx-rose); border-color: rgba(255,91,122,.24); }
+  .rx-btn-danger:hover { background: rgba(255,91,122,.20); }
+
+  .rx-btn-sm { font-size: 11.5px; padding: 6px 12px; }
+  .rx-btn-icon { width: 34px; height: 34px; padding: 0; border-radius: var(--rx-r-sm); }
 
   /* Tabs */
   .rx-tabs {
     display: flex; gap: 2px; background: var(--rx-s2);
-    border: 1px solid var(--rx-b1); border-radius: var(--rx-r-md); padding: 3px;
+    border: 1px solid var(--rx-b1); border-radius: var(--rx-r-md); padding: 4px;
   }
   .rx-tab {
     flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
-    padding: 6px 14px; border-radius: calc(var(--rx-r-md) - 3px);
-    font-size: 12px; font-weight: 600; color: var(--rx-t2); cursor: pointer; transition: all .15s;
-    white-space: nowrap;
+    padding: 7px 14px; border-radius: calc(var(--rx-r-md) - 3px);
+    font-size: 12px; font-weight: 600; color: var(--rx-t2); cursor: pointer;
+    transition: background .15s, color .15s, box-shadow .15s;
+    white-space: nowrap; border: 0; background: transparent;
   }
   .rx-tab.active { background: var(--rx-s1); color: var(--rx-t1); box-shadow: var(--rx-shadow-sm); }
-  .rx-tab:not(.active):hover { color: var(--rx-t1); }
+  .rx-tab:not(.active):hover { color: var(--rx-t1); background: var(--rx-hover); }
 
   /* Chip filters */
   .rx-chip {
@@ -308,9 +325,8 @@
     cursor: pointer; transition: all .12s; border: 1px solid var(--rx-b1);
     color: var(--rx-t2); background: transparent; white-space: nowrap;
   }
-  .rx-chip:hover { border-color: var(--rx-b2); color: var(--rx-t1); }
-  .rx-chip.active { background: var(--rx-brand); color: #000; border-color: var(--rx-brand); }
-  body.day .rx-chip.active { color: #000; }
+  .rx-chip:hover { border-color: var(--rx-b2); color: var(--rx-t1); background: var(--rx-hover); }
+  .rx-chip.active { background: var(--rx-brand); color: var(--primary-foreground); border-color: var(--rx-brand); }
 
   /* Table */
   .rx-table { width: 100%; border-collapse: collapse; }
