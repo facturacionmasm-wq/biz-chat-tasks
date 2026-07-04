@@ -85,7 +85,7 @@ export default function ContactsPage() {
         .order('name', { ascending: true });
 
       if (error) throw error;
-      setContacts((data || []) as Contact[]);
+      setContacts(((data || []) as unknown) as Contact[]);
     } catch (err: any) {
       console.error('[Contacts] fetch error:', err);
       toast.error('Error al cargar contactos');
@@ -181,7 +181,7 @@ export default function ContactsPage() {
     try {
       const { error } = await supabase
         .from('contacts')
-        .update({ starred: !contact.starred })
+        .update({ starred: !contact.starred } as any)
         .eq('id', contact.id);
       if (error) throw error;
       setContacts(prev => prev.map(c =>

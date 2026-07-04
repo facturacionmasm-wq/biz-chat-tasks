@@ -24,7 +24,7 @@ const statusLabels: Record<string, string> = {
 };
 
 const WhatsAppInboxPage = () => {
-  const { conversations, messages, loading, fetchMessages, DEMO_TENANT } = useWhatsAppData();
+  const { conversations, messages, loading, fetchMessages, tenantId } = useWhatsAppData();
   const { canUseService, loading: paymentLoading, redirecting, purchasePackage, setupCard } = usePaymentGate();
   const [selectedConvId, setSelectedConvId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -61,7 +61,7 @@ const WhatsAppInboxPage = () => {
     if (!selectedConvId) return;
     const selectedConv = conversations.find(c => c.id === selectedConvId);
     const { data, error } = await supabase.functions.invoke('twilio-send', {
-      body: { to: selectedConv?.contact_phone, body, conversationId: selectedConvId, tenantId: selectedConv?.tenant_id || DEMO_TENANT },
+      body: { to: selectedConv?.contact_phone, body, conversationId: selectedConvId, tenantId: selectedConv?.tenant_id || tenantId },
     });
     if (error) {
       toast.error(error.message || 'Error al enviar mensaje');
@@ -72,17 +72,18 @@ const WhatsAppInboxPage = () => {
       throw new Error(data.error || 'Error al enviar');
     }
     await fetchMessages(selectedConvId);
-  }, [selectedConvId, conversations, fetchMessages, DEMO_TENANT]);
+  }, [selectedConvId, conversations, fetchMessages, tenantId]);
 
   const handleCreateConversation = async () => {
     if (!newConvName.trim() || !newConvPhone.trim()) return;
+    if (!tenantId) { toast.error('No se pudo identificar tu empresa'); return; }
     try {
       const { data: newConv, error } = await supabase.from('whatsapp_conversations').insert({
-        tenant_id: DEMO_TENANT, contact_phone: newConvPhone.trim(), contact_name: newConvName.trim(), status: 'open', last_message_at: new Date().toISOString(),
+        tenant_id: tenantId, contact_phone: newConvPhone.trim(), contact_name: newConvName.trim(), status: 'open', last_message_at: new Date().toISOString(),
       }).select('id').single();
       if (error) throw error;
       if (newConv && newConvMessage.trim()) {
-        await supabase.from('whatsapp_messages').insert({ tenant_id: DEMO_TENANT, conversation_id: newConv.id, direction: 'out', body: newConvMessage.trim(), status: 'sent' });
+        await supabase.from('whatsapp_messages').insert({ tenant_id: tenantId, conversation_id: newConv.id, direction: 'out', body: newConvMessage.trim(), status: 'sent' });
       }
       if (newConv) setSelectedConvId(newConv.id);
       setShowNewConv(false); setNewConvName(''); setNewConvPhone(''); setNewConvMessage('');

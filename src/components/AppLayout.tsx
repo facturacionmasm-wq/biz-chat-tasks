@@ -151,7 +151,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
   const { isDay, toggle: toggleTheme } = useRybixTheme();
 
   const allItems = [...navItems, ...adminItems, ...superAdminItems];
-  const currentLabel = allItems.find(n => n.exact ? location.pathname === n.to : (location.pathname === n.to || location.pathname.startsWith(n.to + '/')))?.label || branding.orgName;
+  const currentLabel = allItems.find(n => (n as any).exact ? location.pathname === n.to : (location.pathname === n.to || location.pathname.startsWith(n.to + '/')))?.label || branding.orgName;
 
   return (
     <PresenceProvider>

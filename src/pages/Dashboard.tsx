@@ -60,11 +60,12 @@ function AnimatedNumber({ value, duration = 1200 }: { value: number; duration?: 
 
 // ─── 3D Tilt Card ─────────────────────────────────────────────
 function TiltCard({
-  children, className = '', intensity = 12,
+  children, className = '', intensity = 12, style,
 }: {
   children: React.ReactNode;
   className?: string;
   intensity?: number;
+  style?: React.CSSProperties;
 }) {
   const cardRef = useRef<HTMLDivElement>(null);
   const glowRef = useRef<HTMLDivElement>(null);

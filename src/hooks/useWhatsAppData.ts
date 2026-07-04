@@ -39,12 +39,14 @@ export function useWhatsAppData() {
   useEffect(() => {
     if (!user) { setTenantId(null); return; }
     let cancelled = false;
-    supabase
-      .rpc('get_user_tenant_id', { _user_id: user.id })
-      .then(({ data }) => {
+    (async () => {
+      try {
+        const { data } = await supabase.rpc('get_user_tenant_id', { _user_id: user.id });
         if (!cancelled) setTenantId(data);
-      })
-      .catch(err => console.error('[WA] tenant resolve error:', err));
+      } catch (err) {
+        console.error('[WA] tenant resolve error:', err);
+      }
+    })();
     return () => { cancelled = true; };
   }, [user]);
 
