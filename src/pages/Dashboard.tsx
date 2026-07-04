@@ -590,9 +590,16 @@ export default function Dashboard() {
                         <div className={`w-0.5 h-10 rounded-full shrink-0 ${isToday ? 'bg-[var(--rx-brand)]' : 'bg-border'}`} />
 
                         {/* Avatar */}
-                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-teal-400 flex items-center justify-center text-white text-[11px] font-bold shrink-0">
+                        <div
+                          className="w-9 h-9 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0"
+                          style={{
+                            background: 'linear-gradient(135deg, var(--rx-brand), var(--rx-brand2))',
+                            color: 'var(--primary-foreground)',
+                          }}
+                        >
                           {apt.contact_name.split(' ').map(n => n[0]).join('').slice(0, 2)}
                         </div>
+
 
                         {/* Info */}
                         <div className="flex-1 min-w-0">
