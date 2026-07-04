@@ -59,6 +59,12 @@ serve(async (req) => {
       return jsonResp(result);
     }
 
+    // ─── PULL EVENTS FROM GOOGLE → APP ─── (called by cron every 10 min)
+    if (action === 'pull_events') {
+      const result = await pullEventsAllUsers(supabase, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET);
+      return jsonResp(result);
+    }
+
     return jsonResp({ error: 'Unknown action' }, 400);
   } catch (err) {
     console.error('calendar-sync error:', err);
