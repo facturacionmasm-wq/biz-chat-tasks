@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import SuperAdminConsumptionTab from '@/components/SuperAdminConsumptionTab';
+import SuperAdminTenantsTab from '@/components/SuperAdminTenantsTab';
 import { Navigate } from 'react-router-dom';
 import { useSuperAdminData, FinancialProjection } from '@/hooks/useSuperAdminData';
 import { useGlobalMetrics, GlobalMetric, UsageCostReconciled } from '@/hooks/useGlobalMetrics';
