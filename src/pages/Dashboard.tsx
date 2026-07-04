@@ -630,31 +630,31 @@ export default function Dashboard() {
               <div
                 className="rounded-2xl p-5 relative overflow-hidden"
                 style={{
-                  background: 'linear-gradient(135deg, hsl(172 65% 36%) 0%, hsl(200 70% 32%) 100%)',
-                  boxShadow: '0 8px 32px -8px rgba(20,184,166,0.5)',
+                  background: 'linear-gradient(135deg, var(--rx-brand-strong) 0%, var(--rx-brand2) 100%)',
+                  boxShadow: 'var(--rx-shadow-glow)',
+                  color: 'var(--primary-foreground)',
                 }}
               >
-                <div className="absolute -right-8 -top-8 w-32 h-32 rounded-full" style={{ background: 'rgba(255,255,255,0.08)' }} />
+                <div className="absolute -right-8 -top-8 w-32 h-32 rounded-full" style={{ background: 'rgba(255,255,255,0.10)' }} />
                 <div className="absolute -right-4 -bottom-4 w-24 h-24 rounded-full" style={{ background: 'rgba(255,255,255,0.06)' }} />
                 <div className="relative z-10">
                   <div className="flex items-center gap-2 mb-4">
-                    <Activity size={15} className="text-white/80" />
-                    <span className="text-xs font-semibold text-white/80 uppercase tracking-wide">Actividad</span>
+                    <Activity size={15} style={{ opacity: 0.85 }} />
+                    <span className="text-[11px] font-bold uppercase tracking-[0.12em]" style={{ opacity: 0.85 }}>Actividad</span>
                   </div>
                   <div className="flex items-end gap-1 h-14 mb-3">
-                    {/* Mini bar chart — visual only */}
                     {[30, 55, 40, 80, 60, 95, stats.callsToday > 0 ? 100 : 45].map((h, i) => (
                       <div key={i} className="flex-1 rounded-t-sm" style={{
                         height: `${h}%`,
-                        background: i === 6 ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.25)',
+                        background: i === 6 ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.28)',
                         transition: 'height 0.8s cubic-bezier(.16,1,.3,1)',
                         transitionDelay: `${i * 60}ms`,
                       }} />
                     ))}
                   </div>
-                  <p className="text-white text-2xl font-extrabold">
+                  <p className="text-2xl font-extrabold" style={{ fontFamily: 'var(--rx-font-display)', letterSpacing: '-0.03em' }}>
                     {loading ? '—' : stats.callsToday + stats.openWA + stats.upcomingApts}
-                    <span className="text-sm font-medium text-white/60 ml-1.5">acciones hoy</span>
+                    <span className="text-sm font-medium ml-1.5" style={{ opacity: 0.72 }}>acciones hoy</span>
                   </p>
                 </div>
               </div>
@@ -667,22 +667,23 @@ export default function Dashboard() {
                   </h3>
                 </div>
                 {[
-                  { label: 'WhatsApp Inbox', to: '/whatsapp', icon: MessageSquare, color: 'text-green-500' },
-                  { label: 'Ver llamadas', to: '/calls', icon: Phone, color: 'text-blue-500' },
-                  { label: 'Proyectos', to: '/projects', icon: FolderKanban, color: 'text-violet-500' },
-                  { label: 'Analytics', to: '/analytics', icon: TrendingUp, color: 'text-amber-500' },
+                  { label: 'WhatsApp Inbox', to: '/whatsapp', icon: MessageSquare, color: 'var(--rx-emerald)' },
+                  { label: 'Ver llamadas',   to: '/calls',    icon: Phone,         color: 'var(--rx-sky)' },
+                  { label: 'Proyectos',      to: '/projects', icon: FolderKanban,  color: 'var(--rx-violet)' },
+                  { label: 'Analytics',      to: '/analytics',icon: TrendingUp,    color: 'var(--rx-amber)' },
                 ].map(item => (
                   <Link
                     key={item.to}
                     to={item.to}
-                    className="flex items-center gap-3 px-4 py-3 hover:bg-[var(--rx-s2)]/50 transition-colors group border-b border-[var(--rx-b1)] last:border-0"
+                    className="flex items-center gap-3 px-4 py-3 transition-colors group border-b border-[var(--rx-b1)] last:border-0 hover:bg-[var(--rx-hover)]"
                   >
-                    <item.icon size={15} className={item.color} />
+                    <item.icon size={15} style={{ color: item.color }} />
                     <span className="text-sm text-foreground flex-1">{item.label}</span>
-                    <ArrowRight size={12} className="text-[var(--rx-t2)]/40 group-hover:text-[var(--rx-t2)] group-hover:translate-x-0.5 transition-all" />
+                    <ArrowRight size={12} className="text-[var(--rx-t3)] group-hover:text-[var(--rx-t1)] group-hover:translate-x-0.5 transition-all" />
                   </Link>
                 ))}
               </div>
+
             </div>
           </div>
 
