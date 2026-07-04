@@ -91,6 +91,37 @@ export default function SuperAdminTenantsTab() {
 
   useEffect(() => { load(); }, [load]);
 
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from('subscription_plans').select('slug, name').order('price_monthly', { ascending: true, nullsFirst: false });
+      setPlans((data || []) as PlanOption[]);
+    })();
+  }, []);
+
+  const handleDeleteTenant = useCallback(async () => {
+    if (!deleteTarget) return;
+    if (deleteConfirmName.trim() !== deleteTarget.tenant_name) {
+      toast.error('El nombre no coincide');
+      return;
+    }
+    setDeleting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('admin-delete-tenant', {
+        body: { tenant_id: deleteTarget.tenant_id, confirm_name: deleteTarget.tenant_name },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      toast.success(`Tenant "${deleteTarget.tenant_name}" eliminado`);
+      setDeleteTarget(null);
+      setDeleteConfirmName('');
+      await load();
+    } catch (err: any) {
+      toast.error(err.message || 'Error al eliminar tenant');
+    } finally {
+      setDeleting(false);
+    }
+  }, [deleteTarget, deleteConfirmName, load]);
+
   const runAction = useCallback(async () => {
     if (!pending) return;
     const { tenant } = pending;
