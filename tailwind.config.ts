@@ -14,8 +14,8 @@ export default {
     },
     extend: {
       fontFamily: {
-        sans: ['Outfit', 'system-ui', 'sans-serif'],
-        display: ['Outfit', 'system-ui', 'sans-serif'],
+        sans: ['DM Sans', 'Outfit', 'system-ui', 'sans-serif'],
+        display: ['Syne', 'Outfit', 'system-ui', 'sans-serif'],
         mono: ["JetBrains Mono", "monospace"],
       },
       colors: {
