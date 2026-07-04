@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Plug, MessageSquare, CalendarDays, Brain, Shield, ExternalLink, CheckCircle2, Circle, X, Save, Phone, Loader2 } from 'lucide-react';
+import { Plug, MessageSquare, CalendarDays, Brain, Shield, ExternalLink, CheckCircle2, Circle, X, Save, Phone, Loader2, ShoppingCart } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import TwilioWizard from '@/components/TwilioWizard';
 import VoiceAgentWizard from '@/components/VoiceAgentWizard';
+import TenantNumberPurchaseWizard from '@/components/TenantNumberPurchaseWizard';
 
 const integrationsMeta = [
   {
@@ -55,6 +56,9 @@ const IntegrationsPage = () => {
   const [voiceAgentLoading, setVoiceAgentLoading] = useState(false);
   const [voiceDialogOpen, setVoiceDialogOpen] = useState(false);
   const [voiceCurrentNumber, setVoiceCurrentNumber] = useState('');
+  const [tenantPhoneNumber, setTenantPhoneNumber] = useState<string>('');
+  const [tenantCountry, setTenantCountry] = useState<string>('US');
+  const [purchaseWizardOpen, setPurchaseWizardOpen] = useState(false);
   const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-webhook`;
 
   const integrations = integrationsMeta.map(i => {
@@ -121,6 +125,7 @@ const IntegrationsPage = () => {
           }));
 
           const storedPhone = config.phone_number || '';
+          setTenantPhoneNumber(storedPhone ? String(storedPhone).replace(/^whatsapp:/i, '') : '');
           setTwilioConfig((prev) => ({
             ...prev,
             phoneNumber: storedPhone
@@ -129,6 +134,7 @@ const IntegrationsPage = () => {
           }));
         } else {
           setWaConnected(false);
+          setTenantPhoneNumber('');
         }
       }
 
@@ -304,6 +310,35 @@ const IntegrationsPage = () => {
         </h1>
         <p className="text-sm text-[var(--rx-t2)] mt-1">Conecta herramientas externas para potenciar tu espacio de trabajo.</p>
       </div>
+
+      {/* Phone number panel (tenant self-service purchase) */}
+      <div className="rx-panel mb-4 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
+        <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+          <Phone size={20} className="text-[var(--rx-brand)]" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <h3 className="text-sm font-semibold text-foreground">Número de teléfono</h3>
+          {tenantPhoneNumber ? (
+            <p className="text-xs text-[var(--rx-t2)] mt-0.5">
+              Asignado: <span className="font-mono text-foreground">{tenantPhoneNumber}</span>
+            </p>
+          ) : (
+            <p className="text-xs text-[var(--rx-t2)] mt-0.5">
+              Compra un número de teléfono para conectar WhatsApp o el Agente de Voz.
+            </p>
+          )}
+        </div>
+        {tenantPhoneNumber ? (
+          <span className="text-xs text-[var(--rx-emerald)] font-medium flex items-center gap-1">
+            <CheckCircle2 size={14} /> Listo
+          </span>
+        ) : (
+          <Button onClick={() => setPurchaseWizardOpen(true)} size="sm" className="gap-2">
+            <ShoppingCart size={14} /> Comprar número
+          </Button>
+        )}
+      </div>
+
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {integrations.map(int => (
@@ -569,6 +604,14 @@ const IntegrationsPage = () => {
           />
         </DialogContent>
       </Dialog>
+
+      {/* Tenant self-service number purchase wizard */}
+      <TenantNumberPurchaseWizard
+        open={purchaseWizardOpen}
+        onOpenChange={setPurchaseWizardOpen}
+        defaultCountry={tenantCountry}
+        onPurchased={async () => { await loadIntegrationStatus(); }}
+      />
     </div>
   );
 };

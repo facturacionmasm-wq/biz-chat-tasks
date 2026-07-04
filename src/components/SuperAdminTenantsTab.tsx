@@ -16,6 +16,7 @@ import { Loader2, RefreshCw, ShieldOff, ShieldCheck, Clock, CreditCard, Crown, P
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { TWILIO_COUNTRIES, getTwilioCountry, type TwilioNumberType } from '@/lib/twilio-countries';
 
 interface AdminTenantRow {
   tenant_id: string;
@@ -53,10 +54,14 @@ export default function SuperAdminTenantsTab() {
   // Twilio provisioning state
   const [provTenant, setProvTenant] = useState<AdminTenantRow | null>(null);
   const [provCountry, setProvCountry] = useState('US');
+  const [provType, setProvType] = useState<TwilioNumberType>('Local');
+  const [provCapSms, setProvCapSms] = useState(true);
+  const [provCapVoice, setProvCapVoice] = useState(true);
+  const [provCapMms, setProvCapMms] = useState(false);
   const [provAreaCode, setProvAreaCode] = useState('');
   const [provListing, setProvListing] = useState(false);
   const [provPurchasing, setProvPurchasing] = useState(false);
-  const [provNumbers, setProvNumbers] = useState<Array<{ phone_number: string; friendly_name: string; locality?: string; region?: string }>>([]);
+  const [provNumbers, setProvNumbers] = useState<Array<{ phone_number: string; friendly_name: string; locality?: string; region?: string; capabilities?: Record<string, boolean> }>>([]);
   const [provSelected, setProvSelected] = useState<string | null>(null);
   const [provConfirm, setProvConfirm] = useState(false);
 
@@ -116,11 +121,23 @@ export default function SuperAdminTenantsTab() {
   const openProvision = useCallback((t: AdminTenantRow) => {
     setProvTenant(t);
     setProvCountry('US');
+    setProvType('Local');
+    setProvCapSms(true);
+    setProvCapVoice(true);
+    setProvCapMms(false);
     setProvAreaCode('');
     setProvNumbers([]);
     setProvSelected(null);
     setProvConfirm(false);
   }, []);
+
+  const buildCapabilities = useCallback(() => {
+    const caps: string[] = [];
+    if (provCapSms) caps.push('SMS');
+    if (provCapVoice) caps.push('Voice');
+    if (provCapMms) caps.push('MMS');
+    return caps;
+  }, [provCapSms, provCapVoice, provCapMms]);
 
   const listAvailable = useCallback(async () => {
     if (!provTenant) return;
@@ -133,6 +150,8 @@ export default function SuperAdminTenantsTab() {
           tenant_id: provTenant.tenant_id,
           country_code: provCountry.trim().toUpperCase() || undefined,
           areaCode: provAreaCode.trim() || undefined,
+          type: provType,
+          capabilities: buildCapabilities(),
           dryRun: true,
         },
       });
@@ -146,7 +165,7 @@ export default function SuperAdminTenantsTab() {
     } finally {
       setProvListing(false);
     }
-  }, [provTenant, provCountry, provAreaCode]);
+  }, [provTenant, provCountry, provAreaCode, provType, buildCapabilities]);
 
   const purchaseSelected = useCallback(async () => {
     if (!provTenant || !provSelected) return;
@@ -157,6 +176,7 @@ export default function SuperAdminTenantsTab() {
           tenant_id: provTenant.tenant_id,
           country_code: provCountry.trim().toUpperCase() || undefined,
           phoneNumber: provSelected,
+          type: provType,
           dryRun: false,
         },
       });
@@ -172,7 +192,7 @@ export default function SuperAdminTenantsTab() {
     } finally {
       setProvPurchasing(false);
     }
-  }, [provTenant, provSelected, provCountry, load]);
+  }, [provTenant, provSelected, provCountry, provType, load]);
 
 
 
@@ -330,19 +350,51 @@ export default function SuperAdminTenantsTab() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="flex flex-wrap items-end gap-2 mb-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
             <div>
-              <label className="text-xs text-[var(--rx-t2)] block mb-1">País (ISO)</label>
-              <Input value={provCountry} onChange={e => setProvCountry(e.target.value)} className="h-8 w-20 uppercase" maxLength={2} />
+              <label className="text-xs text-[var(--rx-t2)] block mb-1">País</label>
+              <Select value={provCountry} onValueChange={(v) => { setProvCountry(v); const c = getTwilioCountry(v); if (c && !c.types.includes(provType)) setProvType(c.types[0]); }}>
+                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                <SelectContent className="max-h-72">
+                  {TWILIO_COUNTRIES.map((c) => (
+                    <SelectItem key={c.code} value={c.code}>
+                      {c.flag} {c.name} ({c.code}){c.requiresBundle ? ' ⚠️' : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div>
-              <label className="text-xs text-[var(--rx-t2)] block mb-1">Área (opcional)</label>
-              <Input value={provAreaCode} onChange={e => setProvAreaCode(e.target.value)} className="h-8 w-24" placeholder="415" />
+              <label className="text-xs text-[var(--rx-t2)] block mb-1">Tipo</label>
+              <Select value={provType} onValueChange={(v) => setProvType(v as TwilioNumberType)}>
+                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {(getTwilioCountry(provCountry)?.types || ['Local', 'Mobile', 'TollFree']).map((t) => (
+                    <SelectItem key={t} value={t}>{t}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-            <Button size="sm" onClick={listAvailable} disabled={provListing} className="h-8 gap-2">
-              {provListing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-              Listar disponibles
-            </Button>
+            <div>
+              <label className="text-xs text-[var(--rx-t2)] block mb-1">Área / prefijo</label>
+              <Input value={provAreaCode} onChange={e => setProvAreaCode(e.target.value)} className="h-9" placeholder="415" />
+            </div>
+            <div className="flex items-end">
+              <Button size="sm" onClick={listAvailable} disabled={provListing} className="h-9 w-full gap-2">
+                {provListing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                Listar
+              </Button>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-3 text-xs text-[var(--rx-t2)] mb-3">
+            <span className="font-medium text-foreground">Capacidades:</span>
+            <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={provCapSms} onChange={(e) => setProvCapSms(e.target.checked)} /> SMS</label>
+            <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={provCapVoice} onChange={(e) => setProvCapVoice(e.target.checked)} /> Voice</label>
+            <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={provCapMms} onChange={(e) => setProvCapMms(e.target.checked)} /> MMS</label>
+            {getTwilioCountry(provCountry)?.requiresBundle && (
+              <span className="text-[var(--rx-amber)] ml-auto">⚠️ Este país requiere Regulatory Bundle en Twilio.</span>
+            )}
           </div>
 
           <div className="max-h-72 overflow-y-auto border border-[var(--rx-b1)] rounded-lg">
@@ -350,24 +402,32 @@ export default function SuperAdminTenantsTab() {
               <p className="text-sm text-[var(--rx-t2)] text-center py-8">Sin resultados. Lista los disponibles para elegir uno.</p>
             ) : (
               <ul className="divide-y divide-[var(--rx-b1)]">
-                {provNumbers.map(n => (
-                  <li key={n.phone_number}>
-                    <label className="flex items-center gap-3 p-2 px-3 hover:bg-[var(--rx-s2)]/40 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="prov-number"
-                        checked={provSelected === n.phone_number}
-                        onChange={() => setProvSelected(n.phone_number)}
-                      />
-                      <div className="flex-1 min-w-0">
-                        <div className="font-mono text-sm text-foreground">{n.phone_number}</div>
-                        <div className="text-xs text-[var(--rx-t2)] truncate">
-                          {n.friendly_name}{n.locality ? ` · ${n.locality}` : ''}{n.region ? `, ${n.region}` : ''}
+                {provNumbers.map(n => {
+                  const caps = n.capabilities || {};
+                  return (
+                    <li key={n.phone_number}>
+                      <label className="flex items-center gap-3 p-2 px-3 hover:bg-[var(--rx-s2)]/40 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="prov-number"
+                          checked={provSelected === n.phone_number}
+                          onChange={() => setProvSelected(n.phone_number)}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="font-mono text-sm text-foreground">{n.phone_number}</div>
+                          <div className="text-xs text-[var(--rx-t2)] truncate">
+                            {n.friendly_name}{n.locality ? ` · ${n.locality}` : ''}{n.region ? `, ${n.region}` : ''}
+                          </div>
                         </div>
-                      </div>
-                    </label>
-                  </li>
-                ))}
+                        <div className="flex gap-1 shrink-0">
+                          {(caps as any).SMS && <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--rx-s2)]/60">SMS</span>}
+                          {(caps as any).voice && <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--rx-s2)]/60">Voice</span>}
+                          {(caps as any).MMS && <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--rx-s2)]/60">MMS</span>}
+                        </div>
+                      </label>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </div>
