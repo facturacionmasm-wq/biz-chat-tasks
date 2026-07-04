@@ -117,3 +117,15 @@ verify_jwt = false
 [functions.twilio-provision-number]
 verify_jwt = false
 
+[functions.tenant-provision-number]
+verify_jwt = true
+
+[functions.twilio-verify-caller-id]
+verify_jwt = true
+
+[functions.byon-request]
+verify_jwt = true
+
+[functions.byon-request-admin]
+verify_jwt = true
+
