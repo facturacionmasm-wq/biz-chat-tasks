@@ -180,6 +180,56 @@ async function executeScheduleAppointment(
     return JSON.stringify({ error: 'La hora de fin debe ser posterior a la hora de inicio.' });
   }
 
+  // ─── Validate against availability_rules (working hours) ───
+  const [dY, dM, dD] = String(date).split('-').map(Number);
+  const localDow = new Date(Date.UTC(dY, (dM || 1) - 1, dD || 1)).getUTCDay();
+  const [tH, tM] = String(time).split(':').map(Number);
+  const slotStartMin = (tH || 0) * 60 + (tM || 0);
+  const slotEndMin = slotStartMin + 30;
+
+  let rulesQ = supabase
+    .from('availability_rules')
+    .select('user_id, start_time, end_time, max_appointments')
+    .eq('tenant_id', tenantId)
+    .eq('day_of_week', localDow)
+    .eq('active', true);
+  if (employeeId) rulesQ = rulesQ.eq('user_id', employeeId);
+  const { data: dayRules } = await rulesQ;
+
+  const covering = (dayRules || []).filter((r: any) => {
+    const [sH, sM] = String(r.start_time).split(':').map(Number);
+    const [eH, eM] = String(r.end_time).split(':').map(Number);
+    const rs = sH * 60 + sM;
+    const re = eH * 60 + eM;
+    return slotStartMin >= rs && slotEndMin <= re;
+  });
+
+  if (!dayRules || dayRules.length === 0 || covering.length === 0) {
+    const dayName = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'][localDow];
+    return JSON.stringify({
+      error: `Horario fuera del horario laboral configurado${employee_name ? ` para ${employee_name}` : ''}. No hay reglas de disponibilidad que cubran ${dayName} a las ${time}. Usa check_availability para ver los horarios disponibles y ofrécelos al contacto antes de confirmar.`,
+      out_of_business_hours: true,
+    });
+  }
+
+  // Overlap check with existing appointments (same employee if assigned, else tenant-wide)
+  let overlapQ = supabase
+    .from('appointments')
+    .select('id, start_at, end_at, user_id')
+    .eq('tenant_id', tenantId)
+    .lt('start_at', endAt.toISOString())
+    .gt('end_at', startAt.toISOString())
+    .neq('status', 'cancelled')
+    .is('deleted_at', null);
+  if (employeeId) overlapQ = overlapQ.eq('user_id', employeeId);
+  const { data: overlaps } = await overlapQ;
+  if (overlaps && overlaps.length > 0) {
+    return JSON.stringify({
+      error: `Ya existe una cita en ese horario${employee_name ? ` con ${employee_name}` : ''}. Ofrece otro slot al contacto (usa check_availability).`,
+      slot_taken: true,
+    });
+  }
+
   // Build idempotency key
   const assignedUser = employeeId || userId || 'unassigned';
   const idempotencyKey = `${tenantId}:${contact_name}:${startAt.toISOString()}:${service_type || 'General'}:${assignedUser}`;
