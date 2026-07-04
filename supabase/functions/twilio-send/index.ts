@@ -149,11 +149,9 @@ serve(async (req) => {
       );
     }
 
-    const finalTenantId = effectiveTenantId || "00000000-0000-0000-0000-000000000001";
-
     if (conversationId) {
       await supabase.from("whatsapp_messages").insert({
-        tenant_id: finalTenantId,
+        tenant_id: effectiveTenantId,
         conversation_id: conversationId,
         direction: "out",
         body: body,
