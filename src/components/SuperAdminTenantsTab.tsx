@@ -197,6 +197,8 @@ export default function SuperAdminTenantsTab() {
 
 
   return (
+    <div className="space-y-4">
+    <SuperAdminByonRequests />
     <div className="rx-panel">
       <div className="flex items-center justify-between mb-4">
         <h3 className="font-semibold text-foreground flex items-center gap-2">
