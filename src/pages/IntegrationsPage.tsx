@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Plug, MessageSquare, CalendarDays, Brain, Shield, ExternalLink, CheckCircle2, Circle, X, Save, Phone, Loader2, ShoppingCart, Smartphone } from 'lucide-react';
+import { Plug, MessageSquare, CalendarDays, Brain, Shield, ExternalLink, CheckCircle2, Circle, X, Save, Phone, Loader2, ShoppingCart, Smartphone, Link2, Copy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
@@ -61,6 +61,12 @@ const IntegrationsPage = () => {
   const [tenantCountry, setTenantCountry] = useState<string>('US');
   const [purchaseWizardOpen, setPurchaseWizardOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'integrations' | 'byon'>('integrations');
+  const [calcomDialogOpen, setCalcomDialogOpen] = useState(false);
+  const [calcomConnected, setCalcomConnected] = useState(false);
+  const [calcomWebhookUrl, setCalcomWebhookUrl] = useState('');
+  const [calcomLastSync, setCalcomLastSync] = useState<string | null>(null);
+  const [calcomApiKey, setCalcomApiKey] = useState('');
+  const [calcomSaving, setCalcomSaving] = useState(false);
   const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-webhook`;
 
   const integrations = integrationsMeta.map(i => {
@@ -148,6 +154,16 @@ const IntegrationsPage = () => {
         setVoiceAgentConnected(Boolean(voiceData?.configured));
         setVoiceCurrentNumber(voiceData?.phone_number || '');
       }
+
+      // Cal.com status
+      try {
+        const { data: cc } = await supabase.functions.invoke('calcom-sync', { body: { action: 'status' } });
+        if (cc && !cc.error) {
+          setCalcomConnected(Boolean(cc.connected));
+          setCalcomWebhookUrl(cc.webhook_url || '');
+          setCalcomLastSync(cc.integration?.last_sync_at || null);
+        }
+      } catch {}
     } catch (error) {
       console.error('Error loading integration status:', error);
     }
@@ -303,6 +319,52 @@ const IntegrationsPage = () => {
     }
   };
 
+  const handleConnectCalcom = async () => {
+    if (!calcomApiKey.trim()) { toast.error('Pega tu API key de Cal.com'); return; }
+    setCalcomSaving(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('calcom-sync', {
+        body: { action: 'connect', api_key: calcomApiKey.trim() },
+      });
+      if (error || data?.error) throw new Error(data?.error || error?.message || 'Error');
+      toast.success(data?.webhook_registered ? 'Cal.com conectado y webhook registrado' : 'Cal.com conectado. Registra el webhook manualmente si es necesario.');
+      setCalcomApiKey('');
+      setCalcomDialogOpen(false);
+      await loadIntegrationStatus();
+    } catch (err: any) {
+      toast.error(err?.message || 'Error al conectar Cal.com');
+    } finally {
+      setCalcomSaving(false);
+    }
+  };
+
+  const handleDisconnectCalcom = async () => {
+    if (!confirm('¿Desconectar Cal.com? Se eliminará el webhook de tu cuenta.')) return;
+    try {
+      await supabase.functions.invoke('calcom-sync', { body: { action: 'disconnect' } });
+      toast.success('Cal.com desconectado');
+      setCalcomConnected(false);
+      await loadIntegrationStatus();
+    } catch (err: any) {
+      toast.error(err?.message || 'Error al desconectar');
+    }
+  };
+
+  const handlePullCalcomBookings = async () => {
+    try {
+      toast.info('Sincronizando reservas...');
+      const { data, error } = await supabase.functions.invoke('calcom-sync', { body: { action: 'pull_bookings' } });
+      if (error || data?.error) throw new Error(data?.error || error?.message);
+      toast.success(`Sincronizadas: ${data.created} nuevas, ${data.updated} actualizadas`);
+      await loadIntegrationStatus();
+    } catch (err: any) {
+      toast.error(err?.message || 'Error al sincronizar');
+    }
+  };
+
+
+
+
 
   return (
     <div className="rx-page">
@@ -410,6 +472,45 @@ const IntegrationsPage = () => {
             </div>
           </div>
         ))}
+      </div>
+
+      {/* Cal.com panel */}
+      <div className="mt-8 bg-card border border-[var(--rx-b1)] rounded-xl p-6 shadow-sm">
+        <div className="flex items-start justify-between gap-4 mb-3 flex-wrap">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+              <Link2 size={20} className="text-[var(--rx-brand)]" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-foreground">Cal.com</h2>
+              <p className="text-xs text-[var(--rx-t2)]">Recibe reservas de Cal.com directamente en tu agenda</p>
+            </div>
+          </div>
+          {calcomConnected ? (
+            <span className="flex items-center gap-1 text-xs text-[var(--rx-emerald)] font-medium"><CheckCircle2 size={12} /> Conectado</span>
+          ) : (
+            <span className="flex items-center gap-1 text-xs text-[var(--rx-t2)]"><Circle size={12} /> Desconectado</span>
+          )}
+        </div>
+        {calcomConnected && calcomLastSync && (
+          <p className="text-xs text-[var(--rx-t2)] mb-3">Última sincronización: {new Date(calcomLastSync).toLocaleString('es-MX')}</p>
+        )}
+        <div className="flex items-center gap-2 flex-wrap">
+          {calcomConnected ? (
+            <>
+              <button onClick={handlePullCalcomBookings} className="text-xs font-medium px-4 py-2 rounded-lg bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground hover:opacity-90">
+                Sincronizar reservas ahora
+              </button>
+              <button onClick={handleDisconnectCalcom} className="text-xs font-medium px-3 py-2 rounded-lg border border-destructive/30 text-[var(--rx-rose)] hover:bg-destructive/10 flex items-center gap-1.5">
+                <X size={12} /> Desconectar
+              </button>
+            </>
+          ) : (
+            <button onClick={() => setCalcomDialogOpen(true)} className="text-xs font-medium px-4 py-2 rounded-lg bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground hover:opacity-90 flex items-center gap-1.5">
+              Conectar Cal.com <ExternalLink size={12} />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Voice Agent Info */}
@@ -639,6 +740,52 @@ const IntegrationsPage = () => {
         defaultCountry={tenantCountry}
         onPurchased={async () => { await loadIntegrationStatus(); }}
       />
+
+      {/* Cal.com Connect Dialog */}
+      <Dialog open={calcomDialogOpen} onOpenChange={setCalcomDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Link2 size={18} className="text-[var(--rx-brand)]" /> Conectar Cal.com
+            </DialogTitle>
+            <DialogDescription>
+              Pega tu API key personal de Cal.com. Registraremos automáticamente el webhook para que cada reserva llegue a tu agenda.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs font-semibold text-foreground mb-1 block">API Key</label>
+              <input
+                type="password"
+                value={calcomApiKey}
+                onChange={e => setCalcomApiKey(e.target.value)}
+                placeholder="cal_live_..."
+                className="w-full text-sm border border-[var(--rx-b1)] rounded-lg px-3 py-2 bg-background text-foreground"
+              />
+              <p className="text-[11px] text-[var(--rx-t2)] mt-1">
+                Genera tu API key en cal.com → Settings → Developer → API Keys.
+              </p>
+            </div>
+            <div className="bg-[var(--rx-s2)]/40 rounded-lg p-3">
+              <p className="text-[11px] font-semibold text-foreground mb-1">Webhook URL (por si necesitas configurarlo manualmente)</p>
+              <div className="flex items-center gap-2">
+                <code className="text-[10px] font-mono text-[var(--rx-t2)] break-all flex-1">{calcomWebhookUrl || 'Se generará al conectar'}</code>
+                {calcomWebhookUrl && (
+                  <button onClick={() => { navigator.clipboard.writeText(calcomWebhookUrl); toast.success('Copiado'); }} className="shrink-0 text-[var(--rx-t2)] hover:text-foreground">
+                    <Copy size={14} />
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setCalcomDialogOpen(false)} className="text-xs font-medium px-3 py-2 rounded-lg text-[var(--rx-t2)] hover:bg-[var(--rx-s2)]">Cancelar</button>
+              <button onClick={handleConnectCalcom} disabled={calcomSaving} className="text-xs font-medium px-4 py-2 rounded-lg bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground hover:opacity-90 flex items-center gap-1.5 disabled:opacity-50">
+                {calcomSaving ? <><Loader2 size={12} className="animate-spin" /> Conectando...</> : <><Save size={12} /> Conectar</>}
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

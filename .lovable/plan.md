@@ -1,76 +1,68 @@
+# Plan: Sincronización bidireccional Google Calendar + Cal.com
 
-Se agregan tres cambios sin tocar los flujos ya funcionales de voz, WhatsApp, ni el cobro por uso actual.
+## 1. Google Calendar (pull cada 10 min)
 
-## 1. Cobro mensual del número telefónico
+**Nueva acción `pull_events` en `calendar-sync`**
+- Recorre todas las filas de `google_calendar_tokens` con `status='active'`.
+- Para cada empleado: llama `GET /calendars/{calendar_id}/events?updatedMin=<último_pull>&singleEvents=true`.
+- Refresca token si expira en <5 min (lógica existente).
+- Por cada evento devuelto:
+  - Ignora los que tengan `description` con `ID: <uuid>` que ya exista en `appointments` (evita eco de eventos creados por la app).
+  - Si ya existe una fila con `calendar_event_id=<evento.id>`, hace `UPDATE` de fechas / status.
+  - Si no existe, hace `INSERT` con `source='google_calendar'`, `user_id=<empleado>`, `tenant_id`, `calendar_event_id=<evento.id>`, `calendar_sync_status='SYNCED'`, `contact_name=<summary>`, `start_at/end_at` normalizados a UTC.
+  - Si el evento viene como `status=cancelled`, marca `status='cancelled'` en la cita.
+- Guarda el nuevo watermark en una columna `last_pull_at` que agregamos a `google_calendar_tokens`.
 
-### Base de datos
-Migración sobre `tenant_phone_numbers`:
-- `monthly_fee numeric(10,2) NOT NULL DEFAULT 0`
-- `currency text NOT NULL DEFAULT 'USD'`
-- `billing_status text NOT NULL DEFAULT 'pending'` (`pending | active | past_due | canceled`)
-- `stripe_subscription_item_id text`
-- `source text` (`twilio_purchase | byon_hosted | byon_portin | byon_verified_id`)
-- `activated_at`, `canceled_at`, `next_billing_at timestamptz`
+**Cron nuevo** (`pg_cron`) cada 10 min llamando a `calendar-sync` con `{action:'pull_events'}`.
 
-Nueva tabla `phone_number_pricing` (catálogo editable por super_admin): `country_code`, `number_type`, `source`, `monthly_fee`, `currency`, `active`.
+**Sin auto-asignación**: las citas de Voice/WhatsApp sin `user_id` se dejan `PENDING_SYNC` (según respuesta). Añado un badge/filtro en `AppointmentsPage` para verlas y asignarlas manualmente desde un dropdown de empleados.
 
-Nueva tabla `phone_number_invoices`: `tenant_id`, `phone_number_id`, `period_start/end`, `amount`, `currency`, `stripe_invoice_id`, `status`. Con RLS: tenant lee lo suyo, super_admin todo, service_role total, más GRANTs estándar.
+## 2. Cal.com (por tenant con API key + webhook)
 
-### Stripe (`supabase/functions/stripe-billing/index.ts`)
-Nuevas acciones:
-- `create_number_subscription` — crea/actualiza Subscription con un `subscription_item` por número (price recurring mensual desde `phone_number_pricing`). Prorratea el primer mes.
-- `cancel_number_subscription` — cancela el item al liberar el número.
-- `list_number_invoices` — para el dash.
+**Migración nueva**: tabla `calcom_integrations`
+- `id`, `tenant_id`, `user_id` (quien conectó), `api_key_encrypted` (AES-GCM con `CREDENTIALS_ENCRYPTION_KEY`), `webhook_secret`, `default_event_type_id`, `status`, `last_sync_at`, `created_at/updated_at`.
+- RLS: `authenticated` puede ver/gestionar solo su tenant vía `has_tenant_role`; `service_role` acceso total.
+- GRANTs correspondientes.
 
-En `stripe-webhook`: manejar `invoice.paid`, `invoice.payment_failed`, `customer.subscription.updated` → actualizar `billing_status` y poblar `phone_number_invoices`.
+**Edge function `calcom-webhook`** (público, `verify_jwt=false`)
+- Recibe payloads `BOOKING_CREATED`, `BOOKING_RESCHEDULED`, `BOOKING_CANCELLED`.
+- Valida `X-Cal-Signature-256` (HMAC-SHA256 con `webhook_secret` de la fila `calcom_integrations`).
+- Busca tenant por header `X-Tenant-Id` (URL parametrizada: `/functions/v1/calcom-webhook?tenant_id=<uuid>`).
+- Upsert en `appointments` con `source='calcom'`, `calendar_event_id=<booking.uid>`, contacto y horario del payload.
+- Log en `webhook_logs`.
 
-### Puntos de integración
-- `tenant-provision-number`: tras insertar el número, buscar tarifa y llamar `create_number_subscription`. Si falla → rollback en Twilio.
-- `byon-request-admin` al pasar a `completed`: mismo flujo, tarifa según `source`.
-- `twilio-verify-caller-id` y Meta WhatsApp: `monthly_fee = 0`, sin suscripción.
+**Edge function `calcom-sync`** (autenticada)
+- Acciones: `connect` (guarda API key encriptada + genera webhook_secret + registra webhook via API Cal.com `POST /webhooks`), `disconnect`, `pull_bookings` (opcional, para poblar histórico).
 
-### UI tenant (`UsagePage.tsx` / `BillingSection.tsx`)
-Sección **Números activos** con tabla: número, país, tipo, origen, renta, estado, próximo cobro, botón "Cancelar número". Debajo, historial de `phone_number_invoices` con enlace al PDF Stripe. Modal de confirmación de cargo mensual antes de comprar/migrar.
+**UI en `IntegrationsPage`**: nueva tarjeta "Cal.com" con wizard de 2 pasos (pegar API key → mostrar URL de webhook auto-generada). Estado de conexión leído de `calcom_integrations`.
 
-### UI super_admin (`SuperAdminTenantsTab.tsx`)
-Sub-tab **Precios de números**: CRUD sobre `phone_number_pricing` y vista de todos los `tenant_phone_numbers` con `billing_status`.
+## 3. Detalles técnicos
 
-## 2. Botón para que el tenant elimine personal libremente
+- **Anti-eco Google**: cuando la app crea un evento en Google, ya guarda `ID: <uuid>` en la descripción. Al hacer pull, si el evento tiene ese marcador y el uuid ya está en `appointments.id`, lo saltamos.
+- **Cal.com API base**: `https://api.cal.com/v2`; auth `Authorization: Bearer <api_key>`.
+- **Encriptación API key**: reutilizo helper AES-GCM del vault de credenciales existente.
+- **Cron**: SQL vía `supabase--insert` (no migración) porque contiene el anon key del proyecto.
 
-- En la pantalla actual de equipo (Settings → People o similar) agregar un botón "Eliminar" por miembro visible para `owner` y `admin` del tenant.
-- Confirmación modal ("¿Eliminar a X del workspace?").
-- Extender `supabase/functions/team-management/index.ts` con acción `remove_member` que:
-  - Valida que el actor sea `owner`/`admin`/`super_admin` del mismo tenant.
-  - Nunca permite eliminarse a uno mismo si es el único `owner` (bloqueo lógico).
-  - Elimina filas en `user_roles` y `profiles` para ese `user_id` dentro del tenant.
-  - Cascada limpia tokens de Google Calendar (ya existe trigger).
-  - Registra en `audit_events` (`event_type: 'member_removed_by_tenant'`).
-- Sin tocar `invite-member` ni el flujo de aprobación existente.
+## 4. Archivos
 
-## 3. Sub-tab super admin: administración global de tenants
+**Migraciones**
+- `calcom_integrations` + policies + grants
+- `google_calendar_tokens` add `last_pull_at timestamptz`
 
-Nueva sub-tab en `SuperAdminTenantsTab.tsx` llamada **Tenants registrados**, con:
+**Edge functions**
+- Editar `supabase/functions/calendar-sync/index.ts` → añadir `pull_events`
+- Nueva `supabase/functions/calcom-webhook/index.ts`
+- Nueva `supabase/functions/calcom-sync/index.ts`
 
-- Tabla de todos los tenants usando el RPC ya existente `admin_list_tenants_with_subscription` (nombre, plan, estado, días de trial, bloqueado, master).
-- Acciones por fila:
-  - **Cambiar suscripción**: modal para `activate | set_trialing | extend_trial (días) | set_past_due | block` → usa el RPC ya existente `admin_manage_tenant_subscription`.
-  - **Cambiar plan**: dropdown con `subscription_plans` → nueva acción en el RPC (`change_plan`) que actualiza `tenant_subscriptions.plan_id`, registra en `plan_change_history` y en `audit_events`.
-  - **Eliminar tenant**: nueva Edge Function `admin-delete-tenant` (JWT + role check `super_admin`) que:
-    - Bloquea el master tenant (`00000000-0000-0000-0000-000000000001`).
-    - En transacción: cancela Stripe Subscriptions/Items del tenant, borra `user_roles`, `profiles`, `tenants` (cascada configurada donde aplica). Datos ya con `deleted_at` se marcan; el resto se elimina.
-    - Registra `audit_events` (`event_type: 'tenant_deleted'`) con payload de recuento por tabla afectada.
-    - Confirmación en UI con doble input (escribir el nombre del tenant).
-- Buscador por nombre/plan/estado y filtros por estado de suscripción.
+**Frontend**
+- `src/pages/IntegrationsPage.tsx` → tarjeta Cal.com + wizard
+- `src/pages/AppointmentsPage.tsx` → filtro "Sin asignar" + selector empleado inline
+- `src/pages/CalendarPage.tsx` → badge de origen (Google/Cal.com/App) por color
 
-## Detalles técnicos
+**Cron**
+- 1 nuevo job `cron.schedule('gcal-pull-10m', '*/10 * * * *', ...)`
 
-- Toda escritura sensible pasa por Edge Functions con `SUPABASE_SERVICE_ROLE_KEY` y validación de rol.
-- Se reutiliza el patrón existente `has_role`/`user_roles`.
-- No se modifican `whatsapp-*`, `elevenlabs-*`, `call-*`, `voice-*`, `usePaymentGate`, ni el wizard `TenantNumberPurchaseWizard` más allá del paso de confirmación de cargo mensual.
-- Todas las tablas nuevas incluyen GRANTs + RLS.
-
-## Fuera de alcance
-
-- Descuentos por volumen o packs multi-número.
-- Reembolsos automáticos por cancelación a mitad de mes (manual por super_admin).
-- Undo/soft-delete de tenants: la eliminación es definitiva y auditada.
+## 5. Fuera de alcance
+- OAuth propio de Cal.com (usamos API keys personales del usuario)
+- Webhooks push de Google Calendar
+- Auto-asignación de empleado a citas huérfanas
