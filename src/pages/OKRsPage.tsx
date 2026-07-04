@@ -148,7 +148,7 @@ const OKRsPage = () => {
     try {
       const { error } = await supabase
         .from('projects')
-        .update({ deleted_at: new Date().toISOString(), status: 'archived' })
+        .delete()
         .eq('id', id)
         .eq('tenant_id', tenantId);
       if (error) throw error;
