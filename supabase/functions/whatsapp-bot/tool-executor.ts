@@ -314,6 +314,73 @@ async function executeScheduleAppointment(
     }
   }
 
+  // ─── Push booking to Cal.com if the tenant has an active integration ───
+  let calcomPushed = false;
+  try {
+    const { data: calcomInteg } = await supabase
+      .from('calcom_integrations')
+      .select('api_key_encrypted, default_event_type_id, status')
+      .eq('tenant_id', tenantId)
+      .eq('status', 'active')
+      .maybeSingle();
+
+    if (calcomInteg?.api_key_encrypted && calcomInteg?.default_event_type_id) {
+      // Decrypt API key inline (mirrors calcom-sync helper)
+      const secret = Deno.env.get('CREDENTIALS_ENCRYPTION_KEY');
+      if (secret) {
+        const enc = new TextEncoder();
+        const km = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'PBKDF2' }, false, ['deriveKey']);
+        const key = await crypto.subtle.deriveKey(
+          { name: 'PBKDF2', salt: enc.encode('credential-vault-salt-v1'), iterations: 100000, hash: 'SHA-256' },
+          km, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'],
+        );
+        let apiKey = calcomInteg.api_key_encrypted as string;
+        if (apiKey.startsWith('enc:')) {
+          const [, ivB64, ctB64] = apiKey.split(':');
+          const iv = Uint8Array.from(atob(ivB64), c => c.charCodeAt(0));
+          const ct = Uint8Array.from(atob(ctB64), c => c.charCodeAt(0));
+          const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
+          apiKey = new TextDecoder().decode(pt);
+        }
+
+        const attendeeEmail = contact_email || `${String(contact_phone || cPhone || contactPhone || 'contact').replace(/[^0-9]/g,'')}@wa.local`;
+        const bookRes = await fetch('https://api.cal.com/v2/bookings', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+            'cal-api-version': '2024-08-13',
+          },
+          body: JSON.stringify({
+            eventTypeId: Number(calcomInteg.default_event_type_id),
+            start: startAt.toISOString(),
+            attendee: {
+              name: contact_name,
+              email: attendeeEmail,
+              timeZone: tz,
+              language: 'es',
+            },
+            metadata: { source: 'whatsapp', appointment_id: apt.id },
+          }),
+        });
+        if (bookRes.ok) {
+          const bookData = await bookRes.json();
+          const calcomUid = bookData?.data?.uid || bookData?.uid || null;
+          calcomPushed = true;
+          if (calcomUid) {
+            await supabase.from('appointments')
+              .update({ calendar_event_id: `calcom:${calcomUid}`, calendar_sync_status: 'SYNCED' })
+              .eq('id', apt.id);
+          }
+        } else {
+          console.warn('[APPT] Cal.com push failed:', bookRes.status, (await bookRes.text()).slice(0, 200));
+        }
+      }
+    }
+  } catch (calcomErr) {
+    console.error('[APPT] Cal.com push error:', calcomErr);
+  }
+
   // === SEND CONFIRMATION TO CONTACT & SCHEDULE REMINDERS ===
   const finalContactPhone = cPhone || contactPhone || null;
   const { data: tenantInfo } = await supabase.from('tenants').select('name').eq('id', tenantId).single();
