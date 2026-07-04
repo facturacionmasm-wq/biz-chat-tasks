@@ -16,6 +16,7 @@ import { Loader2, RefreshCw, ShieldOff, ShieldCheck, Clock, CreditCard, Crown, P
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { TWILIO_COUNTRIES, getTwilioCountry, type TwilioNumberType } from '@/lib/twilio-countries';
 
 interface AdminTenantRow {
   tenant_id: string;
@@ -53,10 +54,14 @@ export default function SuperAdminTenantsTab() {
   // Twilio provisioning state
   const [provTenant, setProvTenant] = useState<AdminTenantRow | null>(null);
   const [provCountry, setProvCountry] = useState('US');
+  const [provType, setProvType] = useState<TwilioNumberType>('Local');
+  const [provCapSms, setProvCapSms] = useState(true);
+  const [provCapVoice, setProvCapVoice] = useState(true);
+  const [provCapMms, setProvCapMms] = useState(false);
   const [provAreaCode, setProvAreaCode] = useState('');
   const [provListing, setProvListing] = useState(false);
   const [provPurchasing, setProvPurchasing] = useState(false);
-  const [provNumbers, setProvNumbers] = useState<Array<{ phone_number: string; friendly_name: string; locality?: string; region?: string }>>([]);
+  const [provNumbers, setProvNumbers] = useState<Array<{ phone_number: string; friendly_name: string; locality?: string; region?: string; capabilities?: Record<string, boolean> }>>([]);
   const [provSelected, setProvSelected] = useState<string | null>(null);
   const [provConfirm, setProvConfirm] = useState(false);
 
