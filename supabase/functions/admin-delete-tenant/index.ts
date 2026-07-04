@@ -86,33 +86,43 @@ serve(async (req) => {
       .eq("tenant_id", tenant_id);
     const userIds = (profileUsers || []).map((p: any) => p.user_id as string);
 
-    // Delete tenant (cascades via FK where configured)
+    // Some tenant-owned tables were created with restrictive foreign keys instead
+    // of ON DELETE CASCADE. Remove those rows first, then delete the tenant so
+    // regular cascade relationships can finish the cleanup.
+    const preTenantCleanupTables = [
+      "appointment_notifications",
+      "transfer_notifications",
+      "call_events",
+      "call_jobs",
+      "call_sessions",
+      "document_chunks",
+      "document_workflow_log",
+      "assistant_conversations",
+      "assistant_settings",
+      "contacts",
+      "document_memory",
+      "document_workflow_rules",
+      "expenses",
+      "google_calendar_tokens",
+      "push_subscriptions",
+      "reminders",
+      "shared_credentials",
+      "tenant_ltv_estimates",
+      "tenant_package_balances",
+      "usage_costs_reconciled",
+      "whatsapp_usage_events",
+    ];
+
+    for (const table of preTenantCleanupTables) {
+      const { error: cleanupErr } = await admin.from(table).delete().eq("tenant_id", tenant_id);
+      if (cleanupErr) {
+        console.error(`tenant cleanup failed on ${table}:`, cleanupErr.message);
+        return j({ error: `No se pudo limpiar ${table}: ${cleanupErr.message}` }, 500);
+      }
+    }
+
     const { error: delErr } = await admin.from("tenants").delete().eq("id", tenant_id);
     if (delErr) return j({ error: delErr.message }, 500);
-
-    // Best-effort cleanup for tables without FK cascade
-    const cleanupTables = [
-      "profiles",
-      "user_roles",
-      "tenant_subscriptions",
-      "tenant_phone_numbers",
-      "phone_number_invoices",
-      "stripe_customers",
-      "tenant_usage_monthly",
-      "tenant_package_balances",
-      "tenant_pricing_adjustments",
-      "tenant_rate_limits",
-      "tenant_churn_scores",
-      "tenant_ltv_estimates",
-      "tenant_offer_history",
-      "tenant_drive_settings",
-      "byon_requests",
-    ];
-    for (const t of cleanupTables) {
-      try {
-        await admin.from(t).delete().eq("tenant_id", tenant_id);
-      } catch (_) { /* table may not have tenant_id or already cascaded */ }
-    }
 
     // Delete auth users that belonged only to this tenant
     for (const uid of userIds) {

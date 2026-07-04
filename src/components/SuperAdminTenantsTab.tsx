@@ -279,10 +279,10 @@ export default function SuperAdminTenantsTab() {
                 const busy = busyId === t.tenant_id;
                 return (
                   <tr key={t.tenant_id} className="border-b border-[var(--rx-b1)]/50 align-top">
-                    <td className="py-3 px-3">
-                      <div className="flex items-center gap-1.5 font-medium text-foreground">
+                    <td className="py-3 px-3 min-w-[160px] max-w-[240px]">
+                      <div className="flex min-w-0 items-center gap-1.5 font-medium text-foreground">
                         {t.is_master && <Crown size={12} className="text-[var(--rx-amber)]" />}
-                        {t.tenant_name}
+                        <span className="min-w-0 break-words leading-snug">{t.tenant_name}</span>
                       </div>
                       <div className="text-[10px] text-[var(--rx-t2)] font-mono mt-0.5">{t.tenant_id.slice(0, 8)}…</div>
                     </td>
@@ -309,7 +309,7 @@ export default function SuperAdminTenantsTab() {
                             className="h-7 w-14 text-xs"
                           />
                           <Button
-                            size="sm" variant="outline" className="h-7 gap-1 text-xs"
+                            size="sm" variant="outline" className="min-h-7 gap-1 px-2 py-1 text-xs"
                             disabled={busy}
                             onClick={() => setPending({ kind: 'extend_trial', tenant: t, days: draft })}
                           >
@@ -333,7 +333,7 @@ export default function SuperAdminTenantsTab() {
 
                         {t.is_blocked ? (
                           <Button
-                            size="sm" variant="outline" className="h-7 gap-1 text-xs text-[var(--rx-emerald)]"
+                            size="sm" variant="outline" className="min-h-7 gap-1 px-2 py-1 text-xs text-[var(--rx-emerald)]"
                             disabled={busy}
                             onClick={() => setPending({ kind: 'activate', tenant: t })}
                           >
@@ -341,7 +341,7 @@ export default function SuperAdminTenantsTab() {
                           </Button>
                         ) : (
                           <Button
-                            size="sm" variant="outline" className="h-7 gap-1 text-xs text-[var(--rx-rose)]"
+                            size="sm" variant="outline" className="min-h-7 gap-1 px-2 py-1 text-xs text-[var(--rx-rose)]"
                             disabled={busy || t.is_master}
                             onClick={() => setPending({ kind: 'block', tenant: t })}
                           >
@@ -350,11 +350,11 @@ export default function SuperAdminTenantsTab() {
                         )}
 
                         <Button
-                          size="sm" variant="outline" className="h-7 gap-1 text-xs"
+                          size="sm" variant="outline" className="min-h-7 gap-1 px-2 py-1 text-xs"
                           disabled={busy}
                           onClick={() => openProvision(t)}
                         >
-                          <Phone size={12} /> Asignar número Twilio
+                          <Phone size={12} /> Twilio
                         </Button>
 
                         <Select
@@ -376,7 +376,7 @@ export default function SuperAdminTenantsTab() {
 
                         {!t.is_master && (
                           <Button
-                            size="sm" variant="outline" className="h-7 gap-1 text-xs text-[var(--rx-rose)]"
+                            size="sm" variant="outline" className="min-h-7 gap-1 px-2 py-1 text-xs text-[var(--rx-rose)]"
                             disabled={busy}
                             onClick={() => { setDeleteTarget(t); setDeleteConfirmName(''); }}
                           >
