@@ -62,7 +62,7 @@ const OKRsPage = () => {
 
       // Fetch OKRs — uses project_milestones as proxy if no okrs table exists,
       // or falls back to projects with type=okr. Adjust table name to your schema.
-      const { data: okrData, error } = await supabase
+      const { data: okrData, error } = await (supabase as any)
         .from('projects')
         .select(`
           id, name, description, status, created_at,
