@@ -226,11 +226,9 @@
   ::selection { background: var(--rx-brand-soft); color: var(--rx-t1); }
 
   /* ── Global overflow safety net ──
-     Applies to every shadcn primitive and generic markup so long strings
+     Applies to shadcn primitives and generic markup so long strings
      (emails, tenant names, URLs, ids) cannot burst their container. */
 
-  /* Flex items in the app never trap overflow */
-  [class*="flex"] > * { min-width: 0; }
 
   /* Text-holding compact primitives: keep their intrinsic width in flex rows,
      but if a very long string is passed cap it with ellipsis rather than
