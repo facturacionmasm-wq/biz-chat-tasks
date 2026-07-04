@@ -41,7 +41,7 @@ const CredentialsPage = () => {
 
     const { data, error } = await supabase
       .from('shared_credentials' as any)
-      .select('*')
+      .select('id, platform_name, username, notes, created_by, created_at')
       .eq('tenant_id', profile.tenant_id)
       .order('created_at', { ascending: false });
 
