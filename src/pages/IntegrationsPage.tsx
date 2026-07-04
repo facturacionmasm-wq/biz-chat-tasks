@@ -322,16 +322,40 @@ const IntegrationsPage = () => {
     }
   };
 
+  const handleLoadCalcomEventTypes = async () => {
+    if (!calcomApiKey.trim()) { toast.error('Pega tu API key de Cal.com primero'); return; }
+    setCalcomLoadingTypes(true);
+    setCalcomEventTypes([]);
+    setCalcomSelectedEventType('');
+    try {
+      const { data, error } = await supabase.functions.invoke('calcom-sync', {
+        body: { action: 'list_event_types', api_key: calcomApiKey.trim() },
+      });
+      if (error || data?.error) throw new Error(data?.error || error?.message || 'Error');
+      const types = Array.isArray(data?.event_types) ? data.event_types : [];
+      if (types.length === 0) { toast.error('No se encontraron tipos de evento en tu cuenta Cal.com'); return; }
+      setCalcomEventTypes(types);
+      toast.success(`${types.length} tipo(s) de evento encontrado(s)`);
+    } catch (err: any) {
+      toast.error(err?.message || 'Error al listar tipos de evento');
+    } finally {
+      setCalcomLoadingTypes(false);
+    }
+  };
+
   const handleConnectCalcom = async () => {
     if (!calcomApiKey.trim()) { toast.error('Pega tu API key de Cal.com'); return; }
+    if (!calcomSelectedEventType) { toast.error('Selecciona un tipo de evento por defecto'); return; }
     setCalcomSaving(true);
     try {
       const { data, error } = await supabase.functions.invoke('calcom-sync', {
-        body: { action: 'connect', api_key: calcomApiKey.trim() },
+        body: { action: 'connect', api_key: calcomApiKey.trim(), default_event_type_id: calcomSelectedEventType },
       });
       if (error || data?.error) throw new Error(data?.error || error?.message || 'Error');
       toast.success(data?.webhook_registered ? 'Cal.com conectado y webhook registrado' : 'Cal.com conectado. Registra el webhook manualmente si es necesario.');
       setCalcomApiKey('');
+      setCalcomEventTypes([]);
+      setCalcomSelectedEventType('');
       setCalcomDialogOpen(false);
       await loadIntegrationStatus();
     } catch (err: any) {
