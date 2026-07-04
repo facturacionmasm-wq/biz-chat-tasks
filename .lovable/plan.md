@@ -1,119 +1,105 @@
-# Plan · 3 fixes (Recordatorios + Cal.com WhatsApp)
+# Plan · Fix `pull_bookings` en `calcom-sync` (error "bookings is not iterable")
 
-Cero migraciones · cero cambios en RLS/GRANT · cero cambios en columnas secretas · sin tocar funciones `whatsapp-*` / `twilio-*` ni la config de ElevenLabs.
-
----
-
-## FIX 2 · Recordatorios personales usan sender del tenant
-
-**Archivo único:** `supabase/functions/send-reminders/index.ts`
-
-1. **Batch-fetch de tenants antes del bucle de reminders** (insertar después de la línea 81, es decir tras armar `profileMap` y antes del `for (const reminder of reminders)`):
-   - `tenantIdsR = [...new Set(reminders.map(r => r.tenant_id))]`
-   - `SELECT id, whatsapp_config FROM tenants WHERE id IN (...)`
-   - Construir `tenantConfigMapR = Map<tenantId, whatsapp_config>` (misma forma que la Parte 2, líneas 193–198, pero variable independiente para no chocar cuando ambas partes corran en la misma invocación).
-
-2. **Dentro del bucle Parte 1** (justo antes de la línea 109, `sendWhatsApp(...)`):
-   - Resolver sender EXACTAMENTE como Parte 2 (líneas 224–240):
-     ```
-     const wa = tenantConfigMapR.get(reminder.tenant_id) as Record<string, any> | null;
-     const tFrom = wa?.phone_number ? String(wa.phone_number).replace(/^whatsapp:/i, '') : null;
-     const tMsgSvc = wa?.messaging_service_sid ? String(wa.messaging_service_sid).trim() : null;
-     const effectiveFrom = tFrom
-       ? (tFrom.startsWith('whatsapp:') ? tFrom : `whatsapp:${tFrom}`)
-       : fromWA;   // fallback al TWILIO_PHONE_NUMBER global si el tenant no configura nada
-     ```
-   - Sustituir la llamada actual `sendWhatsApp(basicAuth, TWILIO_ACCOUNT_SID, fromWA, phone, reminderMsg)` por el mismo patrón MsgSvc-primero-luego-From de Parte 2 (líneas 233–240):
-     ```
-     let sendResult;
-     if (tMsgSvc) {
-       sendResult = await sendWhatsAppWithMsgSvc(basicAuth, TWILIO_ACCOUNT_SID, phone, reminderMsg, tMsgSvc);
-       if (!sendResult.ok) sendResult = await sendWhatsApp(basicAuth, TWILIO_ACCOUNT_SID, effectiveFrom, phone, reminderMsg);
-     } else {
-       sendResult = await sendWhatsApp(basicAuth, TWILIO_ACCOUNT_SID, effectiveFrom, phone, reminderMsg);
-     }
-     ```
-
-3. **No modificar**: helpers (`sendWhatsApp`, `sendWhatsAppWithMsgSvc`), Parte 2, manejo de retry/backoff, guardado a `whatsapp_messages`, RPC `claim_due_reminders`, ni la construcción del `reminderMsg`.
-
-**Efecto esperado:** los 3 reminders fallidos del tenant RYBIX volverán a intentarse por `MessagingServiceSid=MG6c…7cfded` (mismo canal que las notificaciones de cita, que ya funcionan) y Twilio dejará de devolver `63007`.
+Archivo único: `supabase/functions/calcom-sync/index.ts`. Cero migraciones, cero RLS/GRANT, sin tocar `connect`, `list_event_types`, `set_default_event_type`, `disconnect`, `status`, ni el webhook/dedup de `calcom-webhook`.
 
 ---
 
-## FIX 3a · Selección real de event type en la conexión de Cal.com
+## Diagnóstico (causa raíz)
 
-### A. `supabase/functions/calcom-sync/index.ts`
+Ubicación exacta dentro de `supabase/functions/calcom-sync/index.ts`, rama `action === 'pull_bookings'`:
 
-Añadir dos sub-acciones dentro del `try` que hoy maneja `connect | disconnect | pull_bookings`:
-
-1. `action === 'list_event_types'`:
-   - Body: `{ api_key?: string }`.
-   - Si viene `api_key` en el body, usarla directamente (para el momento del wizard antes de guardar). Si no viene, cargar y desencriptar la de `calcom_integrations` del tenant del caller (reutiliza el helper `encrypt/decrypt` ya existente en el archivo).
-   - `GET https://api.cal.com/v2/event-types` con `Authorization: Bearer <key>` y `cal-api-version` acorde a la usada hoy en `pull_bookings` (mantener consistencia con el resto del archivo).
-   - Si `!res.ok` → `return json({ error: 'Cal.com …' }, 502)`.
-   - Mapear la respuesta a `[{ id, title, slug, length }]` — soportando ambas formas típicas de la API (`data.eventTypes[*]` o array plano) sin romperse si el shape cambia (usar acceso defensivo).
-   - Responder `json({ ok: true, event_types: [...] })`.
-
-2. `action === 'set_default_event_type'`:
-   - Body: `{ default_event_type_id: string | number }`.
-   - Validar que exista una integración `active` para el tenant del caller (`.eq('tenant_id', tenantId).maybeSingle()`), sino `400`.
-   - `UPDATE public.calcom_integrations SET default_event_type_id = <string>, updated_at = now() WHERE tenant_id = <tenantId>`.
-   - Responder `json({ ok: true })`.
-
-Ambas sub-acciones respetan la misma verificación de sesión que ya hace el resto de la función (bloque de resolución de `user` y `tenantId`). Cero cambios en RLS/GRANT: el update lo hace el service-role client que ya se usa allí, filtrando por el `tenantId` derivado del JWT del caller.
-
-### B. `src/pages/IntegrationsPage.tsx` (diálogo Cal.com, alrededor de líneas 322–339)
-
-Estado nuevo local al diálogo:
-- `calcomEventTypes: Array<{ id: string|number; title: string; slug?: string; length?: number }>`
-- `calcomSelectedEventType: string`
-- `calcomLoadingTypes: boolean`
-
-Flujo del diálogo:
-1. Campo API key existente.
-2. Nuevo botón/acción "Buscar tipos de evento":
-   - Llama `supabase.functions.invoke('calcom-sync', { body: { action: 'list_event_types', api_key: calcomApiKey.trim() } })`.
-   - Setea `calcomEventTypes` en éxito; toast.error en fallo. Limpia `calcomSelectedEventType` cuando cambia la api key.
-3. `<Select>` (shadcn) con los tipos: label = `"{title} · {length} min"`, value = `String(id)`. Deshabilitado si `calcomEventTypes.length === 0`.
-4. Botón "Conectar":
-   - `disabled` cuando `!calcomApiKey.trim() || !calcomSelectedEventType`.
-   - En `handleConnectCalcom`, agregar `default_event_type_id: calcomSelectedEventType` al body del `connect`.
-5. Al cerrar el diálogo o abrirlo de nuevo, resetear `calcomEventTypes` y `calcomSelectedEventType` (para no filtrar tipos de una key vieja).
-
-Nota UX: el `connect` ya persiste `default_event_type_id` (línea 118 de `calcom-sync/index.ts`) — no hace falta llamar `set_default_event_type` en el wizard nuevo. La sub-acción `set_default_event_type` queda disponible como API para futuras pantallas de "Cambiar tipo por defecto" sin reingresar la key.
-
-**No cambia**: dedup en `calcom-webhook/index.ts:255–258` (sigue merging por `calcom_event_id`), status de la integración, encriptación del api key, ni el flujo `disconnect`/`pull_bookings`.
-
----
-
-## FIX 3b · Log de diagnóstico en whatsapp-bot (sin cambio funcional)
-
-**Archivo único:** `supabase/functions/whatsapp-bot/tool-executor.ts`
-
-- Alrededor de la línea 376 (rama del `if (calcomInteg?.api_key_encrypted && calcomInteg?.default_event_type_id)`), añadir un `else if` que dispare únicamente un `console.warn`:
+- **Línea 178** — fetch:
+  ```ts
+  const res = await fetch(`${CALCOM_API}/bookings?status=upcoming`, { headers: { Authorization: `Bearer ${key}` } });
   ```
-  } else if (calcomInteg?.status === 'active' && calcomInteg?.api_key_encrypted && !calcomInteg?.default_event_type_id) {
-    console.warn('[APPT] Cal.com integration active but default_event_type_id missing — skipping push', { tenantId });
-  }
+  Falta el header `cal-api-version` (que sí usamos en `list_event_types`, línea 79). Sin él, Cal.com v2 puede responder con un shape distinto o `451/legacy`.
+
+- **Línea 179** — chequeo pobre:
+  ```ts
+  if (!res.ok) return json({ error: `Cal.com ${res.status}` }, 502);
   ```
-- Nada más: no retornos nuevos, no cambios en `calcomPushed`, no cambios en el response del tool, no cambios en `appointments.calendar_event_id`. Solo un log para que en logs de la función quede la razón exacta si vuelve a pasar.
+  No incluye el body de Cal.com, así que cuando la API responde con detalle (p. ej. `apiKey missing` o `unauthorized`) se pierde el mensaje.
+
+- **Líneas 180-181** — parse y extracción del array:
+  ```ts
+  const data = await res.json();
+  const bookings = data.data || data.bookings || [];
+  ```
+  Cal.com v2 real devuelve `{ status, data: { bookings: [...] } }` (bookings anidado dentro de `data`). El código toma `data.data` (que es un **objeto**, no array), lo asigna a `bookings`, y el `for..of` truena con `"bookings is not iterable"`.
+
+- **Línea 182** — iteración:
+  ```ts
+  for (const b of bookings) {
+  ```
+  Rompe cuando `bookings` es objeto o `undefined`.
+
+Confirmado por logs de la edge function:
+```
+calcom-sync error: TypeError: bookings is not iterable
+    at Server.<anonymous> (…/calcom-sync/index.ts:267:23)
+```
+(La línea 267 corresponde al `for..of` en el archivo compilado; en fuente es el `for (const b of bookings)` de `pull_bookings`.)
 
 ---
 
-## Verificaciones post-cambio
+## Cambios propuestos (unificados dentro de la rama `pull_bookings`)
+
+Todo el cambio queda contenido entre las líneas 176-207 del archivo actual. Sin tocar el resto de la función.
+
+1. **Añadir `cal-api-version` al fetch** (misma versión que ya usamos en `list_event_types`, línea 80: `'2024-06-14'`), para consistencia:
+   ```ts
+   const res = await fetch(`${CALCOM_API}/bookings?status=upcoming`, {
+     headers: { Authorization: `Bearer ${key}`, 'cal-api-version': '2024-06-14' },
+   });
+   ```
+
+2. **Manejo de `!res.ok` con body**:
+   ```ts
+   if (!res.ok) {
+     const t = await res.text();
+     return json({ error: `Cal.com ${res.status}: ${t.slice(0, 300)}` }, 502);
+   }
+   ```
+
+3. **Parse defensivo del array de bookings** — soporta todas las formas típicas de la API sin asumir shape:
+   ```ts
+   const data = await res.json().catch(() => ({}));
+   const bookings: any[] = Array.isArray(data)
+     ? data
+     : Array.isArray(data?.data?.bookings)
+     ? data.data.bookings
+     : Array.isArray(data?.bookings)
+     ? data.bookings
+     : Array.isArray(data?.data)
+     ? data.data
+     : [];
+   ```
+
+4. **Validación antes de iterar** (defensa en profundidad; ya no puede tronar, pero deja early-return limpio cuando no hay reservas):
+   ```ts
+   if (!Array.isArray(bookings) || bookings.length === 0) {
+     await supabase.from('calcom_integrations')
+       .update({ last_sync_at: new Date().toISOString() })
+       .eq('tenant_id', tenantId);
+     return json({ ok: true, created: 0, updated: 0, total: 0 });
+   }
+   ```
+
+5. **El resto del bloque** (`for (const b of bookings) { … }` con el upsert de `appointments` y el `update last_sync_at` final) queda **idéntico**. Los campos que ya se leen (`b.uid`, `b.startTime`, `b.endTime`, `b.title`, `b.eventType?.title`, `b.attendees[0]`, `b.status`) siguen siendo tolerantes gracias al `if (!uid || !b.startTime || !b.endTime) continue;` existente en la línea 187.
+
+---
+
+## Qué NO se toca
+
+- Sub-acciones `connect` (líneas 116-166), `list_event_types` (67-102), `set_default_event_type` (104-114), `disconnect` (168-181 originales), `status` (183-188).
+- `supabase/functions/calcom-webhook/index.ts` y su dedup por `calcom_event_id`.
+- Helpers `getKey/encrypt/decrypt`, autenticación del caller, resolución de `tenantId`.
+- Ninguna migración, RLS, GRANT ni columna secreta. Ningún archivo `whatsapp-*`, `twilio-*`, `elevenlabs-*`, `call-transfer*` ni configuración del agente de voz.
+
+## Verificación
 
 1. `tsgo --noEmit` limpio.
-2. `supabase/functions/send-reminders`: invocar manualmente con `supabase.functions.invoke('send-reminders')` — los reminders fallidos vuelven a intentarse; los que no tienen `messaging_service_sid` ni `phone_number` en el tenant siguen usando `fromWA` (fallback).
-3. UI `/integrations`:
-   - Desconectar Cal.com de RYBIX, reconectar con la misma key → aparece el select con event types, "Conectar" queda bloqueado hasta elegir uno.
-   - Tras conectar: `SELECT default_event_type_id FROM calcom_integrations WHERE tenant_id='…-0001'` deja de ser NULL.
-4. Prueba WhatsApp: agendar cita → `appointments.calendar_event_id` empieza con `calcom:` y aparece en Cal.com. Si vuelve a estar sin event type, los logs de `whatsapp-bot` mostrarán la línea `[APPT] Cal.com integration active but default_event_type_id missing`.
-5. Dedup Cal.com intacto: si el webhook llega antes que el push, `calcom-webhook/index.ts:255` sigue marcando `booking_merged`.
-
-## No-regresión confirmada
-
-- Cero migraciones, cero cambios de RLS/GRANT.
-- Sin tocar `whatsapp-webhook`, `whatsapp-*`, `twilio-*`, `elevenlabs-*`, `call-transfer*`, ni la configuración del agente de voz.
-- Sin cambios en columnas secretas (`pin_hash`, `access_token`, `refresh_token`) ni en las restricciones de columna aplicadas por la migración de seguridad reciente.
-- Parte 2 de `send-reminders` (notificaciones de cita) se deja idéntica.
-- Ningún archivo distinto a los tres listados se modifica: `supabase/functions/send-reminders/index.ts`, `supabase/functions/calcom-sync/index.ts`, `src/pages/IntegrationsPage.tsx`, `supabase/functions/whatsapp-bot/tool-executor.ts`.
+2. En `/integrations` con Cal.com conectado y **sin reservas**: "Sincronizar reservas ahora" responde `{ ok: true, created: 0, updated: 0, total: 0 }` (no 500).
+3. Con al menos una reserva en Cal.com: aparece en `appointments` con `calendar_event_id` prefijo `calcom:` y `calendar_sync_status = 'SYNCED'`.
+4. Con API key inválida forzada: el 502 ahora incluye el mensaje textual de Cal.com para diagnóstico inmediato en el toast del frontend.
+5. Logs de `calcom-sync` dejan de mostrar `TypeError: bookings is not iterable`.
