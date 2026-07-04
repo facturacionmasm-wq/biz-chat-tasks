@@ -180,6 +180,56 @@ async function executeScheduleAppointment(
     return JSON.stringify({ error: 'La hora de fin debe ser posterior a la hora de inicio.' });
   }
 
+  // ─── Validate against availability_rules (working hours) ───
+  const [dY, dM, dD] = String(date).split('-').map(Number);
+  const localDow = new Date(Date.UTC(dY, (dM || 1) - 1, dD || 1)).getUTCDay();
+  const [tH, tM] = String(time).split(':').map(Number);
+  const slotStartMin = (tH || 0) * 60 + (tM || 0);
+  const slotEndMin = slotStartMin + 30;
+
+  let rulesQ = supabase
+    .from('availability_rules')
+    .select('user_id, start_time, end_time, max_appointments')
+    .eq('tenant_id', tenantId)
+    .eq('day_of_week', localDow)
+    .eq('active', true);
+  if (employeeId) rulesQ = rulesQ.eq('user_id', employeeId);
+  const { data: dayRules } = await rulesQ;
+
+  const covering = (dayRules || []).filter((r: any) => {
+    const [sH, sM] = String(r.start_time).split(':').map(Number);
+    const [eH, eM] = String(r.end_time).split(':').map(Number);
+    const rs = sH * 60 + sM;
+    const re = eH * 60 + eM;
+    return slotStartMin >= rs && slotEndMin <= re;
+  });
+
+  if (!dayRules || dayRules.length === 0 || covering.length === 0) {
+    const dayName = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'][localDow];
+    return JSON.stringify({
+      error: `Horario fuera del horario laboral configurado${employee_name ? ` para ${employee_name}` : ''}. No hay reglas de disponibilidad que cubran ${dayName} a las ${time}. Usa check_availability para ver los horarios disponibles y ofrécelos al contacto antes de confirmar.`,
+      out_of_business_hours: true,
+    });
+  }
+
+  // Overlap check with existing appointments (same employee if assigned, else tenant-wide)
+  let overlapQ = supabase
+    .from('appointments')
+    .select('id, start_at, end_at, user_id')
+    .eq('tenant_id', tenantId)
+    .lt('start_at', endAt.toISOString())
+    .gt('end_at', startAt.toISOString())
+    .neq('status', 'cancelled')
+    .is('deleted_at', null);
+  if (employeeId) overlapQ = overlapQ.eq('user_id', employeeId);
+  const { data: overlaps } = await overlapQ;
+  if (overlaps && overlaps.length > 0) {
+    return JSON.stringify({
+      error: `Ya existe una cita en ese horario${employee_name ? ` con ${employee_name}` : ''}. Ofrece otro slot al contacto (usa check_availability).`,
+      slot_taken: true,
+    });
+  }
+
   // Build idempotency key
   const assignedUser = employeeId || userId || 'unassigned';
   const idempotencyKey = `${tenantId}:${contact_name}:${startAt.toISOString()}:${service_type || 'General'}:${assignedUser}`;
@@ -262,6 +312,73 @@ async function executeScheduleAppointment(
     } catch (syncErr) {
       console.error('Calendar sync trigger error:', syncErr);
     }
+  }
+
+  // ─── Push booking to Cal.com if the tenant has an active integration ───
+  let calcomPushed = false;
+  try {
+    const { data: calcomInteg } = await supabase
+      .from('calcom_integrations')
+      .select('api_key_encrypted, default_event_type_id, status')
+      .eq('tenant_id', tenantId)
+      .eq('status', 'active')
+      .maybeSingle();
+
+    if (calcomInteg?.api_key_encrypted && calcomInteg?.default_event_type_id) {
+      // Decrypt API key inline (mirrors calcom-sync helper)
+      const secret = Deno.env.get('CREDENTIALS_ENCRYPTION_KEY');
+      if (secret) {
+        const enc = new TextEncoder();
+        const km = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'PBKDF2' }, false, ['deriveKey']);
+        const key = await crypto.subtle.deriveKey(
+          { name: 'PBKDF2', salt: enc.encode('credential-vault-salt-v1'), iterations: 100000, hash: 'SHA-256' },
+          km, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'],
+        );
+        let apiKey = calcomInteg.api_key_encrypted as string;
+        if (apiKey.startsWith('enc:')) {
+          const [, ivB64, ctB64] = apiKey.split(':');
+          const iv = Uint8Array.from(atob(ivB64), c => c.charCodeAt(0));
+          const ct = Uint8Array.from(atob(ctB64), c => c.charCodeAt(0));
+          const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
+          apiKey = new TextDecoder().decode(pt);
+        }
+
+        const attendeeEmail = contact_email || `${String(contact_phone || cPhone || contactPhone || 'contact').replace(/[^0-9]/g,'')}@wa.local`;
+        const bookRes = await fetch('https://api.cal.com/v2/bookings', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+            'cal-api-version': '2024-08-13',
+          },
+          body: JSON.stringify({
+            eventTypeId: Number(calcomInteg.default_event_type_id),
+            start: startAt.toISOString(),
+            attendee: {
+              name: contact_name,
+              email: attendeeEmail,
+              timeZone: tz,
+              language: 'es',
+            },
+            metadata: { source: 'whatsapp', appointment_id: apt.id },
+          }),
+        });
+        if (bookRes.ok) {
+          const bookData = await bookRes.json();
+          const calcomUid = bookData?.data?.uid || bookData?.uid || null;
+          calcomPushed = true;
+          if (calcomUid) {
+            await supabase.from('appointments')
+              .update({ calendar_event_id: `calcom:${calcomUid}`, calendar_sync_status: 'SYNCED' })
+              .eq('id', apt.id);
+          }
+        } else {
+          console.warn('[APPT] Cal.com push failed:', bookRes.status, (await bookRes.text()).slice(0, 200));
+        }
+      }
+    }
+  } catch (calcomErr) {
+    console.error('[APPT] Cal.com push error:', calcomErr);
   }
 
   // === SEND CONFIRMATION TO CONTACT & SCHEDULE REMINDERS ===
@@ -371,14 +488,15 @@ async function executeScheduleAppointment(
     employee: employee_name || 'sin asignar',
     confirmation_sent: !!finalContactPhone,
     reminders_scheduled: notificationsToInsert.length,
+    calcom_pushed: calcomPushed,
   };
 
   if (calendarSynced) {
     response.calendar_synced = true;
-    response.message = 'Cita agendada y sincronizada con Google Calendar.' + (finalContactPhone ? ' Se envió confirmación al contacto.' : '');
+    response.message = 'Cita agendada y sincronizada con Google Calendar.' + (calcomPushed ? ' También enviada a Cal.com.' : '') + (finalContactPhone ? ' Se envió confirmación al contacto.' : '');
   } else {
     response.calendar_synced = false;
-    response.message = 'Cita agendada correctamente.' + (finalContactPhone ? ' Se envió confirmación al contacto.' : '') + ' La sincronización con el calendario se completará en breve.';
+    response.message = 'Cita agendada correctamente.' + (calcomPushed ? ' Enviada a Cal.com.' : '') + (finalContactPhone ? ' Se envió confirmación al contacto.' : '') + ' La sincronización con el calendario se completará en breve.';
   }
 
   return JSON.stringify(response);
