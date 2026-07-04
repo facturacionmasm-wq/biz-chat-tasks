@@ -200,10 +200,29 @@ serve(async (req) => {
       const { data: integ } = await supabase.from('calcom_integrations').select('*').eq('tenant_id', tenantId).maybeSingle();
       if (!integ) return json({ error: 'Not connected' }, 404);
       const key = await decrypt(integ.api_key_encrypted);
-      const res = await fetch(`${CALCOM_API}/bookings?status=upcoming`, { headers: { Authorization: `Bearer ${key}` } });
-      if (!res.ok) return json({ error: `Cal.com ${res.status}` }, 502);
-      const data = await res.json();
-      const bookings = data.data || data.bookings || [];
+      const res = await fetch(`${CALCOM_API}/bookings?status=upcoming`, {
+        headers: { Authorization: `Bearer ${key}`, 'cal-api-version': '2024-06-14' },
+      });
+      if (!res.ok) {
+        const t = await res.text();
+        return json({ error: `Cal.com ${res.status}: ${t.slice(0, 300)}` }, 502);
+      }
+      const data = await res.json().catch(() => ({}));
+      const bookings: any[] = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.data?.bookings)
+        ? data.data.bookings
+        : Array.isArray(data?.bookings)
+        ? data.bookings
+        : Array.isArray(data?.data)
+        ? data.data
+        : [];
+      if (!Array.isArray(bookings) || bookings.length === 0) {
+        await supabase.from('calcom_integrations')
+          .update({ last_sync_at: new Date().toISOString() })
+          .eq('tenant_id', tenantId);
+        return json({ ok: true, created: 0, updated: 0, total: 0 });
+      }
       let created = 0, updated = 0;
       for (const b of bookings) {
         const uid = b.uid || b.id;
