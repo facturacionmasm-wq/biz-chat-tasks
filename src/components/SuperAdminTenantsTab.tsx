@@ -54,6 +54,12 @@ export default function SuperAdminTenantsTab() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingAction | null>(null);
   const [extendDaysDraft, setExtendDaysDraft] = useState<Record<string, number>>({});
+  const [plans, setPlans] = useState<PlanOption[]>([]);
+
+  // Delete tenant flow
+  const [deleteTarget, setDeleteTarget] = useState<AdminTenantRow | null>(null);
+  const [deleteConfirmName, setDeleteConfirmName] = useState('');
+  const [deleting, setDeleting] = useState(false);
 
   // Twilio provisioning state
   const [provTenant, setProvTenant] = useState<AdminTenantRow | null>(null);
