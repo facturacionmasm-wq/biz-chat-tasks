@@ -403,6 +403,7 @@ export default function SuperAdminTenantsTab() {
               {pending?.kind === 'block' && `Bloquear a "${pending.tenant.tenant_name}". El tenant no podrá usar servicios (WhatsApp, envíos).`}
               {pending?.kind === 'activate' && `Reactivar a "${pending.tenant.tenant_name}" (status: active).`}
               {pending?.kind === 'set_status' && `Cambiar estado de "${pending.tenant.tenant_name}" a "${pending.status}".`}
+              {pending?.kind === 'change_plan' && `Cambiar plan de "${pending.tenant.tenant_name}" a "${plans.find(p => p.slug === pending.plan_slug)?.name || pending.plan_slug}".`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -414,6 +415,46 @@ export default function SuperAdminTenantsTab() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Delete tenant confirmation */}
+      <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open && !deleting) { setDeleteTarget(null); setDeleteConfirmName(''); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-[var(--rx-rose)] flex items-center gap-2">
+              <Trash2 size={16} /> Eliminar tenant
+            </DialogTitle>
+            <DialogDescription>
+              Esta acción es <strong>irreversible</strong>. Se eliminarán usuarios, suscripciones, números, gastos, documentos y todo dato asociado a <strong>{deleteTarget?.tenant_name}</strong>.
+              Se cancelará su suscripción activa en Stripe si existe.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <label className="text-xs text-[var(--rx-t2)]">
+              Escribe el nombre exacto del tenant para confirmar: <span className="font-mono text-foreground">{deleteTarget?.tenant_name}</span>
+            </label>
+            <Input
+              value={deleteConfirmName}
+              onChange={(e) => setDeleteConfirmName(e.target.value)}
+              placeholder={deleteTarget?.tenant_name || ''}
+              disabled={deleting}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setDeleteTarget(null); setDeleteConfirmName(''); }} disabled={deleting}>
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteTenant}
+              disabled={deleting || deleteConfirmName.trim() !== (deleteTarget?.tenant_name || '__')}
+              className="gap-2"
+            >
+              {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+              Eliminar definitivamente
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Twilio provisioning dialog */}
       <Dialog open={!!provTenant} onOpenChange={(open) => !open && !provPurchasing && setProvTenant(null)}>
