@@ -127,7 +127,6 @@ const OKRsPage = () => {
           name: form.title.trim(),
           description: form.description.trim() || null,
           status: 'active',
-          type: 'okr',
           created_by: user.id,
         })
         .select('id')
