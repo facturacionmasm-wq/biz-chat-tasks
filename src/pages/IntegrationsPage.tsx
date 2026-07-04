@@ -740,6 +740,52 @@ const IntegrationsPage = () => {
         defaultCountry={tenantCountry}
         onPurchased={async () => { await loadIntegrationStatus(); }}
       />
+
+      {/* Cal.com Connect Dialog */}
+      <Dialog open={calcomDialogOpen} onOpenChange={setCalcomDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Link2 size={18} className="text-[var(--rx-brand)]" /> Conectar Cal.com
+            </DialogTitle>
+            <DialogDescription>
+              Pega tu API key personal de Cal.com. Registraremos automáticamente el webhook para que cada reserva llegue a tu agenda.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs font-semibold text-foreground mb-1 block">API Key</label>
+              <input
+                type="password"
+                value={calcomApiKey}
+                onChange={e => setCalcomApiKey(e.target.value)}
+                placeholder="cal_live_..."
+                className="w-full text-sm border border-[var(--rx-b1)] rounded-lg px-3 py-2 bg-background text-foreground"
+              />
+              <p className="text-[11px] text-[var(--rx-t2)] mt-1">
+                Genera tu API key en cal.com → Settings → Developer → API Keys.
+              </p>
+            </div>
+            <div className="bg-[var(--rx-s2)]/40 rounded-lg p-3">
+              <p className="text-[11px] font-semibold text-foreground mb-1">Webhook URL (por si necesitas configurarlo manualmente)</p>
+              <div className="flex items-center gap-2">
+                <code className="text-[10px] font-mono text-[var(--rx-t2)] break-all flex-1">{calcomWebhookUrl || 'Se generará al conectar'}</code>
+                {calcomWebhookUrl && (
+                  <button onClick={() => { navigator.clipboard.writeText(calcomWebhookUrl); toast.success('Copiado'); }} className="shrink-0 text-[var(--rx-t2)] hover:text-foreground">
+                    <Copy size={14} />
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setCalcomDialogOpen(false)} className="text-xs font-medium px-3 py-2 rounded-lg text-[var(--rx-t2)] hover:bg-[var(--rx-s2)]">Cancelar</button>
+              <button onClick={handleConnectCalcom} disabled={calcomSaving} className="text-xs font-medium px-4 py-2 rounded-lg bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground hover:opacity-90 flex items-center gap-1.5 disabled:opacity-50">
+                {calcomSaving ? <><Loader2 size={12} className="animate-spin" /> Conectando...</> : <><Save size={12} /> Conectar</>}
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
