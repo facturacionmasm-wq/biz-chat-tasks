@@ -80,7 +80,7 @@ const DesktopSidebar = ({ collapsed, setCollapsed, branding, user, userRole, sig
         {!collapsed && (
           <div className="min-w-0">
             <h1 className="text-sidebar-custom-fg-bright font-bold text-sm leading-tight truncate">{branding.orgName}</h1>
-            {branding.slogan && <p className="text-[10px] text-sidebar-custom-muted truncate">{branding.slogan}</p>}
+            {branding.slogan && <p className="text-[10px] leading-snug text-sidebar-custom-muted line-clamp-2">{branding.slogan}</p>}
           </div>
         )}
       </div>

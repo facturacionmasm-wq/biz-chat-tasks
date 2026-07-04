@@ -2,7 +2,7 @@
    RYBIX — Unified Style System
    Fonts + Tokens + Utilities + Tailwind
 ════════════════════════════════════════════════════════════ */
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -43,8 +43,8 @@
     --rx-focus-ring: 0 0 0 2px rgba(45,240,193,0.55), 0 0 0 4px rgba(45,240,193,0.15);
     --rx-disabled-opacity: 0.5;
     /* Fonts */
-    --rx-font-display: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
-    --rx-font-body:    'Manrope', ui-sans-serif, system-ui, sans-serif;
+    --rx-font-display: 'Outfit', ui-sans-serif, system-ui, sans-serif;
+    --rx-font-body:    'Outfit', ui-sans-serif, system-ui, sans-serif;
     /* Shadows */
     --rx-shadow-sm:  0 1px 2px rgba(0,0,0,.35), 0 1px 6px rgba(0,0,0,.20);
     --rx-shadow-md:  0 4px 12px rgba(0,0,0,.40), 0 2px 4px rgba(0,0,0,.20);
@@ -189,12 +189,16 @@
 
   /* ════ BASE STYLES ════ */
   * { @apply border-border; box-sizing: border-box; }
+  #root { width: 100%; min-height: 100vh; }
+  main, section, article, aside, header, footer, nav, div { min-width: 0; }
   html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
   body {
     font-family: var(--rx-font-body);
     background: var(--rx-bg);
     color: var(--rx-t1);
     overflow-wrap: anywhere;
+    font-size: 15px;
+    line-height: 1.45;
     transition: var(--rx-transition);
   }
   h1,h2,h3,h4,h5,h6 {
@@ -206,10 +210,12 @@
   h1 { font-weight: 800; }
   h2 { font-weight: 700; }
   h3, h4 { font-weight: 700; }
-  p  { line-height: 1.55; }
+  p  { line-height: 1.5; }
   p, h1, h2, h3, h4, h5, h6, span, a, button, label, li, td, th {
     overflow-wrap: anywhere;
   }
+  button, [role="button"], input, textarea, select { max-width: 100%; }
+  button, [role="button"] { text-wrap: balance; }
   [class*="tracking-"] { letter-spacing: 0 !important; }
   .prose, .prose * { color: inherit; max-width: 100%; overflow-wrap: anywhere; }
   .prose pre, .prose code { white-space: pre-wrap; word-break: break-word; }
