@@ -62,20 +62,17 @@ const OKRsPage = () => {
 
       // Fetch OKRs — uses project_milestones as proxy if no okrs table exists,
       // or falls back to projects with type=okr. Adjust table name to your schema.
-      const { data: okrData, error } = await (supabase as any)
+      const { data: okrData, error } = await supabase
         .from('projects')
         .select(`
           id, name, description, status, created_at,
-          project_milestones ( id, title, description, progress, due_date )
+          project_milestones ( id, name, target_date, completed )
         `)
         .eq('tenant_id', tid)
-        .eq('type', 'okr')
-        .is('deleted_at', null)
         .order('created_at', { ascending: false });
 
       if (error && error.code !== 'PGRST116') {
-        // Table or column doesn't exist — show empty state
-        console.warn('[OKRs] table/column not found:', error.message);
+        console.warn('[OKRs] fetch error:', error.message);
         setOkrs([]);
         return;
       }
@@ -84,11 +81,11 @@ const OKRsPage = () => {
       const mapped: OKR[] = (okrData || []).map((p: any) => {
         const krs: KeyResult[] = (p.project_milestones || []).map((m: any) => ({
           id: m.id,
-          title: m.title,
-          current_value: m.progress || 0,
+          title: m.name,
+          current_value: m.completed ? 100 : 0,
           target_value: 100,
           unit: '%',
-          progress: m.progress || 0,
+          progress: m.completed ? 100 : 0,
         }));
         const avgProgress = krs.length > 0
           ? Math.round(krs.reduce((s, k) => s + k.progress, 0) / krs.length)
@@ -130,7 +127,6 @@ const OKRsPage = () => {
           name: form.title.trim(),
           description: form.description.trim() || null,
           status: 'active',
-          type: 'okr',
           created_by: user.id,
         })
         .select('id')
@@ -152,7 +148,7 @@ const OKRsPage = () => {
     try {
       const { error } = await supabase
         .from('projects')
-        .update({ deleted_at: new Date().toISOString(), status: 'archived' })
+        .delete()
         .eq('id', id)
         .eq('tenant_id', tenantId);
       if (error) throw error;
