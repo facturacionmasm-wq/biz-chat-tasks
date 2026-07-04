@@ -317,45 +317,47 @@ export default function Dashboard() {
         ═══════════════════════════════════════════════════════ */}
         <div
           ref={heroRef}
-          className="relative overflow-hidden"
-          style={{ background: 'linear-gradient(135deg, hsl(222 47% 8%) 0%, hsl(222 40% 12%) 50%, hsl(200 50% 10%) 100%)' }}
+          className="relative overflow-hidden border-b border-[var(--rx-b1)]"
+          style={{
+            background: 'linear-gradient(135deg, var(--rx-s1) 0%, var(--rx-s2) 60%, var(--rx-s1) 100%)',
+          }}
         >
           {/* Animated grid */}
           <div
             className="absolute inset-0 pointer-events-none"
             style={{
               backgroundImage: `
-                linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px)
+                linear-gradient(var(--rx-b1) 1px, transparent 1px),
+                linear-gradient(90deg, var(--rx-b1) 1px, transparent 1px)
               `,
               backgroundSize: '48px 48px',
               animation: 'gridFloat 4s ease-in-out infinite',
+              maskImage: 'radial-gradient(ellipse at center, black 40%, transparent 80%)',
             }}
           />
 
-          {/* Parallax orbs */}
+          {/* Parallax orbs — brand tokens */}
           <div
             className="absolute inset-0 pointer-events-none"
             style={{ transform: `translate(${px * 0.6}px, ${py * 0.4}px)`, transition: 'transform 0.1s ease-out' }}
           >
-            <FloatingOrb color="radial-gradient(circle, rgba(20,184,166,0.9), transparent)" size={340} x="10%" y="-20%" delay={0} blur={80} />
-            <FloatingOrb color="radial-gradient(circle, rgba(99,102,241,0.7), transparent)" size={280} x="65%" y="-10%" delay={1.5} blur={90} />
-            <FloatingOrb color="radial-gradient(circle, rgba(245,158,11,0.5), transparent)" size={200} x="80%" y="40%" delay={3} blur={70} />
+            <FloatingOrb color="radial-gradient(circle, var(--rx-brand-soft), transparent 65%)" size={360} x="8%" y="-22%" delay={0} blur={90} />
+            <FloatingOrb color="radial-gradient(circle, rgba(163,116,255,0.18), transparent 65%)" size={280} x="65%" y="-12%" delay={1.5} blur={100} />
+            <FloatingOrb color="radial-gradient(circle, rgba(56,217,255,0.14), transparent 65%)" size={220} x="80%" y="42%" delay={3} blur={80} />
           </div>
 
           {/* Rotating ring decoration */}
           <div
             className="absolute -top-24 -right-24 w-96 h-96 rounded-full pointer-events-none"
             style={{
-              border: '1px solid rgba(20,184,166,0.15)',
+              border: '1px solid var(--rx-brand-soft)',
               animation: 'rotateSlow 20s linear infinite',
-              boxShadow: 'inset 0 0 60px rgba(20,184,166,0.06)',
             }}
           />
           <div
             className="absolute -top-12 -right-12 w-72 h-72 rounded-full pointer-events-none"
             style={{
-              border: '1px solid rgba(20,184,166,0.10)',
+              border: '1px solid var(--rx-b1)',
               animation: 'rotateSlow 14s linear infinite reverse',
             }}
           />
@@ -365,64 +367,98 @@ export default function Dashboard() {
 
             {/* PWA Banner */}
             {showPWA && (
-              <div className="stagger-1 mb-6 flex items-center gap-3 bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-4">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-teal-400 flex items-center justify-center shrink-0">
-                  <Download size={18} className="text-white" />
+              <div
+                className="stagger-1 mb-6 flex items-center gap-3 rounded-2xl p-4"
+                style={{
+                  background: 'var(--rx-s1)',
+                  border: '1px solid var(--rx-b1)',
+                  boxShadow: 'var(--rx-shadow-sm)',
+                  backdropFilter: 'blur(12px)',
+                }}
+              >
+                <div
+                  className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+                  style={{
+                    background: 'linear-gradient(135deg, var(--rx-brand), var(--rx-brand2))',
+                    boxShadow: 'var(--rx-shadow-glow)',
+                  }}
+                >
+                  <Download size={18} style={{ color: 'var(--primary-foreground)' }} />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-white">Instala la app</p>
-                  <p className="text-xs text-white/60">Acceso directo desde tu pantalla</p>
+                  <p className="text-sm font-semibold text-foreground">Instala la app</p>
+                  <p className="text-xs text-[var(--rx-t2)]">Acceso directo desde tu pantalla</p>
                 </div>
                 <button
                   onClick={() => { deferredPrompt?.prompt(); setShowPWA(false); }}
-                  className="shrink-0 bg-white/15 hover:bg-white/25 text-white text-xs font-semibold px-4 py-2 rounded-xl transition-colors"
+                  className="rx-btn rx-btn-primary rx-btn-sm shrink-0"
                 >
                   Instalar
                 </button>
-                <button onClick={() => { setShowPWA(false); sessionStorage.setItem('pwa-dismissed', '1'); }}>
-                  <X size={15} className="text-white/50 hover:text-white transition-colors" />
+                <button
+                  onClick={() => { setShowPWA(false); sessionStorage.setItem('pwa-dismissed', '1'); }}
+                  aria-label="Descartar"
+                  className="p-1.5 rounded-md hover:bg-[var(--rx-hover)] transition-colors"
+                >
+                  <X size={15} className="text-[var(--rx-t2)]" />
                 </button>
               </div>
             )}
 
             {/* Greeting */}
             <div className="stagger-2 mb-8">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-xs font-semibold text-teal-400 uppercase tracking-widest flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-teal-400 animate-pulse inline-block" />
+              <div className="flex items-center gap-2 mb-3">
+                <span
+                  className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.14em] px-2.5 py-1 rounded-full"
+                  style={{
+                    background: 'var(--rx-brand-soft)',
+                    color: 'var(--rx-brand)',
+                    border: '1px solid var(--rx-brand-soft)',
+                  }}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--rx-brand)] animate-pulse inline-block" />
                   Dashboard en vivo
                 </span>
               </div>
-              <h1 className="text-3xl sm:text-4xl font-extrabold text-white leading-tight">
-                Hola, <span className="text-transparent bg-clip-text bg-gradient-to-r from-teal-300 to-cyan-200">{userName}</span> 👋
+              <h1 className="text-3xl sm:text-4xl font-extrabold text-foreground leading-[1.05] tracking-tight">
+                Hola,{' '}
+                <span
+                  className="text-transparent bg-clip-text"
+                  style={{ backgroundImage: 'linear-gradient(90deg, var(--rx-brand), var(--rx-brand2))' }}
+                >
+                  {userName}
+                </span>{' '}
+                👋
               </h1>
-              <p className="text-white/50 text-sm mt-1.5">
+              <p className="text-[var(--rx-t2)] text-sm mt-2">
                 {format(new Date(), "EEEE d 'de' MMMM · HH:mm", { locale: es })}
               </p>
             </div>
 
             {/* ── 4 Main 3D Stat Cards ── */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 stagger-3">
-              {mainStats.map((stat, i) => (
+              {mainStats.map((stat) => (
                 <Link to={stat.link} key={stat.label}>
                   <TiltCard
                     className="relative overflow-hidden rounded-2xl cursor-pointer group"
                     style={{
-                      background: stat.bg,
-                      border: '1px solid rgba(255,255,255,0.10)',
-                      backdropFilter: 'blur(20px)',
-                      boxShadow: loading ? 'none' : `0 8px 32px -8px ${stat.glow}, 0 0 0 1px rgba(255,255,255,0.05)`,
+                      background: 'var(--rx-s1)',
+                      border: '1px solid var(--rx-b1)',
+                      boxShadow: loading ? 'var(--rx-shadow-sm)' : `var(--rx-shadow-md)`,
                     } as React.CSSProperties}
                   >
                     {/* Shimmer overlay */}
                     <div className="stat-shimmer absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
 
-                    {/* Gradient stripe at top */}
-                    <div className={`absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r ${stat.gradient} opacity-80`} />
+                    {/* Accent stripe */}
+                    <div
+                      className="absolute top-0 left-0 right-0 h-0.5 opacity-90"
+                      style={{ background: `linear-gradient(90deg, ${stat.accent}, transparent)` }}
+                    />
 
                     {/* Glowing orb behind icon */}
                     <div
-                      className="absolute -top-6 -right-6 w-24 h-24 rounded-full blur-2xl pointer-events-none"
+                      className="absolute -top-8 -right-8 w-28 h-28 rounded-full blur-3xl pointer-events-none opacity-70"
                       style={{ background: stat.glow }}
                     />
 
@@ -430,26 +466,26 @@ export default function Dashboard() {
                       {/* Icon */}
                       <div
                         className="w-10 h-10 rounded-xl flex items-center justify-center mb-4"
-                        style={{ background: stat.iconBg, border: '1px solid rgba(255,255,255,0.12)' }}
+                        style={{ background: stat.bg, border: `1px solid ${stat.bg}` }}
                       >
-                        <stat.icon size={18} className="text-white" />
+                        <stat.icon size={18} style={{ color: stat.accent }} />
                       </div>
 
                       {/* Number */}
-                      <div className="text-3xl sm:text-4xl font-extrabold text-white tabular-nums leading-none mb-1">
+                      <div className="text-3xl sm:text-4xl font-extrabold text-foreground tabular-nums leading-none mb-1.5" style={{ fontFamily: 'var(--rx-font-display)', letterSpacing: '-0.04em' }}>
                         {loading ? (
-                          <div className="h-9 w-12 rounded-lg skeleton" />
+                          <div className="h-9 w-12 rounded-lg rx-skeleton" />
                         ) : (
                           <AnimatedNumber value={stat.value} />
                         )}
                       </div>
 
                       {/* Label */}
-                      <div className="text-xs font-medium text-white/60 leading-tight">{stat.label}</div>
+                      <div className="text-xs font-medium text-[var(--rx-t2)] leading-tight">{stat.label}</div>
 
                       {/* Arrow */}
                       <div className="absolute bottom-4 right-4 opacity-0 group-hover:opacity-100 transition-all duration-200 translate-x-1 group-hover:translate-x-0">
-                        <ArrowRight size={14} className="text-white/60" />
+                        <ArrowRight size={14} style={{ color: stat.accent }} />
                       </div>
                     </div>
                   </TiltCard>
@@ -458,6 +494,7 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
+
 
         {/* ═══════════════════════════════════════════════════════
             BODY — light section with cards
