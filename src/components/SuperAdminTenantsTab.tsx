@@ -246,8 +246,8 @@ export default function SuperAdminTenantsTab() {
     <div className="space-y-4">
     <SuperAdminByonRequests />
     <div className="rx-panel">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="font-semibold text-foreground flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <h3 className="font-semibold text-foreground flex min-w-0 items-center gap-2">
           <CreditCard size={16} className="text-[var(--rx-brand)]" /> Gestión de tenants
         </h3>
         <Button variant="outline" size="sm" onClick={load} disabled={loading} className="gap-2">
@@ -306,7 +306,7 @@ export default function SuperAdminTenantsTab() {
                             value={draft}
                             disabled={busy}
                             onChange={e => setExtendDaysDraft(s => ({ ...s, [t.tenant_id]: Math.max(1, Number(e.target.value) || 15) }))}
-                            className="h-7 w-14 text-xs"
+                            className="h-7 w-16 px-2 text-xs"
                           />
                           <Button
                             size="sm" variant="outline" className="min-h-7 gap-1 px-2 py-1 text-xs"
@@ -321,7 +321,7 @@ export default function SuperAdminTenantsTab() {
                           disabled={busy || t.is_master}
                           onValueChange={(v) => setPending({ kind: 'set_status', tenant: t, status: v as any })}
                         >
-                          <SelectTrigger className="h-7 w-[110px] text-xs">
+                          <SelectTrigger className="min-h-7 w-[110px] text-xs">
                             <SelectValue placeholder="Pago…" />
                           </SelectTrigger>
                           <SelectContent>
@@ -362,7 +362,7 @@ export default function SuperAdminTenantsTab() {
                           value={t.plan_slug || undefined}
                           onValueChange={(v) => { if (v !== t.plan_slug) setPending({ kind: 'change_plan', tenant: t, plan_slug: v }); }}
                         >
-                          <SelectTrigger className="h-7 w-[120px] text-xs">
+                            <SelectTrigger className="min-h-7 w-[120px] text-xs">
                             <SelectValue placeholder="Plan…" />
                           </SelectTrigger>
                           <SelectContent>
