@@ -132,7 +132,23 @@ export interface CallRecord {
     appointment_time?: string;
     service_type?: string;
     notes?: string;
-    [key: string]: string | undefined;
+    contactName?: string;
+    reason?: string;
+    intent?: string;
+    budget?: string;
+    location?: string;
+    urgency?: string;
+    sentiment?: string;
+    sentimentScore?: number;
+    suggestedTags?: string[];
+    objections?: string[];
+    agreements?: string[];
+    risks?: string[];
+    alerts?: string[];
+    followUp?: string;
+    keyTopics?: string[];
+    appointmentRequested?: boolean;
+    [key: string]: any;
   };
   audioUrl: string | null;
 }
