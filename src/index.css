@@ -2,7 +2,7 @@
    RYBIX — Unified Style System
    Fonts + Tokens + Utilities + Tailwind
 ════════════════════════════════════════════════════════════ */
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -43,8 +43,8 @@
     --rx-focus-ring: 0 0 0 2px rgba(45,240,193,0.55), 0 0 0 4px rgba(45,240,193,0.15);
     --rx-disabled-opacity: 0.5;
     /* Fonts */
-    --rx-font-display: 'Syne', ui-sans-serif, system-ui, sans-serif;
-    --rx-font-body:    'DM Sans', ui-sans-serif, system-ui, sans-serif;
+    --rx-font-display: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+    --rx-font-body:    'Manrope', ui-sans-serif, system-ui, sans-serif;
     /* Shadows */
     --rx-shadow-sm:  0 1px 2px rgba(0,0,0,.35), 0 1px 6px rgba(0,0,0,.20);
     --rx-shadow-md:  0 4px 12px rgba(0,0,0,.40), 0 2px 4px rgba(0,0,0,.20);
@@ -70,48 +70,51 @@
     /* Transitions */
     --rx-transition: background .25s ease, color .25s ease, border-color .2s ease;
     --rx-transition-fast: all .15s cubic-bezier(.16,1,.3,1);
-    /* Shadcn mapping — night */
-    --background:         var(--rx-bg);
-    --foreground:         var(--rx-t1);
-    --card:               var(--rx-s1);
-    --card-foreground:    var(--rx-t1);
-    --popover:            var(--rx-s1);
-    --popover-foreground: var(--rx-t1);
-    --primary:            var(--rx-brand);
-    --primary-foreground: #001a14;
-    --secondary:          var(--rx-s2);
-    --secondary-foreground: var(--rx-t1);
-    --muted:              var(--rx-s2);
-    --muted-foreground:   var(--rx-t2);
-    --accent:             var(--rx-s3);
-    --accent-foreground:  var(--rx-t1);
-    --destructive:        var(--rx-rose);
-    --destructive-foreground: #fff;
-    --border:             var(--rx-b1);
-    --input:              var(--rx-s2);
-    --ring:               var(--rx-brand);
-    --success:            var(--rx-emerald);
-    --success-foreground: #001a10;
-    --warning:            var(--rx-amber);
-    --warning-foreground: #1a1200;
+    /* Shadcn/Tailwind mapping — HSL channels. Keep these as HSL values so
+       utilities like bg-card, text-foreground and border-border render opaque. */
+    --background:         240 30% 5%;
+    --foreground:         240 53% 97%;
+    --card:               240 27% 8%;
+    --card-foreground:    240 53% 97%;
+    --popover:            240 27% 8%;
+    --popover-foreground: 240 53% 97%;
+    --primary:            166 87% 56%;
+    --primary-foreground: 166 100% 5%;
+    --secondary:          240 29% 13%;
+    --secondary-foreground: 240 53% 97%;
+    --muted:              240 29% 13%;
+    --muted-foreground:   240 22% 70%;
+    --accent:             240 28% 18%;
+    --accent-foreground:  240 53% 97%;
+    --destructive:        349 100% 68%;
+    --destructive-foreground: 0 0% 100%;
+    --border:             240 20% 100% / 0.07;
+    --input:              240 29% 13%;
+    --ring:               166 87% 56%;
+    --success:            148 70% 49%;
+    --success-foreground: 148 100% 5%;
+    --warning:            40 100% 56%;
+    --warning-foreground: 40 100% 5%;
+    --chat-bubble-own:    166 87% 56%;
+    --chat-bubble-other:  240 29% 13%;
     --radius:             var(--rx-r-md);
-    --sidebar-bg:         var(--rx-s1);
-    --sidebar-fg:         var(--rx-t2);
-    --sidebar-fg-bright:  var(--rx-t1);
-    --sidebar-hover:      var(--rx-s2);
-    --sidebar-active:     var(--rx-brand);
-    --sidebar-border:     var(--rx-b1);
-    --sidebar-muted:      var(--rx-t3);
+    --sidebar-bg:         240 27% 8%;
+    --sidebar-fg:         240 22% 70%;
+    --sidebar-fg-bright:  240 53% 97%;
+    --sidebar-hover:      240 29% 13%;
+    --sidebar-active:     166 87% 56%;
+    --sidebar-border:     240 20% 100% / 0.07;
+    --sidebar-muted:      240 15% 50%;
     --shadow-soft:        var(--rx-shadow-sm);
     --shadow-card:        var(--rx-shadow-md);
     --shadow-elevated:    var(--rx-shadow-lg);
-    --sidebar-custom-bg:         var(--rx-s1);
-    --sidebar-custom-fg:         var(--rx-t2);
-    --sidebar-custom-fg-bright:  var(--rx-t1);
-    --sidebar-custom-hover:      var(--rx-s2);
-    --sidebar-custom-active:     var(--rx-brand);
-    --sidebar-custom-border:     var(--rx-b1);
-    --sidebar-custom-muted:      var(--rx-t3);
+    --sidebar-custom-bg:         240 27% 8%;
+    --sidebar-custom-fg:         240 22% 70%;
+    --sidebar-custom-fg-bright:  240 53% 97%;
+    --sidebar-custom-hover:      240 29% 13%;
+    --sidebar-custom-active:     166 87% 56%;
+    --sidebar-custom-border:     240 20% 100% / 0.07;
+    --sidebar-custom-muted:      240 15% 50%;
     --bottom-nav-height: 4.5rem;
   }
 
@@ -143,12 +146,45 @@
     --rx-shadow-md:  0 4px 14px rgba(15,18,45,.08), 0 2px 4px rgba(15,18,45,.04);
     --rx-shadow-lg:  0 12px 32px rgba(15,18,45,.12), 0 4px 8px rgba(15,18,45,.06);
     --rx-shadow-glow: 0 0 0 1px rgba(0,155,122,0.20), 0 8px 24px -8px rgba(0,155,122,0.25);
-    --primary-foreground: #ffffff;
-    --secondary-foreground: var(--rx-t1);
-    --muted-foreground:   var(--rx-t2);
-    --success-foreground: #fff;
-    --sidebar-bg:         #ffffff;
-    --sidebar-custom-bg:  #ffffff;
+    --background:         228 38% 97%;
+    --foreground:         237 51% 8%;
+    --card:               0 0% 100%;
+    --card-foreground:    237 51% 8%;
+    --popover:            0 0% 100%;
+    --popover-foreground: 237 51% 8%;
+    --primary:            167 100% 30%;
+    --primary-foreground: 0 0% 100%;
+    --secondary:          225 36% 96%;
+    --secondary-foreground: 237 51% 8%;
+    --muted:              225 36% 96%;
+    --muted-foreground:   236 17% 35%;
+    --accent:             225 32% 92%;
+    --accent-foreground:  237 51% 8%;
+    --destructive:        349 68% 49%;
+    --destructive-foreground: 0 0% 100%;
+    --border:             237 51% 8% / 0.10;
+    --input:              225 36% 96%;
+    --ring:               167 100% 30%;
+    --success:            153 100% 30%;
+    --success-foreground: 0 0% 100%;
+    --warning:            39 100% 35%;
+    --warning-foreground: 0 0% 100%;
+    --chat-bubble-own:    167 100% 30%;
+    --chat-bubble-other:  225 36% 96%;
+    --sidebar-bg:         0 0% 100%;
+    --sidebar-fg:         236 17% 35%;
+    --sidebar-fg-bright:  237 51% 8%;
+    --sidebar-hover:      225 36% 96%;
+    --sidebar-active:     167 100% 30%;
+    --sidebar-border:     237 51% 8% / 0.10;
+    --sidebar-muted:      236 13% 52%;
+    --sidebar-custom-bg:  0 0% 100%;
+    --sidebar-custom-fg:  236 17% 35%;
+    --sidebar-custom-fg-bright: 237 51% 8%;
+    --sidebar-custom-hover: 225 36% 96%;
+    --sidebar-custom-active: 167 100% 30%;
+    --sidebar-custom-border: 237 51% 8% / 0.10;
+    --sidebar-custom-muted: 236 13% 52%;
   }
 
   /* ════ BASE STYLES ════ */
@@ -158,11 +194,12 @@
     font-family: var(--rx-font-body);
     background: var(--rx-bg);
     color: var(--rx-t1);
+    overflow-wrap: anywhere;
     transition: var(--rx-transition);
   }
   h1,h2,h3,h4,h5,h6 {
     font-family: var(--rx-font-display);
-    letter-spacing: -0.025em;
+    letter-spacing: 0;
     color: var(--rx-t1);
     line-height: 1.15;
   }
@@ -170,6 +207,12 @@
   h2 { font-weight: 700; }
   h3, h4 { font-weight: 700; }
   p  { line-height: 1.55; }
+  p, h1, h2, h3, h4, h5, h6, span, a, button, label, li, td, th {
+    overflow-wrap: anywhere;
+  }
+  [class*="tracking-"] { letter-spacing: 0 !important; }
+  .prose, .prose * { color: inherit; max-width: 100%; overflow-wrap: anywhere; }
+  .prose pre, .prose code { white-space: pre-wrap; word-break: break-word; }
   ::selection { background: var(--rx-brand-soft); color: var(--rx-t1); }
 
   /* Focus visible — coherente */
@@ -198,8 +241,8 @@
      Tailwind ignores them (the `-foreground` suffix breaks the arbitrary value),
      leaving text with inherited color (invisible on brand-filled buttons).
      We alias them to the correct semantic tokens here. ── */
-  .text-\[var\(--rx-brand\)\]-foreground { color: var(--primary-foreground) !important; }
-  .bg-\[var\(--rx-brand\)\]-foreground   { background-color: var(--primary-foreground) !important; }
+  .text-\[var\(--rx-brand\)\]-foreground { color: hsl(var(--primary-foreground)) !important; }
+  .bg-\[var\(--rx-brand\)\]-foreground   { background-color: hsl(var(--primary-foreground)) !important; }
 }
 
 /* ════════════════════════════════════════
@@ -215,7 +258,7 @@
   .rx-page-title {
     font-family: var(--rx-font-display);
     font-size: clamp(18px,3vw,24px); font-weight: 800;
-    color: var(--rx-t1); letter-spacing: -0.03em;
+    color: var(--rx-t1); letter-spacing: 0;
     display: flex; align-items: center; gap: 10px;
   }
   .rx-page-sub { font-size: 13px; color: var(--rx-t2); margin-top: 4px; }
@@ -292,7 +335,7 @@
   .rx-btn:disabled { opacity: var(--rx-disabled-opacity); cursor: not-allowed; transform: none !important; box-shadow: none !important; }
 
   .rx-btn-primary {
-    background: var(--rx-brand); color: var(--primary-foreground);
+    background: var(--rx-brand); color: hsl(var(--primary-foreground));
     box-shadow: var(--rx-shadow-glow);
   }
   .rx-btn-primary:hover { background: var(--rx-brand-strong); transform: translateY(-1px); }
@@ -334,7 +377,7 @@
     color: var(--rx-t2); background: transparent; white-space: nowrap;
   }
   .rx-chip:hover { border-color: var(--rx-b2); color: var(--rx-t1); background: var(--rx-hover); }
-  .rx-chip.active { background: var(--rx-brand); color: var(--primary-foreground); border-color: var(--rx-brand); }
+  .rx-chip.active { background: var(--rx-brand); color: hsl(var(--primary-foreground)); border-color: var(--rx-brand); }
 
   /* Table */
   .rx-table { width: 100%; border-collapse: collapse; }
@@ -453,7 +496,7 @@
   /* Avatar */
   .rx-avatar {
     border-radius: 50%; display: flex; align-items: center; justify-content: center;
-    font-weight: 800; color: #fff; flex-shrink: 0; font-family: var(--rx-font-display);
+    font-weight: 800; color: hsl(var(--primary-foreground)); flex-shrink: 0; font-family: var(--rx-font-display);
   }
 
   /* Kbd */
