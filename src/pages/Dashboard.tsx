@@ -693,31 +693,35 @@ export default function Dashboard() {
               className="relative overflow-hidden rounded-2xl"
               intensity={4}
               style={{
-                background: 'linear-gradient(135deg, hsl(224 47% 9%) 0%, hsl(224 40% 13%) 100%)',
-                border: '1px solid rgba(255,255,255,0.07)',
-                boxShadow: '0 4px 24px -6px rgba(0,0,0,0.4)',
+                background: 'linear-gradient(135deg, var(--rx-s1) 0%, var(--rx-s2) 100%)',
+                border: '1px solid var(--rx-b1)',
+                boxShadow: 'var(--rx-shadow-md)',
               } as React.CSSProperties}
             >
               {/* Decorative rings */}
-              <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-48 h-48 rounded-full" style={{ border: '1px solid rgba(20,184,166,0.12)' }} />
-              <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/4 w-32 h-32 rounded-full" style={{ border: '1px solid rgba(20,184,166,0.18)' }} />
+              <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-48 h-48 rounded-full" style={{ border: '1px solid var(--rx-brand-soft)' }} />
+              <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/4 w-32 h-32 rounded-full" style={{ border: '1px solid var(--rx-b1)' }} />
               {/* Glow */}
-              <div className="absolute right-8 top-1/2 -translate-y-1/2 w-16 h-16 rounded-full blur-2xl" style={{ background: 'rgba(20,184,166,0.3)' }} />
+              <div className="absolute right-8 top-1/2 -translate-y-1/2 w-20 h-20 rounded-full blur-3xl" style={{ background: 'var(--rx-brand-soft)' }} />
 
               <div className="relative z-10 flex items-center justify-between p-5 sm:p-6">
                 <div>
                   <div className="flex items-center gap-2 mb-2">
-                    <span className="w-2 h-2 rounded-full bg-teal-400 animate-pulse" />
-                    <span className="text-[11px] font-semibold text-teal-400 uppercase tracking-widest">Sistema operativo</span>
+                    <span className="w-2 h-2 rounded-full animate-pulse" style={{ background: 'var(--rx-brand)' }} />
+                    <span className="text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: 'var(--rx-brand)' }}>Sistema operativo</span>
                   </div>
-                  <h3 className="text-lg font-bold text-white">Todos los servicios activos</h3>
-                  <p className="text-sm text-white/50 mt-0.5">Agentes de voz · WhatsApp Bot · Notificaciones</p>
+                  <h3 className="text-lg font-bold text-foreground">Todos los servicios activos</h3>
+                  <p className="text-sm text-[var(--rx-t2)] mt-0.5">Agentes de voz · WhatsApp Bot · Notificaciones</p>
                 </div>
-                <div className="shrink-0 w-14 h-14 rounded-2xl flex items-center justify-center" style={{ background: 'rgba(20,184,166,0.15)', border: '1px solid rgba(20,184,166,0.2)' }}>
-                  <Globe size={26} className="text-teal-400" />
+                <div
+                  className="shrink-0 w-14 h-14 rounded-2xl flex items-center justify-center"
+                  style={{ background: 'var(--rx-brand-soft)', border: '1px solid var(--rx-brand-soft)' }}
+                >
+                  <Globe size={26} style={{ color: 'var(--rx-brand)' }} />
                 </div>
               </div>
             </TiltCard>
+
           </div>
 
         </div>
