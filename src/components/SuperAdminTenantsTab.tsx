@@ -350,19 +350,51 @@ export default function SuperAdminTenantsTab() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="flex flex-wrap items-end gap-2 mb-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
             <div>
-              <label className="text-xs text-[var(--rx-t2)] block mb-1">País (ISO)</label>
-              <Input value={provCountry} onChange={e => setProvCountry(e.target.value)} className="h-8 w-20 uppercase" maxLength={2} />
+              <label className="text-xs text-[var(--rx-t2)] block mb-1">País</label>
+              <Select value={provCountry} onValueChange={(v) => { setProvCountry(v); const c = getTwilioCountry(v); if (c && !c.types.includes(provType)) setProvType(c.types[0]); }}>
+                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                <SelectContent className="max-h-72">
+                  {TWILIO_COUNTRIES.map((c) => (
+                    <SelectItem key={c.code} value={c.code}>
+                      {c.flag} {c.name} ({c.code}){c.requiresBundle ? ' ⚠️' : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div>
-              <label className="text-xs text-[var(--rx-t2)] block mb-1">Área (opcional)</label>
-              <Input value={provAreaCode} onChange={e => setProvAreaCode(e.target.value)} className="h-8 w-24" placeholder="415" />
+              <label className="text-xs text-[var(--rx-t2)] block mb-1">Tipo</label>
+              <Select value={provType} onValueChange={(v) => setProvType(v as TwilioNumberType)}>
+                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {(getTwilioCountry(provCountry)?.types || ['Local', 'Mobile', 'TollFree']).map((t) => (
+                    <SelectItem key={t} value={t}>{t}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-            <Button size="sm" onClick={listAvailable} disabled={provListing} className="h-8 gap-2">
-              {provListing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-              Listar disponibles
-            </Button>
+            <div>
+              <label className="text-xs text-[var(--rx-t2)] block mb-1">Área / prefijo</label>
+              <Input value={provAreaCode} onChange={e => setProvAreaCode(e.target.value)} className="h-9" placeholder="415" />
+            </div>
+            <div className="flex items-end">
+              <Button size="sm" onClick={listAvailable} disabled={provListing} className="h-9 w-full gap-2">
+                {provListing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                Listar
+              </Button>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-3 text-xs text-[var(--rx-t2)] mb-3">
+            <span className="font-medium text-foreground">Capacidades:</span>
+            <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={provCapSms} onChange={(e) => setProvCapSms(e.target.checked)} /> SMS</label>
+            <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={provCapVoice} onChange={(e) => setProvCapVoice(e.target.checked)} /> Voice</label>
+            <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={provCapMms} onChange={(e) => setProvCapMms(e.target.checked)} /> MMS</label>
+            {getTwilioCountry(provCountry)?.requiresBundle && (
+              <span className="text-[var(--rx-amber)] ml-auto">⚠️ Este país requiere Regulatory Bundle en Twilio.</span>
+            )}
           </div>
 
           <div className="max-h-72 overflow-y-auto border border-[var(--rx-b1)] rounded-lg">
@@ -370,24 +402,32 @@ export default function SuperAdminTenantsTab() {
               <p className="text-sm text-[var(--rx-t2)] text-center py-8">Sin resultados. Lista los disponibles para elegir uno.</p>
             ) : (
               <ul className="divide-y divide-[var(--rx-b1)]">
-                {provNumbers.map(n => (
-                  <li key={n.phone_number}>
-                    <label className="flex items-center gap-3 p-2 px-3 hover:bg-[var(--rx-s2)]/40 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="prov-number"
-                        checked={provSelected === n.phone_number}
-                        onChange={() => setProvSelected(n.phone_number)}
-                      />
-                      <div className="flex-1 min-w-0">
-                        <div className="font-mono text-sm text-foreground">{n.phone_number}</div>
-                        <div className="text-xs text-[var(--rx-t2)] truncate">
-                          {n.friendly_name}{n.locality ? ` · ${n.locality}` : ''}{n.region ? `, ${n.region}` : ''}
+                {provNumbers.map(n => {
+                  const caps = n.capabilities || {};
+                  return (
+                    <li key={n.phone_number}>
+                      <label className="flex items-center gap-3 p-2 px-3 hover:bg-[var(--rx-s2)]/40 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="prov-number"
+                          checked={provSelected === n.phone_number}
+                          onChange={() => setProvSelected(n.phone_number)}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="font-mono text-sm text-foreground">{n.phone_number}</div>
+                          <div className="text-xs text-[var(--rx-t2)] truncate">
+                            {n.friendly_name}{n.locality ? ` · ${n.locality}` : ''}{n.region ? `, ${n.region}` : ''}
+                          </div>
                         </div>
-                      </div>
-                    </label>
-                  </li>
-                ))}
+                        <div className="flex gap-1 shrink-0">
+                          {(caps as any).SMS && <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--rx-s2)]/60">SMS</span>}
+                          {(caps as any).voice && <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--rx-s2)]/60">Voice</span>}
+                          {(caps as any).MMS && <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--rx-s2)]/60">MMS</span>}
+                        </div>
+                      </label>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </div>
