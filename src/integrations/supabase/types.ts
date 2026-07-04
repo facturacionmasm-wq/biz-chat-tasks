@@ -496,6 +496,59 @@ export type Database = {
           },
         ]
       }
+      calcom_integrations: {
+        Row: {
+          api_key_encrypted: string
+          created_at: string
+          default_event_type_id: string | null
+          id: string
+          last_error: string | null
+          last_sync_at: string | null
+          status: string
+          tenant_id: string
+          updated_at: string
+          user_id: string
+          webhook_id: string | null
+          webhook_secret: string
+        }
+        Insert: {
+          api_key_encrypted: string
+          created_at?: string
+          default_event_type_id?: string | null
+          id?: string
+          last_error?: string | null
+          last_sync_at?: string | null
+          status?: string
+          tenant_id: string
+          updated_at?: string
+          user_id: string
+          webhook_id?: string | null
+          webhook_secret: string
+        }
+        Update: {
+          api_key_encrypted?: string
+          created_at?: string
+          default_event_type_id?: string | null
+          id?: string
+          last_error?: string | null
+          last_sync_at?: string | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+          user_id?: string
+          webhook_id?: string | null
+          webhook_secret?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "calcom_integrations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       call_costs: {
         Row: {
           ai_tokens_used: number
@@ -1956,6 +2009,7 @@ export type Database = {
           created_at: string
           email: string | null
           id: string
+          last_pull_at: string | null
           refresh_token: string
           scopes: string[] | null
           status: string
@@ -1970,6 +2024,7 @@ export type Database = {
           created_at?: string
           email?: string | null
           id?: string
+          last_pull_at?: string | null
           refresh_token: string
           scopes?: string[] | null
           status?: string
@@ -1984,6 +2039,7 @@ export type Database = {
           created_at?: string
           email?: string | null
           id?: string
+          last_pull_at?: string | null
           refresh_token?: string
           scopes?: string[] | null
           status?: string
