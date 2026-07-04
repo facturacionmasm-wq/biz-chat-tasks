@@ -311,6 +311,35 @@ const IntegrationsPage = () => {
         <p className="text-sm text-[var(--rx-t2)] mt-1">Conecta herramientas externas para potenciar tu espacio de trabajo.</p>
       </div>
 
+      {/* Phone number panel (tenant self-service purchase) */}
+      <div className="rx-panel mb-4 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
+        <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+          <Phone size={20} className="text-[var(--rx-brand)]" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <h3 className="text-sm font-semibold text-foreground">Número de teléfono</h3>
+          {tenantPhoneNumber ? (
+            <p className="text-xs text-[var(--rx-t2)] mt-0.5">
+              Asignado: <span className="font-mono text-foreground">{tenantPhoneNumber}</span>
+            </p>
+          ) : (
+            <p className="text-xs text-[var(--rx-t2)] mt-0.5">
+              Compra un número de teléfono para conectar WhatsApp o el Agente de Voz.
+            </p>
+          )}
+        </div>
+        {tenantPhoneNumber ? (
+          <span className="text-xs text-[var(--rx-emerald)] font-medium flex items-center gap-1">
+            <CheckCircle2 size={14} /> Listo
+          </span>
+        ) : (
+          <Button onClick={() => setPurchaseWizardOpen(true)} size="sm" className="gap-2">
+            <ShoppingCart size={14} /> Comprar número
+          </Button>
+        )}
+      </div>
+
+
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {integrations.map(int => (
           <div key={int.id} className="rx-panel">
