@@ -1019,6 +1019,8 @@ export type Database = {
           notes: string | null
           phone: string
           source: string | null
+          starred: boolean
+          tags: string[]
           tenant_id: string
           updated_at: string
         }
@@ -1031,6 +1033,8 @@ export type Database = {
           notes?: string | null
           phone: string
           source?: string | null
+          starred?: boolean
+          tags?: string[]
           tenant_id: string
           updated_at?: string
         }
@@ -1043,6 +1047,8 @@ export type Database = {
           notes?: string | null
           phone?: string
           source?: string | null
+          starred?: boolean
+          tags?: string[]
           tenant_id?: string
           updated_at?: string
         }
