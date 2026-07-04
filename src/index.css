@@ -190,6 +190,7 @@
   /* ════ BASE STYLES ════ */
   * { @apply border-border; box-sizing: border-box; }
   #root { width: 100%; min-height: 100vh; }
+  /* Structural containers never lock a min-width that traps overflow */
   main, section, article, aside, header, footer, nav, div { min-width: 0; }
   html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
   body {
@@ -198,28 +199,81 @@
     color: var(--rx-t1);
     overflow-wrap: anywhere;
     font-size: 15px;
-    line-height: 1.45;
+    line-height: 1.5;
+    font-feature-settings: "ss01", "cv11";
     transition: var(--rx-transition);
   }
   h1,h2,h3,h4,h5,h6 {
     font-family: var(--rx-font-display);
-    letter-spacing: 0;
+    letter-spacing: -0.02em;
     color: var(--rx-t1);
     line-height: 1.15;
-  }
-  h1 { font-weight: 800; }
-  h2 { font-weight: 700; }
-  h3, h4 { font-weight: 700; }
-  p  { line-height: 1.5; }
-  p, h1, h2, h3, h4, h5, h6, span, a, button, label, li, td, th {
     overflow-wrap: anywhere;
   }
-  button, [role="button"], input, textarea, select { max-width: 100%; }
-  button, [role="button"] { text-wrap: balance; }
+  h1 { font-weight: 800; font-size: clamp(24px, 4vw, 34px); }
+  h2 { font-weight: 700; font-size: clamp(20px, 3vw, 26px); }
+  h3 { font-weight: 700; font-size: clamp(17px, 2.4vw, 20px); }
+  h4 { font-weight: 700; font-size: 15px; }
+  h5, h6 { font-weight: 600; font-size: 13px; }
+  p  { line-height: 1.55; }
+  p, span, a, label, li, td, th {
+    overflow-wrap: anywhere;
+  }
+  button, [role="button"], input, textarea, select { max-width: 100%; min-width: 0; }
   [class*="tracking-"] { letter-spacing: 0 !important; }
   .prose, .prose * { color: inherit; max-width: 100%; overflow-wrap: anywhere; }
   .prose pre, .prose code { white-space: pre-wrap; word-break: break-word; }
   ::selection { background: var(--rx-brand-soft); color: var(--rx-t1); }
+
+  /* ── Global overflow safety net ──
+     Applies to every shadcn primitive and generic markup so long strings
+     (emails, tenant names, URLs, ids) cannot burst their container. */
+
+  /* Flex items in the app never trap overflow */
+  [class*="flex"] > * { min-width: 0; }
+
+  /* Text-holding primitives: single-line ellipsis by default,
+     but only where wrapping isn't obviously appropriate (badges, chips, tabs, buttons) */
+  [role="tab"],
+  [data-radix-collection-item][role="menuitem"],
+  .rx-chip,
+  .rx-badge {
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Button labels wrap tightly and cap two lines to avoid layout jumps */
+  button, [role="button"], .rx-btn, a.rx-btn {
+    text-wrap: balance;
+    overflow-wrap: anywhere;
+    word-break: normal;
+  }
+
+  /* Table cells default to nowrap+ellipsis. Cells that need wrapping can add `whitespace-normal`. */
+  td, th {
+    max-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  td.whitespace-normal, th.whitespace-normal,
+  td[data-wrap], th[data-wrap] {
+    white-space: normal;
+    max-width: none;
+  }
+
+  /* Dialog / Sheet / Popover / Card titles never overflow horizontally */
+  [role="dialog"] h1, [role="dialog"] h2, [role="dialog"] h3,
+  [role="alertdialog"] h1, [role="alertdialog"] h2, [role="alertdialog"] h3 {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  /* Any element carrying tabular numeric content (IDs, phone numbers) */
+  .tabular-nums, [data-tabular] { font-variant-numeric: tabular-nums; }
 
   /* Focus visible — coherente */
   :focus { outline: none; }
@@ -241,6 +295,16 @@
   *::-webkit-scrollbar-thumb { background: var(--rx-s3); border-radius: 99px; }
   *::-webkit-scrollbar-thumb:hover { background: var(--rx-b3); }
   *::-webkit-scrollbar-track { background: transparent; }
+
+  /* Reduced motion respect */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: .001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: .001ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
 
   /* ── Fix: legacy invalid Tailwind arbitrary-value classes used in many
      pages: `text-[var(--rx-brand)]-foreground` / `bg-[var(--rx-brand)]-foreground`.
