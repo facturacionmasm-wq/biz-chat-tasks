@@ -1,0 +1,239 @@
+import { useState, useCallback, useEffect } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
+import { Loader2, RefreshCw, ShieldOff, ShieldCheck, Clock, CreditCard, Crown } from 'lucide-react';
+import { toast } from 'sonner';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
+
+interface AdminTenantRow {
+  tenant_id: string;
+  tenant_name: string;
+  status: string;
+  plan_slug: string | null;
+  plan_name: string | null;
+  trial_ends_at: string | null;
+  days_remaining: number;
+  is_blocked: boolean;
+  is_master: boolean;
+}
+
+type PendingAction =
+  | { kind: 'extend_trial'; tenant: AdminTenantRow; days: number }
+  | { kind: 'set_status'; tenant: AdminTenantRow; status: 'active' | 'trialing' | 'past_due' }
+  | { kind: 'block'; tenant: AdminTenantRow }
+  | { kind: 'activate'; tenant: AdminTenantRow };
+
+const statusBadge = (status: string, isBlocked: boolean) => {
+  if (isBlocked) return 'bg-destructive/10 text-[var(--rx-rose)]';
+  if (status === 'active') return 'bg-[rgba(0,232,122,.1)] text-[var(--rx-emerald)]';
+  if (status === 'trialing') return 'bg-primary/10 text-[var(--rx-brand)]';
+  if (status === 'past_due') return 'bg-warning/10 text-[var(--rx-amber)]';
+  return 'bg-muted text-[var(--rx-t2)]';
+};
+
+export default function SuperAdminTenantsTab() {
+  const [rows, setRows] = useState<AdminTenantRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [pending, setPending] = useState<PendingAction | null>(null);
+  const [extendDaysDraft, setExtendDaysDraft] = useState<Record<string, number>>({});
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.rpc('admin_list_tenants_with_subscription');
+      if (error) throw error;
+      setRows((data || []) as AdminTenantRow[]);
+    } catch (err: any) {
+      console.error('[SuperAdminTenants] load error', err);
+      toast.error(err.message || 'Error al cargar tenants');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const runAction = useCallback(async () => {
+    if (!pending) return;
+    const { tenant } = pending;
+    setBusyId(tenant.tenant_id);
+    try {
+      let action: string;
+      let extend_days: number | null = null;
+      if (pending.kind === 'extend_trial') {
+        action = 'extend_trial';
+        extend_days = pending.days;
+      } else if (pending.kind === 'block') {
+        action = 'block';
+      } else if (pending.kind === 'activate') {
+        action = 'activate';
+      } else {
+        action = pending.status === 'active' ? 'activate'
+          : pending.status === 'trialing' ? 'set_trialing'
+          : 'set_past_due';
+      }
+
+      const { error } = await supabase.rpc('admin_manage_tenant_subscription', {
+        _tenant_id: tenant.tenant_id,
+        _action: action,
+        _extend_days: extend_days,
+      });
+      if (error) throw error;
+      toast.success('Cambio aplicado');
+      setPending(null);
+      await load();
+    } catch (err: any) {
+      console.error('[SuperAdminTenants] action error', err);
+      toast.error(err.message || 'Error al aplicar cambio');
+    } finally {
+      setBusyId(null);
+    }
+  }, [pending, load]);
+
+  return (
+    <div className="rx-panel">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="font-semibold text-foreground flex items-center gap-2">
+          <CreditCard size={16} className="text-[var(--rx-brand)]" /> Gestión de tenants
+        </h3>
+        <Button variant="outline" size="sm" onClick={load} disabled={loading} className="gap-2">
+          {loading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+          Refrescar
+        </Button>
+      </div>
+
+      {loading ? (
+        <div className="py-10 flex justify-center"><Loader2 className="animate-spin text-[var(--rx-brand)]" /></div>
+      ) : rows.length === 0 ? (
+        <p className="text-sm text-[var(--rx-t2)] text-center py-6">Sin tenants.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-[var(--rx-b1)] text-left">
+                <th className="py-2 px-3 font-medium text-[var(--rx-t2)]">Tenant</th>
+                <th className="py-2 px-3 font-medium text-[var(--rx-t2)]">Plan</th>
+                <th className="py-2 px-3 font-medium text-[var(--rx-t2)]">Estado</th>
+                <th className="py-2 px-3 font-medium text-[var(--rx-t2)]">Trial expira</th>
+                <th className="py-2 px-3 font-medium text-[var(--rx-t2)] text-right">Días</th>
+                <th className="py-2 px-3 font-medium text-[var(--rx-t2)]">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(t => {
+                const draft = extendDaysDraft[t.tenant_id] ?? 15;
+                const busy = busyId === t.tenant_id;
+                return (
+                  <tr key={t.tenant_id} className="border-b border-[var(--rx-b1)]/50 align-top">
+                    <td className="py-3 px-3">
+                      <div className="flex items-center gap-1.5 font-medium text-foreground">
+                        {t.is_master && <Crown size={12} className="text-[var(--rx-amber)]" />}
+                        {t.tenant_name}
+                      </div>
+                      <div className="text-[10px] text-[var(--rx-t2)] font-mono mt-0.5">{t.tenant_id.slice(0, 8)}…</div>
+                    </td>
+                    <td className="py-3 px-3 text-[var(--rx-t2)]">{t.plan_name || '—'}</td>
+                    <td className="py-3 px-3">
+                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${statusBadge(t.status, t.is_blocked)}`}>
+                        {t.is_blocked ? 'BLOQUEADO' : t.status}
+                      </span>
+                    </td>
+                    <td className="py-3 px-3 text-[var(--rx-t2)] text-xs">
+                      {t.trial_ends_at ? format(new Date(t.trial_ends_at), 'd MMM yyyy', { locale: es }) : '—'}
+                    </td>
+                    <td className="py-3 px-3 text-right font-semibold text-foreground">{t.days_remaining}</td>
+                    <td className="py-3 px-3">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <div className="flex items-center gap-1">
+                          <Input
+                            type="number"
+                            min={1}
+                            max={365}
+                            value={draft}
+                            disabled={busy}
+                            onChange={e => setExtendDaysDraft(s => ({ ...s, [t.tenant_id]: Math.max(1, Number(e.target.value) || 15) }))}
+                            className="h-7 w-14 text-xs"
+                          />
+                          <Button
+                            size="sm" variant="outline" className="h-7 gap-1 text-xs"
+                            disabled={busy}
+                            onClick={() => setPending({ kind: 'extend_trial', tenant: t, days: draft })}
+                          >
+                            <Clock size={12} /> Trial
+                          </Button>
+                        </div>
+
+                        <Select
+                          disabled={busy || t.is_master}
+                          onValueChange={(v) => setPending({ kind: 'set_status', tenant: t, status: v as any })}
+                        >
+                          <SelectTrigger className="h-7 w-[110px] text-xs">
+                            <SelectValue placeholder="Pago…" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="active">active (pagado)</SelectItem>
+                            <SelectItem value="trialing">trialing</SelectItem>
+                            <SelectItem value="past_due">past_due</SelectItem>
+                          </SelectContent>
+                        </Select>
+
+                        {t.is_blocked ? (
+                          <Button
+                            size="sm" variant="outline" className="h-7 gap-1 text-xs text-[var(--rx-emerald)]"
+                            disabled={busy}
+                            onClick={() => setPending({ kind: 'activate', tenant: t })}
+                          >
+                            <ShieldCheck size={12} /> Activar
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm" variant="outline" className="h-7 gap-1 text-xs text-[var(--rx-rose)]"
+                            disabled={busy || t.is_master}
+                            onClick={() => setPending({ kind: 'block', tenant: t })}
+                          >
+                            <ShieldOff size={12} /> Bloquear
+                          </Button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <AlertDialog open={!!pending} onOpenChange={(open) => !open && setPending(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar acción</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pending?.kind === 'extend_trial' && `Extender trial de "${pending.tenant.tenant_name}" por ${pending.days} días.`}
+              {pending?.kind === 'block' && `Bloquear a "${pending.tenant.tenant_name}". El tenant no podrá usar servicios (WhatsApp, envíos).`}
+              {pending?.kind === 'activate' && `Reactivar a "${pending.tenant.tenant_name}" (status: active).`}
+              {pending?.kind === 'set_status' && `Cambiar estado de "${pending.tenant.tenant_name}" a "${pending.status}".`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={!!busyId}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={runAction} disabled={!!busyId}>
+              {busyId ? <Loader2 size={14} className="animate-spin mr-2" /> : null}
+              Confirmar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
