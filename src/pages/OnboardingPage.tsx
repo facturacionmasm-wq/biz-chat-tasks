@@ -188,16 +188,20 @@ const OnboardingPage = () => {
       const trialEnd = new Date();
       trialEnd.setDate(trialEnd.getDate() + 15);
 
+      // The signup trigger (handle_new_user) already created a trialing
+      // subscription on the Basic plan. Here we just update the chosen
+      // plan_id via the admin RPC-safe path: upsert on tenant_id.
+      // RLS forbids direct INSERT for tenants, so we UPDATE the existing row.
       const { error: subError } = await supabase
         .from('tenant_subscriptions')
-        .insert({
-          tenant_id: tenantId,
+        .update({
           plan_id: selectedPlan,
           status: 'trialing',
           trial_ends_at: trialEnd.toISOString(),
           current_period_start: new Date().toISOString(),
           current_period_end: trialEnd.toISOString(),
-        });
+        })
+        .eq('tenant_id', tenantId);
       if (subError) throw subError;
 
       const { error: profileError } = await supabase
