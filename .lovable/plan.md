@@ -1,95 +1,76 @@
 
-# Traer Tu Propio Número (BYON) — Meta + Twilio
+Se agregan tres cambios sin tocar los flujos ya funcionales de voz, WhatsApp, ni el cobro por uso actual.
 
-Ampliación **no destructiva** del módulo de Integraciones. Convivirá con el wizard actual de compra de número (Fase anterior) y con los caminos Meta/Twilio del wizard de WhatsApp. Cero cambios en `whatsapp-*`, `twilio-*`, `elevenlabs-*`, `call-transfer*`.
+## 1. Cobro mensual del número telefónico
 
-## Qué verá el tenant
+### Base de datos
+Migración sobre `tenant_phone_numbers`:
+- `monthly_fee numeric(10,2) NOT NULL DEFAULT 0`
+- `currency text NOT NULL DEFAULT 'USD'`
+- `billing_status text NOT NULL DEFAULT 'pending'` (`pending | active | past_due | canceled`)
+- `stripe_subscription_item_id text`
+- `source text` (`twilio_purchase | byon_hosted | byon_portin | byon_verified_id`)
+- `activated_at`, `canceled_at`, `next_billing_at timestamptz`
 
-Nueva pestaña **"Mi Número"** dentro de `IntegrationsPage` (junto a WhatsApp, Voz, Google, etc.), con dos secciones:
+Nueva tabla `phone_number_pricing` (catálogo editable por super_admin): `country_code`, `number_type`, `source`, `monthly_fee`, `currency`, `active`.
 
-**A) "Ya tengo un número y quiero usarlo"** — 4 opciones en tarjetas comparativas:
+Nueva tabla `phone_number_invoices`: `tenant_id`, `phone_number_id`, `period_start/end`, `amount`, `currency`, `stripe_invoice_id`, `status`. Con RLS: tenant lee lo suyo, super_admin todo, service_role total, más GRANTs estándar.
 
-| Opción | Sirve para | Recibe | Envía | Tiempo | Costo | Países |
-|---|---|---|---|---|---|---|
-| **WhatsApp con mi celular (Meta)** | Aria por WhatsApp | Sí | Sí | 5–10 min (auto) | Gratis (plan Meta) | MX / US / CA / global |
-| **Verified Caller ID (Twilio)** | Mostrar mi número como remitente saliente | No | Sí (SMS/voz salientes) | 2–5 min (auto) | Gratis | MX / US / CA |
-| **Hosted SMS (Twilio)** | Recibir/enviar SMS conservando la operadora | Sí (SMS) | Sí (SMS) | 5–15 días hábiles | Setup Twilio + mensual | US / CA (MX no soportado por Twilio) |
-| **Portabilidad total (Port-in)** | Voz + SMS + Agente IA con el mismo número | Sí | Sí | 2–4 semanas | Setup + mensual | US / CA (MX caso a caso) |
+### Stripe (`supabase/functions/stripe-billing/index.ts`)
+Nuevas acciones:
+- `create_number_subscription` — crea/actualiza Subscription con un `subscription_item` por número (price recurring mensual desde `phone_number_pricing`). Prorratea el primer mes.
+- `cancel_number_subscription` — cancela el item al liberar el número.
+- `list_number_invoices` — para el dash.
 
-**B) "Prefiero comprar uno nuevo"** — CTA al wizard de compra ya existente (`TenantNumberPurchaseWizard`), sin cambios.
+En `stripe-webhook`: manejar `invoice.paid`, `invoice.payment_failed`, `customer.subscription.updated` → actualizar `billing_status` y poblar `phone_number_invoices`.
 
-Cada tarjeta explica: qué obtiene, qué NO obtiene, cuánto tarda, y **requisitos** (ej. LOA + factura reciente del carrier para Hosted/Port-in).
+### Puntos de integración
+- `tenant-provision-number`: tras insertar el número, buscar tarifa y llamar `create_number_subscription`. Si falla → rollback en Twilio.
+- `byon-request-admin` al pasar a `completed`: mismo flujo, tarifa según `source`.
+- `twilio-verify-caller-id` y Meta WhatsApp: `monthly_fee = 0`, sin suscripción.
 
-## Flujos por opción
+### UI tenant (`UsagePage.tsx` / `BillingSection.tsx`)
+Sección **Números activos** con tabla: número, país, tipo, origen, renta, estado, próximo cobro, botón "Cancelar número". Debajo, historial de `phone_number_invoices` con enlace al PDF Stripe. Modal de confirmación de cargo mensual antes de comprar/migrar.
 
-### 1) Meta WhatsApp (100% automático, ya existe)
-- Botón "Vincular mi celular con WhatsApp" → abre el `WhatsAppConnectionWizard` en modo **Meta** (ya implementado). Solo agregamos copy y el atajo desde esta pestaña.
-- Sin cambios en edge functions.
+### UI super_admin (`SuperAdminTenantsTab.tsx`)
+Sub-tab **Precios de números**: CRUD sobre `phone_number_pricing` y vista de todos los `tenant_phone_numbers` con `billing_status`.
 
-### 2) Verified Caller ID (automático vía Twilio API)
-- Wizard de 3 pasos: capturar número E.164 → Twilio genera código de 6 dígitos → el tenant responde con el código recibido por SMS/llamada.
-- Nueva edge function `twilio-verify-caller-id` (JWT protegida) con dos acciones:
-  - `start`: `POST /OutgoingCallerIds/... /ValidationRequests.json` vía gateway Twilio (usa `TWILIO_ACCOUNT_SID`/`TWILIO_AUTH_TOKEN` ya existentes).
-  - `confirm`: consulta estado y persiste el número en `tenants.settings_json.verified_caller_ids[]`.
-- Registra `audit_events` con `event_type = 'byon_verified_caller_id'`.
+## 2. Botón para que el tenant elimine personal libremente
 
-### 3) Hosted SMS y 4) Port-in (semi-automático, requieren papeleo)
-Twilio no automatiza esto por API pública sin cuenta enterprise. Implementamos como **solicitud a soporte**:
-- Formulario con: número, país, carrier actual, capacidades deseadas (SMS/Voz), 3 uploads (foto de factura reciente + LOA firmada + INE/ID del titular) al bucket **nuevo** `byon-requests` (privado, RLS por tenant).
-- Se guarda en tabla **nueva** `byon_requests` (status: `pending → in_review → approved → completed | rejected`).
-- Notificación al super_admin (usa el sistema de notificaciones existente).
-- El super_admin gestiona el trámite manualmente en la consola de Twilio y actualiza el `status` desde el `SuperAdminTenantsTab` (nueva sub-tarjeta "Solicitudes BYON").
-- Cuando el super_admin marca `completed`, el número queda disponible en `tenants.whatsapp_config.phone_number` / `tenant_phone_numbers` (mismos campos que consume hoy el Voice Agent y WhatsApp — no rompe nada).
+- En la pantalla actual de equipo (Settings → People o similar) agregar un botón "Eliminar" por miembro visible para `owner` y `admin` del tenant.
+- Confirmación modal ("¿Eliminar a X del workspace?").
+- Extender `supabase/functions/team-management/index.ts` con acción `remove_member` que:
+  - Valida que el actor sea `owner`/`admin`/`super_admin` del mismo tenant.
+  - Nunca permite eliminarse a uno mismo si es el único `owner` (bloqueo lógico).
+  - Elimina filas en `user_roles` y `profiles` para ese `user_id` dentro del tenant.
+  - Cascada limpia tokens de Google Calendar (ya existe trigger).
+  - Registra en `audit_events` (`event_type: 'member_removed_by_tenant'`).
+- Sin tocar `invite-member` ni el flujo de aprobación existente.
+
+## 3. Sub-tab super admin: administración global de tenants
+
+Nueva sub-tab en `SuperAdminTenantsTab.tsx` llamada **Tenants registrados**, con:
+
+- Tabla de todos los tenants usando el RPC ya existente `admin_list_tenants_with_subscription` (nombre, plan, estado, días de trial, bloqueado, master).
+- Acciones por fila:
+  - **Cambiar suscripción**: modal para `activate | set_trialing | extend_trial (días) | set_past_due | block` → usa el RPC ya existente `admin_manage_tenant_subscription`.
+  - **Cambiar plan**: dropdown con `subscription_plans` → nueva acción en el RPC (`change_plan`) que actualiza `tenant_subscriptions.plan_id`, registra en `plan_change_history` y en `audit_events`.
+  - **Eliminar tenant**: nueva Edge Function `admin-delete-tenant` (JWT + role check `super_admin`) que:
+    - Bloquea el master tenant (`00000000-0000-0000-0000-000000000001`).
+    - En transacción: cancela Stripe Subscriptions/Items del tenant, borra `user_roles`, `profiles`, `tenants` (cascada configurada donde aplica). Datos ya con `deleted_at` se marcan; el resto se elimina.
+    - Registra `audit_events` (`event_type: 'tenant_deleted'`) con payload de recuento por tabla afectada.
+    - Confirmación en UI con doble input (escribir el nombre del tenant).
+- Buscador por nombre/plan/estado y filtros por estado de suscripción.
 
 ## Detalles técnicos
 
-### Nuevos archivos
-- `src/pages/BringYourOwnNumberTab.tsx` — tarjetas comparativas + routers a cada sub-flujo.
-- `src/components/byon/VerifiedCallerIdWizard.tsx`
-- `src/components/byon/HostedNumberRequestForm.tsx` (reusado para Port-in con `type` param)
-- `src/components/byon/ByonRequestsList.tsx` (historial del tenant)
-- `src/components/SuperAdminByonRequests.tsx` (panel super_admin)
-- `src/lib/byon-options.ts` — copy, tiempos y países por opción.
-- `supabase/functions/twilio-verify-caller-id/index.ts` (JWT verificado)
-- `supabase/functions/byon-request/index.ts` — crea solicitud + sube documentos (JWT).
-- `supabase/functions/byon-request-admin/index.ts` — super_admin actualiza status (JWT + role check).
-
-### Editados (mínimos, solo montar entradas)
-- `src/pages/IntegrationsPage.tsx` — nueva pestaña "Mi Número".
-- `src/components/SuperAdminTenantsTab.tsx` — sub-tab "Solicitudes BYON".
-- `supabase/config.toml` — declarar las 3 funciones nuevas con `verify_jwt = true`.
-
-### Migración de base de datos (una sola)
-```text
-CREATE TABLE public.byon_requests (
-  id uuid PK,
-  tenant_id uuid FK tenants,
-  requested_by uuid FK auth.users,
-  request_type text CHECK IN ('hosted_sms','port_in'),
-  phone_number text (E.164),
-  country_code text,
-  current_carrier text,
-  desired_capabilities jsonb, -- {sms,voice,mms}
-  documents jsonb,            -- [{type,storage_path}]
-  status text CHECK IN ('pending','in_review','approved','completed','rejected'),
-  admin_notes text,
-  reviewed_by uuid,
-  reviewed_at timestamptz,
-  created_at, updated_at
-)
-+ GRANTs (authenticated + service_role)
-+ RLS: tenant lee sus propias solicitudes; super_admin ve todas
-+ trigger updated_at
-+ storage bucket 'byon-requests' privado con policies por tenant_id
-+ audit_events triggers
-```
-
-### Impacto en flujos existentes
-- **Voice Agent / WhatsApp**: leen `tenants.whatsapp_config.phone_number` y `tenant_phone_numbers` como hoy. Solo cambia **el origen** del número (comprado / Meta / hosted / portado); el consumo es idéntico.
-- **Billing gate**: aplica igual — el número debe estar bajo un tenant con `active|trialing`.
-- **`twilio-provision-number` y `tenant-provision-number`**: sin cambios.
+- Toda escritura sensible pasa por Edge Functions con `SUPABASE_SERVICE_ROLE_KEY` y validación de rol.
+- Se reutiliza el patrón existente `has_role`/`user_roles`.
+- No se modifican `whatsapp-*`, `elevenlabs-*`, `call-*`, `voice-*`, `usePaymentGate`, ni el wizard `TenantNumberPurchaseWizard` más allá del paso de confirmación de cargo mensual.
+- Todas las tablas nuevas incluyen GRANTs + RLS.
 
 ## Fuera de alcance
-- Automatización real de Hosted/Port-in (Twilio no lo permite sin BAA/enterprise).
-- Portabilidad de números MX (Twilio no ofrece portabilidad self-service en MX; se ofrece solo como "consultar disponibilidad" y queda en manos de super_admin).
-- Cobro adicional en Stripe por el número portado (se gestionará después con la infraestructura de packages existente).
+
+- Descuentos por volumen o packs multi-número.
+- Reembolsos automáticos por cancelación a mitad de mes (manual por super_admin).
+- Undo/soft-delete de tenants: la eliminación es definitiva y auditada.
