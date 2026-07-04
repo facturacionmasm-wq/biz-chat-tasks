@@ -232,14 +232,16 @@
   /* Flex items in the app never trap overflow */
   [class*="flex"] > * { min-width: 0; }
 
-  /* Text-holding primitives: single-line ellipsis by default,
-     but only where wrapping isn't obviously appropriate (badges, chips, tabs, buttons) */
+  /* Text-holding compact primitives: keep their intrinsic width in flex rows,
+     but if a very long string is passed cap it with ellipsis rather than
+     bursting the container. */
   [role="tab"],
   [data-radix-collection-item][role="menuitem"],
   .rx-chip,
   .rx-badge {
     min-width: 0;
     max-width: 100%;
+    flex-shrink: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
