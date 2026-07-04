@@ -113,3 +113,7 @@ verify_jwt = false
 
 [functions.elevenlabs-actions-webhook]
 verify_jwt = false
+
+[functions.twilio-provision-number]
+verify_jwt = false
+
