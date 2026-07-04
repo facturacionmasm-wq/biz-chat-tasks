@@ -129,3 +129,6 @@ verify_jwt = true
 [functions.byon-request-admin]
 verify_jwt = true
 
+
+[functions.admin-delete-tenant]
+verify_jwt = true
