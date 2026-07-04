@@ -104,11 +104,9 @@ const IntegrationsPage = () => {
       if (profile?.tenant_id) {
         const { data: tenant } = await supabase
           .from('tenants')
-          .select('whatsapp_config, country')
+          .select('whatsapp_config')
           .eq('id', profile.tenant_id)
           .maybeSingle();
-
-        if (tenant?.country) setTenantCountry(String(tenant.country).toUpperCase());
 
         const config = (tenant?.whatsapp_config as Record<string, any> | null) || null;
         if (config) {
