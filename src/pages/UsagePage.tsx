@@ -51,6 +51,35 @@ const UsagePage = () => {
     },
   });
 
+  // Active phone numbers with monthly billing
+  const phoneNumbers = useQuery({
+    queryKey: ['tenant-phone-numbers', tenantId],
+    enabled: !!tenantId,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('tenant_phone_numbers')
+        .select('id, phone_e164, monthly_fee, currency, billing_status, source, next_billing_at, active, created_at')
+        .eq('tenant_id', tenantId!)
+        .eq('active', true)
+        .order('created_at', { ascending: false });
+      return data || [];
+    },
+  });
+
+  const phoneInvoices = useQuery({
+    queryKey: ['phone-invoices', tenantId],
+    enabled: !!tenantId,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('phone_number_invoices')
+        .select('id, phone_number_id, amount, currency, period_start, period_end, status, invoice_url')
+        .eq('tenant_id', tenantId!)
+        .order('period_start', { ascending: false })
+        .limit(12);
+      return data || [];
+    },
+  });
+
   // Active packages
   const packages = useQuery({
     queryKey: ['usage-packages', tenantId],
