@@ -154,6 +154,16 @@ const IntegrationsPage = () => {
         setVoiceAgentConnected(Boolean(voiceData?.configured));
         setVoiceCurrentNumber(voiceData?.phone_number || '');
       }
+
+      // Cal.com status
+      try {
+        const { data: cc } = await supabase.functions.invoke('calcom-sync', { body: { action: 'status' } });
+        if (cc && !cc.error) {
+          setCalcomConnected(Boolean(cc.connected));
+          setCalcomWebhookUrl(cc.webhook_url || '');
+          setCalcomLastSync(cc.integration?.last_sync_at || null);
+        }
+      } catch {}
     } catch (error) {
       console.error('Error loading integration status:', error);
     }
