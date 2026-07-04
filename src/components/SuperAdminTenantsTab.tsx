@@ -356,6 +356,33 @@ export default function SuperAdminTenantsTab() {
                         >
                           <Phone size={12} /> Asignar número Twilio
                         </Button>
+
+                        <Select
+                          disabled={busy || t.is_master || plans.length === 0}
+                          value={t.plan_slug || undefined}
+                          onValueChange={(v) => { if (v !== t.plan_slug) setPending({ kind: 'change_plan', tenant: t, plan_slug: v }); }}
+                        >
+                          <SelectTrigger className="h-7 w-[120px] text-xs">
+                            <SelectValue placeholder="Plan…" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {plans.map(p => (
+                              <SelectItem key={p.slug} value={p.slug}>
+                                <Package size={12} className="inline mr-1" /> {p.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+
+                        {!t.is_master && (
+                          <Button
+                            size="sm" variant="outline" className="h-7 gap-1 text-xs text-[var(--rx-rose)]"
+                            disabled={busy}
+                            onClick={() => { setDeleteTarget(t); setDeleteConfirmName(''); }}
+                          >
+                            <Trash2 size={12} /> Eliminar
+                          </Button>
+                        )}
                       </div>
 
                     </td>
