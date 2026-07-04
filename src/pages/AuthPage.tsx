@@ -110,27 +110,24 @@ export default function AuthPage() {
         position: 'fixed', inset: 0, pointerEvents: 'none', overflow: 'hidden', zIndex: 0,
       }}>
         <div style={{
-          position: 'absolute', width: 400, height: 400, borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(0,255,198,.12), transparent)',
-          filter: 'blur(80px)', top: '-10%', left: '-5%',
+          position: 'absolute', width: 480, height: 480, borderRadius: '50%',
+          background: 'radial-gradient(circle, var(--rx-brand-soft), transparent 65%)',
+          filter: 'blur(90px)', top: '-15%', left: '-8%',
         }} />
         <div style={{
-          position: 'absolute', width: 300, height: 300, borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(163,116,255,.1), transparent)',
-          filter: 'blur(80px)', bottom: '0%', right: '-5%',
+          position: 'absolute', width: 360, height: 360, borderRadius: '50%',
+          background: 'radial-gradient(circle, rgba(163,116,255,.10), transparent 65%)',
+          filter: 'blur(90px)', bottom: '-8%', right: '-8%',
         }} />
       </div>
 
       {/* Theme toggle */}
       <button
         onClick={toggle}
+        className="rx-btn rx-btn-ghost rx-btn-sm"
         style={{
-          position: 'fixed', top: 20, right: 20,
-          background: 'var(--rx-s1)', border: '1px solid var(--rx-b1)',
-          borderRadius: 99, padding: '6px 14px',
-          fontSize: 12, fontWeight: 600, color: 'var(--rx-t2)',
-          cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
-          zIndex: 10,
+          position: 'fixed', top: 20, right: 20, zIndex: 10,
+          borderRadius: 99,
         }}
       >
         {isDay ? '🌙 Noche' : '☀️ Día'}
@@ -139,29 +136,29 @@ export default function AuthPage() {
       {/* Auth card */}
       <div style={{
         width: '100%', maxWidth: 420, position: 'relative', zIndex: 1,
-        animation: 'rxFadeUp .4s cubic-bezier(.16,1,.3,1) both',
+        animation: 'rxFadeUp .5s cubic-bezier(.16,1,.3,1) both',
       }}>
 
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <div style={{
-            width: 52, height: 52, borderRadius: 14, margin: '0 auto 14px',
+            width: 56, height: 56, borderRadius: 16, margin: '0 auto 16px',
             background: 'linear-gradient(135deg, var(--rx-brand), var(--rx-brand2))',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: '0 0 24px rgba(0,255,198,.3)',
+            boxShadow: 'var(--rx-shadow-glow)',
           }}>
-            <svg width="22" height="22" viewBox="0 0 16 16" fill="none">
-              <path d="M3 8L7 12L13 4" stroke="#000" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"/>
+            <svg width="24" height="24" viewBox="0 0 16 16" fill="none">
+              <path d="M3 8L7 12L13 4" stroke="var(--primary-foreground)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </div>
           <div style={{
             fontFamily: 'var(--rx-font-display)',
-            fontSize: 22, fontWeight: 800, color: 'var(--rx-t1)',
-            letterSpacing: '-.03em', marginBottom: 4,
+            fontSize: 24, fontWeight: 800, color: 'var(--rx-t1)',
+            letterSpacing: '-.03em', marginBottom: 6, lineHeight: 1.1,
           }}>
             {branding.orgName || 'RYBIX'}
           </div>
-          <div style={{ fontSize: 13, color: 'var(--rx-t2)' }}>
+          <div style={{ fontSize: 13.5, color: 'var(--rx-t2)', fontWeight: 500 }}>
             {titles[mode]}
           </div>
         </div>
@@ -170,9 +167,9 @@ export default function AuthPage() {
         <div style={{
           background: 'var(--rx-s1)',
           border: '1px solid var(--rx-b1)',
-          borderRadius: 20,
-          padding: 28,
-          boxShadow: 'var(--rx-shadow-md)',
+          borderRadius: 'var(--rx-r-2xl)',
+          padding: 32,
+          boxShadow: 'var(--rx-shadow-lg)',
         }}>
 
           {/* OAuth */}
@@ -184,8 +181,9 @@ export default function AuthPage() {
                 style={{
                   width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
                   background: 'var(--rx-s2)', border: '1px solid var(--rx-b1)', borderRadius: 12,
-                  padding: '10px 16px', fontSize: 13, fontWeight: 600, color: 'var(--rx-t1)',
-                  cursor: 'pointer', marginBottom: 10, transition: 'border-color .15s',
+                  padding: '12px 16px', fontSize: 13.5, fontWeight: 600, color: 'var(--rx-t1)',
+                  cursor: 'pointer', marginBottom: 12,
+                  transition: 'border-color .15s, background .15s',
                   opacity: loading || oauthLoading ? 0.6 : 1,
                 }}
               >
@@ -194,10 +192,10 @@ export default function AuthPage() {
               </button>
 
               <div style={{
-                display: 'flex', alignItems: 'center', gap: 12, margin: '18px 0',
+                display: 'flex', alignItems: 'center', gap: 12, margin: '20px 0',
               }}>
                 <div style={{ flex: 1, height: 1, background: 'var(--rx-b1)' }} />
-                <span style={{ fontSize: 11, color: 'var(--rx-t3)', fontWeight: 600 }}>O con email</span>
+                <span style={{ fontSize: 11, color: 'var(--rx-t3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.08em' }}>O con email</span>
                 <div style={{ flex: 1, height: 1, background: 'var(--rx-b1)' }} />
               </div>
             </>
@@ -218,10 +216,10 @@ export default function AuthPage() {
               </button>
             </div>
           ) : (
-            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               {mode === 'register' && (
                 <div>
-                  <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--rx-t2)', display: 'block', marginBottom: 5 }}>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--rx-t2)', display: 'block', marginBottom: 6 }}>
                     Nombre completo
                   </label>
                   <input
@@ -235,7 +233,7 @@ export default function AuthPage() {
               )}
 
               <div>
-                <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--rx-t2)', display: 'block', marginBottom: 5 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--rx-t2)', display: 'block', marginBottom: 6 }}>
                   Email
                 </label>
                 <input
@@ -249,9 +247,19 @@ export default function AuthPage() {
 
               {mode !== 'forgot' && (
                 <div>
-                  <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--rx-t2)', display: 'block', marginBottom: 5 }}>
-                    Contraseña
-                  </label>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--rx-t2)' }}>
+                      Contraseña
+                    </label>
+                    {mode === 'login' && (
+                      <button type="button" onClick={() => setMode('forgot')} style={{
+                        background: 'none', border: 'none', cursor: 'pointer',
+                        fontSize: 11.5, color: 'var(--rx-brand)', fontWeight: 600, padding: 0,
+                      }}>
+                        ¿Olvidaste tu contraseña?
+                      </button>
+                    )}
+                  </div>
                   <div style={{ position: 'relative' }}>
                     <input
                       type={showPass ? 'text' : 'password'}
@@ -259,31 +267,23 @@ export default function AuthPage() {
                       onChange={e => setPassword(e.target.value)}
                       placeholder="••••••••"
                       className="rx-input"
-                      style={{ paddingRight: 42 }}
+                      style={{ paddingRight: 44 }}
                       required
                     />
                     <button
                       type="button"
                       onClick={() => setShowPass(!showPass)}
+                      aria-label={showPass ? 'Ocultar contraseña' : 'Mostrar contraseña'}
                       style={{
-                        position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
+                        position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
                         background: 'none', border: 'none', cursor: 'pointer',
                         color: 'var(--rx-t3)', display: 'flex', alignItems: 'center',
+                        padding: 6, borderRadius: 8,
                       }}
                     >
                       {showPass ? <EyeOff size={15} /> : <Eye size={15} />}
                     </button>
                   </div>
-                  {mode === 'login' && (
-                    <div style={{ textAlign: 'right', marginTop: 5 }}>
-                      <button type="button" onClick={() => setMode('forgot')} style={{
-                        background: 'none', border: 'none', cursor: 'pointer',
-                        fontSize: 11.5, color: 'var(--rx-brand)', fontWeight: 600,
-                      }}>
-                        ¿Olvidaste tu contraseña?
-                      </button>
-                    </div>
-                  )}
                 </div>
               )}
 
@@ -291,7 +291,7 @@ export default function AuthPage() {
                 type="submit"
                 disabled={loading}
                 className="rx-btn rx-btn-primary"
-                style={{ width: '100%', justifyContent: 'center', padding: '11px', marginTop: 4, opacity: loading ? 0.7 : 1 }}
+                style={{ width: '100%', justifyContent: 'center', padding: '12px', marginTop: 8, fontSize: 14 }}
               >
                 {loading ? <Loader2 size={16} className="animate-spin" /> : null}
                 {mode === 'login' ? 'Iniciar sesión'
