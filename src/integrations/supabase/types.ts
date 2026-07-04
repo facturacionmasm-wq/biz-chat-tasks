@@ -434,6 +434,68 @@ export type Database = {
           },
         ]
       }
+      byon_requests: {
+        Row: {
+          admin_notes: string | null
+          country_code: string
+          created_at: string
+          current_carrier: string | null
+          desired_capabilities: Json
+          documents: Json
+          id: string
+          phone_number: string
+          request_type: string
+          requested_by: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          admin_notes?: string | null
+          country_code: string
+          created_at?: string
+          current_carrier?: string | null
+          desired_capabilities?: Json
+          documents?: Json
+          id?: string
+          phone_number: string
+          request_type: string
+          requested_by: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          admin_notes?: string | null
+          country_code?: string
+          created_at?: string
+          current_carrier?: string | null
+          desired_capabilities?: Json
+          documents?: Json
+          id?: string
+          phone_number?: string
+          request_type?: string
+          requested_by?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "byon_requests_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       call_costs: {
         Row: {
           ai_tokens_used: number

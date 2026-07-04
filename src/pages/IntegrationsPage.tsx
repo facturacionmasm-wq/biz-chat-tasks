@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Plug, MessageSquare, CalendarDays, Brain, Shield, ExternalLink, CheckCircle2, Circle, X, Save, Phone, Loader2, ShoppingCart } from 'lucide-react';
+import { Plug, MessageSquare, CalendarDays, Brain, Shield, ExternalLink, CheckCircle2, Circle, X, Save, Phone, Loader2, ShoppingCart, Smartphone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import TwilioWizard from '@/components/TwilioWizard';
 import VoiceAgentWizard from '@/components/VoiceAgentWizard';
 import TenantNumberPurchaseWizard from '@/components/TenantNumberPurchaseWizard';
+import BringYourOwnNumberTab from '@/components/byon/BringYourOwnNumberTab';
 
 const integrationsMeta = [
   {
@@ -59,6 +60,7 @@ const IntegrationsPage = () => {
   const [tenantPhoneNumber, setTenantPhoneNumber] = useState<string>('');
   const [tenantCountry, setTenantCountry] = useState<string>('US');
   const [purchaseWizardOpen, setPurchaseWizardOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<'integrations' | 'byon'>('integrations');
   const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-webhook`;
 
   const integrations = integrationsMeta.map(i => {
@@ -311,6 +313,29 @@ const IntegrationsPage = () => {
         <p className="text-sm text-[var(--rx-t2)] mt-1">Conecta herramientas externas para potenciar tu espacio de trabajo.</p>
       </div>
 
+      {/* Tabs */}
+      <div className="flex items-center gap-1 mb-5 border-b border-[var(--rx-b1)]">
+        <button
+          onClick={() => setActiveTab('integrations')}
+          className={`text-sm font-medium px-4 py-2 -mb-px border-b-2 transition-colors ${activeTab === 'integrations' ? 'border-[var(--rx-brand)] text-foreground' : 'border-transparent text-[var(--rx-t2)] hover:text-foreground'}`}
+        >
+          <span className="inline-flex items-center gap-1.5"><Plug size={14} /> Integraciones</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('byon')}
+          className={`text-sm font-medium px-4 py-2 -mb-px border-b-2 transition-colors ${activeTab === 'byon' ? 'border-[var(--rx-brand)] text-foreground' : 'border-transparent text-[var(--rx-t2)] hover:text-foreground'}`}
+        >
+          <span className="inline-flex items-center gap-1.5"><Smartphone size={14} /> Mi Número</span>
+        </button>
+      </div>
+
+      {activeTab === 'byon' ? (
+        <BringYourOwnNumberTab
+          onMetaClick={() => { setWaProvider('meta'); setWaDialogOpen(true); }}
+          onBuyNewClick={() => setPurchaseWizardOpen(true)}
+        />
+      ) : (
+      <>
       {/* Phone number panel (tenant self-service purchase) */}
       <div className="rx-panel mb-4 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
         <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
@@ -436,6 +461,8 @@ const IntegrationsPage = () => {
           </div>
         </div>
       </div>
+      </>
+      )}
 
       {/* Voice Agent Wizard Dialog */}
       <Dialog open={voiceDialogOpen} onOpenChange={setVoiceDialogOpen}>
