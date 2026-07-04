@@ -4351,6 +4351,24 @@ export type Database = {
       }
     }
     Functions: {
+      admin_list_tenants_with_subscription: {
+        Args: never
+        Returns: {
+          days_remaining: number
+          is_blocked: boolean
+          is_master: boolean
+          plan_name: string
+          plan_slug: string
+          status: string
+          tenant_id: string
+          tenant_name: string
+          trial_ends_at: string
+        }[]
+      }
+      admin_manage_tenant_subscription: {
+        Args: { _action: string; _extend_days?: number; _tenant_id: string }
+        Returns: Json
+      }
       block_expired_trials: { Args: never; Returns: undefined }
       calculate_next_retry: {
         Args: { _base_delay_minutes?: number; _retry_count: number }
