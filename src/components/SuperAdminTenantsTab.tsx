@@ -113,6 +113,69 @@ export default function SuperAdminTenantsTab() {
     }
   }, [pending, load]);
 
+  const openProvision = useCallback((t: AdminTenantRow) => {
+    setProvTenant(t);
+    setProvCountry('US');
+    setProvAreaCode('');
+    setProvNumbers([]);
+    setProvSelected(null);
+    setProvConfirm(false);
+  }, []);
+
+  const listAvailable = useCallback(async () => {
+    if (!provTenant) return;
+    setProvListing(true);
+    setProvNumbers([]);
+    setProvSelected(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('twilio-provision-number', {
+        body: {
+          tenant_id: provTenant.tenant_id,
+          country_code: provCountry.trim().toUpperCase() || undefined,
+          areaCode: provAreaCode.trim() || undefined,
+          dryRun: true,
+        },
+      });
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error || 'Error al listar');
+      setProvNumbers(data.numbers || []);
+      if ((data.numbers || []).length === 0) toast.info('Sin números disponibles con esos filtros');
+    } catch (err: any) {
+      console.error('[provision] list error', err);
+      toast.error(err.message || 'Error al listar números');
+    } finally {
+      setProvListing(false);
+    }
+  }, [provTenant, provCountry, provAreaCode]);
+
+  const purchaseSelected = useCallback(async () => {
+    if (!provTenant || !provSelected) return;
+    setProvPurchasing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('twilio-provision-number', {
+        body: {
+          tenant_id: provTenant.tenant_id,
+          country_code: provCountry.trim().toUpperCase() || undefined,
+          phoneNumber: provSelected,
+          dryRun: false,
+        },
+      });
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error || 'Error al comprar');
+      toast.success(`Número asignado: ${data.phone_number}`);
+      setProvTenant(null);
+      setProvConfirm(false);
+      await load();
+    } catch (err: any) {
+      console.error('[provision] purchase error', err);
+      toast.error(err.message || 'Error al comprar número');
+    } finally {
+      setProvPurchasing(false);
+    }
+  }, [provTenant, provSelected, provCountry, load]);
+
+
+
   return (
     <div className="rx-panel">
       <div className="flex items-center justify-between mb-4">
