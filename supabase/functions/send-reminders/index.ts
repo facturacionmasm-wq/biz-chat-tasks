@@ -80,6 +80,18 @@ serve(async (req) => {
       profileMap.set(`${p.user_id}|${p.tenant_id}`, p);
     }
 
+    // Batch-fetch tenant WhatsApp config so Part 1 uses the same sender
+    // (messaging_service_sid / phone_number) as Part 2. Prevents Twilio 63007
+    // when the global TWILIO_PHONE_NUMBER isn't a registered WhatsApp channel.
+    const tenantIdsR = [...new Set(reminders.map((r: any) => r.tenant_id))];
+    const { data: tenantsR } = tenantIdsR.length > 0
+      ? await supabase.from('tenants').select('id, whatsapp_config').in('id', tenantIdsR)
+      : { data: [] };
+    const tenantConfigMapR = new Map<string, any>();
+    for (const t of (tenantsR || [])) {
+      tenantConfigMapR.set(t.id, t.whatsapp_config);
+    }
+
     let sentCount = 0;
     const results: any[] = [];
 
@@ -106,7 +118,24 @@ serve(async (req) => {
       }
 
       const reminderMsg = `⏰ *Recordatorio de Aria*\n\n${reminder.message}\n\n_Este recordatorio fue programado por ti._`;
-      const sendResult = await sendWhatsApp(basicAuth, TWILIO_ACCOUNT_SID, fromWA, phone, reminderMsg);
+
+      // Resolve sender per-tenant (mirrors Part 2, lines 224-240)
+      const waR = tenantConfigMapR.get(reminder.tenant_id) as Record<string, any> | null;
+      const tFromR = waR?.phone_number ? String(waR.phone_number).replace(/^whatsapp:/i, '') : null;
+      const tMsgSvcR = waR?.messaging_service_sid ? String(waR.messaging_service_sid).trim() : null;
+      const effectiveFromR = tFromR
+        ? (tFromR.startsWith('whatsapp:') ? tFromR : `whatsapp:${tFromR}`)
+        : fromWA;
+
+      let sendResult: { ok: boolean; sid?: string; error?: string };
+      if (tMsgSvcR) {
+        sendResult = await sendWhatsAppWithMsgSvc(basicAuth, TWILIO_ACCOUNT_SID, phone, reminderMsg, tMsgSvcR);
+        if (!sendResult.ok) {
+          sendResult = await sendWhatsApp(basicAuth, TWILIO_ACCOUNT_SID, effectiveFromR, phone, reminderMsg);
+        }
+      } else {
+        sendResult = await sendWhatsApp(basicAuth, TWILIO_ACCOUNT_SID, effectiveFromR, phone, reminderMsg);
+      }
 
       if (sendResult.ok) {
         sentCount++;

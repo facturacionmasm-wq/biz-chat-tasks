@@ -65,6 +65,55 @@ serve(async (req) => {
   const { action } = body;
 
   try {
+    if (action === 'list_event_types') {
+      let apiKey = String(body.api_key || '').trim();
+      if (!apiKey) {
+        const { data: integ } = await supabase.from('calcom_integrations')
+          .select('api_key_encrypted').eq('tenant_id', tenantId).maybeSingle();
+        if (!integ?.api_key_encrypted) return json({ error: 'No api_key provided and no saved integration' }, 400);
+        apiKey = await decrypt(integ.api_key_encrypted);
+      }
+      const res = await fetch(`${CALCOM_API}/event-types`, {
+        headers: { Authorization: `Bearer ${apiKey}`, 'cal-api-version': '2024-06-14' },
+      });
+      if (!res.ok) {
+        const t = await res.text();
+        return json({ error: `Cal.com ${res.status}: ${t.slice(0, 200)}` }, 502);
+      }
+      const data = await res.json().catch(() => ({}));
+      // Defensive shape parsing — Cal.com v2 typically returns { data: { eventTypeGroups: [{ eventTypes: [...] }] } }
+      // or { data: [...] } depending on endpoint version.
+      const raw: any[] = [];
+      const push = (arr: any) => { if (Array.isArray(arr)) raw.push(...arr); };
+      push(data?.data?.eventTypes);
+      push(data?.eventTypes);
+      push(Array.isArray(data?.data) ? data.data : null);
+      if (Array.isArray(data?.data?.eventTypeGroups)) {
+        for (const g of data.data.eventTypeGroups) push(g?.eventTypes);
+      }
+      const eventTypes = raw
+        .filter((et) => et && (et.id ?? et.uid))
+        .map((et: any) => ({
+          id: et.id ?? et.uid,
+          title: et.title || et.name || et.slug || `Event ${et.id}`,
+          slug: et.slug || null,
+          length: et.length ?? et.lengthInMinutes ?? null,
+        }));
+      return json({ ok: true, event_types: eventTypes });
+    }
+
+    if (action === 'set_default_event_type') {
+      const defaultEventTypeId = body.default_event_type_id ? String(body.default_event_type_id) : null;
+      if (!defaultEventTypeId) return json({ error: 'default_event_type_id required' }, 400);
+      const { data: integ } = await supabase.from('calcom_integrations')
+        .select('id, status').eq('tenant_id', tenantId).maybeSingle();
+      if (!integ) return json({ error: 'Cal.com integration not found for tenant' }, 400);
+      await supabase.from('calcom_integrations')
+        .update({ default_event_type_id: defaultEventTypeId, updated_at: new Date().toISOString() })
+        .eq('tenant_id', tenantId);
+      return json({ ok: true });
+    }
+
     if (action === 'connect') {
       const apiKey = String(body.api_key || '').trim();
       const defaultEventTypeId = body.default_event_type_id ? String(body.default_event_type_id) : null;

@@ -376,6 +376,8 @@ async function executeScheduleAppointment(
           console.warn('[APPT] Cal.com push failed:', bookRes.status, (await bookRes.text()).slice(0, 200));
         }
       }
+    } else if (calcomInteg?.status === 'active' && calcomInteg?.api_key_encrypted && !calcomInteg?.default_event_type_id) {
+      console.warn('[APPT] Cal.com integration active but default_event_type_id missing — skipping push', { tenantId });
     }
   } catch (calcomErr) {
     console.error('[APPT] Cal.com push error:', calcomErr);
