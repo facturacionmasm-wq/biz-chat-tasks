@@ -243,16 +243,60 @@ export default function TenantNumberPurchaseWizard({ open, onOpenChange, onPurch
                 </SelectContent>
               </Select>
             </div>
-            {bundleBlocked && (
-              <div className="flex items-start gap-2 p-3 rounded-lg bg-[var(--rx-amber)]/10 border border-[var(--rx-amber)]/30 text-xs">
-                <ShieldAlert size={16} className="text-[var(--rx-amber)] shrink-0 mt-0.5" />
-                <div>
-                  <p className="font-semibold text-foreground">Este país requiere verificación adicional (Regulatory Bundle)</p>
-                  <p className="text-[var(--rx-t2)] mt-1">
-                    Twilio exige documentación y validación de identidad para vender números en {countryMeta?.name}.
-                    Contáctanos para completar el proceso antes de comprar.
-                  </p>
-                </div>
+            {requiresBundle && (
+              <div className="rounded-lg border p-3 text-xs space-y-2 bg-[var(--rx-amber)]/10 border-[var(--rx-amber)]/30">
+                {bundleStatus === 'approved' ? (
+                  <div className="flex items-start gap-2">
+                    <ShieldCheck size={16} className="text-[var(--rx-emerald)] shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-semibold text-foreground">Regulatory Bundle aprobado ✓</p>
+                      <p className="text-[var(--rx-t2)] mt-1">
+                        Ya puedes comprar un número en {countryMeta?.name}. El cobro se realiza al confirmar la compra.
+                      </p>
+                    </div>
+                  </div>
+                ) : bundleStatus === 'pending' ? (
+                  <div className="flex items-start gap-2">
+                    <Clock size={16} className="text-[var(--rx-amber)] shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="font-semibold text-foreground">Documentos en revisión</p>
+                      <p className="text-[var(--rx-t2)] mt-1">
+                        Tu Regulatory Bundle para {countryMeta?.name} está siendo revisado por Twilio (24 a 72 h hábiles).
+                        Te avisaremos cuando quede aprobado.
+                      </p>
+                      <button
+                        onClick={refreshBundleStatus}
+                        className="mt-2 text-[var(--rx-brand)] underline text-[11px]"
+                        disabled={bundleLoading}
+                      >
+                        {bundleLoading ? 'Consultando…' : 'Actualizar estado'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-start gap-2">
+                    <ShieldAlert size={16} className="text-[var(--rx-amber)] shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="font-semibold text-foreground">Este país requiere verificación (Regulatory Bundle)</p>
+                      <p className="text-[var(--rx-t2)] mt-1">
+                        Twilio exige documentación de identidad y domicilio local para vender números en {countryMeta?.name}.
+                        Sube los documentos aquí; en cuanto Twilio los apruebe podrás elegir el número y se realizará el cobro.
+                      </p>
+                      {bundleStatus === 'rejected' && (
+                        <p className="text-[var(--rx-rose)] mt-1 text-[11px]">
+                          La solicitud anterior fue rechazada. Corrige los documentos y vuelve a enviarla.
+                        </p>
+                      )}
+                      <Button
+                        onClick={() => setBundleFormOpen(true)}
+                        size="sm"
+                        className="mt-2 gap-1.5"
+                      >
+                        <Upload size={12} /> Subir documentos de verificación
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
             <DialogFooter>
