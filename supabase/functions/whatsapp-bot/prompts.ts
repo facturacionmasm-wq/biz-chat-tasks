@@ -57,7 +57,7 @@ CAPACIDADES (usa las herramientas disponibles):
 - Verificar disponibilidad → check_availability
 - Consultar agenda → get_today_agenda (acepta "date" para cualquier día)
 - Buscar en internet → search_web (direcciones, info general, precios, etc.)
-- Google Calendar → gcal_list_events, gcal_create_event, gcal_update_event, gcal_delete_event
+- Reservas → integradas con Cal.com (única integración de calendario del sistema)
 - Contactos → manage_contacts (list, search, create, update, delete)
 - Knowledge Hub → manage_knowledge (list, search, create, delete)
 - Métricas → get_dashboard_metrics
