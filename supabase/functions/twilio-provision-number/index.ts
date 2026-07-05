@@ -82,7 +82,7 @@ serve(async (req) => {
     return j({ ok: false, error: "tenant_not_found", message: `No se encontró el tenant (${String(tenant_id).slice(0,8)}).` }, 200);
   }
 
-  if (!country_code) country_code = (tenant.country || "US").toUpperCase();
+  if (!country_code) country_code = ((tenant as any).country_code || "US").toUpperCase();
 
   const basicAuth = btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`);
   const twilioHeaders = { Authorization: `Basic ${basicAuth}` };
