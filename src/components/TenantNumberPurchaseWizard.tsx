@@ -44,6 +44,13 @@ export default function TenantNumberPurchaseWizard({ open, onOpenChange, onPurch
   const [bundleFormOpen, setBundleFormOpen] = useState(false);
   const [bundleStatus, setBundleStatus] = useState<'unknown' | 'none' | 'pending' | 'approved' | 'rejected'>('unknown');
   const [bundleLoading, setBundleLoading] = useState(false);
+  const [bundleDetail, setBundleDetail] = useState<{
+    verification_fee_paid?: boolean;
+    twilio_bundle_sid?: string | null;
+    twilio_status?: string | null;
+    twilio_rejection_reason?: string | null;
+    created_at?: string;
+  } | null>(null);
 
   const countryMeta = useMemo(() => getTwilioCountry(country), [country]);
   const requiresBundle = !!countryMeta?.requiresBundle;
