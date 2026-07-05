@@ -3,7 +3,7 @@ import {
   Users, Plus, Search, Phone, MessageSquare, Calendar,
   Mail, Tag, Loader2, X, Edit3, Trash2, ChevronRight,
   Building2, Star, StarOff, Filter, Clock, CheckCircle2,
-  ArrowUpRight, SlidersHorizontal,
+  ArrowUpRight, SlidersHorizontal, Crown,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
