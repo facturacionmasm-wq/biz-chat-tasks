@@ -103,7 +103,7 @@ serve(async (req) => {
         error: "billing_gate",
         message: "Tu suscripción no permite comprar números. Actualiza tu plan o método de pago.",
         subscription_status: status,
-      }, 402);
+      }, 200);
     }
   }
 
@@ -116,7 +116,7 @@ serve(async (req) => {
         error: "already_provisioned",
         message: "Este tenant ya tiene un número asignado.",
         phone_number: cfg.phone_number,
-      }, 409);
+      }, 200);
     }
   }
 
@@ -154,7 +154,7 @@ serve(async (req) => {
         error: 'payment_method_required',
         message: 'Registra un método de pago antes de comprar un número.',
         setup_action: 'create_setup_session',
-      }, 402);
+      }, 200);
     }
   }
 
@@ -233,5 +233,5 @@ serve(async (req) => {
     }
   }
 
-  return j({ ...forwardData, charge: chargeResult }, forwardRes.status);
+  return j({ ...forwardData, charge: chargeResult }, 200);
 });
