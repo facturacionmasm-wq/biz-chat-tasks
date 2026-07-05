@@ -35,6 +35,9 @@ import SchemaDocsPage from "./pages/SchemaDocsPage";
 import NotFound from "./pages/NotFound";
 import ContactsPage from "./pages/ContactsPage";
 import AnalyticsPage from "./pages/AnalyticsPage";
+import SupportPage from "./pages/SupportPage";
+import PlatformSupportPage from "./pages/PlatformSupportPage";
+import SuperAdminSupportPage from "./pages/SuperAdminSupportPage";
 import { Loader2 } from "lucide-react";
 import CommandPalette from "./components/CommandPalette";
 
