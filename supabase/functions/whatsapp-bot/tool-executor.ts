@@ -3,6 +3,34 @@ import { searchDocuments, getDocumentDetail } from "./document-handler.ts";
 import { compareDocuments } from "./document-agents.ts";
 import { retrieveMemory } from "./document-memory.ts";
 
+// Fire-and-forget best-effort mirror to Google Calendar via calendar-sync edge function.
+// Never throws — Google is a secondary destination; Cal.com is the source of truth.
+async function invokeCalendarSyncMirror(
+  supabaseUrl: string | undefined,
+  serviceRoleKey: string | undefined,
+  payload: { action: 'mirror_appointment' | 'mirror_cancel' | 'mirror_update'; appointment_id: string; preferred_user_id?: string | null },
+): Promise<{ ok: boolean; result?: any }> {
+  if (!supabaseUrl || !serviceRoleKey) return { ok: false };
+  try {
+    const res = await fetch(`${supabaseUrl}/functions/v1/calendar-sync`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${serviceRoleKey}`,
+        apikey: serviceRoleKey,
+      },
+      body: JSON.stringify(payload),
+    });
+    const json = await res.json().catch(() => ({}));
+    console.log(`[GCAL-MIRROR] ${payload.action} apt=${payload.appointment_id} status=${res.status}`, json);
+    return { ok: res.ok, result: json };
+  } catch (err) {
+    console.warn(`[GCAL-MIRROR] ${payload.action} error:`, err);
+    return { ok: false };
+  }
+}
+
+
 export async function executeTool(
   toolName: string,
   args: any,
