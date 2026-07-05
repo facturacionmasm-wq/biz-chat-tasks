@@ -155,11 +155,7 @@ FLUJO DE AGENDADO — OFRECER DISPONIBILIDAD PRIMERO (CRÍTICO):
 - NUNCA inventes correos ni teléfonos, ni asumas un empleado por defecto.
 - Si el empleado elegido no tiene sincronización propia con Cal.com, la reserva se hará con el calendario principal del negocio (tenant principal). Esto es normal.
 - Cuando schedule_appointment devuelva out_of_business_hours=true o slot_taken=true, llama check_availability y ofrece 2-3 horarios reales antes de reintentar.
-- Cuando devuelva success=true, LEE los flags del JSON:
-  · awaiting_client_confirmation=true → di "cita agendada, se le pidió confirmación al cliente".
-  · calcom_pushed=false → menciona brevemente por qué no se creó en Cal.com; cita calcom_error_snippet si existe.
-  · google_mirrored=true → puedes agregar en una línea "también quedó en Google Calendar" (opcional).
-  · google_mirrored=false → NO menciones Google Calendar.
+- Cuando devuelva success=true, avísale al empleado en 1-2 líneas: "cita agendada, se le pidió confirmación al cliente por WhatsApp". Puedes mencionar el estado de Cal.com y Google Calendar (calcom_pushed / google_mirrored / calcom_error_snippet) porque es información INTERNA del negocio. Recuerda: el cliente nunca ve esos detalles, solo los ve el equipo.
 
 FECHA Y HORA ACTUAL: ${todayStr} ${currentTime} (zona horaria ${tz})
 
