@@ -44,6 +44,13 @@ export default function TenantNumberPurchaseWizard({ open, onOpenChange, onPurch
   const [bundleFormOpen, setBundleFormOpen] = useState(false);
   const [bundleStatus, setBundleStatus] = useState<'unknown' | 'none' | 'pending' | 'approved' | 'rejected'>('unknown');
   const [bundleLoading, setBundleLoading] = useState(false);
+  const [bundleDetail, setBundleDetail] = useState<{
+    verification_fee_paid?: boolean;
+    twilio_bundle_sid?: string | null;
+    twilio_status?: string | null;
+    twilio_rejection_reason?: string | null;
+    created_at?: string;
+  } | null>(null);
 
   const countryMeta = useMemo(() => getTwilioCountry(country), [country]);
   const requiresBundle = !!countryMeta?.requiresBundle;
@@ -85,17 +92,20 @@ export default function TenantNumberPurchaseWizard({ open, onOpenChange, onPurch
       if (!profile?.tenant_id) { setBundleStatus('none'); return; }
       const { data: req } = await supabase
         .from('byon_requests')
-        .select('status, created_at')
+        .select('status, created_at, verification_fee_paid, twilio_bundle_sid, twilio_status, twilio_rejection_reason')
         .eq('tenant_id', profile.tenant_id)
         .eq('country_code', country)
         .eq('request_type', 'regulatory_bundle')
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
-      if (!req) setBundleStatus('none');
-      else if (req.status === 'approved') setBundleStatus('approved');
-      else if (req.status === 'rejected') setBundleStatus('rejected');
-      else setBundleStatus('pending');
+      if (!req) { setBundleStatus('none'); setBundleDetail(null); }
+      else {
+        setBundleDetail(req as any);
+        if (req.status === 'approved' || (req as any).twilio_status === 'twilio-approved') setBundleStatus('approved');
+        else if (req.status === 'rejected' || (req as any).twilio_status === 'twilio-rejected') setBundleStatus('rejected');
+        else setBundleStatus('pending');
+      }
     } catch (_) {
       setBundleStatus('none');
     } finally {
@@ -260,11 +270,40 @@ export default function TenantNumberPurchaseWizard({ open, onOpenChange, onPurch
                   <div className="flex items-start gap-2">
                     <Clock size={16} className="text-[var(--rx-amber)] shrink-0 mt-0.5" />
                     <div className="flex-1">
-                      <p className="font-semibold text-foreground">Documentos en revisión</p>
-                      <p className="text-[var(--rx-t2)] mt-1">
-                        Tu Regulatory Bundle para {countryMeta?.name} está siendo revisado por Twilio (24 a 72 h hábiles).
-                        Te avisaremos cuando quede aprobado.
-                      </p>
+                      <p className="font-semibold text-foreground">Verificación en curso</p>
+                      {(() => {
+                        const paid = !!bundleDetail?.verification_fee_paid;
+                        const sent = !!bundleDetail?.twilio_bundle_sid;
+                        const tStatus = bundleDetail?.twilio_status || '';
+                        const inReview = sent && ['pending-review','in-review'].includes(tStatus);
+                        const provApproved = tStatus === 'provisionally-approved';
+                        const steps = [
+                          { label: 'Documentos subidos', done: true },
+                          { label: 'Pago de verificación ($15 USD)', done: paid },
+                          { label: 'Enviado a Twilio', done: sent },
+                          { label: 'En revisión Twilio (24–72h)', done: inReview || provApproved, current: inReview },
+                          { label: 'Aprobado', done: false },
+                        ];
+                        return (
+                          <ol className="mt-2 space-y-1.5">
+                            {steps.map((s, i) => (
+                              <li key={i} className="flex items-center gap-2 text-[11px]">
+                                <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold ${
+                                  s.done ? 'bg-[var(--rx-emerald)] text-white'
+                                  : s.current ? 'bg-[var(--rx-brand)] text-black animate-pulse'
+                                  : 'bg-[var(--rx-s2)] text-[var(--rx-t2)]'
+                                }`}>{s.done ? '✓' : i + 1}</span>
+                                <span className={s.done ? 'text-foreground' : 'text-[var(--rx-t2)]'}>{s.label}</span>
+                              </li>
+                            ))}
+                          </ol>
+                        );
+                      })()}
+                      {bundleDetail?.twilio_bundle_sid && (
+                        <p className="text-[10px] text-[var(--rx-t2)] mt-2 font-mono">
+                          Bundle: {bundleDetail.twilio_bundle_sid}
+                        </p>
+                      )}
                       <button
                         onClick={refreshBundleStatus}
                         className="mt-2 text-[var(--rx-brand)] underline text-[11px]"
@@ -285,7 +324,7 @@ export default function TenantNumberPurchaseWizard({ open, onOpenChange, onPurch
                       </p>
                       {bundleStatus === 'rejected' && (
                         <p className="text-[var(--rx-rose)] mt-1 text-[11px]">
-                          La solicitud anterior fue rechazada. Corrige los documentos y vuelve a enviarla.
+                          La solicitud anterior fue rechazada{bundleDetail?.twilio_rejection_reason ? `: ${bundleDetail.twilio_rejection_reason}` : ''}. Corrige los documentos y vuelve a enviarla.
                         </p>
                       )}
                       <Button
