@@ -6,6 +6,7 @@
 // - Records audit_events with actor_id = auth.uid().
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
+import { assertVoicePlan } from "../_shared/plan-guard.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -63,6 +64,12 @@ serve(async (req) => {
   );
   if (!isSuperAdmin && !isTenantManager) {
     return j({ ok: false, error: "Only owner or admin can purchase numbers" }, 403);
+  }
+
+  // Plan guard: block if tenant's plan does not include voice_agent (master bypassed).
+  {
+    const blocked = await assertVoicePlan(admin, tenantId, corsHeaders);
+    if (blocked) return blocked;
   }
 
   let body: any;
