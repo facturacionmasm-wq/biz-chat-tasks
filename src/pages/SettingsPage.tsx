@@ -1180,8 +1180,18 @@ const SettingsPage = () => {
                   <p className="text-sm text-[var(--rx-t2)]">
                     {calendarOAuthConnected
                       ? 'Tu cuenta de Google ya está conectada. Haz clic para crear la carpeta de finanzas en Google Drive.'
-                      : 'Primero debes conectar tu cuenta de Google en la sección de Calendario. Luego podrás activar Google Drive.'}
+                      : 'Primero conecta tu cuenta de Google para autorizar el acceso a Drive.'}
                   </p>
+                  {!calendarOAuthConnected && (
+                    <button
+                      disabled={savingCalendar}
+                      onClick={handleConnectGoogleCalendar}
+                      className="text-sm px-5 py-2.5 rounded-lg border border-[var(--rx-b1)] text-foreground hover:bg-[var(--rx-s2)] flex items-center gap-2 font-medium w-full justify-center"
+                    >
+                      {savingCalendar ? <Loader2 size={14} className="animate-spin" /> : <Link2 size={14} />}
+                      Conectar cuenta de Google
+                    </button>
+                  )}
                   <button
                     disabled={driveLoading || !calendarOAuthConnected}
                     onClick={handleSetupDrive}
@@ -1190,11 +1200,7 @@ const SettingsPage = () => {
                     {driveLoading ? <Loader2 size={14} className="animate-spin" /> : <HardDrive size={14} />}
                     Crear carpeta en Google Drive
                   </button>
-                  {!calendarOAuthConnected && (
-                    <p className="text-xs text-[var(--rx-rose)]">
-                      ⚠️ Conecta Google Calendar primero para habilitar esta opción.
-                    </p>
-                  )}
+
                 </div>
               )}
             </div>
