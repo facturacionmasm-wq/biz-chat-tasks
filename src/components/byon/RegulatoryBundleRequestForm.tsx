@@ -105,6 +105,7 @@ const RegulatoryBundleRequestForm = ({ open, onOpenChange, countryCode, numberTy
     }
     setSubmitting(true);
     try {
+      // 1) Crear la solicitud BYON
       const { data, error } = await supabase.functions.invoke('byon-request', {
         body: {
           request_type: 'regulatory_bundle',
@@ -120,7 +121,42 @@ const RegulatoryBundleRequestForm = ({ open, onOpenChange, countryCode, numberTy
       });
       if (error) throw error;
       if (!data?.ok) throw new Error(data?.error || 'Error al enviar');
-      toast.success('Documentos enviados. Recibirás una notificación cuando Twilio apruebe tu Regulatory Bundle (24 a 72 h hábiles).');
+      const byonRequestId = data?.request?.id;
+
+      // 2) Cobrar la fee de verificación ($15 USD) vía Stripe
+      const { data: { user } } = await supabase.auth.getUser();
+      const { data: profile } = await supabase.from('profiles').select('tenant_id').eq('user_id', user!.id).maybeSingle();
+
+      const { data: charge, error: chargeErr } = await supabase.functions.invoke('stripe-billing', {
+        body: {
+          action: 'charge_verification_fee',
+          tenant_id: profile?.tenant_id,
+          byon_request_id: byonRequestId,
+          country_code: countryCode,
+          amount: VERIFICATION_FEE_USD,
+          currency: 'usd',
+        },
+      });
+
+      if (chargeErr || !charge?.ok) {
+        const errMsg = (charge as any)?.error;
+        if (errMsg === 'no_payment_method' || errMsg === 'no_customer') {
+          toast.error('Necesitas registrar una tarjeta antes de enviar. Te redirigimos...');
+          // Redirigir a Stripe Setup
+          const { data: setup } = await supabase.functions.invoke('stripe-billing', {
+            body: {
+              action: 'create_setup_session',
+              tenant_id: profile?.tenant_id,
+              return_to: `${window.location.origin}/integrations`,
+            },
+          });
+          if (setup?.url) window.location.href = setup.url;
+          return;
+        }
+        throw new Error((charge as any)?.message || chargeErr?.message || 'Error en el cobro');
+      }
+
+      toast.success(`Cobro de $${VERIFICATION_FEE_USD} USD procesado. Documentos enviados. Nuestro equipo los registra ante Twilio en las próximas horas.`);
       onSubmitted?.();
       handleClose(false);
     } catch (e: any) {
@@ -129,6 +165,7 @@ const RegulatoryBundleRequestForm = ({ open, onOpenChange, countryCode, numberTy
       setSubmitting(false);
     }
   };
+
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
