@@ -9,7 +9,7 @@ export const AI_TOOLS = [
         type: 'object',
         properties: {
           contact_name: { type: 'string', description: 'Nombre COMPLETO del cliente o contacto (nombre y apellido). Requerido para Cal.com.' },
-          contact_phone: { type: 'string', description: 'Teléfono del contacto en formato +521234567890 (si se tiene)' },
+          contact_phone: { type: 'string', description: 'Teléfono del CONTACTO en E.164 (ej: +52 seguido del número), SOLO si el cliente lo proporcionó explícitamente en la conversación. Deja vacío si no lo dijo — NUNCA inventes un teléfono ni copies el número del remitente de WhatsApp.' },
           contact_email: { type: 'string', description: 'Email real del contacto. REQUERIDO para que Cal.com envíe el correo de confirmación. NO inventes ni uses correos genéricos.' },
           date: { type: 'string', description: 'Fecha de la cita en formato YYYY-MM-DD' },
           time: { type: 'string', description: 'Hora de la cita en formato HH:MM (24h)' },
