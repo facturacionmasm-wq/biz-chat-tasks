@@ -304,6 +304,7 @@ interface StateInput {
   supabase: any;
   mediaUrl?: string;
   mediaContentType?: string;
+  isVoiceMessage?: boolean;
   TWILIO_ACCOUNT_SID: string;
   TWILIO_AUTH_TOKEN: string;
   LOVABLE_API_KEY: string;
