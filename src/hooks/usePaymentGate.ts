@@ -133,5 +133,7 @@ export const usePaymentGate = () => {
     }
   }, [user]);
 
-  return { hasPaymentMethod, hasActivePackage, loading, redirecting, canUseService, purchasePackage, setupCard, refresh: checkAccess, isOwnerTenant };
+  const voicePlanBlocked = !planIsMaster && !isOwnerTenant && !planLoading && !hasFeature('voice_agent');
+
+  return { hasPaymentMethod, hasActivePackage, loading, redirecting, canUseService, purchasePackage, setupCard, refresh: checkAccess, isOwnerTenant, voicePlanBlocked };
 };
