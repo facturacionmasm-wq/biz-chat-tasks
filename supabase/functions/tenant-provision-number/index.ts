@@ -120,6 +120,44 @@ serve(async (req) => {
     }
   }
 
+  // Pricing lookup for Stripe pre-charge (skip for master + dryRun)
+  let priceRow: { monthly_fee: number; currency: string } | null = null;
+  if (!dryRun && !isMaster) {
+    const countryForPricing = (country_code || '').toString().toUpperCase() || 'US';
+    const numberTypeForPricing = (type || 'Local').toString().toLowerCase();
+    const { data: price } = await admin
+      .from('phone_number_pricing')
+      .select('monthly_fee, currency')
+      .eq('country_code', countryForPricing)
+      .eq('number_type', numberTypeForPricing)
+      .eq('source', 'twilio_purchase')
+      .eq('active', true)
+      .maybeSingle();
+    if (price && Number(price.monthly_fee) > 0) {
+      priceRow = { monthly_fee: Number(price.monthly_fee), currency: (price.currency || 'USD') };
+    }
+
+    // Verify payment method BEFORE Twilio purchase
+    const verifyRes = await fetch(`${SUPABASE_URL}/functions/v1/stripe-billing`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        'Content-Type': 'application/json',
+        apikey: SUPABASE_SERVICE_ROLE_KEY,
+      },
+      body: JSON.stringify({ action: 'verify_payment_method', tenant_id: tenantId }),
+    });
+    const verifyData = await verifyRes.json().catch(() => ({}));
+    if (!verifyData?.verified) {
+      return j({
+        ok: false,
+        error: 'payment_method_required',
+        message: 'Registra un método de pago antes de comprar un número.',
+        setup_action: 'create_setup_session',
+      }, 402);
+    }
+  }
+
   // Forward to twilio-provision-number using service role
   const forwardRes = await fetch(`${SUPABASE_URL}/functions/v1/twilio-provision-number`, {
     method: "POST",
@@ -159,5 +197,41 @@ serve(async (req) => {
     });
   }
 
-  return j(forwardData, forwardRes.status);
+  // Auto-charge via Stripe after successful purchase (best effort — failure is logged, not rolled back)
+  let chargeResult: any = null;
+  if (!dryRun && !isMaster && forwardRes.ok && forwardData?.ok && priceRow && forwardData?.phone_number) {
+    try {
+      const chargeRes = await fetch(`${SUPABASE_URL}/functions/v1/stripe-billing`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          'Content-Type': 'application/json',
+          apikey: SUPABASE_SERVICE_ROLE_KEY,
+        },
+        body: JSON.stringify({
+          action: 'charge_phone_number',
+          tenant_id: tenantId,
+          phone_number: forwardData.phone_number,
+          amount: priceRow.monthly_fee,
+          currency: priceRow.currency.toLowerCase(),
+          description: `Número Twilio ${forwardData.phone_number} (${country_code || ''} ${type || ''}) - primer mes`,
+        }),
+      });
+      chargeResult = await chargeRes.json().catch(() => ({}));
+      if (!chargeResult?.ok) {
+        await admin.from('audit_events').insert({
+          tenant_id: tenantId,
+          event_type: 'tenant_number_charge_failed',
+          actor_id: userId,
+          resource_type: 'tenants',
+          resource_id: tenantId,
+          payload: { phone_number: forwardData.phone_number, error: chargeResult },
+        });
+      }
+    } catch (chargeErr) {
+      console.error('[tenant-provision] stripe charge error', chargeErr);
+    }
+  }
+
+  return j({ ...forwardData, charge: chargeResult }, forwardRes.status);
 });

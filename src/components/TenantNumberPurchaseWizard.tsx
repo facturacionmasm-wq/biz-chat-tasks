@@ -121,7 +121,22 @@ export default function TenantNumberPurchaseWizard({ open, onOpenChange, onPurch
           toast.error(data.message || 'Suscripción no activa.');
           return;
         }
+        if (data?.error === 'payment_method_required') {
+          toast.error('Registra un método de pago antes de comprar un número.');
+          try {
+            const { data: setup } = await supabase.functions.invoke('stripe-billing', {
+              body: { action: 'create_setup_session', return_to: window.location.pathname },
+            });
+            if (setup?.url) window.location.href = setup.url;
+          } catch (_) { /* ignore */ }
+          return;
+        }
         throw new Error(data?.message || data?.error || 'Error al comprar');
+      }
+      if (data?.charge && data.charge.ok === false) {
+        toast.warning('Número comprado, pero el cargo automático quedó pendiente. Revisa tu método de pago.');
+      } else if (data?.charge?.ok) {
+        toast.success('Número comprado y cobrado correctamente.');
       }
       setPurchasedNumber(data.phone_number);
       setStep(5);
@@ -302,10 +317,11 @@ export default function TenantNumberPurchaseWizard({ open, onOpenChange, onPurch
               </div>
             </div>
             <div className="rounded-lg bg-[var(--rx-amber)]/10 border border-[var(--rx-amber)]/30 p-3 text-xs text-foreground space-y-1">
-              <p className="font-semibold">Costo estimado</p>
+              <p className="font-semibold">Costo estimado y cobro automático</p>
               <p className="text-[var(--rx-t2)]">
-                Los números de Twilio se cobran mensualmente (~$1–$15 USD/mes según país y tipo)
-                más el consumo por uso. Consulta <a href="https://www.twilio.com/en-us/pricing" target="_blank" rel="noreferrer" className="underline">pricing.twilio.com</a> para el detalle.
+                Al confirmar, verificamos tu tarjeta en Stripe y hacemos el cargo del primer mes de renta del número
+                (~$1–$15 USD/mes según país y tipo). El consumo por uso se factura aparte.
+                Detalle: <a href="https://www.twilio.com/en-us/pricing" target="_blank" rel="noreferrer" className="underline">pricing.twilio.com</a>.
               </p>
             </div>
             <label className="flex items-start gap-2 text-xs cursor-pointer">
