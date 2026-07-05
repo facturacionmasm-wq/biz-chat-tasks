@@ -270,11 +270,40 @@ export default function TenantNumberPurchaseWizard({ open, onOpenChange, onPurch
                   <div className="flex items-start gap-2">
                     <Clock size={16} className="text-[var(--rx-amber)] shrink-0 mt-0.5" />
                     <div className="flex-1">
-                      <p className="font-semibold text-foreground">Documentos en revisión</p>
-                      <p className="text-[var(--rx-t2)] mt-1">
-                        Tu Regulatory Bundle para {countryMeta?.name} está siendo revisado por Twilio (24 a 72 h hábiles).
-                        Te avisaremos cuando quede aprobado.
-                      </p>
+                      <p className="font-semibold text-foreground">Verificación en curso</p>
+                      {(() => {
+                        const paid = !!bundleDetail?.verification_fee_paid;
+                        const sent = !!bundleDetail?.twilio_bundle_sid;
+                        const tStatus = bundleDetail?.twilio_status || '';
+                        const inReview = sent && ['pending-review','in-review'].includes(tStatus);
+                        const provApproved = tStatus === 'provisionally-approved';
+                        const steps = [
+                          { label: 'Documentos subidos', done: true },
+                          { label: 'Pago de verificación ($15 USD)', done: paid },
+                          { label: 'Enviado a Twilio', done: sent },
+                          { label: 'En revisión Twilio (24–72h)', done: inReview || provApproved, current: inReview },
+                          { label: 'Aprobado', done: false },
+                        ];
+                        return (
+                          <ol className="mt-2 space-y-1.5">
+                            {steps.map((s, i) => (
+                              <li key={i} className="flex items-center gap-2 text-[11px]">
+                                <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold ${
+                                  s.done ? 'bg-[var(--rx-emerald)] text-white'
+                                  : s.current ? 'bg-[var(--rx-brand)] text-black animate-pulse'
+                                  : 'bg-[var(--rx-s2)] text-[var(--rx-t2)]'
+                                }`}>{s.done ? '✓' : i + 1}</span>
+                                <span className={s.done ? 'text-foreground' : 'text-[var(--rx-t2)]'}>{s.label}</span>
+                              </li>
+                            ))}
+                          </ol>
+                        );
+                      })()}
+                      {bundleDetail?.twilio_bundle_sid && (
+                        <p className="text-[10px] text-[var(--rx-t2)] mt-2 font-mono">
+                          Bundle: {bundleDetail.twilio_bundle_sid}
+                        </p>
+                      )}
                       <button
                         onClick={refreshBundleStatus}
                         className="mt-2 text-[var(--rx-brand)] underline text-[11px]"
