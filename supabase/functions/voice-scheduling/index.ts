@@ -182,12 +182,12 @@ serve(async (req) => {
             return slotStartWithBuffer < aptEnd && slotEndWithBuffer > aptStart;
           });
 
-          // Check Google Calendar conflicts
-          const hasGcalConflict = gcalEvents.some(evt => {
+          // Check Cal.com conflicts (source of truth)
+          const hasCalcomConflict = calcomBusy.some(evt => {
             return slotStartWithBuffer < evt.end && slotEndWithBuffer > evt.start;
           });
 
-          if (!hasLocalConflict && !hasGcalConflict) {
+          if (!hasLocalConflict && !hasCalcomConflict) {
             // Check max_appointments
             const aptsInSlot = (existingApts || []).filter(apt => {
               const aptStart = new Date(apt.start_at);
