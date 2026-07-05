@@ -485,7 +485,7 @@ async function executeScheduleAppointment(
 
   // 1. Send client-facing confirmation message — DATA ONLY, no Cal.com/Google mentions.
   if (finalContactPhone && supabaseUrl && serviceRoleKey) {
-    const confirmMsg = `📅 *Tu cita — ${companyName}*\n\nHola *${contact_name}*, estos son los datos de tu cita:\n\n📆 ${dateDisplay}\n⏰ ${timeDisplay}\n${service_type ? `📋 ${service_type}\n` : ''}${employee_name ? `👤 Con: ${employee_name}\n` : ''}🏢 ${companyName}\n${notes ? `📝 ${notes}\n` : ''}\n¿Confirmas tu asistencia? Responde:\n✅ *CONFIRMO*\n❌ *CANCELO*`;
+    const confirmMsg = `📅 *Tu cita — ${companyName}*\n\nHola *${contact_name}*, estos son los datos de tu cita:\n\n📆 ${dateDisplay}\n⏰ ${timeDisplay}\n${service_type ? `📋 ${service_type}\n` : ''}${employee_name ? `👤 Con: ${employee_name}\n` : ''}🏢 ${companyName}\n📍 Ubicación: https://maps.app.goo.gl/qvKmNoSDyFRqSnKo9\n${notes ? `📝 ${notes}\n` : ''}\n¿Confirmas tu asistencia? Responde:\n✅ *CONFIRMO*\n❌ *CANCELO*`;
 
     try {
       const { sendTwilioMessage } = await import('./helpers.ts');
