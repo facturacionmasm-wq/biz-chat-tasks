@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { usePlanFeatures } from '@/hooks/usePlanFeatures';
 import { toast } from 'sonner';
 
 export const usePaymentGate = () => {
+  const { hasFeature, isMaster: planIsMaster, loading: planLoading } = usePlanFeatures();
   const { user } = useAuth();
   const [hasPaymentMethod, setHasPaymentMethod] = useState<boolean | null>(null);
   const [hasActivePackage, setHasActivePackage] = useState<Record<string, boolean>>({});
@@ -60,7 +62,16 @@ export const usePaymentGate = () => {
   useEffect(() => { checkAccess(); }, [checkAccess]);
 
   const canUseService = (serviceType: 'voice' | 'whatsapp'): boolean => {
-    // Has active package with remaining units OR has payment method (for pay-as-you-go)
+    // Master tenant: always allowed
+    if (planIsMaster || isOwnerTenant) return true;
+
+    // Voice: plan must include voice_agent feature, even if there's a card/package
+    if (serviceType === 'voice') {
+      if (planLoading) return false;
+      if (!hasFeature('voice_agent')) return false;
+    }
+
+    // Payment gate: active package OR payment method on file
     return hasActivePackage[serviceType] === true || hasPaymentMethod === true;
   };
 
