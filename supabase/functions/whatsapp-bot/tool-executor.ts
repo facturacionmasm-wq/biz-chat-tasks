@@ -1318,56 +1318,9 @@ async function executeSearchWeb(
   }
 }
 
-// ==================== GOOGLE CALENDAR ====================
+// Google Calendar helper removed — Cal.com is the single scheduling backend.
 
-async function executeGoogleCalendarTool(
-  toolName: string,
-  args: any,
-  tenantId: string,
-  supabase: any,
-  userId: string | null,
-  supabaseUrl: string,
-  serviceRoleKey: string,
-): Promise<string> {
-  if (!userId) {
-    return JSON.stringify({ error: 'Debes estar autenticado para usar Google Calendar.' });
-  }
 
-  const actionMap: Record<string, string> = {
-    gcal_list_events: 'list_events',
-    gcal_create_event: 'create_event',
-    gcal_update_event: 'update_event',
-    gcal_delete_event: 'delete_event',
-  };
-
-  try {
-    const res = await fetch(`${supabaseUrl}/functions/v1/calendar-tools`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${serviceRoleKey}`,
-        'Content-Type': 'application/json',
-        'X-Service-Call': 'true',
-      },
-      body: JSON.stringify({
-        action: actionMap[toolName],
-        user_id: userId,
-        ...args,
-      }),
-    });
-
-    const data = await res.json();
-    if (!res.ok) {
-      if (data.calendar_not_connected) {
-        return JSON.stringify({ error: 'No tienes Google Calendar conectado. Ve a la app → Configuración → Google Calendar para conectarlo.' });
-      }
-      return JSON.stringify({ error: data.error || 'Error al interactuar con Google Calendar' });
-    }
-    return JSON.stringify(data);
-  } catch (err) {
-    console.error('Google Calendar tool error:', err);
-    return JSON.stringify({ error: 'Error al conectar con Google Calendar.' });
-  }
-}
 
 // ==================== MANAGE CONTACTS ====================
 
