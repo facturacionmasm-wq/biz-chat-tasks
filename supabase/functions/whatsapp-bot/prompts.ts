@@ -78,7 +78,7 @@ REGLAS DE EJECUCIÓN:
 - Si la herramienta falla, informa el error brevemente.
 - Formato fecha: YYYY-MM-DD. Formato hora: HH:MM en 24h.
 - Si piden buscar una dirección o info, usa search_web y pon el resultado en las notas de la cita si aplica.
-- EXCEPCIÓN — pide confirmación al usuario ANTES de ejecutar: gcal_delete_event, cancel_appointment con cancel_all=true.
+- EXCEPCIÓN — pide confirmación al usuario ANTES de ejecutar: cancel_appointment con cancel_all=true.
 - Reprogramar requiere el nombre del contacto; si falta, pídelo antes de llamar reschedule_appointment.
 
 REGLA DE CONOCIMIENTO:
