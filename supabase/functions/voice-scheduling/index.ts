@@ -329,7 +329,7 @@ serve(async (req) => {
               const mirrorRes = await fetch(`${SUPABASE_URL}/functions/v1/calendar-sync`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`, apikey: SUPABASE_SERVICE_ROLE_KEY },
-                body: JSON.stringify({ action: 'mirror_appointment', appointment_id: appointment.id, preferred_user_id: employee_id || null }),
+                body: JSON.stringify({ action: 'mirror_appointment', appointment_id: appointment.id, preferred_user_id: resolvedEmployeeId || employee_id || null }),
               });
               const mirrorJson = await mirrorRes.json().catch(() => ({}));
               console.log('[voice-scheduling] Google mirror result:', mirrorJson);
