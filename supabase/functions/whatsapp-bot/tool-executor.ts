@@ -515,18 +515,23 @@ async function executeScheduleAppointment(
     date: dateDisplay,
     time: timeDisplay,
     employee: employee_name || 'sin asignar',
+    status: 'scheduled',
+    awaiting_client_confirmation: !!finalContactPhone,
     confirmation_sent: !!finalContactPhone,
     reminders_scheduled: notificationsToInsert.length,
+    google_calendar_synced: calendarSynced,
+    google_calendar_reason: calendarSynced ? null : googleCalendarReason,
     calcom_pushed: calcomPushed,
+    calcom_skipped_reason: calcomPushed ? null : calcomSkippedReason,
   };
 
-  if (calendarSynced) {
-    response.calendar_synced = true;
-    response.message = 'Cita agendada y sincronizada con Google Calendar.' + (calcomPushed ? ' También enviada a Cal.com.' : '') + (finalContactPhone ? ' Se envió confirmación al contacto.' : '');
-  } else {
-    response.calendar_synced = false;
-    response.message = 'Cita agendada correctamente.' + (calcomPushed ? ' Enviada a Cal.com.' : '') + (finalContactPhone ? ' Se envió confirmación al contacto.' : '') + ' La sincronización con el calendario se completará en breve.';
-  }
+  const parts: string[] = ['Cita agendada'];
+  if (finalContactPhone) parts.push('se pidió confirmación al cliente por WhatsApp');
+  if (calendarSynced) parts.push('sincronizada con Google Calendar');
+  else if (googleCalendarReason) parts.push(`Google Calendar no sincronizado (${googleCalendarReason})`);
+  if (calcomPushed) parts.push('reserva creada en Cal.com');
+  else if (calcomSkippedReason && calcomSkippedReason !== 'no_integration') parts.push(`Cal.com no creado (${calcomSkippedReason})`);
+  response.message = parts.join('; ') + '.';
 
   return JSON.stringify(response);
 }
