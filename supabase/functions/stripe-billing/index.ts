@@ -1005,7 +1005,103 @@ serve(async (req) => {
         }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
 
-      default:
+      case 'charge_verification_fee': {
+        // Cobro único por la verificación regulatoria (Twilio Regulatory Bundle)
+        const byonRequestId: string | undefined = body?.byon_request_id;
+        const countryCode: string = String(body?.country_code || 'XX');
+        const feeAmount: number = typeof body?.amount === 'number' && body.amount > 0 ? body.amount : 15;
+        const feeCurrency: string = (body?.currency || 'usd').toString().toLowerCase();
+
+        if (!tenant_id || !byonRequestId) {
+          return new Response(JSON.stringify({ error: 'tenant_id and byon_request_id required' }), {
+            status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Skip if already paid (idempotencia)
+        const { data: existingReq } = await supabase
+          .from('byon_requests')
+          .select('verification_fee_paid, verification_fee_invoice_id')
+          .eq('id', byonRequestId)
+          .maybeSingle();
+        if (existingReq?.verification_fee_paid) {
+          return new Response(JSON.stringify({ ok: true, already_paid: true, invoice_id: existingReq.verification_fee_invoice_id }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        const { data: cust } = await supabase
+          .from('stripe_customers')
+          .select('stripe_customer_id')
+          .eq('tenant_id', tenant_id)
+          .maybeSingle();
+
+        if (!cust?.stripe_customer_id) {
+          return new Response(JSON.stringify({ ok: false, error: 'no_customer', message: 'Registra un método de pago antes de enviar los documentos.' }), {
+            status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        const customer = await stripeRequest(`/customers/${cust.stripe_customer_id}`, 'GET', undefined, STRIPE_RESTRICTED_API_KEY);
+        const pms = await stripeRequest(
+          `/payment_methods?customer=${cust.stripe_customer_id}&type=card&limit=5`,
+          'GET', undefined, STRIPE_RESTRICTED_API_KEY
+        );
+        const defaultPm = customer.invoice_settings?.default_payment_method || pms.data?.[0]?.id || null;
+        if (!defaultPm) {
+          return new Response(JSON.stringify({ ok: false, error: 'no_payment_method', message: 'Registra una tarjeta antes de enviar la documentación.' }), {
+            status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        const amountMinor = Math.round(feeAmount * 100);
+        await stripeRequest('/invoiceitems', 'POST', {
+          customer: cust.stripe_customer_id,
+          amount: String(amountMinor),
+          currency: feeCurrency,
+          description: `Verificación regulatoria Twilio (${countryCode})`,
+          'metadata[type]': 'twilio_regulatory_verification',
+          'metadata[byon_request_id]': byonRequestId,
+          'metadata[country_code]': countryCode,
+          'metadata[tenant_id]': tenant_id,
+        }, STRIPE_RESTRICTED_API_KEY);
+
+        let invoice: any;
+        try {
+          invoice = await stripeRequest('/invoices', 'POST', {
+            customer: cust.stripe_customer_id,
+            collection_method: 'charge_automatically',
+            auto_advance: 'true',
+            default_payment_method: defaultPm,
+            'metadata[type]': 'twilio_regulatory_verification',
+            'metadata[byon_request_id]': byonRequestId,
+            'metadata[tenant_id]': tenant_id,
+          }, STRIPE_RESTRICTED_API_KEY);
+          await stripeRequest(`/invoices/${invoice.id}/finalize`, 'POST', undefined, STRIPE_RESTRICTED_API_KEY);
+          invoice = await stripeRequest(`/invoices/${invoice.id}/pay`, 'POST', undefined, STRIPE_RESTRICTED_API_KEY);
+        } catch (err: any) {
+          return new Response(JSON.stringify({ ok: false, error: 'charge_failed', message: err?.message || 'Stripe rechazó el cargo' }), {
+            status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        await supabase.from('byon_requests').update({
+          verification_fee_paid: true,
+          verification_fee_invoice_id: invoice?.id,
+          verification_fee_amount: feeAmount,
+          verification_fee_currency: feeCurrency,
+          verification_fee_paid_at: new Date().toISOString(),
+        }).eq('id', byonRequestId);
+
+        return new Response(JSON.stringify({
+          ok: true,
+          invoice_id: invoice?.id,
+          status: invoice?.status,
+          amount: feeAmount,
+          currency: feeCurrency,
+        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+
         return new Response(JSON.stringify({ error: `Unknown action: ${action}` }), {
           status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
