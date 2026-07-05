@@ -182,26 +182,14 @@ const OnboardingPage = () => {
 
     setLoading(true);
     try {
-      const { data: tenantId } = await supabase.rpc('get_user_tenant_id', { _user_id: user.id });
-      if (!tenantId) throw new Error('Tenant no encontrado');
-
-      const trialEnd = new Date();
-      trialEnd.setDate(trialEnd.getDate() + 15);
-
-      // The signup trigger (handle_new_user) already created a trialing
-      // subscription on the Basic plan. Here we just update the chosen
-      // plan_id via the admin RPC-safe path: upsert on tenant_id.
-      // RLS forbids direct INSERT for tenants, so we UPDATE the existing row.
-      const { error: subError } = await supabase
-        .from('tenant_subscriptions')
-        .update({
-          plan_id: selectedPlan,
-          status: 'trialing',
-          trial_ends_at: trialEnd.toISOString(),
-          current_period_start: new Date().toISOString(),
-          current_period_end: trialEnd.toISOString(),
-        })
-        .eq('tenant_id', tenantId);
+      // Activate (or create) the 15-day trial via a security-definer RPC.
+      // Direct INSERT/UPSERT on tenant_subscriptions is blocked by RLS, which
+      // used to leave new users without a subscription row and immediately
+      // showed them the "trial expired" screen.
+      const { error: subError } = await supabase.rpc(
+        'activate_trial_for_current_user',
+        { _plan_id: selectedPlan },
+      );
       if (subError) throw subError;
 
       const { error: profileError } = await supabase
@@ -211,13 +199,16 @@ const OnboardingPage = () => {
       if (profileError) throw profileError;
 
       toast.success('¡Bienvenido! Tu prueba gratuita de 15 días ha comenzado.');
-      navigate('/', { replace: true });
+      // Force a full reload so AuthContext picks up the new subscription
+      // status before ProtectedRoute evaluates is_blocked.
+      window.location.replace('/');
     } catch (err: any) {
       toast.error(err.message || 'Error al activar plan');
     } finally {
       setLoading(false);
     }
   };
+
 
   // ── Step indicators ──
   const StepIndicator = () => {
