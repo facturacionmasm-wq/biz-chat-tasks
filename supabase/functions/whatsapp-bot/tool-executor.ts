@@ -401,38 +401,10 @@ async function executeScheduleAppointment(
     console.error('[APPT] Cal.com push error:', calcomErr);
   }
 
-  // ─── Google Calendar sync — only when Cal.com did NOT create the booking. ───
-  // If Cal.com pushed, it already synced the owner's Google Calendar.
-  // We fall back to our local calendar-sync when Cal.com is not configured or its push failed.
-  let calendarSynced = false;
-  let googleCalendarReason: string | null = null;
-  if (calcomPushed) {
-    // Cal.com handles the Google event on the owner's calendar.
-    calendarSynced = true;
-    googleCalendarReason = null;
-  } else if (!apt.user_id) {
-    googleCalendarReason = 'no_employee_assigned';
-  } else if (supabaseUrl && serviceRoleKey) {
-    try {
-      const syncRes = await fetch(`${supabaseUrl}/functions/v1/calendar-sync`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${serviceRoleKey}`,
-        },
-        body: JSON.stringify({ action: 'sync_appointment', appointment_id: apt.id }),
-      });
-      const syncResult = await syncRes.json();
-      calendarSynced = syncResult.success === true;
-      if (!calendarSynced) {
-        googleCalendarReason = syncResult.error || syncResult.status || 'sync_pending';
-        console.log(`Calendar sync pending for ${apt.id}: ${googleCalendarReason}`);
-      }
-    } catch (syncErr) {
-      googleCalendarReason = 'sync_request_failed';
-      console.error('Calendar sync trigger error:', syncErr);
-    }
-  }
+  // Google Calendar sync removed — Cal.com is the single source of truth.
+  // When Cal.com pushes the booking it manages the owner's calendar via its own integrations.
+  // When Cal.com is not configured, the appointment lives only in our DB.
+
 
   // === SEND CONFIRMATION TO CONTACT & SCHEDULE REMINDERS ===
   const finalContactPhone = cPhone || contactPhone || null;
