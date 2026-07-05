@@ -4685,6 +4685,7 @@ export type Database = {
         Returns: boolean
       }
       cleanup_expired_nonces: { Args: never; Returns: undefined }
+      ensure_tenant_for_current_user: { Args: never; Returns: Json }
       get_tenant_branding: { Args: { _tenant_id: string }; Returns: Json }
       get_tenant_subscription_status: {
         Args: { _user_id: string }
