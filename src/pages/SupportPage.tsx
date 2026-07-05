@@ -167,6 +167,33 @@ const SupportPage = () => {
     }
   };
 
+  const sendSupportEmail = async () => {
+    if (!emailForm.subject.trim() || !emailForm.message.trim()) {
+      toast.error('Asunto y mensaje son obligatorios');
+      return;
+    }
+    setEmailSending(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('send-support-email', {
+        body: {
+          subject: emailForm.subject,
+          message: emailForm.message,
+          priority: emailForm.priority,
+          contact_email: emailForm.contact_email,
+        },
+      });
+      if (error || !data?.success) throw new Error(data?.error || error?.message || 'Error');
+      toast.success(`Ticket #${data.ticket_number || data.ticket_id?.slice(0, 8)} creado — te contactaremos por correo`);
+      setEmailOpen(false);
+      setEmailForm({ subject: '', message: '', priority: 'normal', contact_email: user?.email ?? '' });
+      load();
+    } catch (err: any) {
+      toast.error(err.message || 'No se pudo enviar el correo');
+    } finally {
+      setEmailSending(false);
+    }
+  };
+
   const filtered = useMemo(() => {
     const pOrder = { urgent: 0, high: 1, normal: 2, low: 3 };
     return tickets
