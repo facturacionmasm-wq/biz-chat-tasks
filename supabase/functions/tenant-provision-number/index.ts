@@ -116,7 +116,7 @@ serve(async (req) => {
         error: "already_provisioned",
         message: "Este tenant ya tiene un número asignado.",
         phone_number: cfg.phone_number,
-      }, 409);
+      }, 200);
     }
   }
 
