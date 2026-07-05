@@ -1012,21 +1012,8 @@ async function executeCancelAppointment(
 
     if (updateErr) continue;
 
-    // If synced to Google Calendar, delete the event
-    if (apt.calendar_event_id && apt.user_id && supabaseUrl && serviceRoleKey) {
-      try {
-        await fetch(`${supabaseUrl}/functions/v1/calendar-sync`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${serviceRoleKey}`,
-          },
-          body: JSON.stringify({ action: 'cancel_event', appointment_id: apt.id }),
-        });
-      } catch (syncErr) {
-        console.error('Calendar delete sync error:', syncErr);
-      }
-    }
+    // Google Calendar sync removed — Cal.com manages the event lifecycle on the owner's calendar.
+
 
     cancelled.push({
       contact_name: apt.contact_name,
