@@ -67,6 +67,32 @@ async function resolveTenantByCustomer(client: any, customerId: string) {
 async function handleCheckoutCompleted(client: any, session: any) {
   const tenantId = session.metadata?.tenant_id;
 
+  // ===== SUPPORT CONSULT ($20) =====
+  if (session.mode === 'payment' && session.metadata?.type === 'support_consult') {
+    const { data: consult, error } = await client
+      .from('support_consult_purchases')
+      .update({
+        status: 'paid',
+        paid_at: new Date().toISOString(),
+        stripe_payment_intent_id: session.payment_intent,
+      })
+      .eq('stripe_session_id', session.id)
+      .select('id')
+      .maybeSingle();
+
+    if (error) console.error('Error activating support consult:', error);
+    else console.log(`Support consult ${consult?.id} paid for tenant ${tenantId}`);
+
+    await logAudit(client, tenantId, 'billing.support_consult_paid', {
+      consult_id: consult?.id,
+      session_id: session.id,
+      payment_intent_id: session.payment_intent,
+      amount: 20,
+      currency: 'USD',
+    });
+    return;
+  }
+
   // ===== PACKAGE PURCHASE (mode: payment) =====
   if (session.mode === 'payment' && session.metadata?.package_id) {
     const packageId = session.metadata.package_id;
