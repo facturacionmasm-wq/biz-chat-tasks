@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
+import { assertVoicePlan } from "../_shared/plan-guard.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -164,6 +165,13 @@ Deno.serve(async (req) => {
       }
 
       const adminClient = createClient(supabaseUrl, serviceRoleKey);
+
+      // Plan guard
+      {
+        const blocked = await assertVoicePlan(adminClient, tenant_id, corsHeaders);
+        if (blocked) return blocked;
+      }
+
       const whisperText = await generateWhisperText(
         transcript,
         caller_phone || "desconocido",
