@@ -73,7 +73,7 @@ serve(async (req) => {
   // Load tenant to get country default + existing whatsapp_config
   const { data: tenant, error: tErr } = await supabase
     .from("tenants")
-    .select("id, name, country, whatsapp_config")
+    .select("id, name, country_code, whatsapp_config")
     .eq("id", tenant_id)
     .maybeSingle();
   if (tErr) console.error("[twilio-provision] tenant lookup error:", tErr, "tenant_id:", tenant_id);
@@ -82,7 +82,7 @@ serve(async (req) => {
     return j({ ok: false, error: "tenant_not_found", message: `No se encontró el tenant (${String(tenant_id).slice(0,8)}).` }, 200);
   }
 
-  if (!country_code) country_code = (tenant.country || "US").toUpperCase();
+  if (!country_code) country_code = ((tenant as any).country_code || "US").toUpperCase();
 
   const basicAuth = btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`);
   const twilioHeaders = { Authorization: `Basic ${basicAuth}` };
