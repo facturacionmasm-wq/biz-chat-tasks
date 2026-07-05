@@ -445,14 +445,15 @@ export default function TenantNumberPurchaseWizard({ open, onOpenChange, onPurch
           </div>
         )}
       </DialogContent>
-
-      <RegulatoryBundleRequestForm
-        open={bundleFormOpen}
-        onOpenChange={setBundleFormOpen}
-        countryCode={country}
-        numberType={type}
-        onSubmitted={() => { setBundleStatus('pending'); refreshBundleStatus(); }}
-      />
     </Dialog>
+
+    <RegulatoryBundleRequestForm
+      open={bundleFormOpen}
+      onOpenChange={setBundleFormOpen}
+      countryCode={country}
+      numberType={type}
+      onSubmitted={() => { setBundleStatus('pending'); refreshBundleStatus(); }}
+    />
+    </>
   );
 }
