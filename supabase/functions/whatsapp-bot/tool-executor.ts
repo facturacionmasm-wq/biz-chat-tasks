@@ -515,8 +515,6 @@ async function executeScheduleAppointment(
     awaiting_client_confirmation: !!finalContactPhone,
     confirmation_sent: !!finalContactPhone,
     reminders_scheduled: notificationsToInsert.length,
-    google_calendar_synced: calendarSynced,
-    google_calendar_reason: calendarSynced ? null : googleCalendarReason,
     calcom_pushed: calcomPushed,
     calcom_skipped_reason: calcomPushed ? null : calcomSkippedReason,
     calcom_error_snippet: calcomPushed ? null : calcomErrorSnippet,
@@ -524,9 +522,8 @@ async function executeScheduleAppointment(
 
   const parts: string[] = ['Cita agendada'];
   if (finalContactPhone) parts.push('se pidió confirmación al cliente por WhatsApp');
-  if (calendarSynced) parts.push(calcomPushed ? 'reserva creada en Cal.com (Google Calendar sincronizado vía Cal.com)' : 'sincronizada con Google Calendar');
-  else if (googleCalendarReason) parts.push(`Google Calendar no sincronizado (${googleCalendarReason})`);
-  if (!calcomPushed && calcomSkippedReason && calcomSkippedReason !== 'no_integration') {
+  if (calcomPushed) parts.push('reserva creada en Cal.com');
+  else if (calcomSkippedReason && calcomSkippedReason !== 'no_integration') {
     parts.push(`Cal.com no creado (${calcomSkippedReason}${calcomErrorSnippet ? ': ' + calcomErrorSnippet : ''})`);
   }
   response.message = parts.join('; ') + '.';
