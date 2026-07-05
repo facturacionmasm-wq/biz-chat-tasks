@@ -182,26 +182,39 @@ const OnboardingPage = () => {
 
     setLoading(true);
     try {
+      // Ensure tenant/profile exist (idempotent) so the subsequent updates persist.
+      await supabase.rpc('ensure_tenant_for_current_user');
+
       // Activate (or create) the 15-day trial via a security-definer RPC.
-      // Direct INSERT/UPSERT on tenant_subscriptions is blocked by RLS, which
-      // used to leave new users without a subscription row and immediately
-      // showed them the "trial expired" screen.
       const { error: subError } = await supabase.rpc(
         'activate_trial_for_current_user',
         { _plan_id: selectedPlan },
       );
       if (subError) throw subError;
 
+      // Upsert to guarantee the row exists and onboarding flag persists.
       const { error: profileError } = await supabase
         .from('profiles')
-        .update({ onboarding_completed: true })
-        .eq('user_id', user.id);
+        .upsert(
+          { user_id: user.id, onboarding_completed: true } as any,
+          { onConflict: 'user_id' },
+        );
       if (profileError) throw profileError;
 
-      toast.success('¡Bienvenido! Tu prueba gratuita de 15 días ha comenzado.');
-      // Force a full reload so AuthContext picks up the new subscription
-      // status before ProtectedRoute evaluates is_blocked.
-      window.location.replace('/');
+      // Verify the flag actually persisted (RLS/row-missing safety net).
+      const { data: check } = await supabase
+        .from('profiles')
+        .select('onboarding_completed')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (!check?.onboarding_completed) {
+        throw new Error('No se pudo guardar el estado de onboarding. Intenta de nuevo.');
+      }
+
+      toast.success('¡Plan activado! Ahora registra tu método de pago.');
+      // Redirect to payment/usage page so the user can register their card.
+      // Full reload ensures AuthContext refreshes onboarding + subscription state.
+      window.location.replace('/usage?setup=payment');
     } catch (err: any) {
       toast.error(err.message || 'Error al activar plan');
     } finally {
