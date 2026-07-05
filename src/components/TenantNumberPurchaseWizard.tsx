@@ -92,17 +92,20 @@ export default function TenantNumberPurchaseWizard({ open, onOpenChange, onPurch
       if (!profile?.tenant_id) { setBundleStatus('none'); return; }
       const { data: req } = await supabase
         .from('byon_requests')
-        .select('status, created_at')
+        .select('status, created_at, verification_fee_paid, twilio_bundle_sid, twilio_status, twilio_rejection_reason')
         .eq('tenant_id', profile.tenant_id)
         .eq('country_code', country)
         .eq('request_type', 'regulatory_bundle')
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
-      if (!req) setBundleStatus('none');
-      else if (req.status === 'approved') setBundleStatus('approved');
-      else if (req.status === 'rejected') setBundleStatus('rejected');
-      else setBundleStatus('pending');
+      if (!req) { setBundleStatus('none'); setBundleDetail(null); }
+      else {
+        setBundleDetail(req as any);
+        if (req.status === 'approved' || (req as any).twilio_status === 'twilio-approved') setBundleStatus('approved');
+        else if (req.status === 'rejected' || (req as any).twilio_status === 'twilio-rejected') setBundleStatus('rejected');
+        else setBundleStatus('pending');
+      }
     } catch (_) {
       setBundleStatus('none');
     } finally {
