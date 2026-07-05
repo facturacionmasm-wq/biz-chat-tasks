@@ -261,36 +261,23 @@ serve(async (req) => {
           .not('user_id', 'is', null);
 
         if (matchingRules && matchingRules.length > 0) {
-          // Find the employee whose schedule covers this time
+          // Pick the first employee whose schedule covers this time slot.
+          // Cal.com is the single source of truth for calendar sync (handled at tenant level),
+          // so we no longer prefer employees based on per-user Google Calendar tokens.
           for (const rule of matchingRules) {
             const [rStartH, rStartM] = rule.start_time.split(':').map(Number);
             const [rEndH, rEndM] = rule.end_time.split(':').map(Number);
             const ruleStart = rStartH * 60 + rStartM;
             const ruleEnd = rEndH * 60 + rEndM;
             if (localMinutes >= ruleStart && localMinutes < ruleEnd) {
-              // Check this employee has Google Calendar connected
-              const { data: gcalToken } = await supabase
-                .from('google_calendar_tokens')
-                .select('user_id')
-                .eq('user_id', rule.user_id)
-                .eq('tenant_id', tenant_id)
-                .eq('status', 'active')
-                .maybeSingle();
-              if (gcalToken) {
-                resolvedEmployeeId = rule.user_id;
-                console.log(`[voice-scheduling] Auto-assigned employee ${resolvedEmployeeId} based on availability rule`);
-                break;
-              }
-              // Still assign even without calendar
-              if (!resolvedEmployeeId) {
-                resolvedEmployeeId = rule.user_id;
-              }
+              resolvedEmployeeId = rule.user_id;
+              console.log(`[voice-scheduling] Assigned employee ${resolvedEmployeeId} matching availability rule`);
+              break;
             }
           }
-          // If no time match, pick first available employee with calendar
           if (!resolvedEmployeeId) {
             resolvedEmployeeId = matchingRules[0].user_id;
-            console.log(`[voice-scheduling] Fallback: assigned first available employee ${resolvedEmployeeId}`);
+            console.log(`[voice-scheduling] Fallback: first available employee ${resolvedEmployeeId}`);
           }
         }
       }
