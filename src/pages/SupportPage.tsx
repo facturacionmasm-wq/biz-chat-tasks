@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
-import { LifeBuoy, Plus, AlertTriangle, Clock, CheckCircle2, XCircle, Crown, Loader2, Send, MessageSquare, Phone, User, ArrowLeft, Filter } from 'lucide-react';
+import { LifeBuoy, Plus, AlertTriangle, Clock, CheckCircle2, XCircle, Crown, Loader2, Send, MessageSquare, Phone, User, ArrowLeft, Filter, Mail, Sparkles } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { usePlanFeatures } from '@/hooks/usePlanFeatures';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -68,6 +69,7 @@ function formatRelative(iso: string | null) {
 
 const SupportPage = () => {
   const { user } = useAuth();
+  const { supportLevel, planName } = usePlanFeatures();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Ticket | null>(null);
@@ -80,6 +82,22 @@ const SupportPage = () => {
   const [filterPriority, setFilterPriority] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [newTicket, setNewTicket] = useState({ subject: '', description: '', priority: 'normal' });
+
+  // ===== Email to support form =====
+  const [emailOpen, setEmailOpen] = useState(false);
+  const [emailSending, setEmailSending] = useState(false);
+  const [emailForm, setEmailForm] = useState({
+    subject: '',
+    message: '',
+    priority: 'normal',
+    contact_email: user?.email ?? '',
+  });
+
+  useEffect(() => {
+    if (user?.email && !emailForm.contact_email) {
+      setEmailForm(f => ({ ...f, contact_email: user.email ?? '' }));
+    }
+  }, [user?.email]);
 
   const load = async () => {
     setLoading(true);
