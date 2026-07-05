@@ -322,6 +322,7 @@ async function executeScheduleAppointment(
 
   // ─── Push booking to Cal.com if the tenant has an active integration ───
   let calcomPushed = false;
+  let calcomSkippedReason: string | null = null;
   try {
     const { data: calcomInteg } = await supabase
       .from('calcom_integrations')
@@ -330,10 +331,31 @@ async function executeScheduleAppointment(
       .eq('status', 'active')
       .maybeSingle();
 
-    if (calcomInteg?.api_key_encrypted && calcomInteg?.default_event_type_id) {
+    if (!calcomInteg) {
+      calcomSkippedReason = 'no_integration';
+    } else if (!calcomInteg.api_key_encrypted) {
+      calcomSkippedReason = 'missing_api_key';
+    } else if (!calcomInteg.default_event_type_id) {
+      calcomSkippedReason = 'missing_default_event_type';
+      console.warn('[APPT] Cal.com integration active but default_event_type_id missing — skipping push', { tenantId });
+      try {
+        await supabase.from('audit_events').insert({
+          tenant_id: tenantId,
+          event_type: 'calcom_push_skipped',
+          resource_type: 'appointments',
+          resource_id: apt.id,
+          payload: { reason: 'missing_default_event_type', appointment_id: apt.id },
+        });
+      } catch { /* audit best-effort */ }
+    } else if (!contact_email || /@wa\.local$/i.test(contact_email)) {
+      // Never push a fake email — Cal.com would swallow it but no confirmation email would arrive.
+      calcomSkippedReason = 'missing_client_email';
+    } else {
       // Decrypt API key inline (mirrors calcom-sync helper)
       const secret = Deno.env.get('CREDENTIALS_ENCRYPTION_KEY');
-      if (secret) {
+      if (!secret) {
+        calcomSkippedReason = 'missing_encryption_key';
+      } else {
         const enc = new TextEncoder();
         const km = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'PBKDF2' }, false, ['deriveKey']);
         const key = await crypto.subtle.deriveKey(
@@ -349,7 +371,6 @@ async function executeScheduleAppointment(
           apiKey = new TextDecoder().decode(pt);
         }
 
-        const attendeeEmail = contact_email || `${String(contact_phone || cPhone || contactPhone || 'contact').replace(/[^0-9]/g,'')}@wa.local`;
         const bookRes = await fetch('https://api.cal.com/v2/bookings', {
           method: 'POST',
           headers: {
@@ -362,7 +383,7 @@ async function executeScheduleAppointment(
             start: startAt.toISOString(),
             attendee: {
               name: contact_name,
-              email: attendeeEmail,
+              email: contact_email,
               timeZone: tz,
               language: 'es',
             },
@@ -379,13 +400,13 @@ async function executeScheduleAppointment(
               .eq('id', apt.id);
           }
         } else {
+          calcomSkippedReason = `api_error_${bookRes.status}`;
           console.warn('[APPT] Cal.com push failed:', bookRes.status, (await bookRes.text()).slice(0, 200));
         }
       }
-    } else if (calcomInteg?.status === 'active' && calcomInteg?.api_key_encrypted && !calcomInteg?.default_event_type_id) {
-      console.warn('[APPT] Cal.com integration active but default_event_type_id missing — skipping push', { tenantId });
     }
   } catch (calcomErr) {
+    calcomSkippedReason = 'exception';
     console.error('[APPT] Cal.com push error:', calcomErr);
   }
 
