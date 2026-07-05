@@ -2,6 +2,7 @@
 // Use dryRun=true to preview available numbers without spending.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
+import { assertVoicePlan } from "../_shared/plan-guard.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -81,6 +82,13 @@ serve(async (req) => {
     console.error("[twilio-provision] tenant not found:", tenant_id);
     return j({ ok: false, error: "tenant_not_found", message: `No se encontró el tenant (${String(tenant_id).slice(0,8)}).` }, 200);
   }
+
+  // Plan guard: only tenants whose plan includes voice_agent may provision voice-capable numbers.
+  if (wantVoice) {
+    const blocked = await assertVoicePlan(supabase, tenant_id, corsHeaders);
+    if (blocked) return blocked;
+  }
+
 
   if (!country_code) country_code = ((tenant as any).country_code || "US").toUpperCase();
 
