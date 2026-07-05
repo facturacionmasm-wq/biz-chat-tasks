@@ -294,6 +294,10 @@ async function executeScheduleAppointment(
 
   // Trigger calendar sync asynchronously
   let calendarSynced = false;
+  let googleCalendarReason: string | null = null;
+  if (!apt.user_id) {
+    googleCalendarReason = 'no_employee_assigned';
+  }
   if (supabaseUrl && serviceRoleKey && apt.user_id) {
     try {
       const syncRes = await fetch(`${supabaseUrl}/functions/v1/calendar-sync`, {
@@ -307,9 +311,11 @@ async function executeScheduleAppointment(
       const syncResult = await syncRes.json();
       calendarSynced = syncResult.success === true;
       if (!calendarSynced) {
-        console.log(`Calendar sync pending for ${apt.id}: ${syncResult.error || 'unknown'}`);
+        googleCalendarReason = syncResult.error || syncResult.status || 'sync_pending';
+        console.log(`Calendar sync pending for ${apt.id}: ${googleCalendarReason}`);
       }
     } catch (syncErr) {
+      googleCalendarReason = 'sync_request_failed';
       console.error('Calendar sync trigger error:', syncErr);
     }
   }
