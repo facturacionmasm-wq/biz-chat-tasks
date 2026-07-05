@@ -110,27 +110,19 @@ const SettingsPage = () => {
   const [driveLoading, setDriveLoading] = useState(false);
   const [driveChecked, setDriveChecked] = useState(false);
 
-  // Handle redirect back from Google OAuth (same-window flow)
+  // Handle redirect back from Google OAuth (same-window flow) — kept only for Drive/Google flows
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-
     const calendarError = params.get('calendar_error');
     if (calendarError) {
-      setActiveSection('calendar');
       window.history.replaceState({}, '', window.location.pathname);
-      toast.error(`No se pudo conectar Google Calendar: ${decodeURIComponent(calendarError)}`);
       return;
     }
-
     if (params.get('calendar_connected') === 'true') {
-      setActiveSection('calendar');
       const email = params.get('email');
       if (email) setCalendarEmail(decodeURIComponent(email));
-      // Clean URL
       window.history.replaceState({}, '', window.location.pathname);
-      // Refresh status
       checkCalendarStatus();
-      toast.success(`Google Calendar conectado exitosamente${email ? ` con ${decodeURIComponent(email)}` : ''}`);
     }
   }, []);
 
