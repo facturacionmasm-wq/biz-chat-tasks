@@ -685,9 +685,14 @@ const TenantBillingView = ({ status, subStatus, currentSub, currentPlanSlug, pla
                 </ul>
               )}
               {!isCurrent && (
-                <p className="text-xs text-muted-foreground mt-4 text-center">
-                  Contacta al administrador para cambiar de plan
-                </p>
+                <button
+                  onClick={() => handleChangePlan(plan.slug)}
+                  disabled={changing !== null}
+                  className="mt-4 w-full bg-primary text-primary-foreground text-sm font-medium py-2 rounded-lg hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {changing === plan.slug && <Loader2 size={14} className="animate-spin" />}
+                  Cambiar a este plan
+                </button>
               )}
             </div>
           );
