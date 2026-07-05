@@ -67,10 +67,9 @@ export async function executeTool(
     return await executeSearchWeb(args, supabaseUrl, serviceRoleKey);
   }
 
-  // ──── Google Calendar tools ────
-  if (toolName === 'gcal_list_events' || toolName === 'gcal_create_event' || toolName === 'gcal_update_event' || toolName === 'gcal_delete_event') {
-    return await executeGoogleCalendarTool(toolName, args, tenantId, supabase, userId, supabaseUrl, serviceRoleKey);
-  }
+  // Google Calendar tools removed — Cal.com is the single source of truth for scheduling.
+
+
 
   // ──── Platform data tools ────
   if (toolName === 'manage_contacts') {
