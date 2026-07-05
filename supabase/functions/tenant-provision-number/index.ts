@@ -154,7 +154,7 @@ serve(async (req) => {
         error: 'payment_method_required',
         message: 'Registra un método de pago antes de comprar un número.',
         setup_action: 'create_setup_session',
-      }, 402);
+      }, 200);
     }
   }
 
