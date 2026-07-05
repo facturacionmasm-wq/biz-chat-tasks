@@ -233,5 +233,5 @@ serve(async (req) => {
     }
   }
 
-  return j({ ...forwardData, charge: chargeResult }, forwardRes.status);
+  return j({ ...forwardData, charge: chargeResult }, 200);
 });
