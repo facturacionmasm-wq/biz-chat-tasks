@@ -67,10 +67,9 @@ export async function executeTool(
     return await executeSearchWeb(args, supabaseUrl, serviceRoleKey);
   }
 
-  // ──── Google Calendar tools ────
-  if (toolName === 'gcal_list_events' || toolName === 'gcal_create_event' || toolName === 'gcal_update_event' || toolName === 'gcal_delete_event') {
-    return await executeGoogleCalendarTool(toolName, args, tenantId, supabase, userId, supabaseUrl, serviceRoleKey);
-  }
+  // Google Calendar tools removed — Cal.com is the single source of truth for scheduling.
+
+
 
   // ──── Platform data tools ────
   if (toolName === 'manage_contacts') {
@@ -402,38 +401,10 @@ async function executeScheduleAppointment(
     console.error('[APPT] Cal.com push error:', calcomErr);
   }
 
-  // ─── Google Calendar sync — only when Cal.com did NOT create the booking. ───
-  // If Cal.com pushed, it already synced the owner's Google Calendar.
-  // We fall back to our local calendar-sync when Cal.com is not configured or its push failed.
-  let calendarSynced = false;
-  let googleCalendarReason: string | null = null;
-  if (calcomPushed) {
-    // Cal.com handles the Google event on the owner's calendar.
-    calendarSynced = true;
-    googleCalendarReason = null;
-  } else if (!apt.user_id) {
-    googleCalendarReason = 'no_employee_assigned';
-  } else if (supabaseUrl && serviceRoleKey) {
-    try {
-      const syncRes = await fetch(`${supabaseUrl}/functions/v1/calendar-sync`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${serviceRoleKey}`,
-        },
-        body: JSON.stringify({ action: 'sync_appointment', appointment_id: apt.id }),
-      });
-      const syncResult = await syncRes.json();
-      calendarSynced = syncResult.success === true;
-      if (!calendarSynced) {
-        googleCalendarReason = syncResult.error || syncResult.status || 'sync_pending';
-        console.log(`Calendar sync pending for ${apt.id}: ${googleCalendarReason}`);
-      }
-    } catch (syncErr) {
-      googleCalendarReason = 'sync_request_failed';
-      console.error('Calendar sync trigger error:', syncErr);
-    }
-  }
+  // Google Calendar sync removed — Cal.com is the single source of truth.
+  // When Cal.com pushes the booking it manages the owner's calendar via its own integrations.
+  // When Cal.com is not configured, the appointment lives only in our DB.
+
 
   // === SEND CONFIRMATION TO CONTACT & SCHEDULE REMINDERS ===
   const finalContactPhone = cPhone || contactPhone || null;
@@ -544,8 +515,6 @@ async function executeScheduleAppointment(
     awaiting_client_confirmation: !!finalContactPhone,
     confirmation_sent: !!finalContactPhone,
     reminders_scheduled: notificationsToInsert.length,
-    google_calendar_synced: calendarSynced,
-    google_calendar_reason: calendarSynced ? null : googleCalendarReason,
     calcom_pushed: calcomPushed,
     calcom_skipped_reason: calcomPushed ? null : calcomSkippedReason,
     calcom_error_snippet: calcomPushed ? null : calcomErrorSnippet,
@@ -553,9 +522,8 @@ async function executeScheduleAppointment(
 
   const parts: string[] = ['Cita agendada'];
   if (finalContactPhone) parts.push('se pidió confirmación al cliente por WhatsApp');
-  if (calendarSynced) parts.push(calcomPushed ? 'reserva creada en Cal.com (Google Calendar sincronizado vía Cal.com)' : 'sincronizada con Google Calendar');
-  else if (googleCalendarReason) parts.push(`Google Calendar no sincronizado (${googleCalendarReason})`);
-  if (!calcomPushed && calcomSkippedReason && calcomSkippedReason !== 'no_integration') {
+  if (calcomPushed) parts.push('reserva creada en Cal.com');
+  else if (calcomSkippedReason && calcomSkippedReason !== 'no_integration') {
     parts.push(`Cal.com no creado (${calcomSkippedReason}${calcomErrorSnippet ? ': ' + calcomErrorSnippet : ''})`);
   }
   response.message = parts.join('; ') + '.';
@@ -1044,21 +1012,8 @@ async function executeCancelAppointment(
 
     if (updateErr) continue;
 
-    // If synced to Google Calendar, delete the event
-    if (apt.calendar_event_id && apt.user_id && supabaseUrl && serviceRoleKey) {
-      try {
-        await fetch(`${supabaseUrl}/functions/v1/calendar-sync`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${serviceRoleKey}`,
-          },
-          body: JSON.stringify({ action: 'cancel_event', appointment_id: apt.id }),
-        });
-      } catch (syncErr) {
-        console.error('Calendar delete sync error:', syncErr);
-      }
-    }
+    // Google Calendar sync removed — Cal.com manages the event lifecycle on the owner's calendar.
+
 
     cancelled.push({
       contact_name: apt.contact_name,
@@ -1168,57 +1123,9 @@ async function executeRescheduleAppointment(
 
   if (updateErr) return JSON.stringify({ error: updateErr.message });
 
-  // Immediately sync to Google Calendar
-  let calendarSynced = false;
-  if (apt.calendar_event_id && apt.user_id && supabaseUrl && serviceRoleKey) {
-    try {
-      const syncRes = await fetch(`${supabaseUrl}/functions/v1/calendar-sync`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${serviceRoleKey}`,
-        },
-        body: JSON.stringify({ action: 'update_event', appointment_id: apt.id }),
-      });
-      const syncResult = await syncRes.json();
-      calendarSynced = syncResult.success === true;
-      if (calendarSynced) {
-        await supabase
-          .from('appointments')
-          .update({ calendar_sync_status: 'SYNCED' })
-          .eq('id', apt.id);
-      } else {
-        console.log(`Calendar update pending for ${apt.id}: ${syncResult.error || 'unknown'}`);
-        await supabase
-          .from('appointments')
-          .update({ calendar_sync_status: 'PENDING_SYNC', calendar_sync_error: syncResult.error || null })
-          .eq('id', apt.id);
-      }
-    } catch (syncErr) {
-      console.error('Calendar update sync error:', syncErr);
-      await supabase
-        .from('appointments')
-        .update({ calendar_sync_status: 'PENDING_SYNC' })
-        .eq('id', apt.id);
-    }
-  } else if (!apt.calendar_event_id && apt.user_id && supabaseUrl && serviceRoleKey) {
-    // No existing event — create one immediately
-    try {
-      const syncRes = await fetch(`${supabaseUrl}/functions/v1/calendar-sync`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${serviceRoleKey}`,
-        },
-        body: JSON.stringify({ action: 'sync_appointment', appointment_id: apt.id }),
-      });
-      const syncResult = await syncRes.json();
-      calendarSynced = syncResult.success === true;
-    } catch (syncErr) {
-      console.error('Calendar sync trigger error:', syncErr);
-    }
-  }
-
+  // Google Calendar sync removed — Cal.com owns the calendar side.
+  // Note: reprogramar en Cal.com automáticamente no está implementado;
+  // el cambio queda registrado en la app y Cal.com deberá ajustarse manualmente si aplica.
   const response: any = {
     success: true,
     appointment_id: apt.id,
@@ -1227,10 +1134,7 @@ async function executeRescheduleAppointment(
     old_time: new Date(apt.start_at).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', timeZone: tz }),
     new_date: newStartAt.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', timeZone: tz }),
     new_time: newStartAt.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', timeZone: tz }),
-    calendar_synced: calendarSynced,
-    message: calendarSynced
-      ? `Cita con ${apt.contact_name} reprogramada y calendario actualizado.`
-      : `Cita con ${apt.contact_name} reprogramada. El calendario se actualizará en breve.`,
+    message: `Cita con ${apt.contact_name} reprogramada.`,
   };
 
   return JSON.stringify(response);
@@ -1414,56 +1318,9 @@ async function executeSearchWeb(
   }
 }
 
-// ==================== GOOGLE CALENDAR ====================
+// Google Calendar helper removed — Cal.com is the single scheduling backend.
 
-async function executeGoogleCalendarTool(
-  toolName: string,
-  args: any,
-  tenantId: string,
-  supabase: any,
-  userId: string | null,
-  supabaseUrl: string,
-  serviceRoleKey: string,
-): Promise<string> {
-  if (!userId) {
-    return JSON.stringify({ error: 'Debes estar autenticado para usar Google Calendar.' });
-  }
 
-  const actionMap: Record<string, string> = {
-    gcal_list_events: 'list_events',
-    gcal_create_event: 'create_event',
-    gcal_update_event: 'update_event',
-    gcal_delete_event: 'delete_event',
-  };
-
-  try {
-    const res = await fetch(`${supabaseUrl}/functions/v1/calendar-tools`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${serviceRoleKey}`,
-        'Content-Type': 'application/json',
-        'X-Service-Call': 'true',
-      },
-      body: JSON.stringify({
-        action: actionMap[toolName],
-        user_id: userId,
-        ...args,
-      }),
-    });
-
-    const data = await res.json();
-    if (!res.ok) {
-      if (data.calendar_not_connected) {
-        return JSON.stringify({ error: 'No tienes Google Calendar conectado. Ve a la app → Configuración → Google Calendar para conectarlo.' });
-      }
-      return JSON.stringify({ error: data.error || 'Error al interactuar con Google Calendar' });
-    }
-    return JSON.stringify(data);
-  } catch (err) {
-    console.error('Google Calendar tool error:', err);
-    return JSON.stringify({ error: 'Error al conectar con Google Calendar.' });
-  }
-}
 
 // ==================== MANAGE CONTACTS ====================
 
