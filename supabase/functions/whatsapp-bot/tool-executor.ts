@@ -475,25 +475,23 @@ async function executeScheduleAppointment(
   const dateDisplay = startAt.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', timeZone: tz });
   const timeDisplay = startAt.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', timeZone: tz });
 
-  // 1. Send immediate confirmation to the contact
+  // Resolve Twilio sender + tenant WhatsApp config once (used for client + internal notify)
+  const TWILIO_ACCOUNT_SID = Deno.env.get('TWILIO_ACCOUNT_SID') || '';
+  const TWILIO_AUTH_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN') || '';
+  const { data: tCfgData } = await supabase.from('tenants').select('whatsapp_config').eq('id', tenantId).single();
+  const waConfig = tCfgData?.whatsapp_config as Record<string, any> | null;
+  const fromNum = waConfig?.phone_number ? String(waConfig.phone_number).replace(/^whatsapp:/i, '') : Deno.env.get('TWILIO_PHONE_NUMBER') || '';
+  const msgSvcSid = waConfig?.messaging_service_sid ? String(waConfig.messaging_service_sid).trim() : Deno.env.get('TWILIO_MESSAGING_SERVICE_SID') || undefined;
+
+  // 1. Send client-facing confirmation message — DATA ONLY, no Cal.com/Google mentions.
   if (finalContactPhone && supabaseUrl && serviceRoleKey) {
-    const confirmMsg = `📅 *Confirmación de cita — ${companyName}*\n\nHola *${contact_name}*, te confirmo tu cita:\n\n📆 ${dateDisplay}\n⏰ ${timeDisplay}\n${service_type ? `📋 ${service_type}\n` : ''}${employee_name ? `👤 Con: ${employee_name}\n` : ''}${notes ? `📝 ${notes}\n` : ''}\n¿Puedes confirmar tu asistencia? Responde:\n✅ *CONFIRMO* — Asistiré\n❌ *CANCELO* — No podré asistir\n\n_Mensaje automático de ${companyName}_`;
+    const confirmMsg = `📅 *Tu cita — ${companyName}*\n\nHola *${contact_name}*, estos son los datos de tu cita:\n\n📆 ${dateDisplay}\n⏰ ${timeDisplay}\n${service_type ? `📋 ${service_type}\n` : ''}${employee_name ? `👤 Con: ${employee_name}\n` : ''}🏢 ${companyName}\n${notes ? `📝 ${notes}\n` : ''}\n¿Confirmas tu asistencia? Responde:\n✅ *CONFIRMO*\n❌ *CANCELO*`;
 
     try {
-      const TWILIO_ACCOUNT_SID = Deno.env.get('TWILIO_ACCOUNT_SID')!;
-      const TWILIO_AUTH_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN')!;
       const { sendTwilioMessage } = await import('./helpers.ts');
-
-      // Get tenant from number
-      const { data: tData } = await supabase.from('tenants').select('whatsapp_config').eq('id', tenantId).single();
-      const waConfig = tData?.whatsapp_config as Record<string, any> | null;
-      const fromNum = waConfig?.phone_number ? String(waConfig.phone_number).replace(/^whatsapp:/i, '') : Deno.env.get('TWILIO_PHONE_NUMBER') || '';
-      const msgSvcSid = waConfig?.messaging_service_sid ? String(waConfig.messaging_service_sid).trim() : Deno.env.get('TWILIO_MESSAGING_SERVICE_SID') || undefined;
-
       await sendTwilioMessage(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, fromNum, finalContactPhone, confirmMsg, msgSvcSid);
-      console.log(`[APPT] Confirmation sent to ${finalContactPhone}`);
+      console.log(`[APPT] Client confirmation-request sent to ${finalContactPhone}`);
 
-      // Store confirmation notification record
       await supabase.from('appointment_notifications').insert({
         appointment_id: apt.id,
         tenant_id: tenantId,
@@ -505,7 +503,48 @@ async function executeScheduleAppointment(
         message_body: confirmMsg,
       });
     } catch (confirmErr) {
-      console.error('[APPT] Confirmation send error:', confirmErr);
+      console.error('[APPT] Client confirmation send error:', confirmErr);
+    }
+  }
+
+  // 1b. Send TECHNICAL message to the tenant/business (assigned employee or creator) with
+  //     Cal.com + Google Calendar sync details. NEVER goes to the client.
+  const internalRecipientUserId = employeeId || userId || null;
+  if (internalRecipientUserId && TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && fromNum) {
+    try {
+      const { data: recipientProfile } = await supabase
+        .from('profiles')
+        .select('whatsapp_number, phone, name')
+        .eq('user_id', internalRecipientUserId)
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
+      const internalPhone = recipientProfile?.whatsapp_number || recipientProfile?.phone;
+      if (internalPhone && internalPhone !== finalContactPhone) {
+        const calcomLine = calcomPushed
+          ? '✅ Cal.com: reserva creada'
+          : `⚠️ Cal.com: no creada${calcomSkippedReason ? ` (${calcomSkippedReason}${calcomErrorSnippet ? ': ' + calcomErrorSnippet : ''})` : ''}`;
+        const gcalLine = googleMirrored
+          ? `✅ Google Calendar: sincronizada (${googleMirrorMaster ? 'calendario principal' : 'empleado'})`
+          : `⚠️ Google Calendar: no sincronizada${googleMirrorReason ? ` (${googleMirrorReason})` : ''}`;
+        const techMsg = `🔔 *Nueva cita agendada — ${companyName}*\n\n👤 Cliente: ${contact_name}\n📆 ${dateDisplay}\n⏰ ${timeDisplay}\n${service_type ? `📋 ${service_type}\n` : ''}${employee_name ? `🧑‍💼 Con: ${employee_name}\n` : ''}${finalContactPhone ? `📱 ${finalContactPhone}\n` : ''}\n${calcomLine}\n${gcalLine}\n\n_Se le pidió confirmación al cliente por WhatsApp._`;
+        const { sendTwilioMessage } = await import('./helpers.ts');
+        await sendTwilioMessage(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, fromNum, internalPhone, techMsg, msgSvcSid);
+        console.log(`[APPT] Internal technical notification sent to ${internalPhone}`);
+
+        await supabase.from('appointment_notifications').insert({
+          appointment_id: apt.id,
+          tenant_id: tenantId,
+          target_user_id: internalRecipientUserId,
+          target_phone: internalPhone,
+          notification_type: 'internal_created',
+          status: 'sent',
+          scheduled_at: new Date().toISOString(),
+          sent_at: new Date().toISOString(),
+          message_body: techMsg,
+        });
+      }
+    } catch (techErr) {
+      console.error('[APPT] Internal technical notify error:', techErr);
     }
   }
 
