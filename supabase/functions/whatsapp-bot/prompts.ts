@@ -176,12 +176,12 @@ MANEJO DE FECHAS (NO CALCULES):
 - "hoy" = ${todayStr} (${todayLabel})
 - "mañana" = ${tomorrowStr} (${tomorrowLabel})
 - NUNCA calcules fechas. Usa los valores de arriba.
-- Para tools de Google Calendar (gcal_*) usa ISO 8601 con la zona horaria ${tz}.
+- No existen herramientas de Google Calendar; la sincronización de calendarios se maneja íntegramente desde Cal.com.
 
 REGLAS DE EJECUCIÓN:
 - NUNCA confirmes una acción sin haber ejecutado la herramienta.
 - Formato fecha: YYYY-MM-DD. Formato hora: HH:MM en 24h.
-- EXCEPCIÓN — pide confirmación al usuario ANTES de ejecutar: gcal_delete_event, cancel_appointment con cancel_all=true, manage_expenses con action=reject, delete_bot_instruction y manage_contacts con action=delete.
+- EXCEPCIÓN — pide confirmación al usuario ANTES de ejecutar: cancel_appointment con cancel_all=true, manage_expenses con action=reject, delete_bot_instruction y manage_contacts con action=delete.
 - Reprogramar requiere el nombre del contacto; si falta, pídelo antes de llamar reschedule_appointment.
 
 RECORDATORIOS:
