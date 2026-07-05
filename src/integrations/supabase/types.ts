@@ -4639,6 +4639,10 @@ export type Database = {
       }
     }
     Functions: {
+      activate_trial_for_current_user: {
+        Args: { _plan_id?: string }
+        Returns: Json
+      }
       admin_list_tenants_with_subscription: {
         Args: never
         Returns: {
