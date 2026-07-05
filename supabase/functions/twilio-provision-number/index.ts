@@ -76,7 +76,11 @@ serve(async (req) => {
     .select("id, name, country, whatsapp_config")
     .eq("id", tenant_id)
     .maybeSingle();
-  if (tErr || !tenant) return j({ ok: false, error: "Tenant not found" }, 404);
+  if (tErr) console.error("[twilio-provision] tenant lookup error:", tErr, "tenant_id:", tenant_id);
+  if (!tenant) {
+    console.error("[twilio-provision] tenant not found:", tenant_id);
+    return j({ ok: false, error: "tenant_not_found", message: `No se encontró el tenant (${String(tenant_id).slice(0,8)}).` }, 200);
+  }
 
   if (!country_code) country_code = (tenant.country || "US").toUpperCase();
 
