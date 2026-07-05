@@ -50,6 +50,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
    */
   const fetchUserData = useCallback(async (userId: string) => {
     try {
+      // Self-heal: if the signup trigger never created a tenant/profile
+      // for this user, do it on the fly so onboarding can render.
+      // Idempotent — a no-op when the tenant already exists.
+      try {
+        await supabase.rpc('ensure_tenant_for_current_user');
+      } catch (healErr) {
+        console.warn('[RYBIX] ensure_tenant_for_current_user failed:', healErr);
+      }
+
       const { data: tenantId, error: tenantError } = await supabase.rpc('get_user_tenant_id', { _user_id: userId });
 
       if (tenantError) {
@@ -70,7 +79,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       setUserRole(resolvedRole);
       setProfileStatus(profileResult.data?.status ?? null);
-      setOnboardingCompleted(profileResult.data?.onboarding_completed ?? null);
+      setOnboardingCompleted(profileResult.data?.onboarding_completed ?? false);
 
       if (subResult.data) {
         setSubscriptionStatus(subResult.data as unknown as SubscriptionStatus);
@@ -80,6 +89,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       console.error('[RYBIX] fetchUserData failed:', err);
     }
   }, []);
+
 
   useEffect(() => {
     let mounted = true;
