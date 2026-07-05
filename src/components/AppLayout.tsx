@@ -5,7 +5,7 @@ import {
   Target, BookOpen, Plug, Settings, ChevronLeft, ChevronRight,
   Building2, Search, MessageCircle, Phone, CalendarPlus, Shield,
   GraduationCap, Receipt, LogOut, KeyRound, Bot, AlarmClock,
-  Crown, BarChart3, Users, Sun, Moon, TrendingUp,
+  Crown, BarChart3, Users, Sun, Moon, TrendingUp, LifeBuoy, HeadphonesIcon,
 } from 'lucide-react';
 import AIAssistantWidget from '@/components/AIAssistantWidget';
 import { useBranding } from '@/hooks/useBranding';
