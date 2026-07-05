@@ -1051,6 +1051,7 @@ export type Database = {
           created_at: string
           email: string | null
           id: string
+          is_vip: boolean
           name: string | null
           notes: string | null
           phone: string
@@ -1059,12 +1060,15 @@ export type Database = {
           tags: string[]
           tenant_id: string
           updated_at: string
+          vip_notes: string | null
+          vip_tier: string | null
         }
         Insert: {
           company?: string | null
           created_at?: string
           email?: string | null
           id?: string
+          is_vip?: boolean
           name?: string | null
           notes?: string | null
           phone: string
@@ -1073,12 +1077,15 @@ export type Database = {
           tags?: string[]
           tenant_id: string
           updated_at?: string
+          vip_notes?: string | null
+          vip_tier?: string | null
         }
         Update: {
           company?: string | null
           created_at?: string
           email?: string | null
           id?: string
+          is_vip?: boolean
           name?: string | null
           notes?: string | null
           phone?: string
@@ -1087,6 +1094,8 @@ export type Database = {
           tags?: string[]
           tenant_id?: string
           updated_at?: string
+          vip_notes?: string | null
+          vip_tier?: string | null
         }
         Relationships: [
           {
@@ -2539,6 +2548,107 @@ export type Database = {
           },
         ]
       }
+      platform_support_channels: {
+        Row: {
+          created_at: string
+          id: string
+          last_admin_message_at: string | null
+          last_tenant_message_at: string | null
+          priority: string
+          status: string
+          tenant_id: string
+          unread_for_admin: number
+          unread_for_tenant: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          last_admin_message_at?: string | null
+          last_tenant_message_at?: string | null
+          priority?: string
+          status?: string
+          tenant_id: string
+          unread_for_admin?: number
+          unread_for_tenant?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          last_admin_message_at?: string | null
+          last_tenant_message_at?: string | null
+          priority?: string
+          status?: string
+          tenant_id?: string
+          unread_for_admin?: number
+          unread_for_tenant?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_support_channels_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      platform_support_messages: {
+        Row: {
+          attachments: Json | null
+          author_id: string | null
+          author_role: string
+          body: string
+          channel_id: string
+          created_at: string
+          id: string
+          read_by_admin_at: string | null
+          read_by_tenant_at: string | null
+          tenant_id: string
+        }
+        Insert: {
+          attachments?: Json | null
+          author_id?: string | null
+          author_role?: string
+          body: string
+          channel_id: string
+          created_at?: string
+          id?: string
+          read_by_admin_at?: string | null
+          read_by_tenant_at?: string | null
+          tenant_id: string
+        }
+        Update: {
+          attachments?: Json | null
+          author_id?: string | null
+          author_role?: string
+          body?: string
+          channel_id?: string
+          created_at?: string
+          id?: string
+          read_by_admin_at?: string | null
+          read_by_tenant_at?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_support_messages_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "platform_support_channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "platform_support_messages_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pricing_evaluations: {
         Row: {
           action_applied: boolean
@@ -3446,6 +3556,96 @@ export type Database = {
         }
         Relationships: []
       }
+      support_tickets: {
+        Row: {
+          ai_summary: string | null
+          assigned_to: string | null
+          channel: string
+          closed_at: string | null
+          contact_id: string | null
+          created_at: string
+          created_by: string | null
+          description: string | null
+          first_response_at: string | null
+          id: string
+          priority: string
+          resolved_at: string | null
+          sentiment_score: number | null
+          sla_first_response_at: string | null
+          sla_resolution_at: string | null
+          source_call_id: string | null
+          source_conversation_id: string | null
+          status: string
+          subject: string
+          tags: string[] | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          ai_summary?: string | null
+          assigned_to?: string | null
+          channel?: string
+          closed_at?: string | null
+          contact_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          first_response_at?: string | null
+          id?: string
+          priority?: string
+          resolved_at?: string | null
+          sentiment_score?: number | null
+          sla_first_response_at?: string | null
+          sla_resolution_at?: string | null
+          source_call_id?: string | null
+          source_conversation_id?: string | null
+          status?: string
+          subject: string
+          tags?: string[] | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          ai_summary?: string | null
+          assigned_to?: string | null
+          channel?: string
+          closed_at?: string | null
+          contact_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          first_response_at?: string | null
+          id?: string
+          priority?: string
+          resolved_at?: string | null
+          sentiment_score?: number | null
+          sla_first_response_at?: string | null
+          sla_resolution_at?: string | null
+          source_call_id?: string | null
+          source_conversation_id?: string | null
+          status?: string
+          subject?: string
+          tags?: string[] | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "support_tickets_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "support_tickets_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenant_churn_scores: {
         Row: {
           calculated_at: string
@@ -4057,6 +4257,102 @@ export type Database = {
           whatsapp_config?: Json | null
         }
         Relationships: []
+      }
+      ticket_events: {
+        Row: {
+          actor_id: string | null
+          created_at: string
+          event_type: string
+          id: string
+          payload: Json | null
+          tenant_id: string
+          ticket_id: string
+        }
+        Insert: {
+          actor_id?: string | null
+          created_at?: string
+          event_type: string
+          id?: string
+          payload?: Json | null
+          tenant_id: string
+          ticket_id: string
+        }
+        Update: {
+          actor_id?: string | null
+          created_at?: string
+          event_type?: string
+          id?: string
+          payload?: Json | null
+          tenant_id?: string
+          ticket_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ticket_events_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ticket_events_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "support_tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ticket_messages: {
+        Row: {
+          attachments: Json | null
+          author_id: string | null
+          author_type: string
+          body: string
+          created_at: string
+          id: string
+          is_internal_note: boolean
+          tenant_id: string
+          ticket_id: string
+        }
+        Insert: {
+          attachments?: Json | null
+          author_id?: string | null
+          author_type?: string
+          body: string
+          created_at?: string
+          id?: string
+          is_internal_note?: boolean
+          tenant_id: string
+          ticket_id: string
+        }
+        Update: {
+          attachments?: Json | null
+          author_id?: string | null
+          author_type?: string
+          body?: string
+          created_at?: string
+          id?: string
+          is_internal_note?: boolean
+          tenant_id?: string
+          ticket_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ticket_messages_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ticket_messages_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "support_tickets"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       transfer_notifications: {
         Row: {

@@ -5,7 +5,7 @@ import {
   Target, BookOpen, Plug, Settings, ChevronLeft, ChevronRight,
   Building2, Search, MessageCircle, Phone, CalendarPlus, Shield,
   GraduationCap, Receipt, LogOut, KeyRound, Bot, AlarmClock,
-  Crown, BarChart3, Users, Sun, Moon, TrendingUp,
+  Crown, BarChart3, Users, Sun, Moon, TrendingUp, LifeBuoy, HeadphonesIcon,
 } from 'lucide-react';
 import AIAssistantWidget from '@/components/AIAssistantWidget';
 import { useBranding } from '@/hooks/useBranding';
@@ -22,6 +22,8 @@ const navItems = [
   { to: '/whatsapp', icon: MessageSquare, label: 'WhatsApp' },
   { to: '/appointments', icon: CalendarPlus, label: 'Agenda' },
   { to: '/contacts', icon: Users, label: 'Contactos' },
+  { to: '/support', icon: LifeBuoy, label: 'Soporte' },
+  { to: '/platform-support', icon: HeadphonesIcon, label: 'Soporte Plataforma' },
   { to: '/chat', icon: MessageCircle, label: 'Chat Interno' },
   { to: '/calendar', icon: CalendarDays, label: 'Calendario' },
   { to: '/projects', icon: FolderKanban, label: 'Proyectos' },
@@ -44,6 +46,7 @@ const adminItems = [
 
 const superAdminItems = [
   { to: '/super-admin', icon: Crown, label: 'SuperAdmin' },
+  { to: '/super-admin/support', icon: HeadphonesIcon, label: 'Soporte a Tenants' },
 ];
 
 interface AppLayoutProps { children: React.ReactNode; }

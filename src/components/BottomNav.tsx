@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Phone, MessageSquare, CalendarPlus, MoreHorizontal,
   FolderKanban, CalendarDays, Target, BookOpen, MessageCircle,
   GraduationCap, Receipt, KeyRound, AlarmClock, BarChart3,
-  Plug, Shield, Bot, Settings, Crown, LogOut, X
+  Plug, Shield, Bot, Settings, Crown, LogOut, X, LifeBuoy, HeadphonesIcon
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { useAuth } from '@/contexts/AuthContext';
@@ -17,6 +17,8 @@ const mainTabs = [
 ];
 
 const moreItems = [
+  { to: '/support', icon: LifeBuoy, label: 'Soporte' },
+  { to: '/platform-support', icon: HeadphonesIcon, label: 'Soporte Plataforma' },
   { to: '/chat', icon: MessageCircle, label: 'Chat Interno' },
   { to: '/calendar', icon: CalendarDays, label: 'Calendario' },
   { to: '/projects', icon: FolderKanban, label: 'Proyectos' },

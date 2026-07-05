@@ -3,7 +3,7 @@ import {
   Users, Plus, Search, Phone, MessageSquare, Calendar,
   Mail, Tag, Loader2, X, Edit3, Trash2, ChevronRight,
   Building2, Star, StarOff, Filter, Clock, CheckCircle2,
-  ArrowUpRight, SlidersHorizontal,
+  ArrowUpRight, SlidersHorizontal, Crown,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -21,6 +21,9 @@ interface Contact {
   source: string | null;
   tags: string[] | null;
   starred: boolean | null;
+  is_vip?: boolean | null;
+  vip_tier?: string | null;
+  vip_notes?: string | null;
   created_at: string;
   tenant_id: string;
   // computed
@@ -291,6 +294,21 @@ export default function ContactsPage() {
                       ? <Star size={16} className="text-amber-400 fill-amber-400" />
                       : <StarOff size={16} className="text-[var(--rx-t2)]" />
                     }
+                  </button>
+                  <button
+                    onClick={async () => {
+                      const newVip = !selected.is_vip;
+                      const { error } = await (supabase as any).from('contacts')
+                        .update({ is_vip: newVip, vip_tier: newVip ? (selected.vip_tier || 'gold') : null })
+                        .eq('id', selected.id);
+                      if (error) { toast.error('Error'); return; }
+                      setContacts(cs => cs.map(c => c.id === selected.id ? { ...c, is_vip: newVip } : c));
+                      setSelected(prev => prev ? { ...prev, is_vip: newVip, vip_tier: newVip ? (prev.vip_tier || 'gold') : null } : null);
+                      toast.success(newVip ? 'Marcado como VIP' : 'VIP removido');
+                    }}
+                    className={`text-[10px] font-semibold px-2 py-0.5 rounded-full flex items-center gap-1 border ${selected.is_vip ? 'bg-amber-100 text-amber-700 border-amber-300' : 'bg-muted text-muted-foreground border-transparent'}`}
+                  >
+                    <Crown size={10} /> {selected.is_vip ? `VIP · ${selected.vip_tier || 'gold'}` : 'Marcar VIP'}
                   </button>
                 </div>
                 {selected.company && (
