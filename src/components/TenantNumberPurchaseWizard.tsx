@@ -41,9 +41,14 @@ export default function TenantNumberPurchaseWizard({ open, onOpenChange, onPurch
   const [acceptCharge, setAcceptCharge] = useState(false);
   const [purchasing, setPurchasing] = useState(false);
   const [purchasedNumber, setPurchasedNumber] = useState<string | null>(null);
+  const [bundleFormOpen, setBundleFormOpen] = useState(false);
+  const [bundleStatus, setBundleStatus] = useState<'unknown' | 'none' | 'pending' | 'approved' | 'rejected'>('unknown');
+  const [bundleLoading, setBundleLoading] = useState(false);
 
   const countryMeta = useMemo(() => getTwilioCountry(country), [country]);
-  const bundleBlocked = !!countryMeta?.requiresBundle;
+  const requiresBundle = !!countryMeta?.requiresBundle;
+  const bundleApproved = bundleStatus === 'approved';
+  const bundleBlocked = requiresBundle && !bundleApproved;
 
   const reset = useCallback(() => {
     setStep(1);
