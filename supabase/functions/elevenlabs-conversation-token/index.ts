@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
+import { assertVoicePlan } from "../_shared/plan-guard.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -52,6 +53,12 @@ serve(async (req) => {
       .select('tenant_id, name')
       .eq('user_id', userId)
       .maybeSingle();
+
+    // Plan guard
+    if (profile?.tenant_id) {
+      const blocked = await assertVoicePlan(serviceClient, profile.tenant_id, corsHeaders);
+      if (blocked) return blocked;
+    }
 
     let knowledgeContext = '';
     let companyName = '';

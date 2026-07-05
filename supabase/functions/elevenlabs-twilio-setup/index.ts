@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
+import { assertVoicePlan } from "../_shared/plan-guard.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -44,6 +45,15 @@ serve(async (req) => {
     return new Response(JSON.stringify({ error: 'No autorizado' }), {
       status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
+  }
+
+  // Plan guard — resolve tenant from user's profile.
+  const serviceClient = createClient(supabaseUrl, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+  const { data: profileForGuard } = await serviceClient
+    .from('profiles').select('tenant_id').eq('user_id', user.id).maybeSingle();
+  if (profileForGuard?.tenant_id) {
+    const blocked = await assertVoicePlan(serviceClient, profileForGuard.tenant_id, corsHeaders);
+    if (blocked) return blocked;
   }
 
   const ELEVENLABS_API_KEY = Deno.env.get('ELEVENLABS_API_KEY');

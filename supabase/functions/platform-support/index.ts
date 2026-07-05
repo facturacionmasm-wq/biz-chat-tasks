@@ -121,10 +121,50 @@ serve(async (req) => {
       const authorRole = isSuperAdmin ? "super_admin" : "tenant";
       let tenantId: string | null = null;
       let channelId: string | null = body.channel_id ?? null;
+      let consumingConsultId: string | null = null;
 
       if (authorRole === "tenant") {
         if (!profile?.tenant_id) return json({ error: "No tenant" }, 403);
         tenantId = profile.tenant_id;
+
+        // Check plan: if direct_support not included AND no active paid consult, block.
+        const MASTER = '00000000-0000-0000-0000-000000000001';
+        if (tenantId !== MASTER) {
+          const { data: sub } = await admin
+            .from('tenant_subscriptions')
+            .select('plan_id')
+            .eq('tenant_id', tenantId)
+            .maybeSingle();
+          let directSupport = false;
+          if (sub?.plan_id) {
+            const { data: plan } = await admin
+              .from('subscription_plans')
+              .select('features')
+              .eq('id', sub.plan_id)
+              .maybeSingle();
+            directSupport = Boolean((plan?.features as any)?.direct_support);
+          }
+          if (!directSupport) {
+            // Look for an active paid, unused consult
+            const { data: consult } = await admin
+              .from('support_consult_purchases')
+              .select('id')
+              .eq('tenant_id', tenantId)
+              .eq('status', 'paid')
+              .is('consumed_at', null)
+              .order('paid_at', { ascending: true })
+              .limit(1)
+              .maybeSingle();
+            if (!consult) {
+              return json({
+                error: 'direct_support_not_available',
+                message: 'Tu plan no incluye canal directo. Compra una consulta prioritaria ($20 USD).',
+              }, 402);
+            }
+            consumingConsultId = consult.id;
+          }
+        }
+
         const channel = await getOrCreateChannel(tenantId);
         channelId = channel.id;
       } else {
@@ -164,6 +204,14 @@ serve(async (req) => {
         patch.unread_for_tenant = (cur?.unread_for_tenant ?? 0) + 1;
       }
       await admin.from("platform_support_channels").update(patch).eq("id", channelId);
+
+      // Mark the paid consult as consumed (linked to this channel) if applicable
+      if (consumingConsultId) {
+        await admin
+          .from('support_consult_purchases')
+          .update({ status: 'consumed', consumed_at: new Date().toISOString(), channel_id: channelId })
+          .eq('id', consumingConsultId);
+      }
 
       return json({ message: msg });
     }

@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
+import { assertVoicePlan } from "../_shared/plan-guard.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -17,6 +18,14 @@ serve(async (req) => {
 
   try {
     const { action, data } = await req.json();
+
+    // Plan guard: block voice_agent-gated actions when the tenant's plan does not include it.
+    const gTenantId = data?.tenant_id;
+    if (gTenantId) {
+      const blocked = await assertVoicePlan(supabase, gTenantId, corsHeaders);
+      if (blocked) return blocked;
+    }
+
 
     // ─── CHECK AVAILABILITY ───
     if (action === 'check_availability') {

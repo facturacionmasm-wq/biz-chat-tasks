@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
-import { LifeBuoy, Plus, AlertTriangle, Clock, CheckCircle2, XCircle, Crown, Loader2, Send, MessageSquare, Phone, User, ArrowLeft, Filter } from 'lucide-react';
+import { LifeBuoy, Plus, AlertTriangle, Clock, CheckCircle2, XCircle, Crown, Loader2, Send, MessageSquare, Phone, User, ArrowLeft, Filter, Mail, Sparkles } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { usePlanFeatures } from '@/hooks/usePlanFeatures';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -68,6 +69,7 @@ function formatRelative(iso: string | null) {
 
 const SupportPage = () => {
   const { user } = useAuth();
+  const { supportLevel, planName } = usePlanFeatures();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Ticket | null>(null);
@@ -80,6 +82,22 @@ const SupportPage = () => {
   const [filterPriority, setFilterPriority] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [newTicket, setNewTicket] = useState({ subject: '', description: '', priority: 'normal' });
+
+  // ===== Email to support form =====
+  const [emailOpen, setEmailOpen] = useState(false);
+  const [emailSending, setEmailSending] = useState(false);
+  const [emailForm, setEmailForm] = useState({
+    subject: '',
+    message: '',
+    priority: 'normal',
+    contact_email: user?.email ?? '',
+  });
+
+  useEffect(() => {
+    if (user?.email && !emailForm.contact_email) {
+      setEmailForm(f => ({ ...f, contact_email: user.email ?? '' }));
+    }
+  }, [user?.email]);
 
   const load = async () => {
     setLoading(true);
@@ -146,6 +164,33 @@ const SupportPage = () => {
       setCreateOpen(false);
       setNewTicket({ subject: '', description: '', priority: 'normal' });
       load();
+    }
+  };
+
+  const sendSupportEmail = async () => {
+    if (!emailForm.subject.trim() || !emailForm.message.trim()) {
+      toast.error('Asunto y mensaje son obligatorios');
+      return;
+    }
+    setEmailSending(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('send-support-email', {
+        body: {
+          subject: emailForm.subject,
+          message: emailForm.message,
+          priority: emailForm.priority,
+          contact_email: emailForm.contact_email,
+        },
+      });
+      if (error || !data?.success) throw new Error(data?.error || error?.message || 'Error');
+      toast.success(`Ticket #${data.ticket_number || data.ticket_id?.slice(0, 8)} creado — te contactaremos por correo`);
+      setEmailOpen(false);
+      setEmailForm({ subject: '', message: '', priority: 'normal', contact_email: user?.email ?? '' });
+      load();
+    } catch (err: any) {
+      toast.error(err.message || 'No se pudo enviar el correo');
+    } finally {
+      setEmailSending(false);
     }
   };
 
@@ -236,12 +281,28 @@ const SupportPage = () => {
   return (
     <div className="min-h-full bg-background pb-24">
       <div className="px-4 pt-6 pb-4">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
           <div>
             <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2"><LifeBuoy size={24} className="text-primary" /> Soporte a Clientes</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">{openCount} abiertos · {urgentCount} urgentes</p>
+            <p className="text-sm text-muted-foreground mt-0.5 flex items-center gap-2 flex-wrap">
+              <span>{openCount} abiertos · {urgentCount} urgentes</span>
+              {supportLevel && (
+                <Badge className={
+                  supportLevel === 'dedicated' ? 'bg-amber-100 text-amber-700 border border-amber-300' :
+                  supportLevel === 'priority' ? 'bg-blue-100 text-blue-700 border border-blue-300' :
+                  'bg-gray-100 text-gray-600 border border-gray-300'
+                }>
+                  {supportLevel === 'dedicated' && <Crown size={10} className="mr-1" />}
+                  {supportLevel === 'priority' && <Sparkles size={10} className="mr-1" />}
+                  Atención {supportLevel === 'dedicated' ? 'dedicada' : supportLevel === 'priority' ? 'prioritaria' : 'estándar'} · {planName || '—'}
+                </Badge>
+              )}
+            </p>
           </div>
-          <Button onClick={() => setCreateOpen(true)} className="rounded-full"><Plus size={16} className="mr-1" /> Nuevo ticket</Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setEmailOpen(true)} className="rounded-full"><Mail size={16} className="mr-1" /> Enviar correo a soporte</Button>
+            <Button onClick={() => setCreateOpen(true)} className="rounded-full"><Plus size={16} className="mr-1" /> Nuevo ticket</Button>
+          </div>
         </div>
 
         <div className="flex gap-2 flex-wrap">
@@ -316,6 +377,33 @@ const SupportPage = () => {
           <DialogFooter>
             <Button variant="ghost" onClick={() => setCreateOpen(false)}>Cancelar</Button>
             <Button onClick={createTicket} disabled={!newTicket.subject.trim()}>Crear</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={emailOpen} onOpenChange={setEmailOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Mail size={18} className="text-primary" /> Enviar correo a soporte</DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-muted-foreground">Se enviará a <b>soporte@rybixholding.com</b> y se creará un ticket con seguimiento.</p>
+          <div className="space-y-3">
+            <Input placeholder="Email de contacto" type="email" value={emailForm.contact_email} onChange={e => setEmailForm({ ...emailForm, contact_email: e.target.value })} />
+            <Input placeholder="Asunto" value={emailForm.subject} onChange={e => setEmailForm({ ...emailForm, subject: e.target.value })} />
+            <Textarea placeholder="Describe tu problema o solicitud..." rows={6} value={emailForm.message} onChange={e => setEmailForm({ ...emailForm, message: e.target.value })} />
+            <Select value={emailForm.priority} onValueChange={v => setEmailForm({ ...emailForm, priority: v })}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {Object.entries(priorityCfg).map(([k, v]) => (<SelectItem key={k} value={k}>{v.label}</SelectItem>))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setEmailOpen(false)}>Cancelar</Button>
+            <Button onClick={sendSupportEmail} disabled={emailSending || !emailForm.subject.trim() || !emailForm.message.trim()}>
+              {emailSending ? <Loader2 className="animate-spin mr-2" size={14} /> : <Send size={14} className="mr-2" />}
+              Enviar
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
