@@ -1,116 +1,123 @@
-# Auditoría integral del prompt del bot WhatsApp (solo lectura)
 
-Fuentes revisadas: `supabase/functions/whatsapp-bot/prompts.ts` (completo, 162 líneas), `ai-response.ts` líneas 20-95 (ensamblaje), `tools.ts` (30 tools en `AI_TOOLS`). Cruce: cada nombre citado en el prompt contra `AI_TOOLS[*].function.name` y contra los handlers de `tool-executor.ts`.
+# Diagnóstico y plan de corrección
 
-## Resumen
+## 1) Pestaña Equipo → 403 "No autorizado"
 
-- **No hay tools inexistentes citados** ni tools existentes que el modelo "no vea": los 17 nombres del prompt cliente y los 27 del prompt empleado existen en `tools.ts`.
-- **No hay template literal roto, comilla mal escapada ni placeholder vacío por sintaxis.** Todas las `${...}` se pasan desde `ai-response.ts`.
-- Los defectos reales son de **semántica, zona horaria y fuga de datos**, no de estructura.
+**Causa raíz** — `supabase/functions/team-management/index.ts:42-46`:
 
----
+```ts
+const { data: callerRole } = await adminClient
+  .from("user_roles")
+  .select("role, tenant_id")
+  .eq("user_id", caller.id)
+  .maybeSingle();   // ← FALLA
+```
 
-## Críticos
+El usuario `admin@rybixholding.com` tiene **dos filas** en `user_roles` (`super_admin` y `owner` — se ve claramente en el network log del request `user_roles?select=role...`). `.maybeSingle()` de PostgREST devuelve error/`null` cuando hay >1 fila, entonces `callerRole` queda `null` y cae en el 403 de la línea 48.
 
-### C1 — Fuga de emails de empleados a clientes externos
-- Archivo: `prompts.ts:67-68` (cliente) + `ai-response.ts:57-60` y `:66`.
-- Hecho: en modo **cliente** se inyecta `Empleados disponibles:\n- Nombre (email)` construido en `ai-response.ts:66` (`\`- ${e.name} (${e.email || 'sin email'})\``). Un contacto externo por WhatsApp que pregunte "¿con quién puedo agendar?" recibe el email interno del staff — dato PII no público.
-- Corrección quirúrgica:
-  1. En `ai-response.ts:66`, generar `employeeListForClient` (solo nombres) y `employeeListForEmployee` (nombre + email), y pasar el adecuado según `mode`.
-  2. Alternativa mínima si se quiere tocar solo `prompts.ts`: cambiar el bloque en `ai-response.ts:66` a `\`- ${e.name}\`` cuando `mode === 'client'`. Requiere un pequeño ajuste en `ai-response.ts`, no en `prompts.ts`.
-
-### C2 — Zona horaria del servidor vs. tenant (fechas y hora "actuales" incorrectas)
-- Archivo: `ai-response.ts:62-68` (calcula `todayStr`, `tomorrowStr`, `currentTime`).
-- Hecho: `today.toISOString().split('T')[0]` y `today.toLocaleTimeString('es-MX', ...)` **sin `timeZone`** producen UTC. En Deno Deploy el proceso corre en UTC. Consecuencia: entre las 18:00 y 23:59 hora CDMX (00:00–05:59 UTC del día siguiente), el prompt inyecta `hoy = <día siguiente>` y `mañana = <día +2>`. El bot agenda en el día equivocado — muy visible cuando el usuario dice "mañana".
-- El prompt además nunca menciona la zona horaria, así que el LLM no puede corregirlo por sí mismo y `gcal_list_events`/`gcal_create_event` recibirán ISO con offset UTC.
-- Corrección quirúrgica (afecta `ai-response.ts`, no `prompts.ts`):
-  1. Resolver la zona horaria del tenant (leer `tenants.settings_json.timezone`, fallback `'America/Mexico_City'`).
-  2. Formatear `todayStr`, `tomorrowStr` y `currentTime` con `Intl.DateTimeFormat('sv-SE', { timeZone: tz, ... })` (formato ISO local).
-  3. En `prompts.ts:32` y `:101` añadir literal: `FECHA Y HORA ACTUAL: ${todayStr} ${currentTime} (${tz})` — no se rompe nada.
+**Fix quirúrgico:** cambiar a `.select("role, tenant_id")` sin `maybeSingle()`, y validar con `.some(r => ['super_admin','owner'].includes(r.role))`. Usar `callerRole[0].tenant_id` (o preferir la fila de `owner` para el tenant) para el filtro de `list_status`. Sin cambios de RLS/GRANT.
 
 ---
 
-## Medios
+## 2) Agente no crea reserva en Cal.com
 
-### M1 — Falta el día de la semana; contradice "NUNCA calcules fechas"
-- Archivo: `prompts.ts:32, 51-54, 101, 130-133`.
-- El prompt entrega solo `YYYY-MM-DD` pero luego prohíbe calcular. Si el usuario dice "el viernes", el modelo debe deducir qué fecha es. Es una regla que el modelo puede cumplir mal.
-- Corrección: pasar `todayLabel = "sábado 5 de julio de 2026"` desde `ai-response.ts` e interpolar en el prompt: `hoy = ${todayStr} (${todayLabel})`, análogo para `mañana`. Cambio de una línea en cada builder.
+**Diagnóstico** — `supabase/functions/whatsapp-bot/tool-executor.ts:317-384`:
 
-### M2 — Ausencia del nombre del negocio y tono genérico
-- Archivo: `prompts.ts:11` ("del negocio") y `:82`.
-- `tool-executor.ts:388-389` sí obtiene `tenants.name`, pero al **prompt** nunca llega. Aria dice "el negocio" en vez del nombre del tenant.
-- Corrección: en `ai-response.ts` batch-fetch `tenants.name`, pasarlo como parámetro `tenantName` a ambos builders y usarlo en la línea de rol: `Eres Aria, la asistente virtual de ${tenantName}`.
+- El flujo **sí** intenta llamar a `https://api.cal.com/v2/bookings` (línea 347).
+- Pero está gateado por `if (calcomInteg?.api_key_encrypted && calcomInteg?.default_event_type_id)` (línea 327). Si `default_event_type_id` es `NULL` en `calcom_integrations`, entra al `else if` de la línea 379 y solo hace `console.warn` sin devolver señal al agente.
+- El resultado devuelto al modelo (`success: true`) **nunca** menciona `calcom_pushed=false` ni la razón, así que la IA cree que todo salió bien.
 
-### M3 — Regla "AGENDAR CITAS" depende de flags que hay que verificar en el executor
-- Archivo: `prompts.ts:30` menciona `out_of_business_hours=true` y `slot_taken=true` como campos que devuelve `schedule_appointment`.
-- Requiere confirmar en `tool-executor.ts` (handler de `schedule_appointment`, líneas ~18-56 y las validaciones previas). Si el JSON de retorno no expone esos flags con esos nombres exactos, el modelo nunca los verá y seguirá insistiendo. **Pendiente de verificar antes de corregir**; si no coinciden, la corrección es alinear los nombres en el executor (o alinear el prompt a los nombres reales). No propongo tocar `tools.ts`.
-
-### M4 — Contradicción sutil `gcal_delete_event`
-- `tools.ts:253` en la descripción del tool dice "SIEMPRE pide confirmación antes"; el prompt (`prompts.ts:57, 136`) dice "NUNCA confirmes una acción sin haber ejecutado la herramienta". Ambas conviven ambiguamente. Un LLM puede interpretar que puede borrar Google Calendar events sin confirmación.
-- Corrección: añadir a `prompts.ts:56-60` y `:135-137` una excepción explícita: `Excepción: gcal_delete_event, cancel_appointment con cancel_all=true y manage_expenses (reject) — PIDE confirmación al usuario antes de ejecutar.`
-
-### M5 — Duplicación casi total entre `buildClientPrompt` y `buildEmployeePrompt`
-- Archivo: `prompts.ts:13-30` ≈ `:84-99`; `:51-54` ≈ `:130-133`; `:56-60` ≈ `:135-137`; `:62-65` ≈ `:156-158`.
-- No es un bug hoy, pero cada corrección futura hay que hacerla en dos sitios; con alta probabilidad de divergencia (ya se ve: el cliente tiene "Si te piden buscar dirección…" que el empleado no tiene).
-- Corrección **opcional** (no obligatoria): extraer una constante `SHARED_RULES` y componer ambos prompts. Puedo dejarlo para más adelante si prefieres no refactorizar ahora.
+**Fix:**
+- (a) Incluir en la respuesta JSON de éxito los flags `calcom_pushed` y `calcom_skipped_reason` (`"missing_default_event_type"`, `"api_error"`, `"no_integration"`) para que el bot pueda avisar al usuario/dueño.
+- (b) Añadir un log de auditoría en `audit_events` cuando se salta por `default_event_type_id` faltante, para que el super_admin lo vea en la UI de integraciones.
+- **No** setear un event_type_id ficticio. El usuario debe configurarlo en Integraciones → Cal.com (fuera del alcance de este fix de código).
 
 ---
 
-## Menores
+## 3) Agente no refleja cita en Google Calendar
 
-### m1 — `create_reminder` no está en el prompt del cliente
-- `prompts.ts:34-49` vs `tools.ts:42`. Intencional (los clientes externos no crean recordatorios internos), pero conviene documentarlo con un comentario. Sin acción.
+**Diagnóstico** — `supabase/functions/whatsapp-bot/tool-executor.ts:296-315` + `supabase/functions/calendar-sync/index.ts:104-142`:
 
-### m2 — Empleado no recibe `employeeList`
-- `ai-response.ts:82-84`: `buildEmployeePrompt` no toma `employeeList`. Si un empleado pregunta "quiénes están en el equipo", el modelo debe llamar `get_team_members` — funciona pero implica un round-trip extra. Aceptable.
+- `schedule_appointment` **sí** invoca `calendar-sync` (línea 299) con `action: 'sync_appointment'`.
+- Pero `calendar-sync` solo crea el evento si el `appointments.user_id` está seteado **y** ese `user_id` tiene token activo en `google_calendar_tokens`.
+- Si el agente no encontró empleado (porque el cliente no dijo con quién) → `employeeId=null`, y `apt.user_id` puede quedar `null`. `calendar-sync` intenta fallback por `availability_rules` (línea 111) pero si no hay reglas o el empleado encontrado no tiene token → marca `PENDING_SYNC` y sale.
+- El bot no recibe señal de esto (el `syncResult.success` se ignora salvo por un `console.log`).
 
-### m3 — `search_web.model_preference` no se documenta
-- Menor: no afecta funcionamiento. Sin acción.
-
-### m4 — `reschedule_appointment.contact_name` requerido no se enfatiza
-- `tools.ts:157` lo marca `required`, el prompt no lo aclara. Si el usuario dice "mueve mi cita del viernes al sábado" sin nombre, el modelo puede fallar la llamada. Añadir una línea: `Reprogramar requiere el nombre del contacto; si falta, pídelo.`
-
-### m5 — `Base de conocimientos:` puede quedar vacío
-- Si `knowledgeContext` y `adaptiveContext` son ambos `''`, queda `Base de conocimientos:\n` colgado al final. Cosmético.
+**Fix:**
+- (a) Devolver `google_calendar_synced` y `google_calendar_reason` en el JSON del tool para que la IA no diga "ya quedó en tu calendario" si no es cierto.
+- (b) Complementa con Fix #5 (forzar `employee_name`), que resuelve la causa mayoritaria.
 
 ---
 
-## Cero-falsos-positivos (revisado y OK)
+## 4) Cita queda "confirmada" sin confirmación del cliente
 
-- **Nombres de tools**: los 17 citados en cliente y 27 en empleado existen en `tools.ts`. Nada inventado, nada omitido de forma dañina.
-- **Template literals**: bien cerrados, sin escapes rotos, sin `${}` vacíos.
-- **Idioma**: consistente en español mexicano.
-- **Credenciales/IDs**: el prompt no expone tokens, API keys, service_role, ni IDs internos. Los `${employeeList}` y `${knowledgeContext}` sí exponen datos de negocio (ver C1).
-- **Cal.com**: correctamente ausente — el push es server-side; no hay que mencionarlo en el prompt.
-- **`manage_workflow_rules(list, create, toggle)`** en `:127` coincide con `tools.ts:471`.
-- **`get_pending_expenses` enum** en `:110` coincide con `tools.ts:76`.
+**Diagnóstico** — `supabase/functions/whatsapp-bot/tool-executor.ts:286`:
+
+```ts
+status: 'scheduled',
+```
+
+El estado real en DB se guarda como `scheduled` (correcto — no dice `confirmed`). El problema es **cómo lo comunica el bot**: el prompt actual (`prompts.ts`) tiene reglas de "confirma en UNA línea" y el mensaje automático de WhatsApp que se envía al contacto (línea 395) sí pide `CONFIRMO/CANCELO`, pero la IA le dice al empleado "ya está confirmada".
+
+**Fix:**
+- (a) En `prompts.ts` añadir regla explícita: "Una cita recién agendada queda en estado *programada* (pending confirmation). NO digas 'confirmada' hasta que el cliente responda CONFIRMO. Usa lenguaje como '📅 Cita agendada, se le pidió confirmación al cliente'."
+- (b) En el JSON de retorno de `executeScheduleAppointment` incluir `status: 'scheduled'` y `awaiting_client_confirmation: true` para reforzar.
+- **No** cambiar el valor en DB (correcto tal cual).
 
 ---
 
-## Plan de corrección propuesto (a aplicar cuando lo apruebes)
+## 5) No pregunta con quién ni motivo (empleado / service_type)
 
-Corrección **quirúrgica**, dos archivos (`ai-response.ts` y `prompts.ts`); cero cambios en `tools.ts`, en las funciones protegidas (`elevenlabs-*`, `twilio-*`, `call-transfer*`), en RLS, ni en migraciones.
+**Diagnóstico** — `supabase/functions/whatsapp-bot/tools.ts:20`:
 
-1. `ai-response.ts`
-   - Batch-fetch `tenants.name` + `tenants.settings_json.timezone` junto con `employees` y `recentMsgs` (mismo `Promise.all` de líneas 42-56).
-   - Resolver `tz = settings_json?.timezone || 'America/Mexico_City'`.
-   - Calcular `todayStr`, `tomorrowStr`, `currentTime`, `todayLabel`, `tomorrowLabel` usando `Intl.DateTimeFormat` con `{ timeZone: tz }`.
-   - Construir `employeeListForClient` (solo nombres) y `employeeListForEmployee` (nombre + email).
-   - Pasar `tenantName`, `tz`, `todayLabel`, `tomorrowLabel` como nuevos parámetros a los builders.
+```ts
+required: ['contact_name', 'date', 'time'],
+```
 
-2. `prompts.ts`
-   - `buildClientPrompt` firma: añadir `tenantName`, `tz`, `todayLabel`, `tomorrowLabel`.
-     - `:11` → `Eres Aria, la asistente virtual de ${tenantName}. ...`
-     - `:32` → `FECHA Y HORA ACTUAL: ${todayStr} ${currentTime} (${tz})`
-     - `:52-53` → `"hoy" = ${todayStr} (${todayLabel})` / `"mañana" = ${tomorrowStr} (${tomorrowLabel})`
-     - `:56-60` (REGLAS DE EJECUCIÓN) → añadir línea: `Excepción: pide confirmación antes de gcal_delete_event, cancel_appointment con cancel_all=true, y manage_expenses (reject).`
-   - `buildEmployeePrompt` firma: mismos parámetros + reusar `tenantName` en `:82`.
-     - Mismas modificaciones análogas en `:101, 131-132, 135-137`.
-     - Añadir en `:107` una nota: `Reprogramar requiere el nombre del contacto; si falta, pídelo.`
+`employee_name` y `service_type` están marcados como **opcionales**. El prompt (`prompts.ts` `buildClientPrompt`) instruye "EJECUCIÓN INMEDIATA: si tienes suficiente info, ejecuta ya". Con solo nombre+fecha+hora, la IA dispara la tool sin preguntar por empleado ni motivo. Además, si `employee_name` viene vacío, `employeeId` queda `null` → cascada al Fix #3.
 
-3. **Sin refactor de duplicación (M5)** en esta iteración — riesgo/beneficio no lo amerita hoy.
+**Fix:**
+- (a) En `prompts.ts` (cliente y empleado), añadir bloque específico de **REGLA DE AGENDADO**: "Antes de llamar `schedule_appointment` DEBES tener: nombre completo del contacto, correo del contacto, fecha, hora, **motivo/servicio** y **con qué empleado**. Si falta CUALQUIERA, pregunta en UN solo mensaje amable (sin robotearlo) por los faltantes. Solo ejecuta cuando tengas los 6."
+- (b) Actualizar `description` de `contact_email`, `employee_name` y `service_type` en `tools.ts` explicando que son necesarios para Cal.com/asignación. **No** cambiar `required` en el schema (rompería casos internos), la disciplina se aplica vía prompt.
 
-4. **M3 queda como acción condicional**: antes de tocar `prompts.ts:30`, quiero verificar en `tool-executor.ts` que `schedule_appointment` realmente devuelve `out_of_business_hours` y `slot_taken` con esos nombres. Si no, ajustamos el prompt a los nombres reales.
+---
 
-Cuando lo apruebes ejecuto exactamente estos cambios y corro `tsgo --noEmit`.
+## 6) No captura nombre completo ni email del cliente (bloquea Cal.com)
+
+**Diagnóstico** — mismo `tools.ts:11-13`: `contact_email` es opcional. En `tool-executor.ts:346`, si no hay email, se fabrica uno falso `${phone}@wa.local` que Cal.com aceptará pero no podrá enviar correo real de confirmación.
+
+**Fix:**
+- Cubierto por Fix #5 (regla en el prompt exige email antes de ejecutar).
+- Adicional en `tool-executor.ts:346`: si el email quedó como `*@wa.local`, no enviar a Cal.com y devolver `calcom_skipped_reason: 'missing_client_email'`. Así el agente sabe que debe pedirlo.
+
+---
+
+## Alcance de archivos a tocar
+
+| Archivo | Cambio |
+|---|---|
+| `supabase/functions/team-management/index.ts` | Fix #1: reemplazar `.maybeSingle()` por manejo multi-rol |
+| `supabase/functions/whatsapp-bot/tool-executor.ts` | Fixes #2, #3, #4, #6: enriquecer respuesta JSON con flags; skip Cal.com si email fake |
+| `supabase/functions/whatsapp-bot/prompts.ts` | Fixes #4, #5: REGLA DE AGENDADO + no decir "confirmada" |
+| `supabase/functions/whatsapp-bot/tools.ts` | Fix #5: aclarar descripciones de campos (sin tocar `required`) |
+
+**Fuera de alcance (respetado):** ElevenLabs, `call-transfer*`, `elevenlabs-*`, `twilio-*`, RLS, GRANTs, migraciones. El 403 de Equipo **no** requiere cambio de RLS — es lógica de código dentro de la edge function con service_role.
+
+## Detalles técnicos
+
+- El JSON extendido de `schedule_appointment` quedaría:
+  ```json
+  {
+    "success": true,
+    "appointment_id": "...",
+    "status": "scheduled",
+    "awaiting_client_confirmation": true,
+    "google_calendar_synced": false,
+    "google_calendar_reason": "no_token_for_assigned_user",
+    "calcom_pushed": false,
+    "calcom_skipped_reason": "missing_default_event_type"
+  }
+  ```
+- La IA, con la nueva regla del prompt, traducirá esto a: "📅 Agendé la cita de Juan para mañana 4pm. Se le pidió confirmación por WhatsApp. Ojo: no se sincronizó con Google Calendar porque el empleado asignado no tiene su calendario conectado."
+
+¿Apruebas el plan para pasar a modo build?
