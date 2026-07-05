@@ -178,7 +178,7 @@ serve(async (req) => {
       {
         FriendlyName: `Bundle ${businessName} ${countryCode}`,
         Email: userData.user.email || "admin@officehub.app",
-        StatusCallback: `${SUPABASE_URL.replace("/rest/v1", "").replace(".supabase.co", ".functions.supabase.co")}/twilio-bundle-webhook`,
+        StatusCallback: `${SUPABASE_URL}/functions/v1/twilio-bundle-webhook`,
       },
       TWILIO_ACCOUNT_SID,
       TWILIO_AUTH_TOKEN,
