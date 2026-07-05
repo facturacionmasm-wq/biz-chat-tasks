@@ -743,6 +743,11 @@ const CallsPage = () => {
     { key: 'observability' as const, label: 'Observabilidad', icon: Shield },
   ];
 
+  // ===== PLAN GATE (voice not in current plan) =====
+  if (!paymentLoading && voicePlanBlocked) {
+    return <div className="rx-page"><PlanUpgradeCard serviceName="Agente de Voz IA" requiredPlan="pro" /></div>;
+  }
+
   // ===== PAYMENT GATE =====
   if (!paymentLoading && !canUseService('voice')) {
     return (
