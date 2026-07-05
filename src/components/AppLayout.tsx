@@ -46,6 +46,7 @@ const adminItems = [
 
 const superAdminItems = [
   { to: '/super-admin', icon: Crown, label: 'SuperAdmin' },
+  { to: '/super-admin/support', icon: HeadphonesIcon, label: 'Soporte a Tenants' },
 ];
 
 interface AppLayoutProps { children: React.ReactNode; }
