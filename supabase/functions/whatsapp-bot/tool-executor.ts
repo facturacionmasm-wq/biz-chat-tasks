@@ -580,6 +580,9 @@ async function executeScheduleAppointment(
     calcom_pushed: calcomPushed,
     calcom_skipped_reason: calcomPushed ? null : calcomSkippedReason,
     calcom_error_snippet: calcomPushed ? null : calcomErrorSnippet,
+    google_mirrored: googleMirrored,
+    google_mirror_reason: googleMirrored ? null : googleMirrorReason,
+    google_mirror_target: googleMirrored ? (googleMirrorMaster ? 'tenant_principal' : 'empleado') : null,
   };
 
   const parts: string[] = ['Cita agendada'];
@@ -588,6 +591,8 @@ async function executeScheduleAppointment(
   else if (calcomSkippedReason && calcomSkippedReason !== 'no_integration') {
     parts.push(`Cal.com no creado (${calcomSkippedReason}${calcomErrorSnippet ? ': ' + calcomErrorSnippet : ''})`);
   }
+  if (googleMirrored) parts.push(`espejo en Google Calendar (${googleMirrorMaster ? 'tenant principal' : 'empleado'})`);
+
   response.message = parts.join('; ') + '.';
 
   return JSON.stringify(response);
