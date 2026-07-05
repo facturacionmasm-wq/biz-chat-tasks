@@ -180,7 +180,7 @@ serve(async (req) => {
 
     const stateResult = await handleState({
       botState: effectiveBotState, msg: isResetCommand ? '' : msg, effectiveMessageBody, isSandbox, tenantId, contactPhone,
-      conversationId, conv, newContext: effectiveContext, supabase, mediaUrl, mediaContentType,
+      conversationId, conv, newContext: effectiveContext, supabase, mediaUrl, mediaContentType, isVoiceMessage,
       TWILIO_ACCOUNT_SID: TWILIO_ACCOUNT_SID!, TWILIO_AUTH_TOKEN: TWILIO_AUTH_TOKEN!,
       LOVABLE_API_KEY: LOVABLE_API_KEY!, SUPABASE_URL,
     });
@@ -304,6 +304,7 @@ interface StateInput {
   supabase: any;
   mediaUrl?: string;
   mediaContentType?: string;
+  isVoiceMessage?: boolean;
   TWILIO_ACCOUNT_SID: string;
   TWILIO_AUTH_TOKEN: string;
   LOVABLE_API_KEY: string;
@@ -317,7 +318,7 @@ interface StateResult {
 }
 
 async function handleState(input: StateInput): Promise<StateResult> {
-  const { botState, msg, effectiveMessageBody, isSandbox, tenantId, contactPhone, conversationId, conv, supabase, mediaUrl, mediaContentType, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, LOVABLE_API_KEY, SUPABASE_URL } = input;
+  const { botState, msg, effectiveMessageBody, isSandbox, tenantId, contactPhone, conversationId, conv, supabase, mediaUrl, mediaContentType, isVoiceMessage, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, LOVABLE_API_KEY, SUPABASE_URL } = input;
   let newContext = { ...input.newContext };
   let reply = '';
   let newState = botState;

@@ -261,36 +261,23 @@ serve(async (req) => {
           .not('user_id', 'is', null);
 
         if (matchingRules && matchingRules.length > 0) {
-          // Find the employee whose schedule covers this time
+          // Pick the first employee whose schedule covers this time slot.
+          // Cal.com is the single source of truth for calendar sync (handled at tenant level),
+          // so we no longer prefer employees based on per-user Google Calendar tokens.
           for (const rule of matchingRules) {
             const [rStartH, rStartM] = rule.start_time.split(':').map(Number);
             const [rEndH, rEndM] = rule.end_time.split(':').map(Number);
             const ruleStart = rStartH * 60 + rStartM;
             const ruleEnd = rEndH * 60 + rEndM;
             if (localMinutes >= ruleStart && localMinutes < ruleEnd) {
-              // Check this employee has Google Calendar connected
-              const { data: gcalToken } = await supabase
-                .from('google_calendar_tokens')
-                .select('user_id')
-                .eq('user_id', rule.user_id)
-                .eq('tenant_id', tenant_id)
-                .eq('status', 'active')
-                .maybeSingle();
-              if (gcalToken) {
-                resolvedEmployeeId = rule.user_id;
-                console.log(`[voice-scheduling] Auto-assigned employee ${resolvedEmployeeId} based on availability rule`);
-                break;
-              }
-              // Still assign even without calendar
-              if (!resolvedEmployeeId) {
-                resolvedEmployeeId = rule.user_id;
-              }
+              resolvedEmployeeId = rule.user_id;
+              console.log(`[voice-scheduling] Assigned employee ${resolvedEmployeeId} matching availability rule`);
+              break;
             }
           }
-          // If no time match, pick first available employee with calendar
           if (!resolvedEmployeeId) {
             resolvedEmployeeId = matchingRules[0].user_id;
-            console.log(`[voice-scheduling] Fallback: assigned first available employee ${resolvedEmployeeId}`);
+            console.log(`[voice-scheduling] Fallback: first available employee ${resolvedEmployeeId}`);
           }
         }
       }
@@ -321,16 +308,35 @@ serve(async (req) => {
 
       if (insertErr) throw insertErr;
 
-      // Trigger calendar sync
-      if (appointment.id) {
+      // Push to Cal.com (single source of truth for calendar sync).
+      // Google Calendar sync has been removed — Cal.com's own integration handles the owner's calendar.
+      if (appointment.id && contact_email && !/@wa\.local$/i.test(contact_email)) {
         try {
-          await fetch(`${SUPABASE_URL}/functions/v1/calendar-sync`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
-            body: JSON.stringify({ action: 'sync_appointment', appointment_id: appointment.id }),
+          const pushed = await pushToCalcom(supabase, tenant_id, {
+            appointment_id: appointment.id,
+            start_iso: startDate.toISOString(),
+            contact_name,
+            contact_email,
+            timezone: tz,
+            source: 'voice',
           });
-        } catch (syncErr) {
-          console.error('Calendar sync trigger error:', syncErr);
+          if (pushed?.calcom_uid) {
+            await supabase.from('appointments')
+              .update({ calendar_event_id: `calcom:${pushed.calcom_uid}`, calendar_sync_status: 'SYNCED' })
+              .eq('id', appointment.id);
+          } else if (pushed?.conflict) {
+            // Roll back on Cal.com conflict so we don't keep a phantom booking.
+            await supabase.from('appointments').delete().eq('id', appointment.id);
+            return jsonResp({
+              success: false,
+              slot_taken: true,
+              do_not_confirm: true,
+              calcom_error_snippet: pushed.error || null,
+              message: 'Ese horario ya está ocupado en Cal.com. Ofrece otro slot.',
+            });
+          }
+        } catch (calErr) {
+          console.error('[voice-scheduling] Cal.com push error:', calErr);
         }
       }
 
@@ -458,4 +464,62 @@ function getTzOffset(tz: string): string {
     'UTC': '+00:00',
   };
   return offsets[tz] || '-06:00'; // Default to Mexico City
+}
+
+// Push a booking to Cal.com using the tenant-level integration.
+// Uses the tenant's default_event_type_id so employees without a per-user Cal.com
+// sync still book against the main tenant calendar (single source of truth).
+async function pushToCalcom(
+  supabase: any,
+  tenantId: string,
+  args: { appointment_id: string; start_iso: string; contact_name: string; contact_email: string; timezone: string; source: string },
+): Promise<{ calcom_uid?: string; conflict?: boolean; error?: string } | null> {
+  const { data: integ } = await supabase
+    .from('calcom_integrations')
+    .select('api_key_encrypted, default_event_type_id, status')
+    .eq('tenant_id', tenantId)
+    .eq('status', 'active')
+    .maybeSingle();
+  if (!integ?.api_key_encrypted || !integ?.default_event_type_id) return null;
+
+  const secret = Deno.env.get('CREDENTIALS_ENCRYPTION_KEY');
+  if (!secret) return null;
+  const enc = new TextEncoder();
+  const km = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'PBKDF2' }, false, ['deriveKey']);
+  const key = await crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt: enc.encode('credential-vault-salt-v1'), iterations: 100000, hash: 'SHA-256' },
+    km, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'],
+  );
+  let apiKey = integ.api_key_encrypted as string;
+  if (apiKey.startsWith('enc:')) {
+    const [, ivB64, ctB64] = apiKey.split(':');
+    const iv = Uint8Array.from(atob(ivB64), c => c.charCodeAt(0));
+    const ct = Uint8Array.from(atob(ctB64), c => c.charCodeAt(0));
+    const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
+    apiKey = new TextDecoder().decode(pt);
+  }
+
+  const res = await fetch('https://api.cal.com/v2/bookings', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      'cal-api-version': '2024-08-13',
+    },
+    body: JSON.stringify({
+      eventTypeId: Number(integ.default_event_type_id),
+      start: args.start_iso,
+      attendee: { name: args.contact_name, email: args.contact_email, timeZone: args.timezone, language: 'es' },
+      metadata: { source: args.source, appointment_id: args.appointment_id },
+    }),
+  });
+
+  if (res.ok) {
+    const j = await res.json();
+    return { calcom_uid: j?.data?.uid || j?.uid };
+  }
+  const body = (await res.text()).slice(0, 300);
+  const snippet = body.toLowerCase();
+  const conflict = /already has booking|not available|no_available_users|no available|time conflict/.test(snippet);
+  return { conflict, error: body.slice(0, 180) };
 }
