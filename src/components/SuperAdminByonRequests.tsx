@@ -75,6 +75,24 @@ const SuperAdminByonRequests = () => {
     }
   };
 
+  const submitToTwilio = async (id: string) => {
+    setSaving(id);
+    try {
+      const { data, error } = await supabase.functions.invoke('twilio-regulatory-submit', {
+        body: { byon_request_id: id },
+      });
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error || 'Error');
+      toast.success(`Enviado a Twilio · Bundle ${data.bundle_sid}`);
+      await load();
+    } catch (e: any) {
+      toast.error(e?.message || 'No se pudo enviar a Twilio');
+    } finally {
+      setSaving(null);
+    }
+  };
+
+
   return (
     <div className="rx-panel">
       <button
