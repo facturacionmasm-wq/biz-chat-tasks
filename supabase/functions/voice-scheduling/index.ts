@@ -212,7 +212,7 @@ serve(async (req) => {
         available: slots.length > 0,
         slots,
         date: targetDate.toISOString().split('T')[0],
-        gcal_events_checked: gcalEvents.length,
+        calcom_busy_slots: calcomBusy.length,
         message: slots.length > 0
           ? `Hay ${slots.length} horarios disponibles para ${targetDate.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' })}`
           : 'No hay horarios disponibles para esta fecha',
