@@ -670,7 +670,7 @@ const AppointmentsPage = () => {
                     </div>
                     {apt.notes && <p className="text-xs text-[var(--rx-t2)] mt-2 italic">{apt.notes}</p>}
                     {apt.calendarSyncStatus === 'SYNCED' && (
-                      <p className="text-[10px] text-green-600 mt-1">✓ Sincronizada con Google Calendar</p>
+                      <p className="text-[10px] text-green-600 mt-1">✓ Sincronizada con el calendario</p>
                     )}
                   </div>
                 );
