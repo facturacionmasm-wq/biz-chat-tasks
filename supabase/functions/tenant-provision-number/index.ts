@@ -120,6 +120,44 @@ serve(async (req) => {
     }
   }
 
+  // Pricing lookup for Stripe pre-charge (skip for master + dryRun)
+  let priceRow: { monthly_fee: number; currency: string } | null = null;
+  if (!dryRun && !isMaster) {
+    const countryForPricing = (country_code || '').toString().toUpperCase() || 'US';
+    const numberTypeForPricing = (type || 'Local').toString().toLowerCase();
+    const { data: price } = await admin
+      .from('phone_number_pricing')
+      .select('monthly_fee, currency')
+      .eq('country_code', countryForPricing)
+      .eq('number_type', numberTypeForPricing)
+      .eq('source', 'twilio_purchase')
+      .eq('active', true)
+      .maybeSingle();
+    if (price && Number(price.monthly_fee) > 0) {
+      priceRow = { monthly_fee: Number(price.monthly_fee), currency: (price.currency || 'USD') };
+    }
+
+    // Verify payment method BEFORE Twilio purchase
+    const verifyRes = await fetch(`${SUPABASE_URL}/functions/v1/stripe-billing`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        'Content-Type': 'application/json',
+        apikey: SUPABASE_SERVICE_ROLE_KEY,
+      },
+      body: JSON.stringify({ action: 'verify_payment_method', tenant_id: tenantId }),
+    });
+    const verifyData = await verifyRes.json().catch(() => ({}));
+    if (!verifyData?.verified) {
+      return j({
+        ok: false,
+        error: 'payment_method_required',
+        message: 'Registra un método de pago antes de comprar un número.',
+        setup_action: 'create_setup_session',
+      }, 402);
+    }
+  }
+
   // Forward to twilio-provision-number using service role
   const forwardRes = await fetch(`${SUPABASE_URL}/functions/v1/twilio-provision-number`, {
     method: "POST",
