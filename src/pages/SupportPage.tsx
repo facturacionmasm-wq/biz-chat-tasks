@@ -380,6 +380,33 @@ const SupportPage = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={emailOpen} onOpenChange={setEmailOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Mail size={18} className="text-primary" /> Enviar correo a soporte</DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-muted-foreground">Se enviará a <b>soporte@rybixholding.com</b> y se creará un ticket con seguimiento.</p>
+          <div className="space-y-3">
+            <Input placeholder="Email de contacto" type="email" value={emailForm.contact_email} onChange={e => setEmailForm({ ...emailForm, contact_email: e.target.value })} />
+            <Input placeholder="Asunto" value={emailForm.subject} onChange={e => setEmailForm({ ...emailForm, subject: e.target.value })} />
+            <Textarea placeholder="Describe tu problema o solicitud..." rows={6} value={emailForm.message} onChange={e => setEmailForm({ ...emailForm, message: e.target.value })} />
+            <Select value={emailForm.priority} onValueChange={v => setEmailForm({ ...emailForm, priority: v })}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {Object.entries(priorityCfg).map(([k, v]) => (<SelectItem key={k} value={k}>{v.label}</SelectItem>))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setEmailOpen(false)}>Cancelar</Button>
+            <Button onClick={sendSupportEmail} disabled={emailSending || !emailForm.subject.trim() || !emailForm.message.trim()}>
+              {emailSending ? <Loader2 className="animate-spin mr-2" size={14} /> : <Send size={14} className="mr-2" />}
+              Enviar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
