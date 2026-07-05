@@ -3,6 +3,34 @@ import { searchDocuments, getDocumentDetail } from "./document-handler.ts";
 import { compareDocuments } from "./document-agents.ts";
 import { retrieveMemory } from "./document-memory.ts";
 
+// Fire-and-forget best-effort mirror to Google Calendar via calendar-sync edge function.
+// Never throws — Google is a secondary destination; Cal.com is the source of truth.
+async function invokeCalendarSyncMirror(
+  supabaseUrl: string | undefined,
+  serviceRoleKey: string | undefined,
+  payload: { action: 'mirror_appointment' | 'mirror_cancel' | 'mirror_update'; appointment_id: string; preferred_user_id?: string | null },
+): Promise<{ ok: boolean; result?: any }> {
+  if (!supabaseUrl || !serviceRoleKey) return { ok: false };
+  try {
+    const res = await fetch(`${supabaseUrl}/functions/v1/calendar-sync`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${serviceRoleKey}`,
+        apikey: serviceRoleKey,
+      },
+      body: JSON.stringify(payload),
+    });
+    const json = await res.json().catch(() => ({}));
+    console.log(`[GCAL-MIRROR] ${payload.action} apt=${payload.appointment_id} status=${res.status}`, json);
+    return { ok: res.ok, result: json };
+  } catch (err) {
+    console.warn(`[GCAL-MIRROR] ${payload.action} error:`, err);
+    return { ok: false };
+  }
+}
+
+
 export async function executeTool(
   toolName: string,
   args: any,
@@ -417,9 +445,27 @@ async function executeScheduleAppointment(
     console.error('[APPT] Cal.com push error:', calcomErr);
   }
 
-  // Google Calendar sync removed — Cal.com is the single source of truth.
-  // When Cal.com pushes the booking it manages the owner's calendar via its own integrations.
-  // When Cal.com is not configured, the appointment lives only in our DB.
+  // === MIRROR TO GOOGLE CALENDAR (best-effort, only after Cal.com success) ===
+  // Cal.com is the source of truth. Google Calendar is a secondary mirror on the
+  // assigned employee's calendar (or the tenant principal if the employee is not
+  // connected). Failures here NEVER roll back the appointment.
+  let googleMirrored = false;
+  let googleMirrorReason: string | null = null;
+  let googleMirrorMaster = false;
+  if (calcomPushed) {
+    const mirrorRes = await invokeCalendarSyncMirror(supabaseUrl, serviceRoleKey, {
+      action: 'mirror_appointment',
+      appointment_id: apt.id,
+      preferred_user_id: employeeId || userId || null,
+    });
+    if (mirrorRes.ok && mirrorRes.result?.mirrored) {
+      googleMirrored = true;
+      googleMirrorMaster = !!mirrorRes.result?.is_master_tenant;
+    } else {
+      googleMirrorReason = mirrorRes.result?.reason || 'unavailable';
+    }
+  }
+
 
 
   // === SEND CONFIRMATION TO CONTACT & SCHEDULE REMINDERS ===
@@ -534,6 +580,9 @@ async function executeScheduleAppointment(
     calcom_pushed: calcomPushed,
     calcom_skipped_reason: calcomPushed ? null : calcomSkippedReason,
     calcom_error_snippet: calcomPushed ? null : calcomErrorSnippet,
+    google_mirrored: googleMirrored,
+    google_mirror_reason: googleMirrored ? null : googleMirrorReason,
+    google_mirror_target: googleMirrored ? (googleMirrorMaster ? 'tenant_principal' : 'empleado') : null,
   };
 
   const parts: string[] = ['Cita agendada'];
@@ -542,6 +591,8 @@ async function executeScheduleAppointment(
   else if (calcomSkippedReason && calcomSkippedReason !== 'no_integration') {
     parts.push(`Cal.com no creado (${calcomSkippedReason}${calcomErrorSnippet ? ': ' + calcomErrorSnippet : ''})`);
   }
+  if (googleMirrored) parts.push(`espejo en Google Calendar (${googleMirrorMaster ? 'tenant principal' : 'empleado'})`);
+
   response.message = parts.join('; ') + '.';
 
   return JSON.stringify(response);
@@ -1028,7 +1079,14 @@ async function executeCancelAppointment(
 
     if (updateErr) continue;
 
-    // Google Calendar sync removed — Cal.com manages the event lifecycle on the owner's calendar.
+    // Best-effort mirror: cancel the Google Calendar event if we previously mirrored it.
+    if (apt.calendar_event_id && String(apt.calendar_event_id).includes('gcal:')) {
+      await invokeCalendarSyncMirror(supabaseUrl, serviceRoleKey, {
+        action: 'mirror_cancel',
+        appointment_id: apt.id,
+      });
+    }
+
 
 
     cancelled.push({
@@ -1139,9 +1197,15 @@ async function executeRescheduleAppointment(
 
   if (updateErr) return JSON.stringify({ error: updateErr.message });
 
-  // Google Calendar sync removed — Cal.com owns the calendar side.
-  // Note: reprogramar en Cal.com automáticamente no está implementado;
-  // el cambio queda registrado en la app y Cal.com deberá ajustarse manualmente si aplica.
+  // Best-effort mirror to Google Calendar (update if mirrored, otherwise create).
+  // Cal.com side reprogramming is not automated here; Cal.com may need manual adjustment.
+  if (apt.calendar_event_id && String(apt.calendar_event_id).includes('gcal:')) {
+    await invokeCalendarSyncMirror(supabaseUrl, serviceRoleKey, {
+      action: 'mirror_update',
+      appointment_id: apt.id,
+    });
+  }
+
   const response: any = {
     success: true,
     appointment_id: apt.id,

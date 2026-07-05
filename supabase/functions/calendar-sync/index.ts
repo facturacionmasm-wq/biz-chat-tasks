@@ -65,12 +65,238 @@ serve(async (req) => {
       return jsonResp(result);
     }
 
+    // ─── MIRROR TO GOOGLE (best-effort, after Cal.com success) ───
+    if (action === 'mirror_appointment') {
+      const { appointment_id, preferred_user_id } = body;
+      const result = await mirrorAppointmentToGoogle(supabase, appointment_id, preferred_user_id || null, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET);
+      return jsonResp(result);
+    }
+    if (action === 'mirror_cancel') {
+      const { appointment_id } = body;
+      const result = await mirrorCancelToGoogle(supabase, appointment_id, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET);
+      return jsonResp(result);
+    }
+    if (action === 'mirror_update') {
+      const { appointment_id } = body;
+      const result = await mirrorUpdateToGoogle(supabase, appointment_id, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET);
+      return jsonResp(result);
+    }
+
     return jsonResp({ error: 'Unknown action' }, 400);
   } catch (err) {
     console.error('calendar-sync error:', err);
     return jsonResp({ error: err instanceof Error ? err.message : 'Unknown error' }, 500);
   }
 });
+
+// ==================== Mirror helpers (Cal.com → Google, best-effort) ====================
+
+const MASTER_TENANT_ID = '00000000-0000-0000-0000-000000000001';
+
+// calendar_event_id may be: "gcal:X", "calcom:Y", "calcom:Y|gcal:X", or a legacy raw Google id.
+function extractGcalId(v?: string | null): string | null {
+  if (!v) return null;
+  const parts = String(v).split('|');
+  for (const p of parts) {
+    if (p.startsWith('gcal:')) return p.slice(5);
+  }
+  if (v.startsWith('calcom:')) return null;
+  // Legacy raw Google event id
+  return v;
+}
+
+function mergeGcalId(currentValue: string | null | undefined, gcalId: string): string {
+  if (!currentValue) return `gcal:${gcalId}`;
+  if (currentValue.includes('gcal:')) {
+    // Replace existing gcal segment
+    return currentValue.split('|').map((p) => (p.startsWith('gcal:') ? `gcal:${gcalId}` : p)).join('|');
+  }
+  return `${currentValue}|gcal:${gcalId}`;
+}
+
+async function resolveMirrorUser(
+  supabase: any,
+  tenantId: string,
+  preferredUserId: string | null,
+): Promise<{ user_id: string; tenant_id: string } | null> {
+  const check = async (uid: string, tid: string) => {
+    const { data } = await supabase
+      .from('google_calendar_tokens')
+      .select('user_id, tenant_id')
+      .eq('user_id', uid)
+      .eq('tenant_id', tid)
+      .eq('status', 'active')
+      .maybeSingle();
+    return data;
+  };
+  if (preferredUserId) {
+    const hit = await check(preferredUserId, tenantId);
+    if (hit) return { user_id: hit.user_id, tenant_id: hit.tenant_id };
+  }
+  // Any active token in this tenant
+  const { data: tenantTok } = await supabase
+    .from('google_calendar_tokens')
+    .select('user_id, tenant_id')
+    .eq('tenant_id', tenantId)
+    .eq('status', 'active')
+    .limit(1)
+    .maybeSingle();
+  if (tenantTok) return tenantTok;
+  // Fallback: master tenant token (tenant principal)
+  const { data: masterTok } = await supabase
+    .from('google_calendar_tokens')
+    .select('user_id, tenant_id')
+    .eq('tenant_id', MASTER_TENANT_ID)
+    .eq('status', 'active')
+    .limit(1)
+    .maybeSingle();
+  if (masterTok) return masterTok;
+  return null;
+}
+
+async function mirrorAppointmentToGoogle(
+  supabase: any,
+  appointmentId: string,
+  preferredUserId: string | null,
+  clientId: string,
+  clientSecret: string,
+): Promise<any> {
+  const { data: apt } = await supabase.from('appointments').select('*').eq('id', appointmentId).single();
+  if (!apt) return { skipped: true, reason: 'appointment_not_found' };
+
+  // Already has a Google mirror
+  if (extractGcalId(apt.calendar_event_id)) {
+    return { skipped: true, reason: 'already_mirrored', event_id: extractGcalId(apt.calendar_event_id) };
+  }
+
+  const target = await resolveMirrorUser(supabase, apt.tenant_id, preferredUserId);
+  if (!target) return { skipped: true, reason: 'no_google_token' };
+
+  const tokenResult = await getValidToken(supabase, target.user_id, target.tenant_id, clientId, clientSecret);
+  if (tokenResult.error) return { skipped: true, reason: `token_${tokenResult.auth_required ? 'auth_required' : 'error'}`, detail: tokenResult.error };
+
+  const { data: tenant } = await supabase.from('tenants').select('timezone').eq('id', apt.tenant_id).single();
+  const tz = tenant?.timezone || 'America/Mexico_City';
+  const calendarId = tokenResult.calendar_id || 'primary';
+
+  const event = {
+    summary: `${apt.service_type || 'Cita'} - ${apt.contact_name}`,
+    description: [
+      `Cliente: ${apt.contact_name}`,
+      apt.contact_phone ? `Tel: ${apt.contact_phone}` : '',
+      apt.contact_email ? `Email: ${apt.contact_email}` : '',
+      apt.notes ? `Notas: ${apt.notes}` : '',
+      `Fuente: ${apt.source || 'app'} (espejo de Cal.com)`,
+      `ID: ${apt.id}`,
+    ].filter(Boolean).join('\n'),
+    start: { dateTime: apt.start_at, timeZone: tz },
+    end: { dateTime: apt.end_at, timeZone: tz },
+    reminders: { useDefault: false, overrides: [{ method: 'popup', minutes: 30 }] },
+  };
+
+  try {
+    const res = await fetch(
+      `${GOOGLE_CALENDAR_API}/calendars/${encodeURIComponent(calendarId)}/events`,
+      { method: 'POST', headers: { Authorization: `Bearer ${tokenResult.access_token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(event) },
+    );
+    const resData = await res.json();
+    if (!res.ok) {
+      console.warn(`[mirror] Google API ${res.status} for apt ${appointmentId}:`, resData?.error?.message);
+      return { skipped: true, reason: `google_api_${res.status}`, detail: resData?.error?.message };
+    }
+    const eventId = resData.id;
+    const mergedEventId = mergeGcalId(apt.calendar_event_id, eventId);
+    await supabase
+      .from('appointments')
+      .update({ calendar_event_id: mergedEventId })
+      .eq('id', appointmentId);
+
+    await supabase.from('audit_events').insert({
+      tenant_id: apt.tenant_id,
+      event_type: 'calendar_event_mirrored',
+      actor_id: target.user_id,
+      resource_type: 'appointments',
+      resource_id: appointmentId,
+      payload: { google_event_id: eventId, calendar_id: calendarId, target_tenant: target.tenant_id },
+    });
+
+    return { success: true, mirrored: true, event_id: eventId, target_user_id: target.user_id, is_master_tenant: target.tenant_id === MASTER_TENANT_ID };
+  } catch (err) {
+    console.warn('[mirror] network error:', err);
+    return { skipped: true, reason: 'network_error', detail: err instanceof Error ? err.message : 'unknown' };
+  }
+}
+
+async function mirrorCancelToGoogle(
+  supabase: any,
+  appointmentId: string,
+  clientId: string,
+  clientSecret: string,
+): Promise<any> {
+  const { data: apt } = await supabase.from('appointments').select('*').eq('id', appointmentId).single();
+  if (!apt) return { skipped: true, reason: 'appointment_not_found' };
+  const gcalId = extractGcalId(apt.calendar_event_id);
+  if (!gcalId) return { skipped: true, reason: 'no_google_mirror' };
+
+  const target = await resolveMirrorUser(supabase, apt.tenant_id, apt.user_id);
+  if (!target) return { skipped: true, reason: 'no_google_token' };
+  const tokenResult = await getValidToken(supabase, target.user_id, target.tenant_id, clientId, clientSecret);
+  if (tokenResult.error) return { skipped: true, reason: 'token_error', detail: tokenResult.error };
+  const calendarId = tokenResult.calendar_id || 'primary';
+  try {
+    const res = await fetch(
+      `${GOOGLE_CALENDAR_API}/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(gcalId)}`,
+      { method: 'DELETE', headers: { Authorization: `Bearer ${tokenResult.access_token}` } },
+    );
+    if (res.ok || res.status === 404 || res.status === 410) return { success: true };
+    const body = await res.text().catch(() => '');
+    return { skipped: true, reason: `google_api_${res.status}`, detail: body.slice(0, 200) };
+  } catch (err) {
+    return { skipped: true, reason: 'network_error', detail: err instanceof Error ? err.message : 'unknown' };
+  }
+}
+
+async function mirrorUpdateToGoogle(
+  supabase: any,
+  appointmentId: string,
+  clientId: string,
+  clientSecret: string,
+): Promise<any> {
+  const { data: apt } = await supabase.from('appointments').select('*').eq('id', appointmentId).single();
+  if (!apt) return { skipped: true, reason: 'appointment_not_found' };
+  const gcalId = extractGcalId(apt.calendar_event_id);
+  if (!gcalId) {
+    // No previous Google mirror — try to create one now (best-effort)
+    return await mirrorAppointmentToGoogle(supabase, appointmentId, apt.user_id, clientId, clientSecret);
+  }
+  const target = await resolveMirrorUser(supabase, apt.tenant_id, apt.user_id);
+  if (!target) return { skipped: true, reason: 'no_google_token' };
+  const tokenResult = await getValidToken(supabase, target.user_id, target.tenant_id, clientId, clientSecret);
+  if (tokenResult.error) return { skipped: true, reason: 'token_error', detail: tokenResult.error };
+
+  const { data: tenant } = await supabase.from('tenants').select('timezone').eq('id', apt.tenant_id).single();
+  const tz = tenant?.timezone || 'America/Mexico_City';
+  const calendarId = tokenResult.calendar_id || 'primary';
+  const event = {
+    summary: `${apt.service_type || 'Cita'} - ${apt.contact_name}`,
+    description: `Cliente: ${apt.contact_name}\nTel: ${apt.contact_phone || 'N/A'}\nID: ${apt.id}`,
+    start: { dateTime: apt.start_at, timeZone: tz },
+    end: { dateTime: apt.end_at, timeZone: tz },
+  };
+  try {
+    const res = await fetch(
+      `${GOOGLE_CALENDAR_API}/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(gcalId)}`,
+      { method: 'PUT', headers: { Authorization: `Bearer ${tokenResult.access_token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(event) },
+    );
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      return { skipped: true, reason: `google_api_${res.status}`, detail: body.slice(0, 200) };
+    }
+    return { success: true };
+  } catch (err) {
+    return { skipped: true, reason: 'network_error', detail: err instanceof Error ? err.message : 'unknown' };
+  }
+}
 
 // ==================== Core sync logic ====================
 
