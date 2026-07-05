@@ -540,9 +540,17 @@ async function handleState(input: StateInput): Promise<StateResult> {
             .eq('status', 'pending');
         }
 
-        reply = confirmMatch
-          ? '✅ ¡Perfecto! Tu asistencia ha sido confirmada. ¡Te esperamos! 😊\n\nTe enviaremos un recordatorio antes de la cita.'
-          : '❌ Entendido, tu cita ha sido cancelada. Si necesitas reagendar, no dudes en escribirme. 🙏';
+        if (confirmMatch) {
+          // Reply to client: "Cita agendada, te esperamos" + appointment data.
+          const { data: tzRow } = await supabase.from('tenants').select('name, timezone').eq('id', tenantId).single();
+          const tzC = tzRow?.timezone || 'America/Mexico_City';
+          const bizName = tzRow?.name || 'el negocio';
+          const dStr = appt ? new Date(appt.start_at).toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', timeZone: tzC }) : '';
+          const tStr = appt ? new Date(appt.start_at).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', timeZone: tzC }) : '';
+          reply = `✅ *Cita agendada, te esperamos en tu cita.*\n\n📆 ${dStr}\n⏰ ${tStr}\n${appt?.service_type ? `📋 ${appt.service_type}\n` : ''}🏢 ${bizName}\n\n¡Nos vemos pronto! 😊`;
+        } else {
+          reply = '❌ Entendido, tu cita ha sido cancelada. Si necesitas reagendar, no dudes en escribirme. 🙏';
+        }
         return { reply, newState, newContext };
       }
     }
