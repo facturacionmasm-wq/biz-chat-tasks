@@ -308,16 +308,35 @@ serve(async (req) => {
 
       if (insertErr) throw insertErr;
 
-      // Trigger calendar sync
-      if (appointment.id) {
+      // Push to Cal.com (single source of truth for calendar sync).
+      // Google Calendar sync has been removed — Cal.com's own integration handles the owner's calendar.
+      if (appointment.id && contact_email && !/@wa\.local$/i.test(contact_email)) {
         try {
-          await fetch(`${SUPABASE_URL}/functions/v1/calendar-sync`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
-            body: JSON.stringify({ action: 'sync_appointment', appointment_id: appointment.id }),
+          const pushed = await pushToCalcom(supabase, tenant_id, {
+            appointment_id: appointment.id,
+            start_iso: startDate.toISOString(),
+            contact_name,
+            contact_email,
+            timezone: tz,
+            source: 'voice',
           });
-        } catch (syncErr) {
-          console.error('Calendar sync trigger error:', syncErr);
+          if (pushed?.calcom_uid) {
+            await supabase.from('appointments')
+              .update({ calendar_event_id: `calcom:${pushed.calcom_uid}`, calendar_sync_status: 'SYNCED' })
+              .eq('id', appointment.id);
+          } else if (pushed?.conflict) {
+            // Roll back on Cal.com conflict so we don't keep a phantom booking.
+            await supabase.from('appointments').delete().eq('id', appointment.id);
+            return jsonResp({
+              success: false,
+              slot_taken: true,
+              do_not_confirm: true,
+              calcom_error_snippet: pushed.error || null,
+              message: 'Ese horario ya está ocupado en Cal.com. Ofrece otro slot.',
+            });
+          }
+        } catch (calErr) {
+          console.error('[voice-scheduling] Cal.com push error:', calErr);
         }
       }
 
