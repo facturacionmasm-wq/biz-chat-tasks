@@ -398,11 +398,14 @@ async function executeScheduleAppointment(
           const isConflict = /already has booking|not available|no_available_users|no available|time conflict|reserva|no est[aá] disponible|ya tiene/.test(snippet);
           if (isConflict) {
             await supabase.from('appointments').delete().eq('id', apt.id);
+            const withWhom = employee_name ? ` con ${employee_name}` : '';
             return JSON.stringify({
               success: false,
               slot_taken: true,
+              do_not_confirm: true,
               calcom_error_snippet: calcomErrorSnippet,
-              message: `Ese horario no está disponible en Cal.com${employee_name ? ` con ${employee_name}` : ''}. Llama check_availability y ofrece 2-3 horarios alternativos antes de reintentar.`,
+              chat_reply: `Ese horario ya está ocupado${withWhom}. ¿Te acomoda otro? Dime y te reviso disponibilidad. 🙏`,
+              message: `Cal.com rechazó por conflicto${withWhom}. NO confirmes la cita. Usa chat_reply casi textual y llama check_availability para ofrecer alternativas.`,
             });
           }
         }

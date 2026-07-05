@@ -68,80 +68,75 @@ serve(async (req) => {
 
       const { data: existingApts } = await aptsQuery;
 
-      // ── Fetch Google Calendar events for conflict checking ──
-      const gcalEvents: Array<{ start: Date; end: Date }> = [];
+      // ── Fetch Cal.com busy times for conflict checking (single source of truth) ──
+      const calcomBusy: Array<{ start: Date; end: Date }> = [];
       try {
-        // Find users with Google Calendar connected for this tenant
-        const userIdsToCheck: string[] = [];
-        if (employee_id) {
-          userIdsToCheck.push(employee_id);
-        } else {
-          // Get all unique user_ids from rules
-          const uniqueUserIds = [...new Set(rules.map((r: any) => r.user_id).filter(Boolean))];
-          userIdsToCheck.push(...uniqueUserIds);
-        }
+        const { data: calcomInteg } = await supabase
+          .from('calcom_integrations')
+          .select('api_key_encrypted, default_event_type_id, status')
+          .eq('tenant_id', tenant_id)
+          .eq('status', 'active')
+          .maybeSingle();
 
-        // Also check tenant owner/admin if no specific users
-        if (userIdsToCheck.length === 0) {
-          const { data: tenantProfiles } = await supabase
-            .from('profiles')
-            .select('user_id')
-            .eq('tenant_id', tenant_id)
-            .eq('status', 'active')
-            .limit(3);
-          if (tenantProfiles) {
-            userIdsToCheck.push(...tenantProfiles.map((p: any) => p.user_id));
-          }
-        }
+        if (calcomInteg?.api_key_encrypted && calcomInteg?.default_event_type_id) {
+          const secret = Deno.env.get('CREDENTIALS_ENCRYPTION_KEY');
+          if (secret) {
+            const enc = new TextEncoder();
+            const km = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'PBKDF2' }, false, ['deriveKey']);
+            const key = await crypto.subtle.deriveKey(
+              { name: 'PBKDF2', salt: enc.encode('credential-vault-salt-v1'), iterations: 100000, hash: 'SHA-256' },
+              km, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'],
+            );
+            let apiKey = calcomInteg.api_key_encrypted as string;
+            if (apiKey.startsWith('enc:')) {
+              const [, ivB64, ctB64] = apiKey.split(':');
+              const iv = Uint8Array.from(atob(ivB64), c => c.charCodeAt(0));
+              const ct = Uint8Array.from(atob(ctB64), c => c.charCodeAt(0));
+              const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
+              apiKey = new TextDecoder().decode(pt);
+            }
 
-        // For each user with a Google Calendar token, fetch events
-        for (const uid of userIdsToCheck) {
-          const { data: tokenRow } = await supabase
-            .from('google_calendar_tokens')
-            .select('id, user_id')
-            .eq('user_id', uid)
-            .eq('status', 'active')
-            .maybeSingle();
-
-          if (tokenRow) {
-            try {
-              const calRes = await fetch(`${SUPABASE_URL}/functions/v1/calendar-tools`, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-                  'X-Service-Call': 'true',
-                },
-                body: JSON.stringify({
-                  user_id: uid,
-                  action: 'list_events',
-                  time_min: dayStart.toISOString(),
-                  time_max: dayEnd.toISOString(),
-                  max_results: 50,
-                }),
-              });
-
-              if (calRes.ok) {
-                const calData = await calRes.json();
-                if (calData.events) {
-                  for (const evt of calData.events) {
-                    if (evt.start && evt.end) {
-                      gcalEvents.push({
-                        start: new Date(evt.start),
-                        end: new Date(evt.end),
-                      });
-                    }
+            // Query Cal.com slots API — anything NOT in the returned slot list is treated as busy.
+            const slotsUrl = `https://api.cal.com/v2/slots?eventTypeId=${Number(calcomInteg.default_event_type_id)}&startTime=${encodeURIComponent(dayStart.toISOString())}&endTime=${encodeURIComponent(dayEnd.toISOString())}`;
+            const slotsRes = await fetch(slotsUrl, {
+              headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'cal-api-version': '2024-09-04',
+              },
+            });
+            if (slotsRes.ok) {
+              const slotsJson = await slotsRes.json();
+              const freeStartsSet = new Set<string>();
+              const slotsData = slotsJson?.data || slotsJson?.slots || {};
+              for (const key of Object.keys(slotsData)) {
+                const arr = slotsData[key];
+                if (Array.isArray(arr)) {
+                  for (const it of arr) {
+                    const t = typeof it === 'string' ? it : (it?.time || it?.start);
+                    if (t) freeStartsSet.add(new Date(t).toISOString());
                   }
                 }
-                console.log(`[voice-scheduling] Fetched ${calData.events?.length || 0} Google Calendar events for user ${uid}`);
               }
-            } catch (calErr) {
-              console.warn(`[voice-scheduling] Google Calendar fetch error for user ${uid}:`, calErr);
+              // Mark every 30-min slot in the day that is NOT in freeStartsSet as busy.
+              const cursor = new Date(dayStart);
+              while (cursor < dayEnd) {
+                const iso = cursor.toISOString();
+                if (!freeStartsSet.has(iso)) {
+                  calcomBusy.push({
+                    start: new Date(cursor),
+                    end: new Date(cursor.getTime() + 30 * 60 * 1000),
+                  });
+                }
+                cursor.setMinutes(cursor.getMinutes() + 30);
+              }
+              console.log(`[voice-scheduling] Cal.com free slots=${freeStartsSet.size}, marked busy=${calcomBusy.length}`);
+            } else {
+              console.warn('[voice-scheduling] Cal.com slots fetch failed:', slotsRes.status, (await slotsRes.text()).slice(0, 200));
             }
           }
         }
-      } catch (gcalErr) {
-        console.warn('[voice-scheduling] Google Calendar integration error (non-blocking):', gcalErr);
+      } catch (calErr) {
+        console.warn('[voice-scheduling] Cal.com availability check error (non-blocking):', calErr);
       }
 
       // Generate available slots (30-min intervals)
@@ -187,12 +182,12 @@ serve(async (req) => {
             return slotStartWithBuffer < aptEnd && slotEndWithBuffer > aptStart;
           });
 
-          // Check Google Calendar conflicts
-          const hasGcalConflict = gcalEvents.some(evt => {
+          // Check Cal.com conflicts (source of truth)
+          const hasCalcomConflict = calcomBusy.some(evt => {
             return slotStartWithBuffer < evt.end && slotEndWithBuffer > evt.start;
           });
 
-          if (!hasLocalConflict && !hasGcalConflict) {
+          if (!hasLocalConflict && !hasCalcomConflict) {
             // Check max_appointments
             const aptsInSlot = (existingApts || []).filter(apt => {
               const aptStart = new Date(apt.start_at);
@@ -217,7 +212,7 @@ serve(async (req) => {
         available: slots.length > 0,
         slots,
         date: targetDate.toISOString().split('T')[0],
-        gcal_events_checked: gcalEvents.length,
+        calcom_busy_slots: calcomBusy.length,
         message: slots.length > 0
           ? `Hay ${slots.length} horarios disponibles para ${targetDate.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' })}`
           : 'No hay horarios disponibles para esta fecha',

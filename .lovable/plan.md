@@ -1,106 +1,73 @@
+# Diagnóstico
 
-# Diagnóstico con evidencia real (no inventada)
+Del último log real (`whatsapp-bot` → AI Gateway `019f319e-2990` a las 09:31:18 UTC + consulta a `appointments`):
 
-## Cita analizada
-Último appointment del tenant `00000000-...-001` creado desde WhatsApp:
+1. La cita de Nidia Cámara 11-jul 12:00 **no existe** en la tabla `appointments`. Es decir, el fix de rollback ya deployado en `tool-executor.ts:395-407` **sí se ejecutó**: Cal.com rechazó por conflicto, borré el registro local y devolví `{ success:false, slot_taken:true, calcom_error_snippet:"..." }`.
+2. Aun así, la IA respondió *"¡Listo! Ya te agendé..."* y añadió *"no se sincronizó con Google Calendar"*. Es decir, el modelo **ignoró** `success:false` y **inventó** una sincronización con Google Calendar que ya no existe en el código.
 
-| Campo | Valor real en DB |
-|---|---|
-| id | `863bc2eb-6e04-4d7b-85d9-c2faf24bf1df` |
-| contact_name | `Roberto Carlos` (¿la prueba que llamaste "Marco Sosa" quedó guardada con otro nombre?) |
-| start_at | `2026-07-06 16:00:00+00` (10:00 hora local) |
-| contact_phone | `+5219993102413` |
-| contact_email | `facturacionmasm@gmail.com` |
-| user_id | `2f5fa519-...` (Marco Sosa, empleado) |
-| calendar_sync_status | `SYNCED` |
-| calendar_event_id | `7uc9ubkktqiscjghivtb9m3n88` ← **Google Calendar ID**, no lleva prefijo `calcom:` |
-| source | `whatsapp` |
+Causas raíz:
 
-Y en `calcom_integrations`: `status=active`, `default_event_type_id=5780532`, `api_key_encrypted` presente. **No es NULL.**
+- **A. Prompt débil ante `success:false**`: la sección "REGLA DE AGENDADO" en `supabase/functions/whatsapp-bot/prompts.ts` describe el flujo `success=true` en detalle; el caso `slot_taken:true` es una sola línea al final y compite con el sesgo del modelo (y con mensajes previos del propio bot en el historial que sí decían "Ya te agendé"). Gemini rellena con el patrón dominante.
+- **B. Historial contaminado**: `ai-response.ts` inyecta los últimos 10 mensajes del hilo tal cual. Como el bot ya había dicho antes *"Ya agendé"* y *"no se sincronizó con Google Calendar"*, el modelo copia esas frases aunque la herramienta responda otra cosa.
+- **C. `check_availability` no consulta Cal.com**: `voice-scheduling` solo revisa `availability_rules` + `appointments` locales (y hasta consulta Google Calendar, que ya no usamos). Como el slot está "libre" localmente, la IA cree que puede agendar y solo se entera del conflicto cuando Cal.com rechaza. Debería consultar `/v2/slots` de Cal.com y devolver la verdad.
+- **D. Prohibición de "Google Calendar" no vinculante**: la regla existe pero el modelo la ignora cuando el historial la contradice; no hay ningún filtro/limpieza del lado del código.
 
-Y en `audit_events` con filtro `%calcom%`: **0 filas** → no se disparó `calcom_push_skipped`, es decir el código entró al bloque de push real, no a un `else if` de skip.
+# Plan de corrección (quirúrgico, sin migraciones, sin tocar ElevenLabs / call-transfer / twilio-*)
 
----
+## 1. `supabase/functions/whatsapp-bot/tool-executor.ts` — respuesta ejecutiva ante fallo
 
-## 1) CAL.COM NO CREA LA RESERVA — causa raíz confirmada
+Cuando `schedule_appointment` devuelva `success:false` (slot_taken u otro), añadir un campo `chat_reply` con el texto exacto que debe enviar la IA, y `do_not_confirm:true`:
 
-Log real de la edge function `whatsapp-bot`:
-
-```
-[APPT] Cal.com push failed: 400
-{"status":"error","path":"/v2/bookings","error":{"code":"BadRequestException",
- "message":"User either already has booking at this time or is not available", …}}
+```json
+{
+  "success": false,
+  "slot_taken": true,
+  "do_not_confirm": true,
+  "chat_reply": "Ese horario ya está ocupado en la agenda con Nidia Cámara. ¿Te va otro? Te reviso disponibilidad."
+}
 ```
 
-- **`calcom_skipped_reason` = `api_error_400`** (línea 403 de `tool-executor.ts`).
-- No es `missing_default_event_type`, no es `missing_client_email`, no es `no_integration`.
-- Cal.com responde 400 porque el owner del `eventTypeId=5780532` **ya está ocupado** a esa hora en su calendario. La causa mecánica es esta secuencia en `tool-executor.ts`:
+Esto le da al modelo un texto listo para copiar, reduciendo la alucinación.
 
-  1. Línea 301-321 → `calendar-sync` corre **primero** y crea el evento en Google Calendar del empleado (por eso `calendar_event_id` es de Google y `SYNCED=true`).
-  2. Línea 326-407 → **después** intenta Cal.com. Cal.com tiene el Google Calendar del owner como *conflict calendar* (comportamiento por defecto), lee el evento que acabamos de crear y devuelve 400 "already has booking / not available".
-  3. Como el push falla, la línea 398 nunca ejecuta y `calendar_event_id` queda como el ID de Google, no `calcom:...`.
+## 2. `supabase/functions/whatsapp-bot/prompts.ts` — reforzar reglas
 
-  Es un **auto-conflicto**: nuestro propio push a Google bloquea el push a Cal.com. La validación de solapamiento local (líneas 190-231) no lo detecta porque solo mira `availability_rules` y `appointments` de la BD, no el calendario de Cal.com.
+Reordenar y elevar a nivel superior:
 
-- Efecto secundario: aunque Cal.com sí es la fuente que envía correo al cliente (`camaranidia1@gmail.com`, `alejandrocetinafuentes@gmail.com`, etc., citas ingresadas por Cal.com aparecen con `calcom:` en el `calendar_event_id`), en este caso el cliente **no recibió correo de confirmación**.
+- Bloque **"CUANDO LA HERRAMIENTA DEVUELVE success:false"** al inicio (antes que el flujo de éxito), con ejemplos: si `slot_taken:true` responder algo como "Ese horario está ocupado, ¿te acomoda…?" y **prohibido** decir "listo", "agendé", "quedó".
+- Bloque **"PALABRAS PROHIBIDAS"** explícito: nunca escribir "Google Calendar", "gcal", "no se sincronizó con Google". La única integración es Cal.com.
+- Si `chat_reply` existe en el JSON, usarlo casi verbatim.
 
-## 2) TELÉFONO "INVENTADO" — causa raíz confirmada
+## 3. `supabase/functions/whatsapp-bot/ai-response.ts` — sanear el historial
 
-En DB el teléfono guardado es `+5219993102413`, que es exactamente el número que WhatsApp registra como `whatsapp_conversations.contact_phone` del remitente (aparece de primero en el `SELECT` que hice). No está inventado por el modelo; lo escribe el código.
+Antes de mandar los últimos 10 mensajes al modelo, reemplazar en los `assistant` cualquier ocurrencia de "Google Calendar", "no se sincronizó con Google", etc. por texto neutro ("[sync info omitida]"). Esto rompe el patrón que el modelo está copiando.
 
-`tool-executor.ts:278`:
-```ts
-contact_phone: cPhone || contactPhone || null,
-```
-- `cPhone` viene del argumento `contact_phone` del tool (opcional en `tools.ts:12`).
-- `contactPhone` viene de `conversation.contact_phone` (línea 16 y firma 140): **el número del remitente de WhatsApp**.
-- Cuando el modelo no manda `contact_phone` (porque el cliente no lo dio), el código **asume que el contacto es el remitente**. En una prueba donde tú (dueño/empleado) agendas a un tercero desde tu WhatsApp, el `contactPhone` de fallback es *tu propio número*, no el del cliente. Eso es lo que ves como "teléfono inventado".
-- Además, la descripción del parámetro en `tools.ts:12` (`"Teléfono del contacto en formato +521234567890 (si se tiene)"`) usa un número de ejemplo que puede sesgar al modelo a copiarlo si no tiene dato — vale la pena reforzar el texto pero **el bug real es el fallback silencioso a `contactPhone`**.
+## 4. `supabase/functions/voice-scheduling/index.ts` — verificar disponibilidad real en Cal.com
 
-Nota: el `contact_phone` **no** se envía a Cal.com (líneas 384-389 solo mandan `name/email/timeZone/language`), así que este bug no contribuye al 400 de Cal.com. Sí ensucia el registro y aparece en las notificaciones/UI.
+En `action === 'check_availability'`:
 
-## 3) EMAIL DEL CLIENTE
+- Cargar `calcom_integrations` del tenant (mismo patrón que `tool-executor.ts`: descifra `api_key_encrypted`).
+- Si existe integración activa con `default_event_type_id`, llamar `GET https://api.cal.com/v2/slots?eventTypeId=…&startTime=…&endTime=…&timeZone=…` y usar esa lista como fuente de verdad de slots libres.
+- Restar los `appointments` locales cancelados/duplicados. Marcar como no disponibles los que Cal.com no devuelva.
+- Eliminar el bloque de Google Calendar events (líneas ~71+): ya no es la fuente de verdad.
 
-En esta prueba llegó bien: `facturacionmasm@gmail.com` (no vacío, no `@wa.local`). El guard de línea 350 no se activó. Aquí no hay bug: el modelo obtuvo el email real del contacto.
+Efecto: la IA verá el conflicto *antes* de intentar agendar, y no llegará al mensaje ambiguo actual.
 
----
+## 5. Nada de cambios en RLS/GRANT ni migraciones
 
-# Plan de corrección quirúrgico (dentro del alcance permitido)
+Todo el trabajo es en edge functions.
 
-Sin migraciones, sin RLS/GRANT, sin tocar ElevenLabs ni `call-transfer*`/`elevenlabs-*`/`twilio-*`.
+## Archivos que voy a tocar
 
-### Fix A — Cal.com push antes que Google, y no ensuciar Google si Cal.com fallará
-Archivo: `supabase/functions/whatsapp-bot/tool-executor.ts`
+- `supabase/functions/whatsapp-bot/tool-executor.ts`
+- `supabase/functions/whatsapp-bot/prompts.ts`
+- `supabase/functions/whatsapp-bot/ai-response.ts`
+- `supabase/functions/voice-scheduling/index.ts`
 
-- **Reordenar** el bloque Cal.com (actual líneas 323-411) para que ejecute **antes** del bloque de `calendar-sync` (actual líneas 296-321).
-- Si Cal.com responde 200 → Cal.com ya inserta el evento en el Google Calendar del owner vía su propia integración; **saltar** el `calendar-sync` local para no duplicar. Guardar `calendar_event_id = calcom:<uid>` (ya existe la línea 399).
-- Si Cal.com falla o se skipea (`no_integration`, `missing_default_event_type`, `missing_client_email`, `api_error_*`) → *entonces* correr `calendar-sync` como respaldo (comportamiento actual). Así, en cuentas sin Cal.com o cuando Cal.com no aplica, seguimos teniendo Google Calendar.
-- Devolver en el JSON: `calcom_pushed`, `calcom_skipped_reason`, `google_calendar_synced`, `google_calendar_reason` (ya existen los flags, solo reflejar el nuevo orden). Añadir además `calcom_error_snippet` cuando `api_error_*` para que el prompt pueda avisar al empleado la razón textual ("el calendario ya tiene una cita a esa hora en Cal.com").
+## Verificación post-deploy
 
-Esto elimina el auto-conflicto que hoy convierte el 100% de los agendados con empleado con Google conectado en `api_error_400` en Cal.com.
-
-### Fix B — No inventar el teléfono del contacto con el número del remitente
-Archivo: `supabase/functions/whatsapp-bot/tool-executor.ts`
-
-- Línea 278: cambiar `contact_phone: cPhone || contactPhone || null` a:
-  - Cliente en modo cliente (el remitente ES el contacto → conocido porque `conversation.bot_context?.role === 'client'`): mantener fallback `cPhone || contactPhone || null`.
-  - Empleado en modo empleado (`role === 'employee'`, agendando para un tercero): usar **solo** `cPhone || null` (no heredar el número del empleado).
-- Alternativa mínima si no quieres depender del `role`: usar solo `cPhone || null` siempre y dejar que el prompt le pida el teléfono al usuario cuando falte. Es lo más simple y elimina la fabricación de raíz.
-- Actualizar `tools.ts:12` para quitar el número de ejemplo y aclarar: `"Teléfono del contacto en E.164 (ej: +52 seguido del número). Deja vacío si el cliente no lo proporcionó — NO inventes ni copies el teléfono del remitente."`
-
-### Fix C — Ajuste al prompt para el nuevo flag `calcom_error_snippet`
-Archivo: `supabase/functions/whatsapp-bot/prompts.ts`
-
-Añadir en la regla ya existente sobre `calcom_pushed=false`: "si `calcom_skipped_reason` empieza con `api_error_` y hay `calcom_error_snippet`, cítalo textual al empleado (ej: 'Cal.com rechazó: ya hay una cita a esa hora en el calendario del empleado')". Esto evita que el bot te diga "no pudo crear la reserva en Cal.com" sin más contexto.
-
-### Fuera de este plan (necesita acción del usuario, no código)
-- El `eventTypeId 5780532` de Cal.com tiene el Google Calendar del owner como *conflict calendar*. Con Fix A ya no auto-generamos el conflicto, pero **si el owner tiene una cita real en Google a esa hora**, Cal.com seguirá diciendo 400. Ese caso sí es correcto y el bot debe ofrecer otro horario. Nada que arreglar en código.
-
-## Archivos a tocar (build futuro)
-| Archivo | Cambio |
-|---|---|
-| `supabase/functions/whatsapp-bot/tool-executor.ts` | Reordenar Cal.com antes de calendar-sync (Fix A) + no heredar phone del sender (Fix B) + exponer `calcom_error_snippet` |
-| `supabase/functions/whatsapp-bot/tools.ts` | Reescribir descripción de `contact_phone` (Fix B) |
-| `supabase/functions/whatsapp-bot/prompts.ts` | Regla para citar `calcom_error_snippet` (Fix C) |
-
-¿Apruebas el plan para pasar a modo build?
+1. Redeploy `whatsapp-bot` y `voice-scheduling`.
+2. Repetir el mismo caso de prueba (agendar con Nidia en un horario ya reservado en Cal.com).
+3. Confirmar en logs que:
+  - `check_availability` devuelve el slot como ocupado sin necesidad de intentar reservar.
+  - Si aun así se llama `schedule_appointment`, el reply del bot no contiene "Google Calendar" ni "Ya te agendé".
+  - La tabla `appointments` no tiene el registro fantasma.

@@ -64,10 +64,21 @@ export async function getAIResponse(
       .maybeSingle(),
   ]);
 
-  const chatHistory = (recentMsgs || []).reverse().map((m: any) => ({
-    role: m.direction === 'in' ? 'user' : 'assistant',
-    content: m.body || '',
-  }));
+  const chatHistory = (recentMsgs || []).reverse().map((m: any) => {
+    let content = m.body || '';
+    // Sanitize prior assistant messages so the model doesn't copy hallucinated
+    // "Google Calendar" mentions or false confirmations from earlier turns.
+    if (m.direction === 'out') {
+      content = content
+        .replace(/no se sincroniz[oó][^.\n]*google[^.\n]*\.?/gi, '')
+        .replace(/google\s*calendar/gi, 'Cal.com')
+        .replace(/gcal/gi, 'Cal.com');
+    }
+    return {
+      role: m.direction === 'in' ? 'user' : 'assistant',
+      content,
+    };
+  });
 
   // Client mode: only names (no PII). Employee mode: name + email for internal use.
   const employeeListForClient = employees?.map((e: any) => `- ${e.name}`).join('\n') || 'No hay empleados registrados';
