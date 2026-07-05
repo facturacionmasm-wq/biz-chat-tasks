@@ -670,7 +670,7 @@ const AppointmentsPage = () => {
                     </div>
                     {apt.notes && <p className="text-xs text-[var(--rx-t2)] mt-2 italic">{apt.notes}</p>}
                     {apt.calendarSyncStatus === 'SYNCED' && (
-                      <p className="text-[10px] text-green-600 mt-1">✓ Sincronizada con Google Calendar</p>
+                      <p className="text-[10px] text-green-600 mt-1">✓ Sincronizada con el calendario</p>
                     )}
                   </div>
                 );
@@ -718,7 +718,7 @@ const AppointmentsPage = () => {
             <DialogDescription>
               ¿Estás seguro de que deseas cancelar la cita de <strong>{selectedAppointment?.contactName}</strong> del{' '}
               {selectedAppointment && format(selectedAppointment.startAt, "d 'de' MMMM 'a las' HH:mm", { locale: es })}?
-              {selectedAppointment?.calendarEventId && ' También se eliminará de Google Calendar.'}
+              {selectedAppointment?.calendarEventId && ' También se eliminará del calendario sincronizado.'}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

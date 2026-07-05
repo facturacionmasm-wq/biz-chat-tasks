@@ -25,7 +25,6 @@ const MODULE_PERMISSIONS = [
 
 const settingsSections = [
   { id: 'profile', label: 'Mi Perfil', icon: User },
-  { id: 'calendar', label: 'Calendario', icon: CalendarDays },
   { id: 'drive', label: 'Google Drive', icon: HardDrive },
   { id: 'general', label: 'General', icon: Building2 },
   { id: 'branding', label: 'Branding', icon: Palette },
@@ -111,27 +110,19 @@ const SettingsPage = () => {
   const [driveLoading, setDriveLoading] = useState(false);
   const [driveChecked, setDriveChecked] = useState(false);
 
-  // Handle redirect back from Google OAuth (same-window flow)
+  // Handle redirect back from Google OAuth (same-window flow) — kept only for Drive/Google flows
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-
     const calendarError = params.get('calendar_error');
     if (calendarError) {
-      setActiveSection('calendar');
       window.history.replaceState({}, '', window.location.pathname);
-      toast.error(`No se pudo conectar Google Calendar: ${decodeURIComponent(calendarError)}`);
       return;
     }
-
     if (params.get('calendar_connected') === 'true') {
-      setActiveSection('calendar');
       const email = params.get('email');
       if (email) setCalendarEmail(decodeURIComponent(email));
-      // Clean URL
       window.history.replaceState({}, '', window.location.pathname);
-      // Refresh status
       checkCalendarStatus();
-      toast.success(`Google Calendar conectado exitosamente${email ? ` con ${decodeURIComponent(email)}` : ''}`);
     }
   }, []);
 
@@ -1077,177 +1068,6 @@ const SettingsPage = () => {
           </div>
         )}
 
-        {activeSection === 'calendar' && (
-          <div className="max-w-2xl">
-            <h3 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
-              <CalendarDays size={20} className="text-[var(--rx-brand)]" /> Sincronización de Calendario
-            </h3>
-            <p className="text-sm text-[var(--rx-t2)] mb-6">
-              Vincula tu correo electrónico para que el sistema pueda crear automáticamente citas, eventos y recordatorios en tu calendario cuando se agenden desde WhatsApp, llamadas o la app.
-            </p>
-
-            <div className="space-y-4">
-              {/* Connection status */}
-              <div className={`bg-card border rounded-xl p-5 ${calendarConnected ? 'border-primary/30' : 'border-[var(--rx-b1)]'}`}>
-                <div className="flex items-center justify-between mb-4">
-                  <h4 className="text-sm font-semibold text-foreground flex items-center gap-2">
-                    {calendarConnected ? (
-                      <>
-                        <CheckCircle size={16} className="text-[var(--rx-brand)]" />
-                        Calendario vinculado
-                      </>
-                    ) : (
-                      <>
-                        <Link2 size={16} className="text-[var(--rx-t2)]" />
-                        Vincular calendario
-                      </>
-                    )}
-                  </h4>
-                  {calendarConnected && (
-                    <span className="text-xs bg-primary/10 text-[var(--rx-brand)] px-2 py-0.5 rounded-full font-medium">Activo</span>
-                  )}
-                </div>
-
-                {!calendarLoaded ? (
-                  <div className="flex items-center justify-center py-6">
-                    <Loader2 size={20} className="animate-spin text-[var(--rx-t2)]" />
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    <div>
-                      <label className="text-sm font-medium text-foreground block mb-1">Correo de Google Calendar</label>
-                      <input
-                        className="w-full px-3 py-2 rounded-lg bg-[var(--rx-s2)] border border-[var(--rx-b1)] text-foreground text-sm"
-                        value={calendarEmail}
-                        onChange={e => setCalendarEmail(e.target.value)}
-                        placeholder="tu@gmail.com"
-                      />
-                      <p className="text-xs text-[var(--rx-t2)] mt-1">Ingresa el correo de la cuenta de Google que deseas sincronizar</p>
-                    </div>
-
-                    {!calendarConnected ? (
-                      <button
-                        disabled={savingCalendar}
-                        onClick={handleConnectGoogleCalendar}
-                        className="bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground text-sm px-5 py-2.5 rounded-lg hover:opacity-90 disabled:opacity-40 flex items-center gap-2 font-medium w-full justify-center"
-                      >
-                        {savingCalendar ? <Loader2 size={14} className="animate-spin" /> : <Link2 size={14} />}
-                        Conectar con Google Calendar
-                      </button>
-                    ) : (
-                      <div className="flex gap-2">
-                        <button
-                          disabled={checkingHealth}
-                          onClick={handleCheckHealth}
-                          className="text-sm px-4 py-2 rounded-lg border border-[var(--rx-b1)] text-foreground hover:bg-[var(--rx-s2)] flex items-center gap-2 font-medium"
-                        >
-                          {checkingHealth ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-                          Probar conexión
-                        </button>
-                        <button
-                          disabled={savingCalendar}
-                          onClick={handleDisconnectCalendar}
-                          className="text-sm px-4 py-2 rounded-lg border border-destructive/30 text-[var(--rx-rose)] hover:bg-destructive/10 flex items-center gap-2 font-medium"
-                        >
-                          {savingCalendar ? <Loader2 size={14} className="animate-spin" /> : <Unlink size={14} />}
-                          Desvincular
-                        </button>
-                      </div>
-                    )}
-
-                    {calendarHealthy !== null && (
-                      <div className={`text-xs flex items-center gap-1.5 ${calendarHealthy ? 'text-[var(--rx-brand)]' : 'text-[var(--rx-rose)]'}`}>
-                        {calendarHealthy ? <CheckCircle size={12} /> : <XCircle size={12} />}
-                        {calendarHealthy ? 'Calendario verificado con permisos de escritura' : 'No se pudo verificar el calendario'}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Sync preferences */}
-              {calendarConnected && (
-                <div className="rx-panel">
-                  <h4 className="text-sm font-semibold text-foreground flex items-center gap-2 mb-4">
-                    <Settings2 size={16} className="text-[var(--rx-brand)]" /> Preferencias de sincronización
-                  </h4>
-                  <div className="space-y-4">
-                    <div>
-                      <label className="text-sm font-medium text-foreground block mb-1">Correo de calendario</label>
-                      <input
-                        className="w-full px-3 py-2 rounded-lg bg-[var(--rx-s2)] border border-[var(--rx-b1)] text-foreground text-sm"
-                        value={calendarEmail}
-                        onChange={e => setCalendarEmail(e.target.value)}
-                        placeholder="tu@email.com"
-                      />
-                      <p className="text-xs text-[var(--rx-t2)] mt-1">Email vinculado a tu Google Calendar para sincronizar citas</p>
-                    </div>
-
-                    <label className="flex items-center justify-between cursor-pointer group">
-                      <div>
-                        <span className="text-sm font-medium text-foreground">Sincronización activa</span>
-                        <p className="text-xs text-[var(--rx-t2)] mt-0.5">Las citas nuevas se crearán automáticamente en tu calendario</p>
-                      </div>
-                      <div
-                        onClick={() => setCalendarSyncEnabled(!calendarSyncEnabled)}
-                        className={`w-10 h-5 rounded-full transition-colors cursor-pointer flex items-center ${calendarSyncEnabled ? 'bg-[var(--rx-brand)]' : 'bg-[var(--rx-s2)]'}`}
-                      >
-                        <div className={`w-4 h-4 rounded-full bg-white shadow transition-transform ${calendarSyncEnabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
-                      </div>
-                    </label>
-
-                    <label className="flex items-center justify-between cursor-pointer group">
-                      <div>
-                        <span className="text-sm font-medium text-foreground">Crear eventos automáticamente</span>
-                        <p className="text-xs text-[var(--rx-t2)] mt-0.5">Citas desde WhatsApp y llamadas se agregan sin confirmación manual</p>
-                      </div>
-                      <div
-                        onClick={() => setCalendarAutoCreate(!calendarAutoCreate)}
-                        className={`w-10 h-5 rounded-full transition-colors cursor-pointer flex items-center ${calendarAutoCreate ? 'bg-[var(--rx-brand)]' : 'bg-[var(--rx-s2)]'}`}
-                      >
-                        <div className={`w-4 h-4 rounded-full bg-white shadow transition-transform ${calendarAutoCreate ? 'translate-x-5' : 'translate-x-0.5'}`} />
-                      </div>
-                    </label>
-
-                    <button
-                      disabled={savingCalendar}
-                      onClick={handleUpdateCalendarSettings}
-                      className="bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground text-sm px-5 py-2.5 rounded-lg hover:opacity-90 disabled:opacity-40 flex items-center gap-2 font-medium mt-2"
-                    >
-                      {savingCalendar ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                      Guardar preferencias
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Info card */}
-              <div className="bg-[var(--rx-s2)]/50 border border-[var(--rx-b1)] rounded-xl p-4">
-                <h4 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
-                  <CalendarDays size={14} className="text-[var(--rx-brand)]" /> ¿Cómo funciona?
-                </h4>
-                <ul className="text-xs text-[var(--rx-t2)] space-y-1.5">
-                  <li className="flex items-start gap-2">
-                    <span className="text-[var(--rx-brand)] mt-0.5">•</span>
-                    Cuando un cliente agenda una cita por WhatsApp o llamada, se crea automáticamente un evento en tu calendario.
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="text-[var(--rx-brand)] mt-0.5">•</span>
-                    Los recordatorios programados por el bot de WhatsApp también se agregan como eventos.
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="text-[var(--rx-brand)] mt-0.5">•</span>
-                    El sistema verifica tu disponibilidad en el calendario antes de agendar nuevas citas.
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="text-[var(--rx-brand)] mt-0.5">•</span>
-                    Puedes desvincular tu calendario en cualquier momento sin perder tus citas existentes.
-                  </li>
-                </ul>
-              </div>
-            </div>
-          </div>
-        )}
 
         {activeSection === 'availability' && (
           <div className="max-w-2xl">
@@ -1360,8 +1180,18 @@ const SettingsPage = () => {
                   <p className="text-sm text-[var(--rx-t2)]">
                     {calendarOAuthConnected
                       ? 'Tu cuenta de Google ya está conectada. Haz clic para crear la carpeta de finanzas en Google Drive.'
-                      : 'Primero debes conectar tu cuenta de Google en la sección de Calendario. Luego podrás activar Google Drive.'}
+                      : 'Primero conecta tu cuenta de Google para autorizar el acceso a Drive.'}
                   </p>
+                  {!calendarOAuthConnected && (
+                    <button
+                      disabled={savingCalendar}
+                      onClick={handleConnectGoogleCalendar}
+                      className="text-sm px-5 py-2.5 rounded-lg border border-[var(--rx-b1)] text-foreground hover:bg-[var(--rx-s2)] flex items-center gap-2 font-medium w-full justify-center"
+                    >
+                      {savingCalendar ? <Loader2 size={14} className="animate-spin" /> : <Link2 size={14} />}
+                      Conectar cuenta de Google
+                    </button>
+                  )}
                   <button
                     disabled={driveLoading || !calendarOAuthConnected}
                     onClick={handleSetupDrive}
@@ -1370,11 +1200,7 @@ const SettingsPage = () => {
                     {driveLoading ? <Loader2 size={14} className="animate-spin" /> : <HardDrive size={14} />}
                     Crear carpeta en Google Drive
                   </button>
-                  {!calendarOAuthConnected && (
-                    <p className="text-xs text-[var(--rx-rose)]">
-                      ⚠️ Conecta Google Calendar primero para habilitar esta opción.
-                    </p>
-                  )}
+
                 </div>
               )}
             </div>
