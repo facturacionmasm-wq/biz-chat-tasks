@@ -384,7 +384,6 @@ async function executeScheduleAppointment(
         } else {
           calcomSkippedReason = `api_error_${bookRes.status}`;
           const errBody = (await bookRes.text()).slice(0, 400);
-          // Extract human-readable message from Cal.com error envelope when possible.
           try {
             const parsed = JSON.parse(errBody);
             calcomErrorSnippet = parsed?.error?.message || parsed?.message || errBody.slice(0, 180);
@@ -392,6 +391,20 @@ async function executeScheduleAppointment(
             calcomErrorSnippet = errBody.slice(0, 180);
           }
           console.warn('[APPT] Cal.com push failed:', bookRes.status, errBody);
+
+          // If Cal.com rejects due to a time conflict, roll back the local appointment
+          // and tell the AI to offer alternatives instead of confirming a phantom booking.
+          const snippet = (calcomErrorSnippet || '').toLowerCase();
+          const isConflict = /already has booking|not available|no_available_users|no available|time conflict|reserva|no est[aá] disponible|ya tiene/.test(snippet);
+          if (isConflict) {
+            await supabase.from('appointments').delete().eq('id', apt.id);
+            return JSON.stringify({
+              success: false,
+              slot_taken: true,
+              calcom_error_snippet: calcomErrorSnippet,
+              message: `Ese horario no está disponible en Cal.com${employee_name ? ` con ${employee_name}` : ''}. Llama check_availability y ofrece 2-3 horarios alternativos antes de reintentar.`,
+            });
+          }
         }
       }
     }
