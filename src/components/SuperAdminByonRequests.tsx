@@ -77,9 +77,10 @@ const SuperAdminByonRequests = () => {
         <div>
           <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
             {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-            Solicitudes BYON (Hosted SMS / Port-in)
+            Solicitudes BYON (Hosted SMS / Port-in / Regulatory Bundle)
           </h3>
-          <p className="text-xs text-[var(--rx-t2)] mt-0.5">Solicitudes de tenants para traer su propio número.</p>
+          <p className="text-xs text-[var(--rx-t2)] mt-0.5">Solicitudes de tenants para traer su propio número o verificar documentos regulatorios.</p>
+
         </div>
         <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); load(); }} disabled={loading} className="gap-1">
           {loading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} Recargar
