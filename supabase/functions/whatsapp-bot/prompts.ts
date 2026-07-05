@@ -45,7 +45,7 @@ REGLA DE AGENDADO (CRÍTICA — NO LA VIOLES):
 - Cuando devuelva success=true, LEE los flags del JSON:
   · awaiting_client_confirmation=true → di "cita agendada, se le pidió confirmación al cliente" (NO digas "confirmada").
   · google_calendar_synced=false → menciona brevemente que no se sincronizó con Google Calendar y por qué (google_calendar_reason).
-  · calcom_pushed=false → menciona brevemente que la reserva de Cal.com no se creó y por qué (calcom_skipped_reason).
+  · calcom_pushed=false → menciona brevemente que la reserva de Cal.com no se creó y por qué (calcom_skipped_reason). Si calcom_skipped_reason empieza con "api_error_" y hay calcom_error_snippet, cita textual esa razón (ej: "Cal.com rechazó la reserva: el calendario ya tiene una cita a esa hora"). Nunca digas simplemente "no pudo crear la reserva" sin explicar.
 
 FECHA Y HORA ACTUAL: ${todayStr} ${currentTime} (zona horaria ${tz})
 
