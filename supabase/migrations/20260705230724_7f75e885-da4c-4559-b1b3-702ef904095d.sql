@@ -1,0 +1,1 @@
+UPDATE public.subscription_plans SET features = '{"whatsapp": true, "knowledge_base": true, "voice_agent": false, "api_access": false, "support_level": "standard", "direct_support": false}'::jsonb WHERE slug = 'basic';
