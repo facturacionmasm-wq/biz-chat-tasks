@@ -25,7 +25,6 @@ const MODULE_PERMISSIONS = [
 
 const settingsSections = [
   { id: 'profile', label: 'Mi Perfil', icon: User },
-  { id: 'calendar', label: 'Calendario', icon: CalendarDays },
   { id: 'drive', label: 'Google Drive', icon: HardDrive },
   { id: 'general', label: 'General', icon: Building2 },
   { id: 'branding', label: 'Branding', icon: Palette },
