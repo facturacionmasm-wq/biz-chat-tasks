@@ -326,9 +326,10 @@ serve(async (req) => {
           }, { onConflict: 'tenant_id' });
         }
 
-        // Determine redirect based on service_type
+        // Determine redirect based on service_type / explicit return_to
         const origin = req.headers.get('origin') || 'https://biz-chat-tasks.lovable.app';
-        const setupRoute = service_type === 'whatsapp' ? '/whatsapp' : '/calls';
+        const setupRoute = return_to || (service_type === 'whatsapp' ? '/whatsapp' : service_type === 'onboarding' ? '/' : '/calls');
+        const modeTag = service_type === 'onboarding' ? 'trial_verification' : 'pay_as_you_go';
 
         const session = await stripeRequest('/checkout/sessions', 'POST', {
           customer: customerId,
@@ -337,7 +338,10 @@ serve(async (req) => {
           success_url: `${origin}${setupRoute}?setup=success`,
           cancel_url: `${origin}${setupRoute}?setup=cancel`,
           'metadata[tenant_id]': tenant_id,
-          'metadata[mode]': 'pay_as_you_go',
+          'metadata[mode]': modeTag,
+          'setup_intent_data[metadata][tenant_id]': tenant_id,
+          'setup_intent_data[metadata][mode]': modeTag,
+          'setup_intent_data[usage]': 'off_session',
         }, STRIPE_RESTRICTED_API_KEY);
 
         // Audit
