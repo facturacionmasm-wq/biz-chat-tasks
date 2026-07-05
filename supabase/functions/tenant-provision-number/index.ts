@@ -103,7 +103,7 @@ serve(async (req) => {
         error: "billing_gate",
         message: "Tu suscripción no permite comprar números. Actualiza tu plan o método de pago.",
         subscription_status: status,
-      }, 402);
+      }, 200);
     }
   }
 
