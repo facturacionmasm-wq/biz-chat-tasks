@@ -142,7 +142,10 @@ const AppRoutes = () => (
     <Route path="/integrations" element={<P><IntegrationsPage /></P>} />
     <Route path="/audit" element={<P><AuditLogPage /></P>} />
     <Route path="/usage" element={<P><UsagePage /></P>} />
+    <Route path="/support" element={<P><SupportPage /></P>} />
+    <Route path="/platform-support" element={<P><PlatformSupportPage /></P>} />
     <Route path="/super-admin" element={<AdminRoute><AppLayout><SuperAdminPage /></AppLayout></AdminRoute>} />
+    <Route path="/super-admin/support" element={<AdminRoute><AppLayout><SuperAdminSupportPage /></AppLayout></AdminRoute>} />
     <Route path="/schema-docs" element={<AdminRoute><AppLayout><SchemaDocsPage /></AppLayout></AdminRoute>} />
     <Route path="*" element={<NotFound />} />
   </Routes>
