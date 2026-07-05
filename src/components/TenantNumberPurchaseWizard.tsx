@@ -317,10 +317,11 @@ export default function TenantNumberPurchaseWizard({ open, onOpenChange, onPurch
               </div>
             </div>
             <div className="rounded-lg bg-[var(--rx-amber)]/10 border border-[var(--rx-amber)]/30 p-3 text-xs text-foreground space-y-1">
-              <p className="font-semibold">Costo estimado</p>
+              <p className="font-semibold">Costo estimado y cobro automático</p>
               <p className="text-[var(--rx-t2)]">
-                Los números de Twilio se cobran mensualmente (~$1–$15 USD/mes según país y tipo)
-                más el consumo por uso. Consulta <a href="https://www.twilio.com/en-us/pricing" target="_blank" rel="noreferrer" className="underline">pricing.twilio.com</a> para el detalle.
+                Al confirmar, verificamos tu tarjeta en Stripe y hacemos el cargo del primer mes de renta del número
+                (~$1–$15 USD/mes según país y tipo). El consumo por uso se factura aparte.
+                Detalle: <a href="https://www.twilio.com/en-us/pricing" target="_blank" rel="noreferrer" className="underline">pricing.twilio.com</a>.
               </p>
             </div>
             <label className="flex items-start gap-2 text-xs cursor-pointer">
