@@ -8,9 +8,10 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { Loader2, Phone, ArrowRight, ArrowLeft, CheckCircle2, ShieldAlert } from 'lucide-react';
+import { Loader2, Phone, ArrowRight, ArrowLeft, CheckCircle2, ShieldAlert, ShieldCheck, Clock, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import { TWILIO_COUNTRIES, getTwilioCountry, type TwilioNumberType } from '@/lib/twilio-countries';
+import RegulatoryBundleRequestForm from '@/components/byon/RegulatoryBundleRequestForm';
 
 interface AvailableNumber {
   phone_number: string;
