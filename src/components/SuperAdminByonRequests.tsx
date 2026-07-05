@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 interface AdminReq {
   id: string;
   tenant_id: string;
-  request_type: 'hosted_sms' | 'port_in';
+  request_type: 'hosted_sms' | 'port_in' | 'regulatory_bundle';
   phone_number: string;
   country_code: string;
   current_carrier: string | null;
