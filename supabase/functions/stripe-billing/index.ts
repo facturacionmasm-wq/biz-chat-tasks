@@ -891,6 +891,110 @@ serve(async (req) => {
         }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
 
+      // ============================================
+      // CHARGE PHONE NUMBER (one-time immediate invoice)
+      // ============================================
+      case 'charge_phone_number': {
+        const phoneNumber: string | undefined = body?.phone_number;
+        const amount: number | undefined = typeof body?.amount === 'number' ? body.amount : undefined;
+        const chargeCurrency: string = (body?.currency || 'usd').toString().toLowerCase();
+        const description: string = body?.description || `Phone number ${phoneNumber || ''}`;
+
+        if (!tenant_id || !phoneNumber || !amount || amount <= 0) {
+          return new Response(JSON.stringify({ error: 'tenant_id, phone_number and amount(>0) required' }), {
+            status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        const { data: cust } = await supabase
+          .from('stripe_customers')
+          .select('stripe_customer_id')
+          .eq('tenant_id', tenant_id)
+          .maybeSingle();
+
+        if (!cust?.stripe_customer_id) {
+          return new Response(JSON.stringify({ ok: false, error: 'no_customer', message: 'El tenant no tiene un cliente Stripe. Registra un método de pago antes de comprar un número.' }), {
+            status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Verify default payment method
+        const customer = await stripeRequest(`/customers/${cust.stripe_customer_id}`, 'GET', undefined, STRIPE_RESTRICTED_API_KEY);
+        const pms = await stripeRequest(
+          `/payment_methods?customer=${cust.stripe_customer_id}&type=card&limit=5`,
+          'GET', undefined, STRIPE_RESTRICTED_API_KEY
+        );
+        const defaultPm = customer.invoice_settings?.default_payment_method || pms.data?.[0]?.id || null;
+        if (!defaultPm) {
+          return new Response(JSON.stringify({ ok: false, error: 'no_payment_method', message: 'Registra un método de pago antes de comprar un número.' }), {
+            status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Round to Stripe minor units (assume amount is already in currency units, e.g. dollars)
+        const amountMinor = Math.round(amount * 100);
+
+        // Create invoice item
+        await stripeRequest('/invoiceitems', 'POST', {
+          customer: cust.stripe_customer_id,
+          amount: String(amountMinor),
+          currency: chargeCurrency,
+          description,
+          'metadata[type]': 'phone_number_purchase',
+          'metadata[phone_number]': phoneNumber,
+          'metadata[tenant_id]': tenant_id,
+        }, STRIPE_RESTRICTED_API_KEY);
+
+        // Create and auto-advance invoice, charge immediately
+        let invoice: any;
+        try {
+          invoice = await stripeRequest('/invoices', 'POST', {
+            customer: cust.stripe_customer_id,
+            collection_method: 'charge_automatically',
+            auto_advance: 'true',
+            default_payment_method: defaultPm,
+            'metadata[type]': 'phone_number_purchase',
+            'metadata[phone_number]': phoneNumber,
+            'metadata[tenant_id]': tenant_id,
+          }, STRIPE_RESTRICTED_API_KEY);
+          // Finalize + pay
+          await stripeRequest(`/invoices/${invoice.id}/finalize`, 'POST', undefined, STRIPE_RESTRICTED_API_KEY);
+          invoice = await stripeRequest(`/invoices/${invoice.id}/pay`, 'POST', undefined, STRIPE_RESTRICTED_API_KEY);
+        } catch (err: any) {
+          return new Response(JSON.stringify({ ok: false, error: 'charge_failed', message: err?.message || 'Stripe rechazó el cargo' }), {
+            status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Persist invoice record
+        try {
+          await supabase.from('phone_number_invoices').insert({
+            tenant_id,
+            phone_e164: phoneNumber,
+            stripe_invoice_id: invoice?.id || null,
+            amount,
+            currency: chargeCurrency.toUpperCase(),
+            status: invoice?.status || 'paid',
+            invoice_type: 'purchase',
+            paid_at: invoice?.status === 'paid' ? new Date().toISOString() : null,
+          });
+        } catch (_) { /* table optional / schema variance */ }
+
+        try {
+          await supabase.from('tenant_phone_numbers')
+            .update({ billing_status: 'active', last_billed_at: new Date().toISOString() })
+            .eq('tenant_id', tenant_id)
+            .eq('phone_e164', phoneNumber);
+        } catch (_) { /* optional */ }
+
+        return new Response(JSON.stringify({
+          ok: true,
+          invoice_id: invoice?.id,
+          status: invoice?.status,
+          amount,
+          currency: chargeCurrency,
+        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
 
       default:
         return new Response(JSON.stringify({ error: `Unknown action: ${action}` }), {
