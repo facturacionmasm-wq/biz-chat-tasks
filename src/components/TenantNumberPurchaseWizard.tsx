@@ -196,6 +196,7 @@ export default function TenantNumberPurchaseWizard({ open, onOpenChange, onPurch
   };
 
   return (
+    <>
     <Dialog open={open} onOpenChange={(o) => (!purchasing ? onOpenChange(o) : null)}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
