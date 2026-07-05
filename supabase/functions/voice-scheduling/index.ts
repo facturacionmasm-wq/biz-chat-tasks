@@ -324,6 +324,18 @@ serve(async (req) => {
             await supabase.from('appointments')
               .update({ calendar_event_id: `calcom:${pushed.calcom_uid}`, calendar_sync_status: 'SYNCED' })
               .eq('id', appointment.id);
+            // Best-effort mirror to Google Calendar (secondary; never rolls back).
+            try {
+              const mirrorRes = await fetch(`${SUPABASE_URL}/functions/v1/calendar-sync`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`, apikey: SUPABASE_SERVICE_ROLE_KEY },
+                body: JSON.stringify({ action: 'mirror_appointment', appointment_id: appointment.id, preferred_user_id: employee_id || null }),
+              });
+              const mirrorJson = await mirrorRes.json().catch(() => ({}));
+              console.log('[voice-scheduling] Google mirror result:', mirrorJson);
+            } catch (mirrorErr) {
+              console.warn('[voice-scheduling] Google mirror error (ignored):', mirrorErr);
+            }
           } else if (pushed?.conflict) {
             // Roll back on Cal.com conflict so we don't keep a phantom booking.
             await supabase.from('appointments').delete().eq('id', appointment.id);
