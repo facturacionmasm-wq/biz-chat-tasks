@@ -205,6 +205,14 @@ serve(async (req) => {
       }
       await admin.from("platform_support_channels").update(patch).eq("id", channelId);
 
+      // Mark the paid consult as consumed (linked to this channel) if applicable
+      if (consumingConsultId) {
+        await admin
+          .from('support_consult_purchases')
+          .update({ status: 'consumed', consumed_at: new Date().toISOString(), channel_id: channelId })
+          .eq('id', consumingConsultId);
+      }
+
       return json({ message: msg });
     }
 
