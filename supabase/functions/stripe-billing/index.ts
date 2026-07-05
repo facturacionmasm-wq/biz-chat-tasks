@@ -9,7 +9,7 @@ const corsHeaders = {
 const STRIPE_API = 'https://api.stripe.com/v1';
 
 async function stripeRequest(path: string, method: string, body?: Record<string, string>, stripeKey?: string) {
-  const key = stripeKey || Deno.env.get('STRIPE_SECRET_KEY')!;
+  const key = stripeKey || Deno.env.get('STRIPE_RESTRICTED_API_KEY')!;
   const headers: Record<string, string> = {
     'Authorization': `Bearer ${key}`,
     'Content-Type': 'application/x-www-form-urlencoded',
@@ -31,9 +31,9 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  const STRIPE_SECRET_KEY = Deno.env.get('STRIPE_SECRET_KEY');
-  if (!STRIPE_SECRET_KEY) {
-    return new Response(JSON.stringify({ error: 'STRIPE_SECRET_KEY not configured' }), {
+  const STRIPE_RESTRICTED_API_KEY = Deno.env.get('STRIPE_RESTRICTED_API_KEY');
+  if (!STRIPE_RESTRICTED_API_KEY) {
+    return new Response(JSON.stringify({ error: 'STRIPE_RESTRICTED_API_KEY not configured' }), {
       status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
@@ -52,7 +52,7 @@ serve(async (req) => {
       case 'validate_key': {
         const providedKey = typeof secret_key === 'string' && secret_key.trim().length > 0
           ? secret_key.trim()
-          : STRIPE_SECRET_KEY;
+          : STRIPE_RESTRICTED_API_KEY;
 
         const looksValid = providedKey.startsWith('sk_') || providedKey.startsWith('rk_');
 
@@ -120,12 +120,12 @@ serve(async (req) => {
           'metadata[country]': tenantCountry,
           'metadata[region]': tenantRegion,
           'metadata[source]': 'officehub_auto',
-        }, STRIPE_SECRET_KEY);
+        }, STRIPE_RESTRICTED_API_KEY);
 
         console.log(`Created Stripe customer: ${customer.id} for tenant ${tenant_id} (${tenantCountry}/${priceCurrency})`);
 
         // Get or create products and prices for this currency
-        const products = await ensureProductsExist(STRIPE_SECRET_KEY, priceCurrency, basePriceAmount, overagePriceAmount);
+        const products = await ensureProductsExist(STRIPE_RESTRICTED_API_KEY, priceCurrency, basePriceAmount, overagePriceAmount);
 
         // Create subscription with base + metered items
         const subParams: Record<string, string> = {
@@ -145,7 +145,7 @@ serve(async (req) => {
           subParams['trial_period_days'] = '15';
         }
 
-        const subscription = await stripeRequest('/subscriptions', 'POST', subParams, STRIPE_SECRET_KEY);
+        const subscription = await stripeRequest('/subscriptions', 'POST', subParams, STRIPE_RESTRICTED_API_KEY);
 
         // Extract subscription item IDs
         const baseItem = subscription.items.data.find((i: any) =>
@@ -264,7 +264,7 @@ serve(async (req) => {
             timestamp: String(Math.floor(Date.now() / 1000)),
             action: 'set',
           },
-          STRIPE_SECRET_KEY
+          STRIPE_RESTRICTED_API_KEY
         );
 
         // Save record for auditing
@@ -314,7 +314,7 @@ serve(async (req) => {
             name: name || email,
             'metadata[tenant_id]': tenant_id,
             'metadata[source]': 'setup_session',
-          }, STRIPE_SECRET_KEY);
+          }, STRIPE_RESTRICTED_API_KEY);
           customerId = customer.id;
 
           await supabase.from('stripe_customers').upsert({
@@ -338,7 +338,7 @@ serve(async (req) => {
           cancel_url: `${origin}${setupRoute}?setup=cancel`,
           'metadata[tenant_id]': tenant_id,
           'metadata[mode]': 'pay_as_you_go',
-        }, STRIPE_SECRET_KEY);
+        }, STRIPE_RESTRICTED_API_KEY);
 
         // Audit
         await supabase.from('audit_events').insert({
@@ -381,7 +381,7 @@ serve(async (req) => {
         // Check if customer has payment methods
         const paymentMethods = await stripeRequest(
           `/payment_methods?customer=${sc.stripe_customer_id}&type=card&limit=1`,
-          'GET', undefined, STRIPE_SECRET_KEY
+          'GET', undefined, STRIPE_RESTRICTED_API_KEY
         );
 
         return new Response(JSON.stringify({
@@ -429,7 +429,7 @@ serve(async (req) => {
             name: name || email,
             'metadata[tenant_id]': tenant_id,
             'metadata[source]': 'package_purchase',
-          }, STRIPE_SECRET_KEY);
+          }, STRIPE_RESTRICTED_API_KEY);
           custId = customer.id;
 
           await supabase.from('stripe_customers').upsert({
@@ -448,7 +448,7 @@ serve(async (req) => {
         // Search for existing price with metadata
         const existingPrices = await stripeRequest(
           `/prices?active=true&limit=20&lookup_keys=${package_id}_${priceCurrency}`,
-          'GET', undefined, STRIPE_SECRET_KEY
+          'GET', undefined, STRIPE_RESTRICTED_API_KEY
         );
 
         let priceId: string;
@@ -456,7 +456,7 @@ serve(async (req) => {
           priceId = existingPrices.data[0].id;
         } else {
           // Create product for this package if needed
-          const products = await stripeRequest('/products?active=true&limit=100', 'GET', undefined, STRIPE_SECRET_KEY);
+          const products = await stripeRequest('/products?active=true&limit=100', 'GET', undefined, STRIPE_RESTRICTED_API_KEY);
           let packageProduct = products.data.find((p: any) => p.metadata?.type === 'officehub_package');
 
           if (!packageProduct) {
@@ -464,7 +464,7 @@ serve(async (req) => {
               name: 'OfficeHub - Paquete de Servicio',
               description: 'Paquete prepagado de minutos o mensajes',
               'metadata[type]': 'officehub_package',
-            }, STRIPE_SECRET_KEY);
+            }, STRIPE_RESTRICTED_API_KEY);
           }
 
           const newPrice = await stripeRequest('/prices', 'POST', {
@@ -472,7 +472,7 @@ serve(async (req) => {
             unit_amount: String(priceAmount),
             currency: priceCurrency,
             lookup_key: `${package_id}_${priceCurrency}`,
-          }, STRIPE_SECRET_KEY);
+          }, STRIPE_RESTRICTED_API_KEY);
           priceId = newPrice.id;
         }
 
@@ -492,7 +492,7 @@ serve(async (req) => {
           'metadata[package_id]': package_id,
           'metadata[service_type]': (pkg as any).service_type,
           'metadata[units]': String((pkg as any).units),
-        }, STRIPE_SECRET_KEY);
+        }, STRIPE_RESTRICTED_API_KEY);
 
         // Provision balance immediately (will be confirmed by webhook)
         await supabase.from('tenant_package_balances').insert({

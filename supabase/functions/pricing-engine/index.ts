@@ -9,7 +9,7 @@ const corsHeaders = {
 const STRIPE_API = 'https://api.stripe.com/v1';
 
 async function stripeRequest(path: string, method: string, body?: Record<string, string>) {
-  const key = Deno.env.get('STRIPE_SECRET_KEY')!;
+  const key = Deno.env.get('STRIPE_RESTRICTED_API_KEY')!;
   const headers: Record<string, string> = {
     'Authorization': `Bearer ${key}`,
     'Content-Type': 'application/x-www-form-urlencoded',
@@ -169,8 +169,8 @@ async function applyPlanChange(
   newPlanSlug: string,
   evaluationId: string
 ) {
-  const STRIPE_SECRET_KEY = Deno.env.get('STRIPE_SECRET_KEY');
-  if (!STRIPE_SECRET_KEY) return;
+  const STRIPE_RESTRICTED_API_KEY = Deno.env.get('STRIPE_RESTRICTED_API_KEY');
+  if (!STRIPE_RESTRICTED_API_KEY) return;
 
   const { data: stripeCustomer } = await supabase
     .from('stripe_customers')

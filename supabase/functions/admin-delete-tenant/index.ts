@@ -60,8 +60,8 @@ serve(async (req) => {
     }
 
     // Cancel Stripe subscriptions if present
-    const STRIPE_SECRET_KEY = Deno.env.get("STRIPE_SECRET_KEY");
-    if (STRIPE_SECRET_KEY) {
+    const STRIPE_RESTRICTED_API_KEY = Deno.env.get("STRIPE_RESTRICTED_API_KEY");
+    if (STRIPE_RESTRICTED_API_KEY) {
       const { data: sc } = await admin
         .from("stripe_customers")
         .select("stripe_customer_id, stripe_subscription_id")
@@ -71,7 +71,7 @@ serve(async (req) => {
         try {
           await fetch(`https://api.stripe.com/v1/subscriptions/${sc.stripe_subscription_id}`, {
             method: "DELETE",
-            headers: { Authorization: `Bearer ${STRIPE_SECRET_KEY}` },
+            headers: { Authorization: `Bearer ${STRIPE_RESTRICTED_API_KEY}` },
           });
         } catch (e) {
           console.warn("stripe cancel error:", e);
