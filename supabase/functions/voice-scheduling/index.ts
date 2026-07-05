@@ -465,3 +465,61 @@ function getTzOffset(tz: string): string {
   };
   return offsets[tz] || '-06:00'; // Default to Mexico City
 }
+
+// Push a booking to Cal.com using the tenant-level integration.
+// Uses the tenant's default_event_type_id so employees without a per-user Cal.com
+// sync still book against the main tenant calendar (single source of truth).
+async function pushToCalcom(
+  supabase: any,
+  tenantId: string,
+  args: { appointment_id: string; start_iso: string; contact_name: string; contact_email: string; timezone: string; source: string },
+): Promise<{ calcom_uid?: string; conflict?: boolean; error?: string } | null> {
+  const { data: integ } = await supabase
+    .from('calcom_integrations')
+    .select('api_key_encrypted, default_event_type_id, status')
+    .eq('tenant_id', tenantId)
+    .eq('status', 'active')
+    .maybeSingle();
+  if (!integ?.api_key_encrypted || !integ?.default_event_type_id) return null;
+
+  const secret = Deno.env.get('CREDENTIALS_ENCRYPTION_KEY');
+  if (!secret) return null;
+  const enc = new TextEncoder();
+  const km = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'PBKDF2' }, false, ['deriveKey']);
+  const key = await crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt: enc.encode('credential-vault-salt-v1'), iterations: 100000, hash: 'SHA-256' },
+    km, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'],
+  );
+  let apiKey = integ.api_key_encrypted as string;
+  if (apiKey.startsWith('enc:')) {
+    const [, ivB64, ctB64] = apiKey.split(':');
+    const iv = Uint8Array.from(atob(ivB64), c => c.charCodeAt(0));
+    const ct = Uint8Array.from(atob(ctB64), c => c.charCodeAt(0));
+    const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
+    apiKey = new TextDecoder().decode(pt);
+  }
+
+  const res = await fetch('https://api.cal.com/v2/bookings', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      'cal-api-version': '2024-08-13',
+    },
+    body: JSON.stringify({
+      eventTypeId: Number(integ.default_event_type_id),
+      start: args.start_iso,
+      attendee: { name: args.contact_name, email: args.contact_email, timeZone: args.timezone, language: 'es' },
+      metadata: { source: args.source, appointment_id: args.appointment_id },
+    }),
+  });
+
+  if (res.ok) {
+    const j = await res.json();
+    return { calcom_uid: j?.data?.uid || j?.uid };
+  }
+  const body = (await res.text()).slice(0, 300);
+  const snippet = body.toLowerCase();
+  const conflict = /already has booking|not available|no_available_users|no available|time conflict/.test(snippet);
+  return { conflict, error: body.slice(0, 180) };
+}
