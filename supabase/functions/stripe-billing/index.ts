@@ -1102,10 +1102,12 @@ serve(async (req) => {
         }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
 
+      default:
         return new Response(JSON.stringify({ error: `Unknown action: ${action}` }), {
           status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
     }
+
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Unknown error';
     console.error('Stripe billing error:', msg);
