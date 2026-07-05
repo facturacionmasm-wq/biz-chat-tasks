@@ -966,23 +966,32 @@ serve(async (req) => {
           });
         }
 
-        // Persist invoice record
+        // Persist invoice record (schema uses phone_number_id FK)
         try {
-          await supabase.from('phone_number_invoices').insert({
-            tenant_id,
-            phone_e164: phoneNumber,
-            stripe_invoice_id: invoice?.id || null,
-            amount,
-            currency: chargeCurrency.toUpperCase(),
-            status: invoice?.status || 'paid',
-            invoice_type: 'purchase',
-            paid_at: invoice?.status === 'paid' ? new Date().toISOString() : null,
-          });
-        } catch (_) { /* table optional / schema variance */ }
+          const { data: pn } = await supabase
+            .from('tenant_phone_numbers')
+            .select('id')
+            .eq('tenant_id', tenant_id)
+            .eq('phone_e164', phoneNumber)
+            .maybeSingle();
+          if (pn?.id) {
+            await supabase.from('phone_number_invoices').insert({
+              tenant_id,
+              phone_number_id: pn.id,
+              stripe_invoice_id: invoice?.id || null,
+              invoice_url: invoice?.hosted_invoice_url || null,
+              amount,
+              currency: chargeCurrency.toUpperCase(),
+              status: invoice?.status || 'paid',
+              period_start: new Date().toISOString(),
+              period_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+            });
+          }
+        } catch (_) { /* invoice history is optional */ }
 
         try {
           await supabase.from('tenant_phone_numbers')
-            .update({ billing_status: 'active', last_billed_at: new Date().toISOString() })
+            .update({ billing_status: 'active', next_billing_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() })
             .eq('tenant_id', tenant_id)
             .eq('phone_e164', phoneNumber);
         } catch (_) { /* optional */ }
