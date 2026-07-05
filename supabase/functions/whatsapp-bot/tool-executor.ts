@@ -270,12 +270,17 @@ async function executeScheduleAppointment(
     });
   }
 
+  // Fix B: never inherit the WhatsApp sender's phone as the contact's phone.
+  // If the AI didn't extract `contact_phone` from the conversation, leave it null
+  // so the UI/notifications don't display a phone that belongs to the sender, not the contact.
+  const contactPhoneToStore = cPhone || null;
+
   const { data: apt, error } = await supabase
     .from('appointments')
     .insert({
       tenant_id: tenantId,
       contact_name,
-      contact_phone: cPhone || contactPhone || null,
+      contact_phone: contactPhoneToStore,
       contact_email: contact_email || null,
       start_at: startAt.toISOString(),
       end_at: endAt.toISOString(),
@@ -292,37 +297,15 @@ async function executeScheduleAppointment(
 
   if (error) return JSON.stringify({ error: error.message });
 
-  // Trigger calendar sync asynchronously
-  let calendarSynced = false;
-  let googleCalendarReason: string | null = null;
-  if (!apt.user_id) {
-    googleCalendarReason = 'no_employee_assigned';
-  }
-  if (supabaseUrl && serviceRoleKey && apt.user_id) {
-    try {
-      const syncRes = await fetch(`${supabaseUrl}/functions/v1/calendar-sync`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${serviceRoleKey}`,
-        },
-        body: JSON.stringify({ action: 'sync_appointment', appointment_id: apt.id }),
-      });
-      const syncResult = await syncRes.json();
-      calendarSynced = syncResult.success === true;
-      if (!calendarSynced) {
-        googleCalendarReason = syncResult.error || syncResult.status || 'sync_pending';
-        console.log(`Calendar sync pending for ${apt.id}: ${googleCalendarReason}`);
-      }
-    } catch (syncErr) {
-      googleCalendarReason = 'sync_request_failed';
-      console.error('Calendar sync trigger error:', syncErr);
-    }
-  }
-
-  // ─── Push booking to Cal.com if the tenant has an active integration ───
+  // ─── Fix A: Push to Cal.com FIRST (before Google Calendar sync). ───
+  // Rationale: Cal.com has the owner's Google Calendar wired as a conflict calendar.
+  // If we create the Google event first, Cal.com sees it and returns 400
+  // "User either already has booking at this time or is not available" (self-conflict).
+  // When Cal.com succeeds it already inserts the event into the owner's Google Calendar
+  // via its own integration, so we skip the local calendar-sync to avoid duplicates.
   let calcomPushed = false;
   let calcomSkippedReason: string | null = null;
+  let calcomErrorSnippet: string | null = null;
   try {
     const { data: calcomInteg } = await supabase
       .from('calcom_integrations')
@@ -401,13 +384,55 @@ async function executeScheduleAppointment(
           }
         } else {
           calcomSkippedReason = `api_error_${bookRes.status}`;
-          console.warn('[APPT] Cal.com push failed:', bookRes.status, (await bookRes.text()).slice(0, 200));
+          const errBody = (await bookRes.text()).slice(0, 400);
+          // Extract human-readable message from Cal.com error envelope when possible.
+          try {
+            const parsed = JSON.parse(errBody);
+            calcomErrorSnippet = parsed?.error?.message || parsed?.message || errBody.slice(0, 180);
+          } catch {
+            calcomErrorSnippet = errBody.slice(0, 180);
+          }
+          console.warn('[APPT] Cal.com push failed:', bookRes.status, errBody);
         }
       }
     }
   } catch (calcomErr) {
     calcomSkippedReason = 'exception';
+    calcomErrorSnippet = calcomErr instanceof Error ? calcomErr.message.slice(0, 180) : null;
     console.error('[APPT] Cal.com push error:', calcomErr);
+  }
+
+  // ─── Google Calendar sync — only when Cal.com did NOT create the booking. ───
+  // If Cal.com pushed, it already synced the owner's Google Calendar.
+  // We fall back to our local calendar-sync when Cal.com is not configured or its push failed.
+  let calendarSynced = false;
+  let googleCalendarReason: string | null = null;
+  if (calcomPushed) {
+    // Cal.com handles the Google event on the owner's calendar.
+    calendarSynced = true;
+    googleCalendarReason = null;
+  } else if (!apt.user_id) {
+    googleCalendarReason = 'no_employee_assigned';
+  } else if (supabaseUrl && serviceRoleKey) {
+    try {
+      const syncRes = await fetch(`${supabaseUrl}/functions/v1/calendar-sync`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${serviceRoleKey}`,
+        },
+        body: JSON.stringify({ action: 'sync_appointment', appointment_id: apt.id }),
+      });
+      const syncResult = await syncRes.json();
+      calendarSynced = syncResult.success === true;
+      if (!calendarSynced) {
+        googleCalendarReason = syncResult.error || syncResult.status || 'sync_pending';
+        console.log(`Calendar sync pending for ${apt.id}: ${googleCalendarReason}`);
+      }
+    } catch (syncErr) {
+      googleCalendarReason = 'sync_request_failed';
+      console.error('Calendar sync trigger error:', syncErr);
+    }
   }
 
   // === SEND CONFIRMATION TO CONTACT & SCHEDULE REMINDERS ===
