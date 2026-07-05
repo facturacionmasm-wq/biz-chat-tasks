@@ -44,8 +44,8 @@ export async function getAIResponse(
     return `[${prefix}] ${k.title}:\n${content}`;
   }).join('\n\n') || '';
 
-  // Get recent messages and employees in parallel
-  const [{ data: recentMsgs }, { data: employees }] = await Promise.all([
+  // Get recent messages, employees and tenant info in parallel
+  const [{ data: recentMsgs }, { data: employees }, { data: tenantRow }] = await Promise.all([
     supabase
       .from('whatsapp_messages')
       .select('direction, body')
@@ -57,6 +57,11 @@ export async function getAIResponse(
       .select('name, user_id, email, phone')
       .eq('tenant_id', tenantId)
       .eq('status', 'active'),
+    supabase
+      .from('tenants')
+      .select('name, settings_json')
+      .eq('id', tenantId)
+      .maybeSingle(),
   ]);
 
   const chatHistory = (recentMsgs || []).reverse().map((m: any) => ({
@@ -64,21 +69,30 @@ export async function getAIResponse(
     content: m.body || '',
   }));
 
-  const employeeList = employees?.map((e: any) => `- ${e.name} (${e.email || 'sin email'})`).join('\n') || 'No hay empleados registrados';
+  // Client mode: only names (no PII). Employee mode: name + email for internal use.
+  const employeeListForClient = employees?.map((e: any) => `- ${e.name}`).join('\n') || 'No hay empleados registrados';
 
-  const today = new Date();
-  const todayStr = today.toISOString().split('T')[0];
-  const currentTime = today.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
-  // Pre-calculate tomorrow so the model doesn't have to do date arithmetic
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const tomorrowStr = tomorrow.toISOString().split('T')[0];
+  const tenantName = tenantRow?.name || 'el negocio';
+  const tz = (tenantRow?.settings_json as any)?.timezone || 'America/Mexico_City';
+
+  // Resolve "now" in the tenant timezone so "today"/"tomorrow" are correct.
+  const now = new Date();
+  const ymdFmt = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' });
+  const timeFmt = new Intl.DateTimeFormat('es-MX', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false });
+  const labelFmt = new Intl.DateTimeFormat('es-MX', { timeZone: tz, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const todayStr = ymdFmt.format(now); // YYYY-MM-DD
+  const currentTime = timeFmt.format(now);
+  const todayLabel = labelFmt.format(now);
+  // Compute tomorrow in the tenant tz by adding 24h then formatting again.
+  const tomorrowDate = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+  const tomorrowStr = ymdFmt.format(tomorrowDate);
+  const tomorrowLabel = labelFmt.format(tomorrowDate);
 
   const adaptiveContext = buildAdaptiveContext(adaptiveProfile);
 
   const systemPrompt = mode === 'client'
-    ? buildClientPrompt(todayStr, tomorrowStr, currentTime, employeeList, knowledgeContext, adaptiveContext)
-    : buildEmployeePrompt(conversation.bot_context?.user_name || 'tu compañero', todayStr, tomorrowStr, currentTime, knowledgeContext, adaptiveContext);
+    ? buildClientPrompt(tenantName, tz, todayStr, tomorrowStr, todayLabel, tomorrowLabel, currentTime, employeeListForClient, knowledgeContext, adaptiveContext)
+    : buildEmployeePrompt(conversation.bot_context?.user_name || 'tu compañero', tenantName, tz, todayStr, tomorrowStr, todayLabel, tomorrowLabel, currentTime, knowledgeContext, adaptiveContext);
 
   try {
     const messages = [
