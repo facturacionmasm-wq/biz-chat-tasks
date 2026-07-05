@@ -1079,7 +1079,14 @@ async function executeCancelAppointment(
 
     if (updateErr) continue;
 
-    // Google Calendar sync removed — Cal.com manages the event lifecycle on the owner's calendar.
+    // Best-effort mirror: cancel the Google Calendar event if we previously mirrored it.
+    if (apt.calendar_event_id && String(apt.calendar_event_id).includes('gcal:')) {
+      await invokeCalendarSyncMirror(supabaseUrl, serviceRoleKey, {
+        action: 'mirror_cancel',
+        appointment_id: apt.id,
+      });
+    }
+
 
 
     cancelled.push({
