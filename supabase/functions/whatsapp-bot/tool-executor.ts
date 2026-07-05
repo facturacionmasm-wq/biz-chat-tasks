@@ -445,9 +445,27 @@ async function executeScheduleAppointment(
     console.error('[APPT] Cal.com push error:', calcomErr);
   }
 
-  // Google Calendar sync removed — Cal.com is the single source of truth.
-  // When Cal.com pushes the booking it manages the owner's calendar via its own integrations.
-  // When Cal.com is not configured, the appointment lives only in our DB.
+  // === MIRROR TO GOOGLE CALENDAR (best-effort, only after Cal.com success) ===
+  // Cal.com is the source of truth. Google Calendar is a secondary mirror on the
+  // assigned employee's calendar (or the tenant principal if the employee is not
+  // connected). Failures here NEVER roll back the appointment.
+  let googleMirrored = false;
+  let googleMirrorReason: string | null = null;
+  let googleMirrorMaster = false;
+  if (calcomPushed) {
+    const mirrorRes = await invokeCalendarSyncMirror(supabaseUrl, serviceRoleKey, {
+      action: 'mirror_appointment',
+      appointment_id: apt.id,
+      preferred_user_id: employeeId || userId || null,
+    });
+    if (mirrorRes.ok && mirrorRes.result?.mirrored) {
+      googleMirrored = true;
+      googleMirrorMaster = !!mirrorRes.result?.is_master_tenant;
+    } else {
+      googleMirrorReason = mirrorRes.result?.reason || 'unavailable';
+    }
+  }
+
 
 
   // === SEND CONFIRMATION TO CONTACT & SCHEDULE REMINDERS ===
