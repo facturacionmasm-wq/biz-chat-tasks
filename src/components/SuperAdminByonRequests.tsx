@@ -18,7 +18,14 @@ interface AdminReq {
   reviewed_at: string | null;
   created_at: string;
   tenants?: { name: string } | null;
+  verification_fee_paid?: boolean;
+  verification_fee_amount?: number | null;
+  twilio_bundle_sid?: string | null;
+  twilio_status?: string | null;
+  twilio_rejection_reason?: string | null;
+  twilio_submitted_at?: string | null;
 }
+
 
 const STATUSES = ['pending', 'in_review', 'approved', 'completed', 'rejected'] as const;
 
