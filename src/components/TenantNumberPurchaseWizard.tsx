@@ -200,7 +200,12 @@ export default function TenantNumberPurchaseWizard({ open, onOpenChange, onPurch
       toast.success(`Número asignado: ${data.phone_number}`);
     } catch (err: any) {
       console.error('[tenant-purchase] purchase error', err);
-      toast.error(err.message || 'Error al comprar número');
+      let msg = err?.message || 'Error al comprar número';
+      try {
+        const body = await err?.context?.response?.json?.();
+        if (body?.message || body?.error) msg = body.message || body.error;
+      } catch (_) { /* ignore */ }
+      toast.error(msg);
     } finally {
       setPurchasing(false);
     }
