@@ -718,7 +718,7 @@ const AppointmentsPage = () => {
             <DialogDescription>
               ¿Estás seguro de que deseas cancelar la cita de <strong>{selectedAppointment?.contactName}</strong> del{' '}
               {selectedAppointment && format(selectedAppointment.startAt, "d 'de' MMMM 'a las' HH:mm", { locale: es })}?
-              {selectedAppointment?.calendarEventId && ' También se eliminará de Google Calendar.'}
+              {selectedAppointment?.calendarEventId && ' También se eliminará del calendario sincronizado.'}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
