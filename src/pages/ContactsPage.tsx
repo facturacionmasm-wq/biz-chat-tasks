@@ -21,6 +21,9 @@ interface Contact {
   source: string | null;
   tags: string[] | null;
   starred: boolean | null;
+  is_vip?: boolean | null;
+  vip_tier?: string | null;
+  vip_notes?: string | null;
   created_at: string;
   tenant_id: string;
   // computed
