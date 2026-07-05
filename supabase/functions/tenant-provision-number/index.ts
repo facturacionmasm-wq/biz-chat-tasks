@@ -197,5 +197,41 @@ serve(async (req) => {
     });
   }
 
-  return j(forwardData, forwardRes.status);
+  // Auto-charge via Stripe after successful purchase (best effort — failure is logged, not rolled back)
+  let chargeResult: any = null;
+  if (!dryRun && !isMaster && forwardRes.ok && forwardData?.ok && priceRow && forwardData?.phone_number) {
+    try {
+      const chargeRes = await fetch(`${SUPABASE_URL}/functions/v1/stripe-billing`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          'Content-Type': 'application/json',
+          apikey: SUPABASE_SERVICE_ROLE_KEY,
+        },
+        body: JSON.stringify({
+          action: 'charge_phone_number',
+          tenant_id: tenantId,
+          phone_number: forwardData.phone_number,
+          amount: priceRow.monthly_fee,
+          currency: priceRow.currency.toLowerCase(),
+          description: `Número Twilio ${forwardData.phone_number} (${country_code || ''} ${type || ''}) - primer mes`,
+        }),
+      });
+      chargeResult = await chargeRes.json().catch(() => ({}));
+      if (!chargeResult?.ok) {
+        await admin.from('audit_events').insert({
+          tenant_id: tenantId,
+          event_type: 'tenant_number_charge_failed',
+          actor_id: userId,
+          resource_type: 'tenants',
+          resource_id: tenantId,
+          payload: { phone_number: forwardData.phone_number, error: chargeResult },
+        });
+      }
+    } catch (chargeErr) {
+      console.error('[tenant-provision] stripe charge error', chargeErr);
+    }
+  }
+
+  return j({ ...forwardData, charge: chargeResult }, forwardRes.status);
 });
