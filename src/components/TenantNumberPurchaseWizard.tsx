@@ -324,7 +324,7 @@ export default function TenantNumberPurchaseWizard({ open, onOpenChange, onPurch
                       </p>
                       {bundleStatus === 'rejected' && (
                         <p className="text-[var(--rx-rose)] mt-1 text-[11px]">
-                          La solicitud anterior fue rechazada. Corrige los documentos y vuelve a enviarla.
+                          La solicitud anterior fue rechazada{bundleDetail?.twilio_rejection_reason ? `: ${bundleDetail.twilio_rejection_reason}` : ''}. Corrige los documentos y vuelve a enviarla.
                         </p>
                       )}
                       <Button
