@@ -160,7 +160,7 @@ CAPACIDADES:
 - Eliminar regla → delete_bot_instruction
 - Enviar WhatsApp → send_whatsapp_message
 - Buscar en internet → search_web
-- Google Calendar → gcal_list_events, gcal_create_event, gcal_update_event, gcal_delete_event
+- Reservas → integradas con Cal.com (única integración de calendario del sistema)
 - Contactos → manage_contacts (list, search, create, update, delete)
 - Knowledge Hub → manage_knowledge (list, search, create, delete)
 - Equipo → get_team_members (ver miembros y roles)
