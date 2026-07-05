@@ -43,7 +43,7 @@ serve(async (req) => {
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
   try {
-    const { action, tenant_id, email, name, plan_slug, currency: reqCurrency, package_id, service_type, secret_key } = await req.json();
+    const { action, tenant_id, email, name, plan_slug, currency: reqCurrency, package_id, service_type, secret_key, return_to } = await req.json();
 
     switch (action) {
       // ============================================
@@ -326,9 +326,10 @@ serve(async (req) => {
           }, { onConflict: 'tenant_id' });
         }
 
-        // Determine redirect based on service_type
+        // Determine redirect based on service_type / explicit return_to
         const origin = req.headers.get('origin') || 'https://biz-chat-tasks.lovable.app';
-        const setupRoute = service_type === 'whatsapp' ? '/whatsapp' : '/calls';
+        const setupRoute = return_to || (service_type === 'whatsapp' ? '/whatsapp' : service_type === 'onboarding' ? '/' : '/calls');
+        const modeTag = service_type === 'onboarding' ? 'trial_verification' : 'pay_as_you_go';
 
         const session = await stripeRequest('/checkout/sessions', 'POST', {
           customer: customerId,
@@ -337,7 +338,10 @@ serve(async (req) => {
           success_url: `${origin}${setupRoute}?setup=success`,
           cancel_url: `${origin}${setupRoute}?setup=cancel`,
           'metadata[tenant_id]': tenant_id,
-          'metadata[mode]': 'pay_as_you_go',
+          'metadata[mode]': modeTag,
+          'setup_intent_data[metadata][tenant_id]': tenant_id,
+          'setup_intent_data[metadata][mode]': modeTag,
+          'setup_intent_data[usage]': 'off_session',
         }, STRIPE_RESTRICTED_API_KEY);
 
         // Audit
@@ -561,6 +565,331 @@ serve(async (req) => {
           margin_state: marginRes.data,
         }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
+
+      // ============================================
+      // 7. CREATE TRIAL SUBSCRIPTION (Stripe-side)
+      // Attaches a real Stripe subscription in trialing state anchored to
+      // the tenant's current trial_ends_at. Stripe will auto-charge the
+      // default payment method at trial end.
+      // ============================================
+      case 'create_trial_subscription': {
+        if (!tenant_id || !email || !plan_slug) {
+          return new Response(JSON.stringify({ error: 'tenant_id, email and plan_slug required' }), {
+            status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Load plan + tenant + existing subscription row
+        const [{ data: plan }, { data: tInfo }, { data: existingSub }, { data: existingCust }] = await Promise.all([
+          supabase.from('subscription_plans').select('*').eq('slug', plan_slug).maybeSingle(),
+          supabase.from('tenants').select('currency, country_code, region').eq('id', tenant_id).maybeSingle(),
+          supabase.from('tenant_subscriptions').select('*').eq('tenant_id', tenant_id).maybeSingle(),
+          supabase.from('stripe_customers').select('*').eq('tenant_id', tenant_id).maybeSingle(),
+        ]);
+        if (!plan) throw new Error(`Plan not found: ${plan_slug}`);
+
+        // Idempotent: if we already have a Stripe subscription linked, return it
+        if (existingCust?.stripe_subscription_id) {
+          return new Response(JSON.stringify({
+            success: true,
+            stripe_customer_id: existingCust.stripe_customer_id,
+            stripe_subscription_id: existingCust.stripe_subscription_id,
+            reused: true,
+          }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        }
+
+        const country = tInfo?.country_code || 'MX';
+        const region = tInfo?.region || 'LATAM';
+
+        // Localized price for this plan / country
+        const { data: local } = await supabase
+          .from('global_plan_pricing')
+          .select('base_price, currency')
+          .eq('country_code', country)
+          .eq('plan_id', plan.id)
+          .eq('active', true)
+          .maybeSingle();
+
+        const priceAmount = Math.round(((local?.base_price ?? plan.price_monthly) || 0) * 100);
+        const priceCurrency = (local?.currency || tInfo?.currency || 'mxn').toLowerCase();
+
+        if (priceAmount <= 0) {
+          return new Response(JSON.stringify({ error: 'Plan has no billable price configured' }), {
+            status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Ensure a Stripe product + recurring price for this plan+currency
+        const products = await stripeRequest('/products?active=true&limit=100', 'GET', undefined, STRIPE_RESTRICTED_API_KEY);
+        let product = products.data.find((p: any) => p.metadata?.type === 'officehub_plan' && p.metadata?.plan_slug === plan_slug);
+        if (!product) {
+          product = await stripeRequest('/products', 'POST', {
+            name: `OfficeHub - Plan ${plan.name}`,
+            'metadata[type]': 'officehub_plan',
+            'metadata[plan_slug]': plan_slug,
+          }, STRIPE_RESTRICTED_API_KEY);
+        }
+        const lookup = `plan_${plan_slug}_${priceCurrency}_${priceAmount}`;
+        const priceSearch = await stripeRequest(`/prices?active=true&limit=20&lookup_keys%5B%5D=${lookup}`, 'GET', undefined, STRIPE_RESTRICTED_API_KEY);
+        let stripePrice = priceSearch.data?.[0];
+        if (!stripePrice) {
+          stripePrice = await stripeRequest('/prices', 'POST', {
+            product: product.id,
+            unit_amount: String(priceAmount),
+            currency: priceCurrency,
+            'recurring[interval]': 'month',
+            lookup_key: lookup,
+          }, STRIPE_RESTRICTED_API_KEY);
+        }
+
+        // Get or create Stripe customer
+        let customerId = existingCust?.stripe_customer_id;
+        if (!customerId) {
+          const customer = await stripeRequest('/customers', 'POST', {
+            email,
+            name: name || email,
+            'metadata[tenant_id]': tenant_id,
+            'metadata[country]': country,
+            'metadata[region]': region,
+            'metadata[source]': 'onboarding_trial',
+          }, STRIPE_RESTRICTED_API_KEY);
+          customerId = customer.id;
+        }
+
+        // Anchor trial end to tenant_subscriptions.trial_ends_at (or +15d)
+        const trialEnd = existingSub?.trial_ends_at
+          ? Math.floor(new Date(existingSub.trial_ends_at).getTime() / 1000)
+          : Math.floor(Date.now() / 1000) + 15 * 86400;
+
+        const subParams: Record<string, string> = {
+          customer: customerId,
+          'items[0][price]': stripePrice.id,
+          trial_end: String(trialEnd),
+          'metadata[tenant_id]': tenant_id,
+          'metadata[plan_slug]': plan_slug,
+          'payment_settings[save_default_payment_method]': 'on_subscription',
+          // Cancel automatically if no payment method by trial end
+          'trial_settings[end_behavior][missing_payment_method]': 'cancel',
+          'expand[0]': 'latest_invoice',
+        };
+
+        const subscription = await stripeRequest('/subscriptions', 'POST', subParams, STRIPE_RESTRICTED_API_KEY);
+
+        await supabase.from('stripe_customers').upsert({
+          tenant_id,
+          stripe_customer_id: customerId,
+          stripe_subscription_id: subscription.id,
+          email,
+          name: name || email,
+          metadata: { plan_slug },
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'tenant_id' });
+
+        await supabase.from('tenant_subscriptions').update({
+          plan_id: plan.id,
+          stripe_customer_id: customerId,
+          stripe_subscription_id: subscription.id,
+          status: 'trialing',
+          trial_ends_at: new Date(trialEnd * 1000).toISOString(),
+          updated_at: new Date().toISOString(),
+        }).eq('tenant_id', tenant_id);
+
+        await supabase.from('audit_events').insert({
+          tenant_id,
+          event_type: 'billing.trial_subscription_created',
+          resource_type: 'stripe_subscription',
+          resource_id: subscription.id,
+          payload: { plan_slug, trial_end: trialEnd, price_id: stripePrice.id, currency: priceCurrency },
+        });
+
+        return new Response(JSON.stringify({
+          success: true,
+          stripe_customer_id: customerId,
+          stripe_subscription_id: subscription.id,
+          trial_end: trialEnd,
+        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+
+      // ============================================
+      // 8. CHANGE PLAN (immediate proration + auto-charge)
+      // ============================================
+      case 'change_plan': {
+        if (!tenant_id || !plan_slug) {
+          return new Response(JSON.stringify({ error: 'tenant_id and plan_slug required' }), {
+            status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        const [{ data: plan }, { data: tInfo }, { data: cust }, { data: currentSub }] = await Promise.all([
+          supabase.from('subscription_plans').select('*').eq('slug', plan_slug).maybeSingle(),
+          supabase.from('tenants').select('currency, country_code').eq('id', tenant_id).maybeSingle(),
+          supabase.from('stripe_customers').select('*').eq('tenant_id', tenant_id).maybeSingle(),
+          supabase.from('tenant_subscriptions').select('*').eq('tenant_id', tenant_id).maybeSingle(),
+        ]);
+        if (!plan) throw new Error(`Plan not found: ${plan_slug}`);
+
+        if (!cust?.stripe_customer_id) {
+          return new Response(JSON.stringify({
+            requires_payment_method: true,
+            reason: 'no_stripe_customer',
+          }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        }
+
+        // Ensure a saved default payment method exists (real verified card)
+        const pms = await stripeRequest(
+          `/payment_methods?customer=${cust.stripe_customer_id}&type=card&limit=1`,
+          'GET', undefined, STRIPE_RESTRICTED_API_KEY
+        );
+        if (!pms.data.length) {
+          return new Response(JSON.stringify({
+            requires_payment_method: true,
+            reason: 'no_card_on_file',
+          }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        }
+
+        // Localized price for the new plan
+        const country = tInfo?.country_code || 'MX';
+        const { data: local } = await supabase
+          .from('global_plan_pricing')
+          .select('base_price, currency')
+          .eq('country_code', country)
+          .eq('plan_id', plan.id)
+          .eq('active', true)
+          .maybeSingle();
+        const priceAmount = Math.round(((local?.base_price ?? plan.price_monthly) || 0) * 100);
+        const priceCurrency = (local?.currency || tInfo?.currency || 'mxn').toLowerCase();
+        if (priceAmount <= 0) {
+          return new Response(JSON.stringify({ error: 'Plan has no billable price configured' }), {
+            status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Ensure product/price in Stripe
+        const products = await stripeRequest('/products?active=true&limit=100', 'GET', undefined, STRIPE_RESTRICTED_API_KEY);
+        let product = products.data.find((p: any) => p.metadata?.type === 'officehub_plan' && p.metadata?.plan_slug === plan_slug);
+        if (!product) {
+          product = await stripeRequest('/products', 'POST', {
+            name: `OfficeHub - Plan ${plan.name}`,
+            'metadata[type]': 'officehub_plan',
+            'metadata[plan_slug]': plan_slug,
+          }, STRIPE_RESTRICTED_API_KEY);
+        }
+        const lookup = `plan_${plan_slug}_${priceCurrency}_${priceAmount}`;
+        const priceSearch = await stripeRequest(`/prices?active=true&limit=20&lookup_keys%5B%5D=${lookup}`, 'GET', undefined, STRIPE_RESTRICTED_API_KEY);
+        let stripePrice = priceSearch.data?.[0];
+        if (!stripePrice) {
+          stripePrice = await stripeRequest('/prices', 'POST', {
+            product: product.id,
+            unit_amount: String(priceAmount),
+            currency: priceCurrency,
+            'recurring[interval]': 'month',
+            lookup_key: lookup,
+          }, STRIPE_RESTRICTED_API_KEY);
+        }
+
+        let subscriptionId = cust.stripe_subscription_id;
+
+        if (subscriptionId) {
+          // Fetch current subscription to find the base item to replace
+          const sub = await stripeRequest(`/subscriptions/${subscriptionId}`, 'GET', undefined, STRIPE_RESTRICTED_API_KEY);
+          const baseItem = sub.items.data.find((i: any) => !i.price?.recurring?.usage_type)
+            || sub.items.data[0];
+
+          // End trial immediately so Stripe generates the invoice now
+          await stripeRequest(`/subscriptions/${subscriptionId}`, 'POST', {
+            'items[0][id]': baseItem.id,
+            'items[0][price]': stripePrice.id,
+            proration_behavior: 'always_invoice',
+            payment_behavior: 'error_if_incomplete',
+            trial_end: 'now',
+            'metadata[plan_slug]': plan_slug,
+            'default_payment_method': pms.data[0].id,
+          }, STRIPE_RESTRICTED_API_KEY);
+        } else {
+          // No subscription yet — create one active immediately (no trial), auto-charge card
+          const newSub = await stripeRequest('/subscriptions', 'POST', {
+            customer: cust.stripe_customer_id,
+            'items[0][price]': stripePrice.id,
+            'default_payment_method': pms.data[0].id,
+            'metadata[tenant_id]': tenant_id,
+            'metadata[plan_slug]': plan_slug,
+            payment_behavior: 'error_if_incomplete',
+          }, STRIPE_RESTRICTED_API_KEY);
+          subscriptionId = newSub.id;
+
+          await supabase.from('stripe_customers').update({
+            stripe_subscription_id: subscriptionId,
+            updated_at: new Date().toISOString(),
+          }).eq('tenant_id', tenant_id);
+        }
+
+        // Persist plan change locally + history
+        await supabase.from('tenant_subscriptions').update({
+          plan_id: plan.id,
+          status: 'active',
+          stripe_subscription_id: subscriptionId,
+          trial_ends_at: null,
+          canceled_at: null,
+          updated_at: new Date().toISOString(),
+        }).eq('tenant_id', tenant_id);
+
+        try {
+          await supabase.from('plan_change_history').insert({
+            tenant_id,
+            from_plan_id: currentSub?.plan_id || null,
+            to_plan_id: plan.id,
+            reason: 'user_change_plan',
+          });
+        } catch (_) { /* history table is optional */ }
+
+        await supabase.from('audit_events').insert({
+          tenant_id,
+          event_type: 'billing.plan_changed',
+          resource_type: 'stripe_subscription',
+          resource_id: subscriptionId,
+          payload: { plan_slug, price_id: stripePrice.id, currency: priceCurrency },
+        });
+
+        return new Response(JSON.stringify({
+          success: true,
+          plan_slug,
+          stripe_subscription_id: subscriptionId,
+        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+
+      // ============================================
+      // 9. VERIFY PAYMENT METHOD (real Stripe check)
+      // ============================================
+      case 'verify_payment_method': {
+        if (!tenant_id) {
+          return new Response(JSON.stringify({ error: 'tenant_id required' }), {
+            status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+        const { data: cust } = await supabase
+          .from('stripe_customers')
+          .select('stripe_customer_id')
+          .eq('tenant_id', tenant_id)
+          .maybeSingle();
+        if (!cust?.stripe_customer_id) {
+          return new Response(JSON.stringify({ verified: false, reason: 'no_customer' }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+        const customer = await stripeRequest(`/customers/${cust.stripe_customer_id}`, 'GET', undefined, STRIPE_RESTRICTED_API_KEY);
+        const pms = await stripeRequest(
+          `/payment_methods?customer=${cust.stripe_customer_id}&type=card&limit=5`,
+          'GET', undefined, STRIPE_RESTRICTED_API_KEY
+        );
+        const defaultPm = customer.invoice_settings?.default_payment_method || null;
+        const pm = pms.data.find((p: any) => p.id === defaultPm) || pms.data[0] || null;
+        return new Response(JSON.stringify({
+          verified: !!pm,
+          default_payment_method: defaultPm,
+          card: pm?.card ? { brand: pm.card.brand, last4: pm.card.last4, exp_month: pm.card.exp_month, exp_year: pm.card.exp_year } : null,
+        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+
 
       default:
         return new Response(JSON.stringify({ error: `Unknown action: ${action}` }), {

@@ -399,6 +399,57 @@ serve(async (req) => {
         break;
       }
 
+      case 'setup_intent.succeeded': {
+        // Real card verification succeeded. Attach it as default PM on the
+        // customer AND on the tenant's active/trial subscription so the
+        // automatic charge at trial end (or plan change) uses it.
+        const si = event.data.object;
+        const paymentMethodId = si.payment_method;
+        const customerId = si.customer;
+        const tenantId = si.metadata?.tenant_id;
+        if (!paymentMethodId || !customerId) break;
+
+        const STRIPE_KEY = Deno.env.get('STRIPE_RESTRICTED_API_KEY')!;
+        const stripeReq = async (path: string, method: string, body?: Record<string, string>) => {
+          const opts: RequestInit = {
+            method,
+            headers: { 'Authorization': `Bearer ${STRIPE_KEY}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+          };
+          if (body) opts.body = new URLSearchParams(body).toString();
+          const r = await fetch(`https://api.stripe.com/v1${path}`, opts);
+          if (!r.ok) console.error('Stripe error in webhook:', await r.text());
+          return r.ok ? r.json() : null;
+        };
+
+        // Attach PM to customer (idempotent) + set as default for invoices
+        await stripeReq(`/payment_methods/${paymentMethodId}/attach`, 'POST', { customer: customerId });
+        await stripeReq(`/customers/${customerId}`, 'POST', {
+          'invoice_settings[default_payment_method]': paymentMethodId,
+        });
+
+        // If tenant has an active/trialing subscription, wire the PM there too
+        const custRow = await resolveTenantByCustomer(client, customerId);
+        const resolvedTenant = tenantId || custRow?.tenant_id;
+        const { data: custData } = await client
+          .from('stripe_customers')
+          .select('stripe_subscription_id')
+          .eq('stripe_customer_id', customerId)
+          .maybeSingle();
+        if (custData?.stripe_subscription_id) {
+          await stripeReq(`/subscriptions/${custData.stripe_subscription_id}`, 'POST', {
+            default_payment_method: paymentMethodId,
+          });
+        }
+        if (resolvedTenant) {
+          await logAudit(client, resolvedTenant, 'billing.payment_method_verified', {
+            payment_method_id: paymentMethodId,
+            stripe_customer_id: customerId,
+            mode: si.metadata?.mode || 'unknown',
+          });
+        }
+        break;
+      }
+
       default:
         console.log(`Unhandled event type: ${event.type}`);
     }

@@ -515,8 +515,54 @@ const TenantBillingView = ({ status, subStatus, currentSub, currentPlanSlug, pla
   getTenantId: () => Promise<string>;
 }) => {
   const [tenantId, setTenantId] = useState<string | null>(null);
+  const [changing, setChanging] = useState<string | null>(null);
   useEffect(() => { getTenantId().then(setTenantId); }, []);
   const { currentMonth, costHistory, fxRate, isLoading: usageLoading } = useTenantBilling(tenantId);
+
+  const handleChangePlan = async (slug: string) => {
+    if (!tenantId) return;
+    setChanging(slug);
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      const u = authData.user;
+      const { data, error } = await supabase.functions.invoke('stripe-billing', {
+        body: {
+          action: 'change_plan',
+          tenant_id: tenantId,
+          plan_slug: slug,
+          email: u?.email,
+          name: u?.user_metadata?.name || u?.email,
+        },
+      });
+      if (error) throw error;
+
+      if (data?.requires_payment_method) {
+        toast.info('Necesitas registrar una tarjeta antes de cambiar de plan.');
+        const { data: setup } = await supabase.functions.invoke('stripe-billing', {
+          body: {
+            action: 'create_setup_session',
+            tenant_id: tenantId,
+            email: u?.email,
+            name: u?.user_metadata?.name || u?.email,
+            service_type: 'onboarding',
+            return_to: '/settings',
+          },
+        });
+        if (setup?.checkout_url) {
+          window.location.href = setup.checkout_url;
+        }
+        return;
+      }
+
+      toast.success('Plan actualizado y cobro procesado.');
+      setTimeout(() => window.location.reload(), 800);
+    } catch (err: any) {
+      toast.error(err.message || 'No se pudo cambiar el plan');
+    } finally {
+      setChanging(null);
+    }
+  };
+
 
   const fxInfo = fxRate.data;
   const history = costHistory.data || [];
@@ -639,9 +685,14 @@ const TenantBillingView = ({ status, subStatus, currentSub, currentPlanSlug, pla
                 </ul>
               )}
               {!isCurrent && (
-                <p className="text-xs text-muted-foreground mt-4 text-center">
-                  Contacta al administrador para cambiar de plan
-                </p>
+                <button
+                  onClick={() => handleChangePlan(plan.slug)}
+                  disabled={changing !== null}
+                  className="mt-4 w-full bg-primary text-primary-foreground text-sm font-medium py-2 rounded-lg hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {changing === plan.slug && <Loader2 size={14} className="animate-spin" />}
+                  Cambiar a este plan
+                </button>
               )}
             </div>
           );

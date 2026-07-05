@@ -211,10 +211,48 @@ const OnboardingPage = () => {
         throw new Error('No se pudo guardar el estado de onboarding. Intenta de nuevo.');
       }
 
-      toast.success('¡Plan activado! Ahora registra tu método de pago.');
-      // Redirect to payment/usage page so the user can register their card.
-      // Full reload ensures AuthContext refreshes onboarding + subscription state.
-      window.location.replace('/usage?setup=payment');
+      // Resolve slug + tenant to link a real Stripe subscription with the trial.
+      const chosen = plans.find(p => p.id === selectedPlan);
+      const { data: tenantId } = await supabase.rpc('get_user_tenant_id', { _user_id: user.id });
+      const displayName = user.user_metadata?.name || (user.email ? user.email.split('@')[0] : 'Cliente');
+
+      if (chosen && tenantId) {
+        // 1) Create the Stripe-side subscription in trialing state — auto-charge
+        //    will fire when the trial ends.
+        const { error: trialErr } = await supabase.functions.invoke('stripe-billing', {
+          body: {
+            action: 'create_trial_subscription',
+            tenant_id: tenantId,
+            email: user.email,
+            name: displayName,
+            plan_slug: chosen.slug,
+          },
+        });
+        if (trialErr) console.warn('[Onboarding] create_trial_subscription failed:', trialErr);
+
+        // 2) Redirect to Stripe Checkout (mode=setup) to VERIFY a real card
+        //    via SetupIntent. On success Stripe sets it as default PM and the
+        //    trial-end invoice charges automatically.
+        const { data: setup, error: setupErr } = await supabase.functions.invoke('stripe-billing', {
+          body: {
+            action: 'create_setup_session',
+            tenant_id: tenantId,
+            email: user.email,
+            name: displayName,
+            service_type: 'onboarding',
+            return_to: '/',
+          },
+        });
+        if (!setupErr && setup?.checkout_url) {
+          toast.success('¡Plan activado! Verifica tu método de pago.');
+          window.location.href = setup.checkout_url;
+          return;
+        }
+        console.warn('[Onboarding] create_setup_session failed, continuing:', setupErr);
+      }
+
+      toast.success('¡Bienvenido! Tu prueba de 15 días ha comenzado.');
+      window.location.replace('/');
     } catch (err: any) {
       toast.error(err.message || 'Error al activar plan');
     } finally {
