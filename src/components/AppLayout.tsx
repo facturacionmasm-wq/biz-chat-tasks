@@ -22,6 +22,8 @@ const navItems = [
   { to: '/whatsapp', icon: MessageSquare, label: 'WhatsApp' },
   { to: '/appointments', icon: CalendarPlus, label: 'Agenda' },
   { to: '/contacts', icon: Users, label: 'Contactos' },
+  { to: '/support', icon: LifeBuoy, label: 'Soporte' },
+  { to: '/platform-support', icon: HeadphonesIcon, label: 'Soporte Plataforma' },
   { to: '/chat', icon: MessageCircle, label: 'Chat Interno' },
   { to: '/calendar', icon: CalendarDays, label: 'Calendario' },
   { to: '/projects', icon: FolderKanban, label: 'Proyectos' },
