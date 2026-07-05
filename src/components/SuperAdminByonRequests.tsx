@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 interface AdminReq {
   id: string;
   tenant_id: string;
-  request_type: 'hosted_sms' | 'port_in';
+  request_type: 'hosted_sms' | 'port_in' | 'regulatory_bundle';
   phone_number: string;
   country_code: string;
   current_carrier: string | null;
@@ -77,9 +77,10 @@ const SuperAdminByonRequests = () => {
         <div>
           <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
             {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-            Solicitudes BYON (Hosted SMS / Port-in)
+            Solicitudes BYON (Hosted SMS / Port-in / Regulatory Bundle)
           </h3>
-          <p className="text-xs text-[var(--rx-t2)] mt-0.5">Solicitudes de tenants para traer su propio número.</p>
+          <p className="text-xs text-[var(--rx-t2)] mt-0.5">Solicitudes de tenants para traer su propio número o verificar documentos regulatorios.</p>
+
         </div>
         <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); load(); }} disabled={loading} className="gap-1">
           {loading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} Recargar
@@ -109,7 +110,7 @@ const SuperAdminByonRequests = () => {
                     {r.tenants?.name || r.tenant_id.slice(0, 8)} · <span className="font-mono">{r.phone_number}</span>
                   </p>
                   <p className="text-[11px] text-[var(--rx-t2)]">
-                    {r.request_type === 'hosted_sms' ? 'Hosted SMS' : 'Port-in'} · {r.country_code}
+                    {r.request_type === 'hosted_sms' ? 'Hosted SMS' : r.request_type === 'regulatory_bundle' ? 'Regulatory Bundle' : 'Port-in'} · {r.country_code}
                     {r.current_carrier ? ` · ${r.current_carrier}` : ''} · {new Date(r.created_at).toLocaleString()}
                   </p>
                 </div>
