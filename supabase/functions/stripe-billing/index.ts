@@ -43,7 +43,8 @@ serve(async (req) => {
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
   try {
-    const { action, tenant_id, email, name, plan_slug, currency: reqCurrency, package_id, service_type, secret_key, return_to } = await req.json();
+    const body = await req.json();
+    const { action, tenant_id, email, name, plan_slug, currency: reqCurrency, package_id, service_type, secret_key, return_to } = body;
 
     switch (action) {
       // ============================================
