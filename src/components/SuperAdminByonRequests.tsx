@@ -110,7 +110,7 @@ const SuperAdminByonRequests = () => {
                     {r.tenants?.name || r.tenant_id.slice(0, 8)} · <span className="font-mono">{r.phone_number}</span>
                   </p>
                   <p className="text-[11px] text-[var(--rx-t2)]">
-                    {r.request_type === 'hosted_sms' ? 'Hosted SMS' : 'Port-in'} · {r.country_code}
+                    {r.request_type === 'hosted_sms' ? 'Hosted SMS' : r.request_type === 'regulatory_bundle' ? 'Regulatory Bundle' : 'Port-in'} · {r.country_code}
                     {r.current_carrier ? ` · ${r.current_carrier}` : ''} · {new Date(r.created_at).toLocaleString()}
                   </p>
                 </div>
