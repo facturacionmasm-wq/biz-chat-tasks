@@ -25,6 +25,8 @@ interface UploadedDoc {
 
 // Common Twilio Regulatory Bundle documents. Exact requirements depend on the
 // country and number type; the support team validates against Twilio's live list.
+const VERIFICATION_FEE_USD = 15;
+
 const DOC_TYPES: { key: string; label: string; help: string; entity: 'both' | 'business' | 'individual' }[] = [
   { key: 'gov_id', label: 'Identificación oficial del representante', help: 'INE, pasaporte o cédula del titular / representante legal.', entity: 'both' },
   { key: 'address_proof', label: 'Comprobante de domicilio local', help: 'Recibo (luz, agua, teléfono) menor a 3 meses con el domicilio en el país del número.', entity: 'both' },
