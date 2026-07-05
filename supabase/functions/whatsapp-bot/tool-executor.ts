@@ -1197,9 +1197,15 @@ async function executeRescheduleAppointment(
 
   if (updateErr) return JSON.stringify({ error: updateErr.message });
 
-  // Google Calendar sync removed — Cal.com owns the calendar side.
-  // Note: reprogramar en Cal.com automáticamente no está implementado;
-  // el cambio queda registrado en la app y Cal.com deberá ajustarse manualmente si aplica.
+  // Best-effort mirror to Google Calendar (update if mirrored, otherwise create).
+  // Cal.com side reprogramming is not automated here; Cal.com may need manual adjustment.
+  if (apt.calendar_event_id && String(apt.calendar_event_id).includes('gcal:')) {
+    await invokeCalendarSyncMirror(supabaseUrl, serviceRoleKey, {
+      action: 'mirror_update',
+      appointment_id: apt.id,
+    });
+  }
+
   const response: any = {
     success: true,
     appointment_id: apt.id,
