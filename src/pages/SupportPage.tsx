@@ -281,12 +281,28 @@ const SupportPage = () => {
   return (
     <div className="min-h-full bg-background pb-24">
       <div className="px-4 pt-6 pb-4">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
           <div>
             <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2"><LifeBuoy size={24} className="text-primary" /> Soporte a Clientes</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">{openCount} abiertos · {urgentCount} urgentes</p>
+            <p className="text-sm text-muted-foreground mt-0.5 flex items-center gap-2 flex-wrap">
+              <span>{openCount} abiertos · {urgentCount} urgentes</span>
+              {supportLevel && (
+                <Badge className={
+                  supportLevel === 'dedicated' ? 'bg-amber-100 text-amber-700 border border-amber-300' :
+                  supportLevel === 'priority' ? 'bg-blue-100 text-blue-700 border border-blue-300' :
+                  'bg-gray-100 text-gray-600 border border-gray-300'
+                }>
+                  {supportLevel === 'dedicated' && <Crown size={10} className="mr-1" />}
+                  {supportLevel === 'priority' && <Sparkles size={10} className="mr-1" />}
+                  Atención {supportLevel === 'dedicated' ? 'dedicada' : supportLevel === 'priority' ? 'prioritaria' : 'estándar'} · {planName || '—'}
+                </Badge>
+              )}
+            </p>
           </div>
-          <Button onClick={() => setCreateOpen(true)} className="rounded-full"><Plus size={16} className="mr-1" /> Nuevo ticket</Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setEmailOpen(true)} className="rounded-full"><Mail size={16} className="mr-1" /> Enviar correo a soporte</Button>
+            <Button onClick={() => setCreateOpen(true)} className="rounded-full"><Plus size={16} className="mr-1" /> Nuevo ticket</Button>
+          </div>
         </div>
 
         <div className="flex gap-2 flex-wrap">
