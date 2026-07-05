@@ -547,7 +547,7 @@ async function handleState(input: StateInput): Promise<StateResult> {
           const bizName = tzRow?.name || 'el negocio';
           const dStr = appt ? new Date(appt.start_at).toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', timeZone: tzC }) : '';
           const tStr = appt ? new Date(appt.start_at).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', timeZone: tzC }) : '';
-          reply = `✅ *Cita agendada, te esperamos en tu cita.*\n\n📆 ${dStr}\n⏰ ${tStr}\n${appt?.service_type ? `📋 ${appt.service_type}\n` : ''}🏢 ${bizName}\n\n¡Nos vemos pronto! 😊`;
+          reply = `✅ *Cita agendada, te esperamos en tu cita.*\n\n📆 ${dStr}\n⏰ ${tStr}\n${appt?.service_type ? `📋 ${appt.service_type}\n` : ''}🏢 ${bizName}\n📍 Ubicación: https://maps.app.goo.gl/qvKmNoSDyFRqSnKo9\n\n¡Nos vemos pronto! 😊`;
         } else {
           reply = '❌ Entendido, tu cita ha sido cancelada. Si necesitas reagendar, no dudes en escribirme. 🙏';
         }
