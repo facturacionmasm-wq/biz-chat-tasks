@@ -450,7 +450,19 @@ export type Database = {
           reviewed_by: string | null
           status: string
           tenant_id: string
+          twilio_bundle_sid: string | null
+          twilio_end_user_sid: string | null
+          twilio_last_synced_at: string | null
+          twilio_rejection_reason: string | null
+          twilio_status: string | null
+          twilio_submitted_at: string | null
+          twilio_supporting_document_sids: Json | null
           updated_at: string
+          verification_fee_amount: number | null
+          verification_fee_currency: string | null
+          verification_fee_invoice_id: string | null
+          verification_fee_paid: boolean
+          verification_fee_paid_at: string | null
         }
         Insert: {
           admin_notes?: string | null
@@ -467,7 +479,19 @@ export type Database = {
           reviewed_by?: string | null
           status?: string
           tenant_id: string
+          twilio_bundle_sid?: string | null
+          twilio_end_user_sid?: string | null
+          twilio_last_synced_at?: string | null
+          twilio_rejection_reason?: string | null
+          twilio_status?: string | null
+          twilio_submitted_at?: string | null
+          twilio_supporting_document_sids?: Json | null
           updated_at?: string
+          verification_fee_amount?: number | null
+          verification_fee_currency?: string | null
+          verification_fee_invoice_id?: string | null
+          verification_fee_paid?: boolean
+          verification_fee_paid_at?: string | null
         }
         Update: {
           admin_notes?: string | null
@@ -484,7 +508,19 @@ export type Database = {
           reviewed_by?: string | null
           status?: string
           tenant_id?: string
+          twilio_bundle_sid?: string | null
+          twilio_end_user_sid?: string | null
+          twilio_last_synced_at?: string | null
+          twilio_rejection_reason?: string | null
+          twilio_status?: string | null
+          twilio_submitted_at?: string | null
+          twilio_supporting_document_sids?: Json | null
           updated_at?: string
+          verification_fee_amount?: number | null
+          verification_fee_currency?: string | null
+          verification_fee_invoice_id?: string | null
+          verification_fee_paid?: boolean
+          verification_fee_paid_at?: string | null
         }
         Relationships: [
           {
