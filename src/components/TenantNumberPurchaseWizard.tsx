@@ -71,6 +71,41 @@ export default function TenantNumberPurchaseWizard({ open, onOpenChange, onPurch
     }
   }, [countryMeta, type]);
 
+  const refreshBundleStatus = useCallback(async () => {
+    if (!requiresBundle || !open) {
+      setBundleStatus('unknown');
+      return;
+    }
+    setBundleLoading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { setBundleStatus('none'); return; }
+      const { data: profile } = await supabase
+        .from('profiles').select('tenant_id').eq('user_id', user.id).maybeSingle();
+      if (!profile?.tenant_id) { setBundleStatus('none'); return; }
+      const { data: req } = await supabase
+        .from('byon_requests')
+        .select('status, created_at')
+        .eq('tenant_id', profile.tenant_id)
+        .eq('country_code', country)
+        .eq('request_type', 'regulatory_bundle')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (!req) setBundleStatus('none');
+      else if (req.status === 'approved') setBundleStatus('approved');
+      else if (req.status === 'rejected') setBundleStatus('rejected');
+      else setBundleStatus('pending');
+    } catch (_) {
+      setBundleStatus('none');
+    } finally {
+      setBundleLoading(false);
+    }
+  }, [requiresBundle, open, country]);
+
+  useEffect(() => { refreshBundleStatus(); }, [refreshBundleStatus]);
+
+
   const goList = useCallback(async () => {
     setListing(true);
     setNumbers([]);
