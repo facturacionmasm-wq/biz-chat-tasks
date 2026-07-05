@@ -17,6 +17,8 @@ const mainTabs = [
 ];
 
 const moreItems = [
+  { to: '/support', icon: LifeBuoy, label: 'Soporte' },
+  { to: '/platform-support', icon: HeadphonesIcon, label: 'Soporte Plataforma' },
   { to: '/chat', icon: MessageCircle, label: 'Chat Interno' },
   { to: '/calendar', icon: CalendarDays, label: 'Calendario' },
   { to: '/projects', icon: FolderKanban, label: 'Proyectos' },
