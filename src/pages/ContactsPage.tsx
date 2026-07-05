@@ -295,6 +295,21 @@ export default function ContactsPage() {
                       : <StarOff size={16} className="text-[var(--rx-t2)]" />
                     }
                   </button>
+                  <button
+                    onClick={async () => {
+                      const newVip = !selected.is_vip;
+                      const { error } = await (supabase as any).from('contacts')
+                        .update({ is_vip: newVip, vip_tier: newVip ? (selected.vip_tier || 'gold') : null })
+                        .eq('id', selected.id);
+                      if (error) { toast.error('Error'); return; }
+                      setContacts(cs => cs.map(c => c.id === selected.id ? { ...c, is_vip: newVip } : c));
+                      setSelected(prev => prev ? { ...prev, is_vip: newVip, vip_tier: newVip ? (prev.vip_tier || 'gold') : null } : null);
+                      toast.success(newVip ? 'Marcado como VIP' : 'VIP removido');
+                    }}
+                    className={`text-[10px] font-semibold px-2 py-0.5 rounded-full flex items-center gap-1 border ${selected.is_vip ? 'bg-amber-100 text-amber-700 border-amber-300' : 'bg-muted text-muted-foreground border-transparent'}`}
+                  >
+                    <Crown size={10} /> {selected.is_vip ? `VIP · ${selected.vip_tier || 'gold'}` : 'Marcar VIP'}
+                  </button>
                 </div>
                 {selected.company && (
                   <p className="text-sm text-[var(--rx-t2)] flex items-center gap-1 mt-0.5">
