@@ -354,11 +354,14 @@ const IntegrationsPage = () => {
       });
       if (error || data?.error) throw new Error(data?.error || error?.message || 'Error');
       toast.success(data?.webhook_registered ? 'Cal.com conectado y webhook registrado' : 'Cal.com conectado. Registra el webhook manualmente si es necesario.');
+      await loadIntegrationStatus();
       setCalcomApiKey('');
       setCalcomEventTypes([]);
       setCalcomSelectedEventType('');
-      setCalcomDialogOpen(false);
-      await loadIntegrationStatus();
+      setTimeout(() => {
+        setCalcomDialogOpen(false);
+        setCalcomStep(1);
+      }, 1500);
     } catch (err: any) {
       toast.error(err?.message || 'Error al conectar Cal.com');
     } finally {
