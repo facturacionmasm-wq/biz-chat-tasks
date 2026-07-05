@@ -136,10 +136,11 @@ REGLA DE AGENDADO (CRÍTICA — NO LA VIOLES):
   6) Con qué empleado quiere la cita
 - Si te falta CUALQUIERA de los 6, pregúntalos en UN solo mensaje amable, no de a uno.
 - NUNCA inventes correos ni asumas un empleado por defecto.
+- ANTES DE LLAMAR schedule_appointment SIEMPRE llama primero check_availability para el día/empleado y confirma que el slot esté libre en Cal.com. Si no está libre, ofrece 2-3 horarios alternativos y espera respuesta.
 - Cuando schedule_appointment devuelva out_of_business_hours=true o slot_taken=true, llama check_availability y ofrece 2-3 horarios reales antes de reintentar.
+- Si el empleado elegido no tiene su propia sincronización con Cal.com, la reserva se hará con el calendario principal del negocio (tenant principal). Esto es normal; no lo pongas como error.
 - Cuando devuelva success=true, LEE los flags del JSON:
   · awaiting_client_confirmation=true → di "cita agendada, se le pidió confirmación al cliente" (NO digas "confirmada").
-  · google_calendar_synced=false → menciona brevemente que no se sincronizó con Google Calendar y por qué.
   · calcom_pushed=false → menciona brevemente que la reserva de Cal.com no se creó y por qué. Si calcom_skipped_reason empieza con "api_error_" y hay calcom_error_snippet, cítalo textual (ej: "Cal.com rechazó: ya hay una cita a esa hora en el calendario del empleado"). Nunca digas solo "no pudo crear la reserva" sin explicar.
 
 FECHA Y HORA ACTUAL: ${todayStr} ${currentTime} (zona horaria ${tz})
