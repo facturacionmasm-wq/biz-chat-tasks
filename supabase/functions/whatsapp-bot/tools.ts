@@ -8,13 +8,13 @@ export const AI_TOOLS = [
       parameters: {
         type: 'object',
         properties: {
-          contact_name: { type: 'string', description: 'Nombre del cliente o contacto' },
-          contact_phone: { type: 'string', description: 'Teléfono del contacto (si se tiene)' },
-          contact_email: { type: 'string', description: 'Email del contacto (si se tiene)' },
+          contact_name: { type: 'string', description: 'Nombre COMPLETO del cliente o contacto (nombre y apellido). Requerido para Cal.com.' },
+          contact_phone: { type: 'string', description: 'Teléfono del contacto en formato +521234567890 (si se tiene)' },
+          contact_email: { type: 'string', description: 'Email real del contacto. REQUERIDO para que Cal.com envíe el correo de confirmación. NO inventes ni uses correos genéricos.' },
           date: { type: 'string', description: 'Fecha de la cita en formato YYYY-MM-DD' },
           time: { type: 'string', description: 'Hora de la cita en formato HH:MM (24h)' },
-          service_type: { type: 'string', description: 'Tipo de servicio o motivo de la cita' },
-          employee_name: { type: 'string', description: 'Nombre del empleado con quien se quiere la cita (opcional)' },
+          service_type: { type: 'string', description: 'Motivo o tipo de servicio de la cita (ej: "consulta", "revisión dental"). Necesario para clasificar la cita.' },
+          employee_name: { type: 'string', description: 'Nombre del empleado con quien se agenda la cita. Necesario para asignar al calendario del empleado correcto y sincronizar con su Google Calendar.' },
           notes: { type: 'string', description: 'Notas adicionales' },
         },
         required: ['contact_name', 'date', 'time'],
