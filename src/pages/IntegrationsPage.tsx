@@ -11,10 +11,6 @@ import BringYourOwnNumberTab from '@/components/byon/BringYourOwnNumberTab';
 
 const integrationsMeta = [
   {
-    id: 'google-calendar', name: 'Google Calendar', description: 'Sincroniza eventos del equipo con Google Calendar',
-    icon: CalendarDays, connected: true, category: 'Productividad',
-  },
-  {
     id: 'whatsapp', name: 'WhatsApp Business', description: 'Captura mensajes y datos importantes desde WhatsApp',
     icon: MessageSquare, connected: false, category: 'Comunicación',
   },
