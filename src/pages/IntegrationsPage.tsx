@@ -70,6 +70,7 @@ const IntegrationsPage = () => {
   const [calcomEventTypes, setCalcomEventTypes] = useState<Array<{ id: string | number; title: string; slug?: string | null; length?: number | null }>>([]);
   const [calcomSelectedEventType, setCalcomSelectedEventType] = useState('');
   const [calcomLoadingTypes, setCalcomLoadingTypes] = useState(false);
+  const [calcomStep, setCalcomStep] = useState<1 | 2 | 3>(1);
   const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-webhook`;
 
   const integrations = integrationsMeta.map(i => {
