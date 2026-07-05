@@ -158,6 +158,29 @@ const SuperAdminByonRequests = () => {
                 </div>
               )}
 
+              {/* Estado Twilio + Stripe */}
+              {r.request_type === 'regulatory_bundle' && (
+                <div className="flex flex-wrap gap-2 text-[10px]">
+                  <span className={`px-2 py-0.5 rounded-full border ${r.verification_fee_paid ? 'bg-[var(--rx-emerald)]/15 border-[var(--rx-emerald)]/40 text-[var(--rx-emerald)]' : 'bg-[var(--rx-rose)]/15 border-[var(--rx-rose)]/40 text-[var(--rx-rose)]'}`}>
+                    Stripe: {r.verification_fee_paid ? `Pagado $${r.verification_fee_amount || 15} USD` : 'Sin pagar'}
+                  </span>
+                  {r.twilio_bundle_sid ? (
+                    <span className="px-2 py-0.5 rounded-full border bg-[var(--rx-brand)]/15 border-[var(--rx-brand)]/40 text-[var(--rx-brand)]" title={r.twilio_bundle_sid}>
+                      Twilio: {r.twilio_status || 'submitted'} · {r.twilio_bundle_sid.slice(0, 12)}…
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full border bg-[var(--rx-s2)] border-[var(--rx-b1)] text-[var(--rx-t2)]">
+                      Twilio: no enviado
+                    </span>
+                  )}
+                  {r.twilio_rejection_reason && (
+                    <span className="px-2 py-0.5 rounded-full border bg-[var(--rx-rose)]/15 border-[var(--rx-rose)]/40 text-[var(--rx-rose)]">
+                      Rechazo: {r.twilio_rejection_reason.slice(0, 60)}
+                    </span>
+                  )}
+                </div>
+              )}
+
               <textarea
                 value={notesDraft[r.id] || ''}
                 onChange={(e) => setNotesDraft((prev) => ({ ...prev, [r.id]: e.target.value }))}
@@ -188,9 +211,20 @@ const SuperAdminByonRequests = () => {
                 >
                   Guardar notas
                 </button>
+                {r.request_type === 'regulatory_bundle' && !r.twilio_bundle_sid && (
+                  <button
+                    onClick={() => submitToTwilio(r.id)}
+                    disabled={saving === r.id || !r.verification_fee_paid}
+                    title={!r.verification_fee_paid ? 'El tenant debe pagar la verificación primero' : 'Enviar Bundle a Twilio para revisión'}
+                    className="text-[11px] px-2.5 py-1 rounded-md border border-[var(--rx-brand)] bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {saving === r.id ? <Loader2 size={10} className="inline animate-spin" /> : '📤'} Enviar a Twilio
+                  </button>
+                )}
               </div>
             </div>
           ))}
+
         </div>
       )}
     </div>
