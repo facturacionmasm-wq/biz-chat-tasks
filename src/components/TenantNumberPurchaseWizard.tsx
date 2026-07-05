@@ -121,7 +121,22 @@ export default function TenantNumberPurchaseWizard({ open, onOpenChange, onPurch
           toast.error(data.message || 'Suscripción no activa.');
           return;
         }
+        if (data?.error === 'payment_method_required') {
+          toast.error('Registra un método de pago antes de comprar un número.');
+          try {
+            const { data: setup } = await supabase.functions.invoke('stripe-billing', {
+              body: { action: 'create_setup_session', return_to: window.location.pathname },
+            });
+            if (setup?.url) window.location.href = setup.url;
+          } catch (_) { /* ignore */ }
+          return;
+        }
         throw new Error(data?.message || data?.error || 'Error al comprar');
+      }
+      if (data?.charge && data.charge.ok === false) {
+        toast.warning('Número comprado, pero el cargo automático quedó pendiente. Revisa tu método de pago.');
+      } else if (data?.charge?.ok) {
+        toast.success('Número comprado y cobrado correctamente.');
       }
       setPurchasedNumber(data.phone_number);
       setStep(5);
