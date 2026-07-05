@@ -548,14 +548,16 @@ async function executeScheduleAppointment(
     google_calendar_reason: calendarSynced ? null : googleCalendarReason,
     calcom_pushed: calcomPushed,
     calcom_skipped_reason: calcomPushed ? null : calcomSkippedReason,
+    calcom_error_snippet: calcomPushed ? null : calcomErrorSnippet,
   };
 
   const parts: string[] = ['Cita agendada'];
   if (finalContactPhone) parts.push('se pidió confirmación al cliente por WhatsApp');
-  if (calendarSynced) parts.push('sincronizada con Google Calendar');
+  if (calendarSynced) parts.push(calcomPushed ? 'reserva creada en Cal.com (Google Calendar sincronizado vía Cal.com)' : 'sincronizada con Google Calendar');
   else if (googleCalendarReason) parts.push(`Google Calendar no sincronizado (${googleCalendarReason})`);
-  if (calcomPushed) parts.push('reserva creada en Cal.com');
-  else if (calcomSkippedReason && calcomSkippedReason !== 'no_integration') parts.push(`Cal.com no creado (${calcomSkippedReason})`);
+  if (!calcomPushed && calcomSkippedReason && calcomSkippedReason !== 'no_integration') {
+    parts.push(`Cal.com no creado (${calcomSkippedReason}${calcomErrorSnippet ? ': ' + calcomErrorSnippet : ''})`);
+  }
   response.message = parts.join('; ') + '.';
 
   return JSON.stringify(response);
