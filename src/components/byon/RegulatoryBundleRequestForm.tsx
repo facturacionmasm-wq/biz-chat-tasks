@@ -187,9 +187,11 @@ const RegulatoryBundleRequestForm = ({ open, onOpenChange, countryCode, numberTy
           <AlertTriangle size={14} className="text-[var(--rx-amber)] shrink-0 mt-0.5" />
           <p>
             Aprobación estimada: <strong>24 a 72 horas hábiles</strong>. Recibirás una notificación en la app.
-            No se realiza ningún cargo hasta que Twilio apruebe la documentación y confirmes la compra del número.
+            Al enviar se cobra automáticamente una <strong>tarifa única de ${VERIFICATION_FEE_USD} USD</strong> por la verificación regulatoria ante Twilio (no reembolsable si Twilio rechaza).
+            El cobro del número mensual se realiza por separado al comprarlo.
           </p>
         </div>
+
 
         <div className="space-y-3 mt-2">
           <div>
