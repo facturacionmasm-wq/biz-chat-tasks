@@ -76,12 +76,16 @@ serve(async (req) => {
   const capabilities: string[] | undefined = Array.isArray(body?.capabilities) ? body.capabilities : undefined;
 
   // Load tenant + subscription
-  const { data: tenant } = await admin
+  const { data: tenant, error: tenantErr } = await admin
     .from("tenants")
     .select("id, name, whatsapp_config")
     .eq("id", tenantId)
     .maybeSingle();
-  if (!tenant) return j({ ok: false, error: "Tenant not found" }, 404);
+  if (tenantErr) console.error("[tenant-provision] tenant lookup error", tenantErr, "tenantId:", tenantId);
+  if (!tenant) {
+    console.error("[tenant-provision] tenant not found for id:", tenantId, "user:", userId);
+    return j({ ok: false, error: "tenant_not_found", message: `No se encontró el tenant (${tenantId?.slice(0,8)}). Cierra sesión y vuelve a entrar.` }, 200);
+  }
 
   const isMaster = tenantId === MASTER_TENANT;
 
