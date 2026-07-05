@@ -12,6 +12,7 @@ import CallObservability from '@/components/calls/CallObservability';
 import ManualCallDialog from '@/components/calls/ManualCallDialog';
 import { usePaymentGate } from '@/hooks/usePaymentGate';
 import PaymentGateCard from '@/components/PaymentGateCard';
+import PlanUpgradeCard from '@/components/PlanUpgradeCard';
 
 const parseTranscriptStructured = (transcript: string): TranscriptEntry[] => {
   if (!transcript) return [];
@@ -157,7 +158,7 @@ const EventTimeline = ({ events }: { events: CallEvent[] }) => {
 };
 
 const CallsPage = () => {
-  const { canUseService, loading: paymentLoading, redirecting, purchasePackage, setupCard } = usePaymentGate();
+  const { canUseService, loading: paymentLoading, redirecting, purchasePackage, setupCard, voicePlanBlocked } = usePaymentGate();
   const [selectedCall, setSelectedCall] = useState<CallRecord | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [transcriptSearch, setTranscriptSearch] = useState('');
