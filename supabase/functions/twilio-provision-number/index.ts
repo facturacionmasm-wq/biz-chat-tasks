@@ -73,7 +73,7 @@ serve(async (req) => {
   // Load tenant to get country default + existing whatsapp_config
   const { data: tenant, error: tErr } = await supabase
     .from("tenants")
-    .select("id, name, country, whatsapp_config")
+    .select("id, name, country_code, whatsapp_config")
     .eq("id", tenant_id)
     .maybeSingle();
   if (tErr) console.error("[twilio-provision] tenant lookup error:", tErr, "tenant_id:", tenant_id);
