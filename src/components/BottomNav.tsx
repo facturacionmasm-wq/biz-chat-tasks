@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Phone, MessageSquare, CalendarPlus, MoreHorizontal,
   FolderKanban, CalendarDays, Target, BookOpen, MessageCircle,
   GraduationCap, Receipt, KeyRound, AlarmClock, BarChart3,
-  Plug, Shield, Bot, Settings, Crown, LogOut, X
+  Plug, Shield, Bot, Settings, Crown, LogOut, X, LifeBuoy, HeadphonesIcon
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { useAuth } from '@/contexts/AuthContext';
