@@ -8,9 +8,10 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { Loader2, Phone, ArrowRight, ArrowLeft, CheckCircle2, ShieldAlert } from 'lucide-react';
+import { Loader2, Phone, ArrowRight, ArrowLeft, CheckCircle2, ShieldAlert, ShieldCheck, Clock, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import { TWILIO_COUNTRIES, getTwilioCountry, type TwilioNumberType } from '@/lib/twilio-countries';
+import RegulatoryBundleRequestForm from '@/components/byon/RegulatoryBundleRequestForm';
 
 interface AvailableNumber {
   phone_number: string;
@@ -40,9 +41,14 @@ export default function TenantNumberPurchaseWizard({ open, onOpenChange, onPurch
   const [acceptCharge, setAcceptCharge] = useState(false);
   const [purchasing, setPurchasing] = useState(false);
   const [purchasedNumber, setPurchasedNumber] = useState<string | null>(null);
+  const [bundleFormOpen, setBundleFormOpen] = useState(false);
+  const [bundleStatus, setBundleStatus] = useState<'unknown' | 'none' | 'pending' | 'approved' | 'rejected'>('unknown');
+  const [bundleLoading, setBundleLoading] = useState(false);
 
   const countryMeta = useMemo(() => getTwilioCountry(country), [country]);
-  const bundleBlocked = !!countryMeta?.requiresBundle;
+  const requiresBundle = !!countryMeta?.requiresBundle;
+  const bundleApproved = bundleStatus === 'approved';
+  const bundleBlocked = requiresBundle && !bundleApproved;
 
   const reset = useCallback(() => {
     setStep(1);
@@ -64,6 +70,41 @@ export default function TenantNumberPurchaseWizard({ open, onOpenChange, onPurch
       setType(countryMeta.types[0]);
     }
   }, [countryMeta, type]);
+
+  const refreshBundleStatus = useCallback(async () => {
+    if (!requiresBundle || !open) {
+      setBundleStatus('unknown');
+      return;
+    }
+    setBundleLoading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { setBundleStatus('none'); return; }
+      const { data: profile } = await supabase
+        .from('profiles').select('tenant_id').eq('user_id', user.id).maybeSingle();
+      if (!profile?.tenant_id) { setBundleStatus('none'); return; }
+      const { data: req } = await supabase
+        .from('byon_requests')
+        .select('status, created_at')
+        .eq('tenant_id', profile.tenant_id)
+        .eq('country_code', country)
+        .eq('request_type', 'regulatory_bundle')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (!req) setBundleStatus('none');
+      else if (req.status === 'approved') setBundleStatus('approved');
+      else if (req.status === 'rejected') setBundleStatus('rejected');
+      else setBundleStatus('pending');
+    } catch (_) {
+      setBundleStatus('none');
+    } finally {
+      setBundleLoading(false);
+    }
+  }, [requiresBundle, open, country]);
+
+  useEffect(() => { refreshBundleStatus(); }, [refreshBundleStatus]);
+
 
   const goList = useCallback(async () => {
     setListing(true);
@@ -155,6 +196,7 @@ export default function TenantNumberPurchaseWizard({ open, onOpenChange, onPurch
   };
 
   return (
+    <>
     <Dialog open={open} onOpenChange={(o) => (!purchasing ? onOpenChange(o) : null)}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
@@ -202,16 +244,60 @@ export default function TenantNumberPurchaseWizard({ open, onOpenChange, onPurch
                 </SelectContent>
               </Select>
             </div>
-            {bundleBlocked && (
-              <div className="flex items-start gap-2 p-3 rounded-lg bg-[var(--rx-amber)]/10 border border-[var(--rx-amber)]/30 text-xs">
-                <ShieldAlert size={16} className="text-[var(--rx-amber)] shrink-0 mt-0.5" />
-                <div>
-                  <p className="font-semibold text-foreground">Este país requiere verificación adicional (Regulatory Bundle)</p>
-                  <p className="text-[var(--rx-t2)] mt-1">
-                    Twilio exige documentación y validación de identidad para vender números en {countryMeta?.name}.
-                    Contáctanos para completar el proceso antes de comprar.
-                  </p>
-                </div>
+            {requiresBundle && (
+              <div className="rounded-lg border p-3 text-xs space-y-2 bg-[var(--rx-amber)]/10 border-[var(--rx-amber)]/30">
+                {bundleStatus === 'approved' ? (
+                  <div className="flex items-start gap-2">
+                    <ShieldCheck size={16} className="text-[var(--rx-emerald)] shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-semibold text-foreground">Regulatory Bundle aprobado ✓</p>
+                      <p className="text-[var(--rx-t2)] mt-1">
+                        Ya puedes comprar un número en {countryMeta?.name}. El cobro se realiza al confirmar la compra.
+                      </p>
+                    </div>
+                  </div>
+                ) : bundleStatus === 'pending' ? (
+                  <div className="flex items-start gap-2">
+                    <Clock size={16} className="text-[var(--rx-amber)] shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="font-semibold text-foreground">Documentos en revisión</p>
+                      <p className="text-[var(--rx-t2)] mt-1">
+                        Tu Regulatory Bundle para {countryMeta?.name} está siendo revisado por Twilio (24 a 72 h hábiles).
+                        Te avisaremos cuando quede aprobado.
+                      </p>
+                      <button
+                        onClick={refreshBundleStatus}
+                        className="mt-2 text-[var(--rx-brand)] underline text-[11px]"
+                        disabled={bundleLoading}
+                      >
+                        {bundleLoading ? 'Consultando…' : 'Actualizar estado'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-start gap-2">
+                    <ShieldAlert size={16} className="text-[var(--rx-amber)] shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="font-semibold text-foreground">Este país requiere verificación (Regulatory Bundle)</p>
+                      <p className="text-[var(--rx-t2)] mt-1">
+                        Twilio exige documentación de identidad y domicilio local para vender números en {countryMeta?.name}.
+                        Sube los documentos aquí; en cuanto Twilio los apruebe podrás elegir el número y se realizará el cobro.
+                      </p>
+                      {bundleStatus === 'rejected' && (
+                        <p className="text-[var(--rx-rose)] mt-1 text-[11px]">
+                          La solicitud anterior fue rechazada. Corrige los documentos y vuelve a enviarla.
+                        </p>
+                      )}
+                      <Button
+                        onClick={() => setBundleFormOpen(true)}
+                        size="sm"
+                        className="mt-2 gap-1.5"
+                      >
+                        <Upload size={12} /> Subir documentos de verificación
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
             <DialogFooter>
@@ -360,5 +446,14 @@ export default function TenantNumberPurchaseWizard({ open, onOpenChange, onPurch
         )}
       </DialogContent>
     </Dialog>
+
+    <RegulatoryBundleRequestForm
+      open={bundleFormOpen}
+      onOpenChange={setBundleFormOpen}
+      countryCode={country}
+      numberType={type}
+      onSubmitted={() => { setBundleStatus('pending'); refreshBundleStatus(); }}
+    />
+    </>
   );
 }

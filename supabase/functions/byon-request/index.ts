@@ -62,22 +62,35 @@ serve(async (req) => {
   try { body = await req.json(); } catch { return j({ ok: false, error: "Invalid JSON" }, 400); }
 
   const request_type = String(body?.request_type || "");
-  if (!["hosted_sms", "port_in"].includes(request_type)) {
-    return j({ ok: false, error: "request_type debe ser hosted_sms o port_in" }, 400);
+  if (!["hosted_sms", "port_in", "regulatory_bundle"].includes(request_type)) {
+    return j({ ok: false, error: "request_type debe ser hosted_sms, port_in o regulatory_bundle" }, 400);
   }
-  const phone_number = String(body?.phone_number || "").trim();
-  if (!/^\+[1-9]\d{6,15}$/.test(phone_number)) {
+  const isBundle = request_type === "regulatory_bundle";
+  let phone_number = String(body?.phone_number || "").trim();
+  if (isBundle) {
+    // Bundle requests don't have a specific number yet — store a synthetic placeholder
+    if (!phone_number) phone_number = `+10000000000`;
+  } else if (!/^\+[1-9]\d{6,15}$/.test(phone_number)) {
     return j({ ok: false, error: "phone_number en formato E.164 (+123456789)" }, 400);
   }
   const country_code = String(body?.country_code || "").trim().toUpperCase();
   if (!/^[A-Z]{2}$/.test(country_code)) return j({ ok: false, error: "country_code inválido" }, 400);
 
   const current_carrier = body?.current_carrier ? String(body.current_carrier).slice(0, 200) : null;
-  const desired_capabilities = {
-    sms: Boolean(body?.desired_capabilities?.sms ?? true),
-    voice: Boolean(body?.desired_capabilities?.voice ?? false),
-    mms: Boolean(body?.desired_capabilities?.mms ?? false),
-  };
+  const desired_capabilities = isBundle
+    ? {
+        entity_type: String(body?.entity_type || "business").slice(0, 40),
+        business_name: body?.business_name ? String(body.business_name).slice(0, 200) : null,
+        contact_name: body?.contact_name ? String(body.contact_name).slice(0, 200) : null,
+        address: body?.address ? String(body.address).slice(0, 500) : null,
+        tax_id: body?.tax_id ? String(body.tax_id).slice(0, 60) : null,
+        number_type: body?.number_type ? String(body.number_type).slice(0, 20) : null,
+      }
+    : {
+        sms: Boolean(body?.desired_capabilities?.sms ?? true),
+        voice: Boolean(body?.desired_capabilities?.voice ?? false),
+        mms: Boolean(body?.desired_capabilities?.mms ?? false),
+      };
   const documents = Array.isArray(body?.documents)
     ? body.documents.filter((d: any) => d && typeof d.storage_path === "string").slice(0, 10)
     : [];
