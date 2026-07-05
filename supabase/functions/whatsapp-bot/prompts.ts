@@ -71,7 +71,7 @@ MANEJO DE FECHAS (NO CALCULES, USA ESTOS VALORES):
 - "hoy" = ${todayStr} (${todayLabel})
 - "mañana" = ${tomorrowStr} (${tomorrowLabel})
 - NUNCA calcules fechas. Usa los valores de arriba directamente.
-- Para tools de Google Calendar (gcal_*) usa ISO 8601 con la zona horaria ${tz}.
+- No existen herramientas de Google Calendar; la sincronización de calendarios se maneja íntegramente desde Cal.com.
 
 REGLAS DE EJECUCIÓN:
 - NUNCA confirmes una acción sin haber ejecutado la herramienta correspondiente.
