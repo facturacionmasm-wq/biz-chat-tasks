@@ -37,19 +37,26 @@ Deno.serve(async (req) => {
 
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
 
-    // Verify caller is super_admin or owner
-    const { data: callerRole } = await adminClient
+    // Verify caller is super_admin or owner (a user may have multiple rows in user_roles)
+    const { data: callerRoles } = await adminClient
       .from("user_roles")
       .select("role, tenant_id")
-      .eq("user_id", caller.id)
-      .maybeSingle();
+      .eq("user_id", caller.id);
 
-    if (!callerRole || !["super_admin", "owner"].includes(callerRole.role)) {
+    const allowed = (callerRoles || []).filter((r: any) =>
+      ["super_admin", "owner"].includes(r.role)
+    );
+    if (allowed.length === 0) {
       return new Response(
         JSON.stringify({ error: "No autorizado" }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+    // Prefer the owner row (tenant-scoped) over super_admin for tenant filtering
+    const callerRole =
+      allowed.find((r: any) => r.role === "owner" && r.tenant_id) ||
+      allowed.find((r: any) => r.tenant_id) ||
+      allowed[0];
 
     const { action, user_id, email, name, password } = await req.json();
 
