@@ -48,6 +48,98 @@ serve(async (req) => {
 
     switch (action) {
       // ============================================
+      // ONE-TIME SUPPORT CONSULT ($20 USD)
+      // ============================================
+      case 'one_time_support_consult': {
+        if (!tenant_id || !email) {
+          return new Response(JSON.stringify({ error: 'tenant_id and email required' }), {
+            status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Reuse or create Stripe customer
+        let { data: cust } = await supabase
+          .from('stripe_customers')
+          .select('stripe_customer_id')
+          .eq('tenant_id', tenant_id)
+          .maybeSingle();
+        let custId = cust?.stripe_customer_id;
+        if (!custId) {
+          const c = await stripeRequest('/customers', 'POST', {
+            email, name: name || email,
+            'metadata[tenant_id]': tenant_id,
+            'metadata[source]': 'support_consult',
+          }, STRIPE_RESTRICTED_API_KEY);
+          custId = c.id;
+          await supabase.from('stripe_customers').upsert({
+            tenant_id, stripe_customer_id: custId, email, name: name || email,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'tenant_id' });
+        }
+
+        // Find or create the 2000-cent USD one-time price
+        let priceId: string | undefined;
+        const lookupKey = 'support_consult_usd_2000';
+        const found = await stripeRequest(
+          `/prices?active=true&limit=5&lookup_keys[]=${lookupKey}`,
+          'GET', undefined, STRIPE_RESTRICTED_API_KEY,
+        );
+        if (found?.data?.length) {
+          priceId = found.data[0].id;
+        } else {
+          const products = await stripeRequest('/products?active=true&limit=100', 'GET', undefined, STRIPE_RESTRICTED_API_KEY);
+          let product = products.data.find((p: any) => p.metadata?.type === 'support_consult');
+          if (!product) {
+            product = await stripeRequest('/products', 'POST', {
+              name: 'Consulta prioritaria de soporte',
+              description: 'Consulta directa única con el equipo Super Admin',
+              'metadata[type]': 'support_consult',
+            }, STRIPE_RESTRICTED_API_KEY);
+          }
+          const p = await stripeRequest('/prices', 'POST', {
+            product: product.id,
+            unit_amount: '2000',
+            currency: 'usd',
+            lookup_key: lookupKey,
+          }, STRIPE_RESTRICTED_API_KEY);
+          priceId = p.id;
+        }
+
+        const origin = req.headers.get('origin') || 'https://biz-chat-tasks.lovable.app';
+        const session = await stripeRequest('/checkout/sessions', 'POST', {
+          customer: custId,
+          mode: 'payment',
+          'line_items[0][price]': priceId!,
+          'line_items[0][quantity]': '1',
+          success_url: `${origin}/platform-support?consult=success&sid={CHECKOUT_SESSION_ID}`,
+          cancel_url: `${origin}/platform-support?consult=cancel`,
+          'metadata[tenant_id]': tenant_id,
+          'metadata[type]': 'support_consult',
+        }, STRIPE_RESTRICTED_API_KEY);
+
+        // Register pending consult
+        await supabase.from('support_consult_purchases').insert({
+          tenant_id,
+          stripe_session_id: session.id,
+          amount: 20,
+          currency: 'USD',
+          status: 'pending',
+          metadata: { session_id: session.id, email },
+        });
+
+        await supabase.from('audit_events').insert({
+          tenant_id,
+          event_type: 'billing.support_consult_initiated',
+          resource_type: 'support_consult',
+          payload: { session_id: session.id, amount: 20, currency: 'USD' },
+        });
+
+        return new Response(JSON.stringify({ success: true, checkout_url: session.url, session_id: session.id }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+
       // 0. VALIDATE STRIPE KEY (backward compatibility)
       // ============================================
       case 'validate_key': {
