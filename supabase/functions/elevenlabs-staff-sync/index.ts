@@ -90,6 +90,28 @@ function upsertStaffBlock(prompt: string, block: string): string {
   return `${prompt.trimEnd()}\n\n${block}`;
 }
 
+function buildPersonalityBlock(personality: string): string {
+  return [
+    PERSONALITY_START,
+    "PERSONALIDAD Y TONO:",
+    personality,
+    PERSONALITY_END,
+  ].join("\n");
+}
+
+function upsertPersonalityBlock(prompt: string, block: string): string {
+  const startIdx = prompt.indexOf(PERSONALITY_START);
+  const endIdx = prompt.indexOf(PERSONALITY_END);
+  if (startIdx >= 0 && endIdx > startIdx) {
+    const before = prompt.slice(0, startIdx).trimEnd();
+    const after = prompt.slice(endIdx + PERSONALITY_END.length).trimStart();
+    return [before, block, after].filter(Boolean).join("\n\n");
+  }
+  return `${prompt.trimEnd()}\n\n${block}`;
+}
+
+
+
 function buildTransferTool(
   supabaseUrl: string,
   members: Array<{ user_id: string; name: string; department: string | null }>,
