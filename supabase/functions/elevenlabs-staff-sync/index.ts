@@ -148,9 +148,13 @@ async function loadTenantDirectory(
     .eq("tenant_id", tenantId);
   if (profErr) throw new Error(`profiles query failed: ${profErr.message}`);
 
-  const activeProfiles = (profiles ?? []).filter(
-    (p: any) => (p.status ?? "active") === "active" && (p.phone || p.whatsapp_number),
-  );
+  // Include 'active' and 'pending_approval' members. Phone is NOT required to
+  // appear in the staff directory / transfer_call department enum — it's only
+  // used later as the actual transfer number when present.
+  const activeProfiles = (profiles ?? []).filter((p: any) => {
+    const s = p.status ?? "active";
+    return s === "active" || s === "pending_approval";
+  });
 
   const userIds = activeProfiles.map((p: any) => p.user_id);
   let rules: Array<{ user_id: string; day_of_week: number; start_time: string; end_time: string; active: boolean }> = [];
@@ -229,18 +233,54 @@ serve(async (req) => {
 
     if (!tenantId) return jsonRes({ ok: false, error: "tenant_id required" });
 
-    // Resolve agent id: per-tenant override in settings_json, else global
-    let agentId = ELEVENLABS_AGENT_ID;
+    // Resolve agent id with strict per-tenant isolation:
+    //  - Master tenant may fall back to the global ELEVENLABS_AGENT_ID.
+    //  - Any other tenant MUST have its own settings_json.elevenlabs_agent_id;
+    //    otherwise we NO-OP so we never contaminate the master/global agent
+    //    with another tenant's staff directory or transfer_call enums.
+    const MASTER_TENANT_ID = "00000000-0000-0000-0000-000000000001";
+    let override: string | undefined;
     try {
       const { data: t } = await admin
         .from("tenants")
         .select("settings_json")
         .eq("id", tenantId)
         .maybeSingle();
-      const override = (t?.settings_json as any)?.elevenlabs_agent_id as string | undefined;
-      if (override && typeof override === "string") agentId = override;
+      const raw = (t?.settings_json as any)?.elevenlabs_agent_id;
+      if (raw && typeof raw === "string" && raw.trim().length > 0) {
+        override = raw.trim();
+      }
     } catch (e) {
       warn("tenant settings_json fetch failed:", (e as Error).message);
+    }
+
+    let agentId: string;
+    if (override) {
+      agentId = override;
+    } else if (tenantId === MASTER_TENANT_ID) {
+      agentId = ELEVENLABS_AGENT_ID;
+    } else {
+      warn(`skip sync: tenant=${tenantId} has no per-tenant elevenlabs_agent_id`);
+      try {
+        await admin.from("audit_events").insert({
+          tenant_id: tenantId,
+          event_type: "elevenlabs_staff_sync_skipped",
+          resource_type: "elevenlabs_agent",
+          resource_id: null,
+          payload: {
+            reason: "tenant sin agent_id propio",
+            note: "Global ELEVENLABS_AGENT_ID reservado al tenant master; no se escribe agente compartido.",
+          },
+        });
+      } catch (e) {
+        warn("audit insert (skipped) failed:", (e as Error).message);
+      }
+      return jsonRes({
+        ok: true,
+        skipped: true,
+        tenant_id: tenantId,
+        reason: "tenant sin agent_id propio",
+      });
     }
 
     const members = await loadTenantDirectory(admin, tenantId);
