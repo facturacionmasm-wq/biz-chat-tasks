@@ -58,7 +58,24 @@ Deno.serve(async (req) => {
       allowed.find((r: any) => r.tenant_id) ||
       allowed[0];
 
-    const { action, user_id, email, name, password } = await req.json();
+    const payload = await req.json();
+    const { action, user_id, email, name, password } = payload;
+
+    // Helper to fire elevenlabs sync (non-blocking)
+    const triggerElevenLabsSync = () => {
+      try {
+        fetch(`${supabaseUrl}/functions/v1/elevenlabs-staff-sync`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${serviceRoleKey}`,
+          },
+          body: JSON.stringify({ tenant_id: callerRole.tenant_id }),
+        }).catch((e) => console.error("[team-management] elevenlabs-staff-sync fire error:", e?.message));
+      } catch (e) {
+        console.error("[team-management] elevenlabs-staff-sync trigger failed:", (e as Error).message);
+      }
+    };
 
     if (action === "list_status") {
       // Get all users in tenant
