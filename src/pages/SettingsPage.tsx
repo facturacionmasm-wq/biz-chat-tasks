@@ -66,6 +66,11 @@ const SettingsPage = () => {
   const [companyPhone, setCompanyPhone] = useState('');
   const [companyAddress, setCompanyAddress] = useState('');
   const [welcomeMessage, setWelcomeMessage] = useState('');
+  const [voiceId, setVoiceId] = useState('');
+  const [agentPersonality, setAgentPersonality] = useState('');
+  const [voices, setVoices] = useState<Array<{ voice_id: string; name: string; category: string | null; preview_url: string | null; labels: Record<string, string> }>>([]);
+  const [voicesLoading, setVoicesLoading] = useState(false);
+  const [voiceSearch, setVoiceSearch] = useState('');
   const [logoUrl, setLogoUrl] = useState('');
   const [faviconUrl, setFaviconUrl] = useState('');
   const [uploadingLogo, setUploadingLogo] = useState(false);
@@ -167,6 +172,8 @@ const SettingsPage = () => {
         setCompanyPhone(settings.phone || '');
         setCompanyAddress(settings.address || '');
         setWelcomeMessage(settings.welcome_message || '');
+        setVoiceId(settings.voice_id || '');
+        setAgentPersonality(settings.agent_personality || '');
         setLogoUrl(settings.logo_url || '');
         setFaviconUrl(settings.favicon_url || '');
 
@@ -191,6 +198,18 @@ const SettingsPage = () => {
     };
     load();
   }, [user]);
+
+  // Load ElevenLabs voices when entering Branding
+  useEffect(() => {
+    if (activeSection !== 'branding' || voices.length > 0 || voicesLoading) return;
+    setVoicesLoading(true);
+    supabase.functions.invoke('elevenlabs-list-voices')
+      .then(({ data }) => {
+        if (data?.ok && Array.isArray(data.voices)) setVoices(data.voices);
+      })
+      .catch(() => {})
+      .finally(() => setVoicesLoading(false));
+  }, [activeSection, voices.length, voicesLoading]);
 
   // Load team members from DB
   useEffect(() => {
@@ -888,6 +907,8 @@ const SettingsPage = () => {
         logo_url: logoUrl,
         favicon_url: faviconUrl,
         welcome_message: welcomeMessage,
+        voice_id: voiceId || null,
+        agent_personality: agentPersonality || null,
       };
       const { error } = await supabase
         .from('tenants')
@@ -1360,6 +1381,57 @@ const SettingsPage = () => {
                       maxLength={500}
                     />
                     <p className="text-[10px] text-[var(--rx-t2)] mt-1">Es lo primero que dice el agente al contestar una llamada. Máximo 500 caracteres.</p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-[var(--rx-t2)] mb-1 block">Voz del agente</label>
+                    <input
+                      className={`${inputClass} mb-2`}
+                      placeholder="Buscar voz por nombre..."
+                      value={voiceSearch}
+                      onChange={e => setVoiceSearch(e.target.value)}
+                    />
+                    <select
+                      className={inputClass}
+                      value={voiceId}
+                      onChange={e => setVoiceId(e.target.value)}
+                      disabled={voicesLoading}
+                    >
+                      <option value="">— Voz por defecto del agente —</option>
+                      {voices
+                        .filter(v => !voiceSearch || v.name.toLowerCase().includes(voiceSearch.toLowerCase()))
+                        .map(v => (
+                          <option key={v.voice_id} value={v.voice_id}>
+                            {v.name}{v.category ? ` (${v.category})` : ''}
+                          </option>
+                        ))}
+                    </select>
+                    {voiceId && (() => {
+                      const selected = voices.find(v => v.voice_id === voiceId);
+                      if (!selected?.preview_url) return null;
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => { try { new Audio(selected.preview_url!).play(); } catch { /* noop */ } }}
+                          className="mt-2 text-xs px-3 py-1.5 rounded-lg border border-[var(--rx-b1)] hover:bg-[var(--rx-bg2)]"
+                        >
+                          ▶ Escuchar preview
+                        </button>
+                      );
+                    })()}
+                    <p className="text-[10px] text-[var(--rx-t2)] mt-1">
+                      {voicesLoading ? 'Cargando voces...' : `${voices.length} voces disponibles en tu workspace de ElevenLabs.`}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-[var(--rx-t2)] mb-1 block">Personalidad y tono del agente</label>
+                    <textarea
+                      className={`${inputClass} min-h-[100px] resize-y`}
+                      value={agentPersonality}
+                      onChange={e => setAgentPersonality(e.target.value.slice(0, 800))}
+                      placeholder="Ej: Eres formal, empático y directo. Nunca uses jerga. Confirma cada acción antes de ejecutarla."
+                      maxLength={800}
+                    />
+                    <p className="text-[10px] text-[var(--rx-t2)] mt-1">Define el estilo de conversación del agente. Máximo 800 caracteres.</p>
                   </div>
                 </div>
               </div>

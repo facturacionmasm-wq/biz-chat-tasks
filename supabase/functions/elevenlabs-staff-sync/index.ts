@@ -21,6 +21,8 @@ const corsHeaders = {
 const ELEVENLABS_API_URL = "https://api.elevenlabs.io/v1";
 const STAFF_START = "<!-- STAFF_DIRECTORY_START -->";
 const STAFF_END = "<!-- STAFF_DIRECTORY_END -->";
+const PERSONALITY_START = "<!-- TENANT_PERSONALITY_START -->";
+const PERSONALITY_END = "<!-- TENANT_PERSONALITY_END -->";
 const DAY_LABELS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
 
 function jsonRes(payload: unknown, status = 200) {
@@ -87,6 +89,28 @@ function upsertStaffBlock(prompt: string, block: string): string {
   // Append at the end preserving existing prompt
   return `${prompt.trimEnd()}\n\n${block}`;
 }
+
+function buildPersonalityBlock(personality: string): string {
+  return [
+    PERSONALITY_START,
+    "PERSONALIDAD Y TONO:",
+    personality,
+    PERSONALITY_END,
+  ].join("\n");
+}
+
+function upsertPersonalityBlock(prompt: string, block: string): string {
+  const startIdx = prompt.indexOf(PERSONALITY_START);
+  const endIdx = prompt.indexOf(PERSONALITY_END);
+  if (startIdx >= 0 && endIdx > startIdx) {
+    const before = prompt.slice(0, startIdx).trimEnd();
+    const after = prompt.slice(endIdx + PERSONALITY_END.length).trimStart();
+    return [before, block, after].filter(Boolean).join("\n\n");
+  }
+  return `${prompt.trimEnd()}\n\n${block}`;
+}
+
+
 
 function buildTransferTool(
   supabaseUrl: string,
@@ -241,6 +265,8 @@ serve(async (req) => {
     const MASTER_TENANT_ID = "00000000-0000-0000-0000-000000000001";
     let override: string | undefined;
     let welcomeMessage: string | null = null;
+    let voiceId: string | null = null;
+    let agentPersonality: string | null = null;
     try {
       const { data: t } = await admin
         .from("tenants")
@@ -254,6 +280,14 @@ serve(async (req) => {
       const wm = (t?.settings_json as any)?.welcome_message;
       if (wm && typeof wm === "string" && wm.trim().length > 0) {
         welcomeMessage = wm.trim();
+      }
+      const vid = (t?.settings_json as any)?.voice_id;
+      if (vid && typeof vid === "string" && vid.trim().length > 0) {
+        voiceId = vid.trim();
+      }
+      const ap = (t?.settings_json as any)?.agent_personality;
+      if (ap && typeof ap === "string" && ap.trim().length > 0) {
+        agentPersonality = ap.trim();
       }
     } catch (e) {
       warn("tenant settings_json fetch failed:", (e as Error).message);
@@ -309,7 +343,13 @@ serve(async (req) => {
       : [];
 
     const newBlock = buildStaffBlock(members);
-    const newPrompt = upsertStaffBlock(currentPrompt, newBlock);
+    let newPrompt = upsertStaffBlock(currentPrompt, newBlock);
+    // Si el tenant configuró personalidad, inyectamos/actualizamos su bloque delimitado.
+    // Si NO viene definida, dejamos el prompt intacto para no pisar ediciones manuales
+    // hechas directamente en el dashboard de ElevenLabs.
+    if (agentPersonality) {
+      newPrompt = upsertPersonalityBlock(newPrompt, buildPersonalityBlock(agentPersonality));
+    }
     const transferTool = buildTransferTool(supabaseUrl, members);
     const nextToolsRaw = [
       ...currentTools.filter((t: any) => t?.name !== "transfer_call"),
@@ -349,11 +389,14 @@ serve(async (req) => {
     if (welcomeMessage) {
       agentPatch.first_message = welcomeMessage;
     }
-    const patchBody = {
+    const patchBody: Record<string, any> = {
       conversation_config: {
         agent: agentPatch,
       },
     };
+    if (voiceId) {
+      patchBody.conversation_config.tts = { voice_id: voiceId };
+    }
 
 
     const patchRes = await fetch(`${ELEVENLABS_API_URL}/convai/agents/${agentId}`, {
@@ -377,7 +420,7 @@ serve(async (req) => {
         event_type: "elevenlabs_staff_sync",
         resource_type: "elevenlabs_agent",
         resource_id: agentId,
-        payload: { members_count: members.length, departments: Array.from(new Set(members.map((m) => m.department).filter(Boolean))), welcome_message_updated: !!welcomeMessage },
+        payload: { members_count: members.length, departments: Array.from(new Set(members.map((m) => m.department).filter(Boolean))), welcome_message_updated: !!welcomeMessage, voice_updated: !!voiceId, personality_updated: !!agentPersonality },
       });
     } catch (e) {
       warn("audit insert failed:", (e as Error).message);
