@@ -72,7 +72,9 @@ function formatRelative(iso: string | null) {
 
 const SupportPage = () => {
   const { user } = useAuth();
-  const { supportLevel, planName } = usePlanFeatures();
+  const { supportLevel, planName, hasFeature } = usePlanFeatures();
+  const canCreateTickets = hasFeature('direct_support') || hasFeature('priority_support');
+
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Ticket | null>(null);
