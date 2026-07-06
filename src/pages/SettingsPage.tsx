@@ -66,6 +66,11 @@ const SettingsPage = () => {
   const [companyPhone, setCompanyPhone] = useState('');
   const [companyAddress, setCompanyAddress] = useState('');
   const [welcomeMessage, setWelcomeMessage] = useState('');
+  const [voiceId, setVoiceId] = useState('');
+  const [agentPersonality, setAgentPersonality] = useState('');
+  const [voices, setVoices] = useState<Array<{ voice_id: string; name: string; category: string | null; preview_url: string | null; labels: Record<string, string> }>>([]);
+  const [voicesLoading, setVoicesLoading] = useState(false);
+  const [voiceSearch, setVoiceSearch] = useState('');
   const [logoUrl, setLogoUrl] = useState('');
   const [faviconUrl, setFaviconUrl] = useState('');
   const [uploadingLogo, setUploadingLogo] = useState(false);
@@ -167,6 +172,8 @@ const SettingsPage = () => {
         setCompanyPhone(settings.phone || '');
         setCompanyAddress(settings.address || '');
         setWelcomeMessage(settings.welcome_message || '');
+        setVoiceId(settings.voice_id || '');
+        setAgentPersonality(settings.agent_personality || '');
         setLogoUrl(settings.logo_url || '');
         setFaviconUrl(settings.favicon_url || '');
 
@@ -888,6 +895,8 @@ const SettingsPage = () => {
         logo_url: logoUrl,
         favicon_url: faviconUrl,
         welcome_message: welcomeMessage,
+        voice_id: voiceId || null,
+        agent_personality: agentPersonality || null,
       };
       const { error } = await supabase
         .from('tenants')
