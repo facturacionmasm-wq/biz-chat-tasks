@@ -266,10 +266,34 @@ serve(async (req) => {
     const newBlock = buildStaffBlock(members);
     const newPrompt = upsertStaffBlock(currentPrompt, newBlock);
     const transferTool = buildTransferTool(supabaseUrl, members);
-    const nextTools = [
+    const nextToolsRaw = [
       ...currentTools.filter((t: any) => t?.name !== "transfer_call"),
       transferTool,
     ];
+
+    // Normalize each tool's webhook.api_schema.request_headers to a plain object
+    // (ElevenLabs PATCH validator rejects arrays/null; some legacy tools stored arrays).
+    let normalizedCount = 0;
+    const nextTools = nextToolsRaw.map((tool: any) => {
+      const schema = tool?.api_schema ?? tool?.webhook?.api_schema;
+      if (!schema) return tool;
+      const rh = schema.request_headers;
+      const isPlainObj = rh && typeof rh === "object" && !Array.isArray(rh);
+      if (isPlainObj) return tool;
+      let normalized: Record<string, string> = {};
+      if (Array.isArray(rh)) {
+        for (const h of rh) {
+          if (h && typeof h === "object" && typeof h.name === "string" && typeof h.value === "string") {
+            normalized[h.name] = h.value;
+          }
+        }
+      }
+      normalizedCount++;
+      const nextSchema = { ...schema, request_headers: normalized };
+      if (tool?.api_schema) return { ...tool, api_schema: nextSchema };
+      return { ...tool, webhook: { ...tool.webhook, api_schema: nextSchema } };
+    });
+    if (normalizedCount > 0) log(`normalized ${normalizedCount} tool request_headers to dict`);
 
     const patchBody = {
       conversation_config: {
@@ -281,6 +305,7 @@ serve(async (req) => {
         },
       },
     };
+
 
     const patchRes = await fetch(`${ELEVENLABS_API_URL}/convai/agents/${agentId}`, {
       method: "PATCH",
