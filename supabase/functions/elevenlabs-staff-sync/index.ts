@@ -21,6 +21,8 @@ const corsHeaders = {
 const ELEVENLABS_API_URL = "https://api.elevenlabs.io/v1";
 const STAFF_START = "<!-- STAFF_DIRECTORY_START -->";
 const STAFF_END = "<!-- STAFF_DIRECTORY_END -->";
+const PERSONALITY_START = "<!-- TENANT_PERSONALITY_START -->";
+const PERSONALITY_END = "<!-- TENANT_PERSONALITY_END -->";
 const DAY_LABELS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
 
 function jsonRes(payload: unknown, status = 200) {
