@@ -85,7 +85,7 @@ const SupportPage = () => {
   const [sending, setSending] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [filterPriority, setFilterPriority] = useState<string>('all');
-  const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [filterStatus, setFilterStatus] = useState<string>('active');
   const [newTicket, setNewTicket] = useState({ subject: '', description: '', priority: 'normal' });
 
   // ===== Email to support form =====
