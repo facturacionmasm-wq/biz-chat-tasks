@@ -365,13 +365,13 @@ const SettingsPage = () => {
       const { data: myProfile } = await supabase.from('profiles').select('tenant_id').eq('user_id', user!.id).maybeSingle();
       if (myProfile) {
         const tenantId = myProfile.tenant_id;
-        const { data: profiles } = await supabase.from('profiles_safe' as any).select('user_id, name, email, status, phone, whatsapp_number').eq('tenant_id', tenantId) as { data: any[] | null };
+        const { data: profiles } = await supabase.from('profiles_safe' as any).select('user_id, name, email, status, phone, whatsapp_number, department').eq('tenant_id', tenantId) as { data: any[] | null };
         const { data: roles } = await supabase.from('user_roles').select('user_id, role, permissions_json').eq('tenant_id', tenantId);
         const roleMap = new Map((roles || []).map(r => [r.user_id, { role: r.role, permissions: r.permissions_json }]));
         setTeamData((profiles || []).map(p => {
           const roleData = roleMap.get(p.user_id);
           const perms = (roleData?.permissions as Record<string, boolean>) || {};
-          return { user_id: p.user_id, name: p.name || '', email: p.email || '', role: roleData?.role || 'staff', status: p.status || 'active', permissions: perms, confirmed: false, phone: p.phone || '', whatsapp_number: p.whatsapp_number || '' };
+          return { user_id: p.user_id, name: p.name || '', email: p.email || '', role: roleData?.role || 'staff', status: p.status || 'active', permissions: perms, confirmed: false, phone: p.phone || '', whatsapp_number: p.whatsapp_number || '', department: p.department || '' };
         }));
       }
     } catch (err: any) {
