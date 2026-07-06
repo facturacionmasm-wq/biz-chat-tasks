@@ -231,6 +231,7 @@ const SettingsPage = () => {
             confirmed: confirmMap[p.user_id] ?? true,
             phone: p.phone || '',
             whatsapp_number: p.whatsapp_number || '',
+            department: p.department || '',
           };
         }));
       } finally {
