@@ -240,6 +240,7 @@ serve(async (req) => {
     //    with another tenant's staff directory or transfer_call enums.
     const MASTER_TENANT_ID = "00000000-0000-0000-0000-000000000001";
     let override: string | undefined;
+    let welcomeMessage: string | null = null;
     try {
       const { data: t } = await admin
         .from("tenants")
@@ -249,6 +250,10 @@ serve(async (req) => {
       const raw = (t?.settings_json as any)?.elevenlabs_agent_id;
       if (raw && typeof raw === "string" && raw.trim().length > 0) {
         override = raw.trim();
+      }
+      const wm = (t?.settings_json as any)?.welcome_message;
+      if (wm && typeof wm === "string" && wm.trim().length > 0) {
+        welcomeMessage = wm.trim();
       }
     } catch (e) {
       warn("tenant settings_json fetch failed:", (e as Error).message);
@@ -335,14 +340,18 @@ serve(async (req) => {
     });
     if (normalizedCount > 0) log(`normalized ${normalizedCount} tool request_headers to dict`);
 
+    const agentPatch: Record<string, unknown> = {
+      prompt: {
+        prompt: newPrompt,
+        tools: nextTools,
+      },
+    };
+    if (welcomeMessage) {
+      agentPatch.first_message = welcomeMessage;
+    }
     const patchBody = {
       conversation_config: {
-        agent: {
-          prompt: {
-            prompt: newPrompt,
-            tools: nextTools,
-          },
-        },
+        agent: agentPatch,
       },
     };
 
