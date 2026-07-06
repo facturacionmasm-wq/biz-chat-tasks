@@ -199,6 +199,18 @@ const SettingsPage = () => {
     load();
   }, [user]);
 
+  // Load ElevenLabs voices when entering Branding
+  useEffect(() => {
+    if (activeSection !== 'branding' || voices.length > 0 || voicesLoading) return;
+    setVoicesLoading(true);
+    supabase.functions.invoke('elevenlabs-list-voices')
+      .then(({ data }) => {
+        if (data?.ok && Array.isArray(data.voices)) setVoices(data.voices);
+      })
+      .catch(() => {})
+      .finally(() => setVoicesLoading(false));
+  }, [activeSection, voices.length, voicesLoading]);
+
   // Load team members from DB
   useEffect(() => {
     if (!user || activeSection !== 'team') return;
