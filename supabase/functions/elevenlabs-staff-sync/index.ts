@@ -343,7 +343,13 @@ serve(async (req) => {
       : [];
 
     const newBlock = buildStaffBlock(members);
-    const newPrompt = upsertStaffBlock(currentPrompt, newBlock);
+    let newPrompt = upsertStaffBlock(currentPrompt, newBlock);
+    // Si el tenant configuró personalidad, inyectamos/actualizamos su bloque delimitado.
+    // Si NO viene definida, dejamos el prompt intacto para no pisar ediciones manuales
+    // hechas directamente en el dashboard de ElevenLabs.
+    if (agentPersonality) {
+      newPrompt = upsertPersonalityBlock(newPrompt, buildPersonalityBlock(agentPersonality));
+    }
     const transferTool = buildTransferTool(supabaseUrl, members);
     const nextToolsRaw = [
       ...currentTools.filter((t: any) => t?.name !== "transfer_call"),
