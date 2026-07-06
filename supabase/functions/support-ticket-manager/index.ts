@@ -70,7 +70,26 @@ serve(async (req) => {
         .order("created_at", { ascending: false })
         .limit(500);
       if (error) throw error;
-      return json({ tickets: data ?? [] });
+      const tickets = data ?? [];
+      // Enrich with author (created_by -> profiles). Join isn't a real FK, so resolve manually.
+      const creatorIds = Array.from(
+        new Set(tickets.map((t: any) => t.created_by).filter(Boolean))
+      );
+      let creatorMap: Record<string, { name: string | null; email: string | null }> = {};
+      if (creatorIds.length > 0) {
+        const { data: profs } = await admin
+          .from("profiles")
+          .select("user_id, name, email")
+          .in("user_id", creatorIds);
+        creatorMap = Object.fromEntries(
+          (profs ?? []).map((p: any) => [p.user_id, { name: p.name, email: p.email }])
+        );
+      }
+      const enriched = tickets.map((t: any) => ({
+        ...t,
+        creator: t.created_by ? (creatorMap[t.created_by] ?? null) : null,
+      }));
+      return json({ tickets: enriched });
     }
 
     if (action === "admin_get") {
@@ -82,7 +101,20 @@ serve(async (req) => {
         admin.from("ticket_events").select("*").eq("ticket_id", ticketId).order("created_at", { ascending: true }),
       ]);
       if (ticket.error) throw ticket.error;
-      return json({ ticket: ticket.data, messages: messages.data ?? [], events: events.data ?? [] });
+      let creator: { name: string | null; email: string | null } | null = null;
+      if (ticket.data?.created_by) {
+        const { data: prof } = await admin
+          .from("profiles")
+          .select("name, email")
+          .eq("user_id", ticket.data.created_by)
+          .maybeSingle();
+        if (prof) creator = { name: prof.name, email: prof.email };
+      }
+      return json({
+        ticket: ticket.data ? { ...ticket.data, creator } : null,
+        messages: messages.data ?? [],
+        events: events.data ?? [],
+      });
     }
 
     if (action === "admin_add_message") {
