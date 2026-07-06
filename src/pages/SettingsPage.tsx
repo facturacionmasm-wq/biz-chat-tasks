@@ -65,6 +65,7 @@ const SettingsPage = () => {
   const [companyWebsite, setCompanyWebsite] = useState('');
   const [companyPhone, setCompanyPhone] = useState('');
   const [companyAddress, setCompanyAddress] = useState('');
+  const [welcomeMessage, setWelcomeMessage] = useState('');
   const [logoUrl, setLogoUrl] = useState('');
   const [faviconUrl, setFaviconUrl] = useState('');
   const [uploadingLogo, setUploadingLogo] = useState(false);
@@ -165,6 +166,7 @@ const SettingsPage = () => {
         setCompanyWebsite(settings.website || '');
         setCompanyPhone(settings.phone || '');
         setCompanyAddress(settings.address || '');
+        setWelcomeMessage(settings.welcome_message || '');
         setLogoUrl(settings.logo_url || '');
         setFaviconUrl(settings.favicon_url || '');
 
@@ -885,6 +887,7 @@ const SettingsPage = () => {
         address: companyAddress,
         logo_url: logoUrl,
         favicon_url: faviconUrl,
+        welcome_message: welcomeMessage,
       };
       const { error } = await supabase
         .from('tenants')
@@ -1340,6 +1343,17 @@ const SettingsPage = () => {
                   <div>
                     <label className="text-xs font-medium text-[var(--rx-t2)] mb-1 block">Dirección</label>
                     <input className={inputClass} value={companyAddress} onChange={e => setCompanyAddress(e.target.value)} placeholder="Calle, Ciudad, País" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-[var(--rx-t2)] mb-1 block">Mensaje de bienvenida del agente de voz</label>
+                    <textarea
+                      className={`${inputClass} min-h-[80px] resize-y`}
+                      value={welcomeMessage}
+                      onChange={e => setWelcomeMessage(e.target.value.slice(0, 500))}
+                      placeholder="Ej: ¡Hola! Te estás comunicando con [Empresa]. ¿En qué puedo ayudarte hoy?"
+                      maxLength={500}
+                    />
+                    <p className="text-[10px] text-[var(--rx-t2)] mt-1">Es lo primero que dice el agente al contestar una llamada. Máximo 500 caracteres.</p>
                   </div>
                 </div>
               </div>
