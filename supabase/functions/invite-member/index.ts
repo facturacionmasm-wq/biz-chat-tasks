@@ -164,6 +164,20 @@ Deno.serve(async (req) => {
 
     const method = password && password.length >= 6 ? "contraseña temporal" : "email de invitación";
 
+    // Fire-and-forget: sync staff directory into ElevenLabs agent (non-blocking)
+    try {
+      fetch(`${supabaseUrl}/functions/v1/elevenlabs-staff-sync`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${serviceRoleKey}`,
+        },
+        body: JSON.stringify({ tenant_id: callerRole.tenant_id }),
+      }).catch((e) => console.error("[invite-member] elevenlabs-staff-sync fire error:", e?.message));
+    } catch (e) {
+      console.error("[invite-member] elevenlabs-staff-sync trigger failed:", (e as Error).message);
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
