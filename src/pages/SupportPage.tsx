@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
-import { LifeBuoy, Plus, AlertTriangle, Clock, CheckCircle2, XCircle, Crown, Loader2, Send, MessageSquare, Phone, User, ArrowLeft, Filter, Mail, Sparkles } from 'lucide-react';
+import { LifeBuoy, Plus, AlertTriangle, Clock, CheckCircle2, XCircle, Crown, Loader2, Send, MessageSquare, Phone, User, ArrowLeft, Filter, Mail, Sparkles, Headphones } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePlanFeatures } from '@/hooks/usePlanFeatures';
@@ -10,6 +11,8 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import SupportAriaWidget from '@/components/SupportAriaWidget';
+
 
 type Ticket = {
   id: string;
