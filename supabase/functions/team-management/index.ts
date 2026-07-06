@@ -181,6 +181,70 @@ Deno.serve(async (req) => {
       );
     }
 
+    if (action === "update_member") {
+      if (!user_id) {
+        return new Response(JSON.stringify({ error: "user_id requerido" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const patch: Record<string, unknown> = {};
+      if (typeof payload.name === "string") patch.name = payload.name;
+      if (typeof payload.department === "string" || payload.department === null) patch.department = payload.department;
+      if (typeof payload.phone === "string" || payload.phone === null) patch.phone = payload.phone;
+      if (typeof payload.whatsapp_number === "string" || payload.whatsapp_number === null) patch.whatsapp_number = payload.whatsapp_number;
+      if (typeof payload.status === "string") patch.status = payload.status;
+
+      if (Object.keys(patch).length === 0) {
+        return new Response(JSON.stringify({ error: "Nada que actualizar" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const { error: upErr } = await adminClient
+        .from("profiles")
+        .update(patch)
+        .eq("user_id", user_id)
+        .eq("tenant_id", callerRole.tenant_id);
+      if (upErr) {
+        return new Response(JSON.stringify({ error: upErr.message }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Trigger ElevenLabs sync if anything relevant to the agent changed
+      if ("department" in patch || "phone" in patch || "whatsapp_number" in patch || "name" in patch || "status" in patch) {
+        triggerElevenLabsSync();
+      }
+
+      return new Response(
+        JSON.stringify({ success: true, message: "Miembro actualizado" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (action === "remove_member") {
+      if (!user_id) {
+        return new Response(JSON.stringify({ error: "user_id requerido" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      await adminClient.from("user_roles").delete().eq("user_id", user_id).eq("tenant_id", callerRole.tenant_id);
+      await adminClient.from("profiles").delete().eq("user_id", user_id).eq("tenant_id", callerRole.tenant_id);
+      triggerElevenLabsSync();
+      return new Response(
+        JSON.stringify({ success: true, message: "Miembro eliminado" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (action === "trigger_agent_sync") {
+      triggerElevenLabsSync();
+      return new Response(
+        JSON.stringify({ success: true, message: "Sync disparado" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     return new Response(JSON.stringify({ error: "Acción no válida" }), {
       status: 400,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
