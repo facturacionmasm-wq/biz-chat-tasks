@@ -61,7 +61,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { email, name, password, availability } = await req.json();
+    const { email, name, password, availability, department } = await req.json();
     if (!email || !name) {
       return new Response(
         JSON.stringify({ error: "Email y nombre son requeridos" }),
@@ -121,6 +121,7 @@ Deno.serve(async (req) => {
       .update({
         tenant_id: callerRole.tenant_id,
         name,
+        department: department ?? null,
         status: 'pending_approval',
         onboarding_completed: true, // Skip onboarding for invited users
       })
@@ -162,6 +163,20 @@ Deno.serve(async (req) => {
     }
 
     const method = password && password.length >= 6 ? "contraseña temporal" : "email de invitación";
+
+    // Fire-and-forget: sync staff directory into ElevenLabs agent (non-blocking)
+    try {
+      fetch(`${supabaseUrl}/functions/v1/elevenlabs-staff-sync`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${serviceRoleKey}`,
+        },
+        body: JSON.stringify({ tenant_id: callerRole.tenant_id }),
+      }).catch((e) => console.error("[invite-member] elevenlabs-staff-sync fire error:", e?.message));
+    } catch (e) {
+      console.error("[invite-member] elevenlabs-staff-sync trigger failed:", (e as Error).message);
+    }
 
     return new Response(
       JSON.stringify({

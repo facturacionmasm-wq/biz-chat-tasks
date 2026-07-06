@@ -39,6 +39,8 @@ type AdminTicket = {
   tenant_id: string;
   tenants?: { id: string; name: string } | null;
   description?: string | null;
+  created_by?: string | null;
+  creator?: { name: string | null; email: string | null } | null;
 };
 
 const priorityCfg: Record<string, { label: string; cls: string }> = {
@@ -215,6 +217,9 @@ const SuperAdminSupportPage = () => {
             <h2 className="font-bold text-sm truncate">{selectedTicket.subject}</h2>
             <p className="text-xs text-muted-foreground truncate">
               {selectedTicket.tenants?.name || 'Tenant'} · {selectedTicket.channel}
+              {selectedTicket.creator && (
+                <> · <span className="text-foreground/80">Creado por: {selectedTicket.creator.name || 'Sin nombre'}{selectedTicket.creator.email ? ` · ${selectedTicket.creator.email}` : ''}</span></>
+              )}
             </p>
           </div>
           <Badge className={priorityCfg[selectedTicket.priority]?.cls + ' border'}>{priorityCfg[selectedTicket.priority]?.label}</Badge>
@@ -306,24 +311,56 @@ const SuperAdminSupportPage = () => {
               <div className="text-center py-10"><Loader2 className="animate-spin inline text-primary" /></div>
             ) : filteredTickets.length === 0 ? (
               <div className="text-center py-10 text-muted-foreground text-sm">No hay tickets en esta vista.</div>
-            ) : filteredTickets.map(t => (
-              <button key={t.id} onClick={() => openTicket(t)} className="w-full text-left bg-card border border-border rounded-2xl p-4 hover:shadow-md transition-shadow">
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0"><AlertTriangle size={16} className="text-primary" /></div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-sm truncate">{t.subject}</h3>
-                    <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                      {t.tenants?.name || 'Tenant'} · {t.channel} · {new Date(t.created_at).toLocaleString('es-MX', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                    </p>
+            ) : (() => {
+              // Group tickets by tenant
+              const groups = new Map<string, { name: string; tickets: AdminTicket[] }>();
+              for (const t of filteredTickets) {
+                const key = t.tenant_id;
+                const name = t.tenants?.name || 'Tenant sin nombre';
+                if (!groups.has(key)) groups.set(key, { name, tickets: [] });
+                groups.get(key)!.tickets.push(t);
+              }
+              const ordered = Array.from(groups.entries()).sort((a, b) => a[1].name.localeCompare(b[1].name));
+              return ordered.map(([tenantId, group]) => {
+                const openCount = group.tickets.filter(t => !['resolved', 'closed'].includes(t.status)).length;
+                return (
+                  <div key={tenantId} className="space-y-2">
+                    <div className="flex items-center gap-2 px-2 pt-1 pb-1 sticky top-0 bg-background/95 backdrop-blur z-10">
+                      <Building2 size={14} className="text-primary shrink-0" />
+                      <h3 className="text-sm font-bold truncate">{group.name}</h3>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-semibold">
+                        {openCount} abierto{openCount === 1 ? '' : 's'}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground ml-auto">{group.tickets.length} total</span>
+                    </div>
+                    {group.tickets.map(t => (
+                      <button key={t.id} onClick={() => openTicket(t)} className="w-full text-left bg-card border border-border rounded-2xl p-4 hover:shadow-md transition-shadow">
+                        <div className="flex items-start gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0"><AlertTriangle size={16} className="text-primary" /></div>
+                          <div className="flex-1 min-w-0">
+                            <h4 className="font-semibold text-sm truncate">{t.subject}</h4>
+                            <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                              {t.channel} · {new Date(t.created_at).toLocaleString('es-MX', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                            </p>
+                            {t.creator && (
+                              <p className="text-[11px] text-muted-foreground/80 mt-0.5 truncate">
+                                <span className="font-medium text-foreground/70">Creado por:</span> {t.creator.name || 'Sin nombre'}{t.creator.email ? ` · ${t.creator.email}` : ''}
+                              </p>
+                            )}
+                          </div>
+                          <div className="flex flex-col items-end gap-1 shrink-0">
+                            <Badge className={priorityCfg[t.priority]?.cls + ' border'}>{priorityCfg[t.priority]?.label}</Badge>
+                            <Badge className={statusCfg[t.status]?.cls}>{statusCfg[t.status]?.label}</Badge>
+                          </div>
+                        </div>
+                      </button>
+                    ))}
                   </div>
-                  <div className="flex flex-col items-end gap-1 shrink-0">
-                    <Badge className={priorityCfg[t.priority]?.cls + ' border'}>{priorityCfg[t.priority]?.label}</Badge>
-                    <Badge className={statusCfg[t.status]?.cls}>{statusCfg[t.status]?.label}</Badge>
-                  </div>
-                </div>
-              </button>
-            ))}
+                );
+              });
+            })()}
           </TabsContent>
+
 
           <TabsContent value="channels" className="space-y-2 mt-4">
             {loading ? <div className="text-center py-10"><Loader2 className="animate-spin inline text-primary" /></div> :

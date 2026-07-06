@@ -72,7 +72,7 @@ const SettingsPage = () => {
   const [savingBranding, setSavingBranding] = useState(false);
 
   // Team state
-  const [teamData, setTeamData] = useState<Array<{ user_id: string; name: string; email: string; role: string; status: string; permissions: Record<string, boolean>; confirmed: boolean; phone: string; whatsapp_number: string }>>([]);
+  const [teamData, setTeamData] = useState<Array<{ user_id: string; name: string; email: string; role: string; status: string; permissions: Record<string, boolean>; confirmed: boolean; phone: string; whatsapp_number: string; department: string }>>([]);
   const [teamLoading, setTeamLoading] = useState(false);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
@@ -82,6 +82,7 @@ const SettingsPage = () => {
   const [inviteName, setInviteName] = useState('');
   const [inviteEmail, setInviteEmail] = useState('');
   const [invitePassword, setInvitePassword] = useState('');
+  const [inviteDepartment, setInviteDepartment] = useState('');
   const [inviteAvailability, setInviteAvailability] = useState<AvailabilityRule[]>(DEFAULT_RULES);
   const [inviting, setInviting] = useState(false);
   const [editingAvailabilityUserId, setEditingAvailabilityUserId] = useState<string | null>(null);
@@ -201,7 +202,7 @@ const SettingsPage = () => {
         const { data: myRoles } = await supabase.from('user_roles').select('role').eq('user_id', user.id).eq('tenant_id', tenantId);
         const roleList = (myRoles || []).map(r => r.role);
         setIsSuperAdmin(roleList.includes('super_admin') || roleList.includes('owner') || roleList.includes('admin'));
-        const { data: profiles } = await supabase.from('profiles_safe' as any).select('user_id, name, email, status, phone, whatsapp_number').eq('tenant_id', tenantId) as { data: any[] | null };
+        const { data: profiles } = await supabase.from('profiles_safe' as any).select('user_id, name, email, status, phone, whatsapp_number, department').eq('tenant_id', tenantId) as { data: any[] | null };
         const { data: roles } = await supabase.from('user_roles').select('user_id, role, permissions_json').eq('tenant_id', tenantId);
         const roleMap = new Map((roles || []).map(r => [r.user_id, { role: r.role, permissions: r.permissions_json }]));
 
@@ -231,6 +232,7 @@ const SettingsPage = () => {
             confirmed: confirmMap[p.user_id] ?? true,
             phone: p.phone || '',
             whatsapp_number: p.whatsapp_number || '',
+            department: p.department || '',
           };
         }));
       } finally {
@@ -346,7 +348,7 @@ const SettingsPage = () => {
     }
     setInviting(true);
     try {
-      const body: any = { email: inviteEmail.trim(), name: inviteName.trim(), availability: inviteAvailability.filter(r => r.active) };
+      const body: any = { email: inviteEmail.trim(), name: inviteName.trim(), department: inviteDepartment.trim() || null, availability: inviteAvailability.filter(r => r.active) };
       if (invitePassword.length >= 6) body.password = invitePassword;
       const { data, error } = await supabase.functions.invoke('invite-member', {
         body,
@@ -359,18 +361,19 @@ const SettingsPage = () => {
       setInviteName('');
       setInviteEmail('');
       setInvitePassword('');
+      setInviteDepartment('');
       setInviteAvailability(DEFAULT_RULES);
       // Reload team
       const { data: myProfile } = await supabase.from('profiles').select('tenant_id').eq('user_id', user!.id).maybeSingle();
       if (myProfile) {
         const tenantId = myProfile.tenant_id;
-        const { data: profiles } = await supabase.from('profiles_safe' as any).select('user_id, name, email, status, phone, whatsapp_number').eq('tenant_id', tenantId) as { data: any[] | null };
+        const { data: profiles } = await supabase.from('profiles_safe' as any).select('user_id, name, email, status, phone, whatsapp_number, department').eq('tenant_id', tenantId) as { data: any[] | null };
         const { data: roles } = await supabase.from('user_roles').select('user_id, role, permissions_json').eq('tenant_id', tenantId);
         const roleMap = new Map((roles || []).map(r => [r.user_id, { role: r.role, permissions: r.permissions_json }]));
         setTeamData((profiles || []).map(p => {
           const roleData = roleMap.get(p.user_id);
           const perms = (roleData?.permissions as Record<string, boolean>) || {};
-          return { user_id: p.user_id, name: p.name || '', email: p.email || '', role: roleData?.role || 'staff', status: p.status || 'active', permissions: perms, confirmed: false, phone: p.phone || '', whatsapp_number: p.whatsapp_number || '' };
+          return { user_id: p.user_id, name: p.name || '', email: p.email || '', role: roleData?.role || 'staff', status: p.status || 'active', permissions: perms, confirmed: false, phone: p.phone || '', whatsapp_number: p.whatsapp_number || '', department: p.department || '' };
         }));
       }
     } catch (err: any) {
@@ -1400,7 +1403,10 @@ const SettingsPage = () => {
                         </div>
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-medium text-foreground truncate">{m.name || 'Sin nombre'}</p>
-                          <p className="text-xs text-[var(--rx-t2)] truncate">{m.email}</p>
+                          <p className="text-xs text-[var(--rx-t2)] truncate">
+                            {m.email}
+                            {m.department && <span className="ml-1.5 inline-block px-1.5 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-medium">{m.department}</span>}
+                          </p>
                         </div>
                         <div className="flex items-center gap-2">
                           {isSuperAdmin && !isSelf ? (
@@ -1500,8 +1506,17 @@ const SettingsPage = () => {
                         <div className="border-t border-[var(--rx-b1)] bg-[var(--rx-s2)]/30 px-4 py-3 space-y-4">
                           {/* Phone numbers for transfers */}
                           <div>
-                            <p className="text-xs font-semibold text-[var(--rx-t2)] uppercase mb-3">Teléfonos (para transferencias de llamada)</p>
+                            <p className="text-xs font-semibold text-[var(--rx-t2)] uppercase mb-3">Contacto y área (para transferencias de llamada)</p>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <div className="sm:col-span-2">
+                                <label className="text-xs font-medium text-[var(--rx-t2)] mb-1 block">Departamento / Área</label>
+                                <input
+                                  className={inputClass}
+                                  value={m.department}
+                                  onChange={e => setTeamData(prev => prev.map(t => t.user_id === m.user_id ? { ...t, department: e.target.value } : t))}
+                                  placeholder="Ej. Ventas, Soporte, Legal, Cobranza…"
+                                />
+                              </div>
                               <div>
                                 <label className="text-xs font-medium text-[var(--rx-t2)] mb-1 block flex items-center gap-1"><PhoneIcon size={12} /> Teléfono</label>
                                 <input
@@ -1524,24 +1539,29 @@ const SettingsPage = () => {
                             <button
                               onClick={async () => {
                                 try {
-                                  const tenantId = await getTenantId();
-                                  const { error } = await supabase
-                                    .from('profiles')
-                                    .update({ phone: m.phone.trim() || null, whatsapp_number: m.whatsapp_number.trim() || null } as any)
-                                    .eq('user_id', m.user_id)
-                                    .eq('tenant_id', tenantId);
+                                  const { data: r, error } = await supabase.functions.invoke('team-management', {
+                                    body: {
+                                      action: 'update_member',
+                                      user_id: m.user_id,
+                                      department: m.department.trim() || null,
+                                      phone: m.phone.trim() || null,
+                                      whatsapp_number: m.whatsapp_number.trim() || null,
+                                    },
+                                  });
                                   if (error) throw error;
-                                  toast.success('Teléfonos actualizados');
+                                  if (r?.error) throw new Error(r.error);
+                                  toast.success('Datos del miembro actualizados');
                                 } catch (err: any) {
-                                  toast.error(err.message || 'Error al guardar teléfonos');
+                                  toast.error(err.message || 'Error al guardar');
                                 }
                               }}
                               className="mt-2 bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground text-xs px-3 py-1.5 rounded-lg hover:opacity-90 flex items-center gap-1.5"
                             >
                               <Save size={12} />
-                              Guardar teléfonos
+                              Guardar datos
                             </button>
                           </div>
+
 
                           <div>
                             <p className="text-xs font-semibold text-[var(--rx-t2)] uppercase mb-3">Permisos de acceso a módulos</p>
@@ -1625,6 +1645,11 @@ const SettingsPage = () => {
                       <div>
                         <label className="text-xs font-medium text-[var(--rx-t2)] mb-1 block">Email</label>
                         <input className={inputClass} type="email" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} placeholder="email@ejemplo.com" />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-[var(--rx-t2)] mb-1 block">Departamento / Área</label>
+                        <input className={inputClass} value={inviteDepartment} onChange={e => setInviteDepartment(e.target.value)} placeholder="Ej. Ventas, Soporte, Legal, Cobranza…" />
+                        <p className="text-[10px] text-[var(--rx-t2)] mt-1">Se usa para que el agente de voz sepa a qué área transferir la llamada.</p>
                       </div>
                       <div>
                         <label className="text-xs font-medium text-[var(--rx-t2)] mb-1 block">Contraseña temporal <span className="text-[var(--rx-t2)] font-normal">(opcional)</span></label>

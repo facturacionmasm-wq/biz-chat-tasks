@@ -16,7 +16,7 @@ const mainTabs = [
   { to: '/appointments', icon: CalendarPlus, label: 'Agenda' },
 ];
 
-const moreItems = [
+const baseMoreItems = [
   { to: '/support', icon: LifeBuoy, label: 'Soporte' },
   { to: '/platform-support', icon: HeadphonesIcon, label: 'Soporte Plataforma' },
   { to: '/chat', icon: MessageCircle, label: 'Chat Interno' },
@@ -39,6 +39,18 @@ const BottomNav = () => {
   const [moreOpen, setMoreOpen] = useState(false);
   const location = useLocation();
   const { userRole, signOut } = useAuth();
+
+  // Super admins get "Bandeja Soporte" pointing to their admin inbox instead
+  // of the tenant-facing "Soporte Plataforma" widget.
+  const moreItems = userRole === 'super_admin'
+    ? baseMoreItems.map(item =>
+        item.to === '/platform-support'
+          ? { to: '/super-admin/support', icon: HeadphonesIcon, label: 'Bandeja Soporte' }
+          : item
+      )
+    : baseMoreItems;
+
+
 
   const isMoreActive = moreItems.some(item => 
     location.pathname === item.to || location.pathname.startsWith(item.to + '/')
