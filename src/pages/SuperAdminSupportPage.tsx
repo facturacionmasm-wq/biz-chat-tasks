@@ -217,6 +217,9 @@ const SuperAdminSupportPage = () => {
             <h2 className="font-bold text-sm truncate">{selectedTicket.subject}</h2>
             <p className="text-xs text-muted-foreground truncate">
               {selectedTicket.tenants?.name || 'Tenant'} · {selectedTicket.channel}
+              {selectedTicket.creator && (
+                <> · <span className="text-foreground/80">Creado por: {selectedTicket.creator.name || 'Sin nombre'}{selectedTicket.creator.email ? ` · ${selectedTicket.creator.email}` : ''}</span></>
+              )}
             </p>
           </div>
           <Badge className={priorityCfg[selectedTicket.priority]?.cls + ' border'}>{priorityCfg[selectedTicket.priority]?.label}</Badge>
