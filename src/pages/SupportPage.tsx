@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
-import { LifeBuoy, Plus, AlertTriangle, Clock, CheckCircle2, XCircle, Crown, Loader2, Send, MessageSquare, Phone, User, ArrowLeft, Filter, Mail, Sparkles } from 'lucide-react';
+import { LifeBuoy, Plus, AlertTriangle, Clock, CheckCircle2, XCircle, Crown, Loader2, Send, MessageSquare, Phone, User, ArrowLeft, Filter, Mail, Sparkles, Headphones } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePlanFeatures } from '@/hooks/usePlanFeatures';
@@ -10,6 +11,8 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import SupportAriaWidget from '@/components/SupportAriaWidget';
+
 
 type Ticket = {
   id: string;
@@ -69,7 +72,9 @@ function formatRelative(iso: string | null) {
 
 const SupportPage = () => {
   const { user } = useAuth();
-  const { supportLevel, planName } = usePlanFeatures();
+  const { supportLevel, planName, hasFeature } = usePlanFeatures();
+  const canCreateTickets = hasFeature('direct_support') || hasFeature('priority_support');
+
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Ticket | null>(null);
@@ -80,7 +85,7 @@ const SupportPage = () => {
   const [sending, setSending] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [filterPriority, setFilterPriority] = useState<string>('all');
-  const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [filterStatus, setFilterStatus] = useState<string>('active');
   const [newTicket, setNewTicket] = useState({ subject: '', description: '', priority: 'normal' });
 
   // ===== Email to support form =====
@@ -198,7 +203,13 @@ const SupportPage = () => {
     const pOrder = { urgent: 0, high: 1, normal: 2, low: 3 };
     return tickets
       .filter(t => filterPriority === 'all' || t.priority === filterPriority)
-      .filter(t => filterStatus === 'all' || t.status === filterStatus)
+      .filter(t => {
+        if (filterStatus === 'all') return true;
+        if (filterStatus === 'active') return !['resolved', 'closed'].includes(t.status);
+        if (filterStatus === 'closed_all') return ['resolved', 'closed'].includes(t.status);
+        return t.status === filterStatus;
+      })
+
       .sort((a, b) => (pOrder[a.priority] ?? 9) - (pOrder[b.priority] ?? 9) || new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   }, [tickets, filterPriority, filterStatus]);
 
@@ -299,10 +310,21 @@ const SupportPage = () => {
               )}
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <Button variant="outline" onClick={() => setEmailOpen(true)} className="rounded-full"><Mail size={16} className="mr-1" /> Enviar correo a soporte</Button>
-            <Button onClick={() => setCreateOpen(true)} className="rounded-full"><Plus size={16} className="mr-1" /> Nuevo ticket</Button>
+            {canCreateTickets && (
+              <Button onClick={() => setCreateOpen(true)} className="rounded-full"><Plus size={16} className="mr-1" /> Nuevo ticket</Button>
+            )}
+            {hasFeature('direct_support') && (
+              <Button asChild variant="outline" className="rounded-full">
+                <Link to="/platform-support"><Headphones size={16} className="mr-1" /> Chat con soporte</Link>
+              </Button>
+            )}
           </div>
+        </div>
+
+        <div className="mb-4">
+          <SupportAriaWidget onEscalated={load} />
         </div>
 
         <div className="flex gap-2 flex-wrap">
@@ -314,14 +336,17 @@ const SupportPage = () => {
             </SelectContent>
           </Select>
           <Select value={filterStatus} onValueChange={setFilterStatus}>
-            <SelectTrigger className="w-40 h-9 rounded-full"><SelectValue placeholder="Estado" /></SelectTrigger>
+            <SelectTrigger className="w-44 h-9 rounded-full"><SelectValue placeholder="Estado" /></SelectTrigger>
             <SelectContent>
+              <SelectItem value="active">Activos (sin cerrados)</SelectItem>
               <SelectItem value="all">Todos los estados</SelectItem>
+              <SelectItem value="closed_all">Solo resueltos/cerrados</SelectItem>
               {Object.entries(statusCfg).map(([k, v]) => (<SelectItem key={k} value={k}>{v.label}</SelectItem>))}
             </SelectContent>
           </Select>
         </div>
       </div>
+
 
       <div className="px-4 space-y-3">
         {loading ? (
