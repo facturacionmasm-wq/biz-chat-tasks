@@ -895,6 +895,12 @@ const SettingsPage = () => {
         .eq('id', tenantId);
       if (error) throw error;
       toast.success('Branding guardado correctamente');
+      // Fire-and-forget: push welcome_message al agente de ElevenLabs.
+      // El aislamiento por tenant vive dentro de la función; si el tenant no
+      // tiene agent_id propio hace no-op. Errores no rompen el guardado.
+      void supabase.functions
+        .invoke('elevenlabs-staff-sync', { body: { tenant_id: tenantId } })
+        .catch(() => {});
     } catch (err: any) {
       toast.error(err.message || 'Error al guardar branding');
     } finally {
