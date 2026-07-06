@@ -389,11 +389,14 @@ serve(async (req) => {
     if (welcomeMessage) {
       agentPatch.first_message = welcomeMessage;
     }
-    const patchBody = {
+    const patchBody: Record<string, any> = {
       conversation_config: {
         agent: agentPatch,
       },
     };
+    if (voiceId) {
+      patchBody.conversation_config.tts = { voice_id: voiceId };
+    }
 
 
     const patchRes = await fetch(`${ELEVENLABS_API_URL}/convai/agents/${agentId}`, {
