@@ -241,6 +241,8 @@ serve(async (req) => {
     const MASTER_TENANT_ID = "00000000-0000-0000-0000-000000000001";
     let override: string | undefined;
     let welcomeMessage: string | null = null;
+    let voiceId: string | null = null;
+    let agentPersonality: string | null = null;
     try {
       const { data: t } = await admin
         .from("tenants")
@@ -254,6 +256,14 @@ serve(async (req) => {
       const wm = (t?.settings_json as any)?.welcome_message;
       if (wm && typeof wm === "string" && wm.trim().length > 0) {
         welcomeMessage = wm.trim();
+      }
+      const vid = (t?.settings_json as any)?.voice_id;
+      if (vid && typeof vid === "string" && vid.trim().length > 0) {
+        voiceId = vid.trim();
+      }
+      const ap = (t?.settings_json as any)?.agent_personality;
+      if (ap && typeof ap === "string" && ap.trim().length > 0) {
+        agentPersonality = ap.trim();
       }
     } catch (e) {
       warn("tenant settings_json fetch failed:", (e as Error).message);
