@@ -61,7 +61,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { email, name, password, availability } = await req.json();
+    const { email, name, password, availability, department } = await req.json();
     if (!email || !name) {
       return new Response(
         JSON.stringify({ error: "Email y nombre son requeridos" }),
