@@ -201,7 +201,7 @@ const SettingsPage = () => {
         const { data: myRoles } = await supabase.from('user_roles').select('role').eq('user_id', user.id).eq('tenant_id', tenantId);
         const roleList = (myRoles || []).map(r => r.role);
         setIsSuperAdmin(roleList.includes('super_admin') || roleList.includes('owner') || roleList.includes('admin'));
-        const { data: profiles } = await supabase.from('profiles_safe' as any).select('user_id, name, email, status, phone, whatsapp_number').eq('tenant_id', tenantId) as { data: any[] | null };
+        const { data: profiles } = await supabase.from('profiles_safe' as any).select('user_id, name, email, status, phone, whatsapp_number, department').eq('tenant_id', tenantId) as { data: any[] | null };
         const { data: roles } = await supabase.from('user_roles').select('user_id, role, permissions_json').eq('tenant_id', tenantId);
         const roleMap = new Map((roles || []).map(r => [r.user_id, { role: r.role, permissions: r.permissions_json }]));
 
