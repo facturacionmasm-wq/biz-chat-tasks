@@ -1506,8 +1506,17 @@ const SettingsPage = () => {
                         <div className="border-t border-[var(--rx-b1)] bg-[var(--rx-s2)]/30 px-4 py-3 space-y-4">
                           {/* Phone numbers for transfers */}
                           <div>
-                            <p className="text-xs font-semibold text-[var(--rx-t2)] uppercase mb-3">Teléfonos (para transferencias de llamada)</p>
+                            <p className="text-xs font-semibold text-[var(--rx-t2)] uppercase mb-3">Contacto y área (para transferencias de llamada)</p>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <div className="sm:col-span-2">
+                                <label className="text-xs font-medium text-[var(--rx-t2)] mb-1 block">Departamento / Área</label>
+                                <input
+                                  className={inputClass}
+                                  value={m.department}
+                                  onChange={e => setTeamData(prev => prev.map(t => t.user_id === m.user_id ? { ...t, department: e.target.value } : t))}
+                                  placeholder="Ej. Ventas, Soporte, Legal, Cobranza…"
+                                />
+                              </div>
                               <div>
                                 <label className="text-xs font-medium text-[var(--rx-t2)] mb-1 block flex items-center gap-1"><PhoneIcon size={12} /> Teléfono</label>
                                 <input
@@ -1530,24 +1539,29 @@ const SettingsPage = () => {
                             <button
                               onClick={async () => {
                                 try {
-                                  const tenantId = await getTenantId();
-                                  const { error } = await supabase
-                                    .from('profiles')
-                                    .update({ phone: m.phone.trim() || null, whatsapp_number: m.whatsapp_number.trim() || null } as any)
-                                    .eq('user_id', m.user_id)
-                                    .eq('tenant_id', tenantId);
+                                  const { data: r, error } = await supabase.functions.invoke('team-management', {
+                                    body: {
+                                      action: 'update_member',
+                                      user_id: m.user_id,
+                                      department: m.department.trim() || null,
+                                      phone: m.phone.trim() || null,
+                                      whatsapp_number: m.whatsapp_number.trim() || null,
+                                    },
+                                  });
                                   if (error) throw error;
-                                  toast.success('Teléfonos actualizados');
+                                  if (r?.error) throw new Error(r.error);
+                                  toast.success('Datos del miembro actualizados');
                                 } catch (err: any) {
-                                  toast.error(err.message || 'Error al guardar teléfonos');
+                                  toast.error(err.message || 'Error al guardar');
                                 }
                               }}
                               className="mt-2 bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground text-xs px-3 py-1.5 rounded-lg hover:opacity-90 flex items-center gap-1.5"
                             >
                               <Save size={12} />
-                              Guardar teléfonos
+                              Guardar datos
                             </button>
                           </div>
+
 
                           <div>
                             <p className="text-xs font-semibold text-[var(--rx-t2)] uppercase mb-3">Permisos de acceso a módulos</p>
