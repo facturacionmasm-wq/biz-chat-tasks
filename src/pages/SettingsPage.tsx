@@ -72,7 +72,7 @@ const SettingsPage = () => {
   const [savingBranding, setSavingBranding] = useState(false);
 
   // Team state
-  const [teamData, setTeamData] = useState<Array<{ user_id: string; name: string; email: string; role: string; status: string; permissions: Record<string, boolean>; confirmed: boolean; phone: string; whatsapp_number: string }>>([]);
+  const [teamData, setTeamData] = useState<Array<{ user_id: string; name: string; email: string; role: string; status: string; permissions: Record<string, boolean>; confirmed: boolean; phone: string; whatsapp_number: string; department: string }>>([]);
   const [teamLoading, setTeamLoading] = useState(false);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
