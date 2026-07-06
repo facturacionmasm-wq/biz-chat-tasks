@@ -1403,7 +1403,10 @@ const SettingsPage = () => {
                         </div>
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-medium text-foreground truncate">{m.name || 'Sin nombre'}</p>
-                          <p className="text-xs text-[var(--rx-t2)] truncate">{m.email}</p>
+                          <p className="text-xs text-[var(--rx-t2)] truncate">
+                            {m.email}
+                            {m.department && <span className="ml-1.5 inline-block px-1.5 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-medium">{m.department}</span>}
+                          </p>
                         </div>
                         <div className="flex items-center gap-2">
                           {isSuperAdmin && !isSelf ? (
