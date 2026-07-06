@@ -420,7 +420,7 @@ serve(async (req) => {
         event_type: "elevenlabs_staff_sync",
         resource_type: "elevenlabs_agent",
         resource_id: agentId,
-        payload: { members_count: members.length, departments: Array.from(new Set(members.map((m) => m.department).filter(Boolean))), welcome_message_updated: !!welcomeMessage },
+        payload: { members_count: members.length, departments: Array.from(new Set(members.map((m) => m.department).filter(Boolean))), welcome_message_updated: !!welcomeMessage, voice_updated: !!voiceId, personality_updated: !!agentPersonality },
       });
     } catch (e) {
       warn("audit insert failed:", (e as Error).message);
