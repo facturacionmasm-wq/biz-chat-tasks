@@ -25,8 +25,14 @@ type Consult = {
 };
 
 const PlatformSupportPage = () => {
-  const { user } = useAuth();
+  const { user, userRole } = useAuth();
   const navigate = useNavigate();
+
+  // Super admins have their own inbox at /super-admin/support
+  if (userRole === 'super_admin') {
+    return <Navigate to="/super-admin/support" replace />;
+  }
+
   const { hasFeature, loading: planLoading, planName, supportLevel } = usePlanFeatures();
   const directSupport = hasFeature('direct_support');
 
