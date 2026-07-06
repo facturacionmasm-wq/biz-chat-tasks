@@ -348,7 +348,7 @@ const SettingsPage = () => {
     }
     setInviting(true);
     try {
-      const body: any = { email: inviteEmail.trim(), name: inviteName.trim(), availability: inviteAvailability.filter(r => r.active) };
+      const body: any = { email: inviteEmail.trim(), name: inviteName.trim(), department: inviteDepartment.trim() || null, availability: inviteAvailability.filter(r => r.active) };
       if (invitePassword.length >= 6) body.password = invitePassword;
       const { data, error } = await supabase.functions.invoke('invite-member', {
         body,
@@ -361,6 +361,7 @@ const SettingsPage = () => {
       setInviteName('');
       setInviteEmail('');
       setInvitePassword('');
+      setInviteDepartment('');
       setInviteAvailability(DEFAULT_RULES);
       // Reload team
       const { data: myProfile } = await supabase.from('profiles').select('tenant_id').eq('user_id', user!.id).maybeSingle();
