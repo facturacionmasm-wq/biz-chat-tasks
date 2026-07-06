@@ -50,8 +50,98 @@ serve(async (req) => {
     if (!profile?.tenant_id) return json({ error: "No tenant" }, 403);
     const tenantId = profile.tenant_id;
 
+    const { data: superRow } = await admin
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", user.id)
+      .eq("role", "super_admin")
+      .maybeSingle();
+    const isSuperAdmin = !!superRow;
+
     const body = await req.json().catch(() => ({}));
     const action = body.action as string;
+
+    // ============ SUPER ADMIN ACTIONS (cross-tenant) ============
+    if (action === "admin_list") {
+      if (!isSuperAdmin) return json({ error: "Forbidden" }, 403);
+      const { data, error } = await admin
+        .from("support_tickets")
+        .select("*, contacts:contact_id(id, name, phone, is_vip, vip_tier), tenants:tenant_id(id, name)")
+        .order("created_at", { ascending: false })
+        .limit(500);
+      if (error) throw error;
+      return json({ tickets: data ?? [] });
+    }
+
+    if (action === "admin_get") {
+      if (!isSuperAdmin) return json({ error: "Forbidden" }, 403);
+      const ticketId = body.ticket_id;
+      const [ticket, messages, events] = await Promise.all([
+        admin.from("support_tickets").select("*, contacts:contact_id(id, name, phone, is_vip, vip_tier, vip_notes), tenants:tenant_id(id, name)").eq("id", ticketId).maybeSingle(),
+        admin.from("ticket_messages").select("*").eq("ticket_id", ticketId).order("created_at", { ascending: true }),
+        admin.from("ticket_events").select("*").eq("ticket_id", ticketId).order("created_at", { ascending: true }),
+      ]);
+      if (ticket.error) throw ticket.error;
+      return json({ ticket: ticket.data, messages: messages.data ?? [], events: events.data ?? [] });
+    }
+
+    if (action === "admin_add_message") {
+      if (!isSuperAdmin) return json({ error: "Forbidden" }, 403);
+      const { data: t } = await admin.from("support_tickets").select("tenant_id").eq("id", body.ticket_id).maybeSingle();
+      if (!t) return json({ error: "Ticket not found" }, 404);
+      const { data, error } = await admin
+        .from("ticket_messages")
+        .insert({
+          ticket_id: body.ticket_id,
+          tenant_id: t.tenant_id,
+          author_type: "super_admin",
+          author_id: user.id,
+          body: body.body,
+          is_internal_note: !!body.is_internal_note,
+          attachments: body.attachments ?? [],
+        })
+        .select()
+        .single();
+      if (error) throw error;
+      if (!body.is_internal_note) {
+        await admin
+          .from("support_tickets")
+          .update({ first_response_at: new Date().toISOString(), status: "in_progress" })
+          .eq("id", body.ticket_id)
+          .is("first_response_at", null);
+      }
+      await admin.from("ticket_events").insert({
+        ticket_id: body.ticket_id, tenant_id: t.tenant_id, actor_id: user.id,
+        event_type: "super_admin_reply", payload: { internal: !!body.is_internal_note },
+      });
+      return json({ message: data });
+    }
+
+    if (action === "admin_update") {
+      if (!isSuperAdmin) return json({ error: "Forbidden" }, 403);
+      const patch: Record<string, unknown> = {};
+      const allowed = ["priority", "status", "assigned_to", "subject", "description", "tags"];
+      for (const k of allowed) if (k in body) patch[k] = body[k];
+      if (body.priority) Object.assign(patch, computeSla(body.priority));
+      if (body.status === "resolved") patch.resolved_at = new Date().toISOString();
+      if (body.status === "closed") patch.closed_at = new Date().toISOString();
+      const { data: t } = await admin.from("support_tickets").select("tenant_id").eq("id", body.ticket_id).maybeSingle();
+      if (!t) return json({ error: "Ticket not found" }, 404);
+      const { data, error } = await admin
+        .from("support_tickets")
+        .update(patch)
+        .eq("id", body.ticket_id)
+        .select()
+        .single();
+      if (error) throw error;
+      await admin.from("ticket_events").insert({
+        ticket_id: body.ticket_id, tenant_id: t.tenant_id, actor_id: user.id,
+        event_type: "super_admin_update", payload: patch,
+      });
+      return json({ ticket: data });
+    }
+
+
 
     if (action === "list") {
       const { data, error } = await admin
