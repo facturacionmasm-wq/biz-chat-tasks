@@ -1630,6 +1630,11 @@ const SettingsPage = () => {
                         <input className={inputClass} type="email" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} placeholder="email@ejemplo.com" />
                       </div>
                       <div>
+                        <label className="text-xs font-medium text-[var(--rx-t2)] mb-1 block">Departamento / Área</label>
+                        <input className={inputClass} value={inviteDepartment} onChange={e => setInviteDepartment(e.target.value)} placeholder="Ej. Ventas, Soporte, Legal, Cobranza…" />
+                        <p className="text-[10px] text-[var(--rx-t2)] mt-1">Se usa para que el agente de voz sepa a qué área transferir la llamada.</p>
+                      </div>
+                      <div>
                         <label className="text-xs font-medium text-[var(--rx-t2)] mb-1 block">Contraseña temporal <span className="text-[var(--rx-t2)] font-normal">(opcional)</span></label>
                         <input className={inputClass} type="password" value={invitePassword} onChange={e => setInvitePassword(e.target.value)} placeholder="Dejar vacío para enviar invitación por email" />
                       </div>
