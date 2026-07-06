@@ -46,25 +46,44 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Verify caller is super_admin or owner
+    // Verify caller is super_admin or owner (fetch ALL rows to handle multi-role users)
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
-    const { data: callerRole } = await adminClient
+    const { data: callerRoles } = await adminClient
       .from("user_roles")
       .select("role, tenant_id")
-      .eq("user_id", caller.id)
-      .maybeSingle();
+      .eq("user_id", caller.id);
 
-    if (!callerRole || !["super_admin", "owner"].includes(callerRole.role)) {
+    const allowed = (callerRoles || []).filter((r: any) =>
+      ["super_admin", "owner"].includes(r.role)
+    );
+
+    if (allowed.length === 0) {
       return new Response(
         JSON.stringify({ error: "Solo el super admin u owner puede invitar miembros" }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const { email, name, password, availability, department } = await req.json();
+    const payload = await req.json();
+    const { email, name, password, availability, department, target_tenant_id } = payload;
     if (!email || !name) {
       return new Response(
         JSON.stringify({ error: "Email y nombre son requeridos" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Resolve target tenant with same priority logic as team-management
+    const isSuper = allowed.some((r: any) => r.role === "super_admin");
+    const ownerRow = allowed.find((r: any) => r.role === "owner" && r.tenant_id);
+    const targetTenantId: string | undefined =
+      (isSuper && target_tenant_id) ||
+      ownerRow?.tenant_id ||
+      allowed.find((r: any) => r.tenant_id)?.tenant_id;
+
+    if (!targetTenantId) {
+      return new Response(
+        JSON.stringify({ error: "No se pudo resolver el tenant destino" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
