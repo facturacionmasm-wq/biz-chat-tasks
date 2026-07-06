@@ -59,6 +59,8 @@ const ProtectedRoute = forwardRef<HTMLDivElement, RouteGuardProps>(({ children }
   const { user, loading, onboardingCompleted, subscriptionStatus, userRole, profileStatus } = useAuth();
   if (loading) return <LoadingScreen />;
   if (!user) return <Navigate to="/auth" replace />;
+  // Wait for role to resolve before role-based redirects (prevents flicker to "/" on refresh).
+  if (userRole === null) return <LoadingScreen />;
   if (profileStatus === 'pending_approval') return <Navigate to="/pending-approval" replace />;
   if (onboardingCompleted === false) return <Navigate to="/onboarding" replace />;
   if (userRole !== 'super_admin' && subscriptionStatus?.is_blocked) return <Navigate to="/blocked" replace />;
@@ -70,6 +72,8 @@ const AdminRoute = forwardRef<HTMLDivElement, RouteGuardProps>(({ children }, _r
   const { user, loading, userRole } = useAuth();
   if (loading) return <LoadingScreen />;
   if (!user) return <Navigate to="/auth" replace />;
+  // Wait for role to resolve before deciding admin access (prevents redirect to "/" during initial fetch).
+  if (userRole === null) return <LoadingScreen />;
   if (userRole !== 'super_admin') return <Navigate to="/" replace />;
   return <>{children}</>;
 });
