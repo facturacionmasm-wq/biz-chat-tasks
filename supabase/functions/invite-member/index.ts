@@ -121,6 +121,7 @@ Deno.serve(async (req) => {
       .update({
         tenant_id: callerRole.tenant_id,
         name,
+        department: department ?? null,
         status: 'pending_approval',
         onboarding_completed: true, // Skip onboarding for invited users
       })
