@@ -295,7 +295,7 @@ const SupportPage = () => {
         <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
           <div>
             <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2"><LifeBuoy size={24} className="text-primary" /> Soporte a Clientes</h1>
-            <p className="text-sm text-muted-foreground mt-0.5 flex items-center gap-2 flex-wrap">
+            <div className="text-sm text-muted-foreground mt-0.5 flex items-center gap-2 flex-wrap">
               <span>{openCount} abiertos · {urgentCount} urgentes</span>
               {supportLevel && (
                 <Badge className={
@@ -308,7 +308,7 @@ const SupportPage = () => {
                   Atención {supportLevel === 'dedicated' ? 'dedicada' : supportLevel === 'priority' ? 'prioritaria' : 'estándar'} · {planName || '—'}
                 </Badge>
               )}
-            </p>
+            </div>
           </div>
           <div className="flex gap-2 flex-wrap">
             <Button variant="outline" onClick={() => setEmailOpen(true)} className="rounded-full"><Mail size={16} className="mr-1" /> Enviar correo a soporte</Button>
