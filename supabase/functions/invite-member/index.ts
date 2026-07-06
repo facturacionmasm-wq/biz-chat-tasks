@@ -117,46 +117,46 @@ Deno.serve(async (req) => {
       newUserId = newUser.user.id;
     }
 
-    // The handle_new_user trigger creates a new tenant + profile + role for this user.
-    // We need to fix this: move the user to the inviter's tenant with pending_approval status.
+    // NOTE: handle_new_user swallows errors and often does NOT create profile/role
+    // for invited users (order-of-operations conflict with prevent_profile_tenant_change).
+    // We create user_roles FIRST (satisfies membership trigger), THEN upsert profile.
 
-    // 1. Get the auto-created tenant (to delete later)
-    const { data: autoProfile } = await adminClient
-      .from("profiles")
-      .select("tenant_id")
-      .eq("user_id", newUserId)
-      .maybeSingle();
-
-    const autoTenantId = autoProfile?.tenant_id;
-
-    // 2. Delete the auto-created role in the wrong tenant
-    if (autoTenantId && autoTenantId !== targetTenantId) {
-      await adminClient.from("user_roles").delete().eq("user_id", newUserId).eq("tenant_id", autoTenantId);
-    }
-
-    // 3. Update profile to the correct tenant with pending_approval status
-    await adminClient
-      .from("profiles")
-      .update({
-        tenant_id: targetTenantId,
-        name,
-        department: department ?? null,
-        status: 'pending_approval',
-        onboarding_completed: true, // Skip onboarding for invited users
-      })
-      .eq("user_id", newUserId);
-
-    // 4. Create role in the correct tenant
-    await adminClient.from("user_roles").upsert({
+    // 1. Upsert role in the target tenant (must exist before profile insert)
+    const { error: roleErr } = await adminClient.from("user_roles").upsert({
       user_id: newUserId,
       tenant_id: targetTenantId,
       role: 'staff',
     }, { onConflict: 'user_id,tenant_id,role' });
-
-    // 5. Delete the auto-created empty tenant (if different)
-    if (autoTenantId && autoTenantId !== targetTenantId) {
-      await adminClient.from("tenants").delete().eq("id", autoTenantId);
+    if (roleErr) {
+      console.error("[invite-member] user_roles upsert failed:", roleErr.message);
+      return new Response(JSON.stringify({ error: `Failed to create role: ${roleErr.message}` }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
+    console.log(`[invite-member] role upsert ok user=${newUserId} tenant=${targetTenantId}`);
+
+    // 2. Upsert profile in the correct tenant with pending_approval status
+    const { error: profileErr } = await adminClient
+      .from("profiles")
+      .upsert({
+        user_id: newUserId,
+        tenant_id: targetTenantId,
+        email,
+        name,
+        department: department ?? null,
+        status: 'pending_approval',
+        onboarding_completed: true,
+      }, { onConflict: 'user_id' });
+    if (profileErr) {
+      console.error("[invite-member] profiles upsert failed:", profileErr.message);
+      return new Response(JSON.stringify({ error: `Failed to create profile: ${profileErr.message}` }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    console.log(`[invite-member] profile upsert ok user=${newUserId} tenant=${targetTenantId} dept=${department ?? 'null'}`);
+
 
     // Create availability rules if provided
     if (availability && Array.isArray(availability) && availability.length > 0) {
