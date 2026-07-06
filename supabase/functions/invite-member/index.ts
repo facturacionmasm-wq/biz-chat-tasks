@@ -95,7 +95,7 @@ Deno.serve(async (req) => {
         email,
         password,
         email_confirm: true,
-        user_metadata: { name, invited_to_tenant: callerRole.tenant_id },
+        user_metadata: { name, invited_to_tenant: targetTenantId },
       });
       if (createError) {
         return new Response(JSON.stringify({ error: createError.message }), {
@@ -106,7 +106,7 @@ Deno.serve(async (req) => {
       newUserId = newUser.user.id;
     } else {
       const { data: newUser, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(email, {
-        data: { name, invited_to_tenant: callerRole.tenant_id },
+        data: { name, invited_to_tenant: targetTenantId },
       });
       if (inviteError) {
         return new Response(JSON.stringify({ error: inviteError.message }), {
@@ -130,7 +130,7 @@ Deno.serve(async (req) => {
     const autoTenantId = autoProfile?.tenant_id;
 
     // 2. Delete the auto-created role in the wrong tenant
-    if (autoTenantId && autoTenantId !== callerRole.tenant_id) {
+    if (autoTenantId && autoTenantId !== targetTenantId) {
       await adminClient.from("user_roles").delete().eq("user_id", newUserId).eq("tenant_id", autoTenantId);
     }
 
@@ -138,7 +138,7 @@ Deno.serve(async (req) => {
     await adminClient
       .from("profiles")
       .update({
-        tenant_id: callerRole.tenant_id,
+        tenant_id: targetTenantId,
         name,
         department: department ?? null,
         status: 'pending_approval',
@@ -149,19 +149,19 @@ Deno.serve(async (req) => {
     // 4. Create role in the correct tenant
     await adminClient.from("user_roles").upsert({
       user_id: newUserId,
-      tenant_id: callerRole.tenant_id,
+      tenant_id: targetTenantId,
       role: 'staff',
     }, { onConflict: 'user_id,tenant_id,role' });
 
     // 5. Delete the auto-created empty tenant (if different)
-    if (autoTenantId && autoTenantId !== callerRole.tenant_id) {
+    if (autoTenantId && autoTenantId !== targetTenantId) {
       await adminClient.from("tenants").delete().eq("id", autoTenantId);
     }
 
     // Create availability rules if provided
     if (availability && Array.isArray(availability) && availability.length > 0) {
       const rules = availability.map((rule: AvailabilityRule) => ({
-        tenant_id: callerRole.tenant_id,
+        tenant_id: targetTenantId,
         user_id: newUserId,
         day_of_week: rule.day_of_week,
         start_time: rule.start_time,
@@ -191,7 +191,7 @@ Deno.serve(async (req) => {
           "Content-Type": "application/json",
           Authorization: `Bearer ${serviceRoleKey}`,
         },
-        body: JSON.stringify({ tenant_id: callerRole.tenant_id }),
+        body: JSON.stringify({ tenant_id: targetTenantId }),
       }).catch((e) => console.error("[invite-member] elevenlabs-staff-sync fire error:", e?.message));
     } catch (e) {
       console.error("[invite-member] elevenlabs-staff-sync trigger failed:", (e as Error).message);
