@@ -39,6 +39,8 @@ type AdminTicket = {
   tenant_id: string;
   tenants?: { id: string; name: string } | null;
   description?: string | null;
+  created_by?: string | null;
+  creator?: { name: string | null; email: string | null } | null;
 };
 
 const priorityCfg: Record<string, { label: string; cls: string }> = {
