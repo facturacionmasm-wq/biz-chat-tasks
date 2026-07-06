@@ -6,7 +6,7 @@ import { usePlanFeatures } from '@/hooks/usePlanFeatures';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Navigate } from 'react-router-dom';
 
 type Msg = {
   id: string;
