@@ -82,6 +82,7 @@ const SettingsPage = () => {
   const [inviteName, setInviteName] = useState('');
   const [inviteEmail, setInviteEmail] = useState('');
   const [invitePassword, setInvitePassword] = useState('');
+  const [inviteDepartment, setInviteDepartment] = useState('');
   const [inviteAvailability, setInviteAvailability] = useState<AvailabilityRule[]>(DEFAULT_RULES);
   const [inviting, setInviting] = useState(false);
   const [editingAvailabilityUserId, setEditingAvailabilityUserId] = useState<string | null>(null);
