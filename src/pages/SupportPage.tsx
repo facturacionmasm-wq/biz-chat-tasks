@@ -310,10 +310,21 @@ const SupportPage = () => {
               )}
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <Button variant="outline" onClick={() => setEmailOpen(true)} className="rounded-full"><Mail size={16} className="mr-1" /> Enviar correo a soporte</Button>
-            <Button onClick={() => setCreateOpen(true)} className="rounded-full"><Plus size={16} className="mr-1" /> Nuevo ticket</Button>
+            {canCreateTickets && (
+              <Button onClick={() => setCreateOpen(true)} className="rounded-full"><Plus size={16} className="mr-1" /> Nuevo ticket</Button>
+            )}
+            {hasFeature('direct_support') && (
+              <Button asChild variant="outline" className="rounded-full">
+                <Link to="/platform-support"><Headphones size={16} className="mr-1" /> Chat con soporte</Link>
+              </Button>
+            )}
           </div>
+        </div>
+
+        <div className="mb-4">
+          <SupportAriaWidget onEscalated={load} />
         </div>
 
         <div className="flex gap-2 flex-wrap">
@@ -325,14 +336,17 @@ const SupportPage = () => {
             </SelectContent>
           </Select>
           <Select value={filterStatus} onValueChange={setFilterStatus}>
-            <SelectTrigger className="w-40 h-9 rounded-full"><SelectValue placeholder="Estado" /></SelectTrigger>
+            <SelectTrigger className="w-44 h-9 rounded-full"><SelectValue placeholder="Estado" /></SelectTrigger>
             <SelectContent>
+              <SelectItem value="active">Activos (sin cerrados)</SelectItem>
               <SelectItem value="all">Todos los estados</SelectItem>
+              <SelectItem value="closed_all">Solo resueltos/cerrados</SelectItem>
               {Object.entries(statusCfg).map(([k, v]) => (<SelectItem key={k} value={k}>{v.label}</SelectItem>))}
             </SelectContent>
           </Select>
         </div>
       </div>
+
 
       <div className="px-4 space-y-3">
         {loading ? (
