@@ -203,7 +203,13 @@ const SupportPage = () => {
     const pOrder = { urgent: 0, high: 1, normal: 2, low: 3 };
     return tickets
       .filter(t => filterPriority === 'all' || t.priority === filterPriority)
-      .filter(t => filterStatus === 'all' || t.status === filterStatus)
+      .filter(t => {
+        if (filterStatus === 'all') return true;
+        if (filterStatus === 'active') return !['resolved', 'closed'].includes(t.status);
+        if (filterStatus === 'closed_all') return ['resolved', 'closed'].includes(t.status);
+        return t.status === filterStatus;
+      })
+
       .sort((a, b) => (pOrder[a.priority] ?? 9) - (pOrder[b.priority] ?? 9) || new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   }, [tickets, filterPriority, filterStatus]);
 
