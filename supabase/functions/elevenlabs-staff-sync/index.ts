@@ -71,7 +71,7 @@ function buildStaffBlock(
     STAFF_START,
     "PERSONAL DISPONIBLE PARA TRANSFERENCIA:",
     "Usa esta lista para decidir a quién transferir la llamada con la tool `transfer_call`.",
-    "Pasa el `target_user_id` exacto del empleado más adecuado según el departamento solicitado por el cliente.",
+    "Cuando llames a `transfer_call`, pasa el `target_phone` EXACTO (E.164) y `target_name` del empleado más adecuado según el departamento solicitado por el cliente. Nunca inventes números.",
     "",
     ...lines,
     STAFF_END,
