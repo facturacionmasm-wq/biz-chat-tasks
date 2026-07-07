@@ -112,11 +112,21 @@ function upsertPersonalityBlock(prompt: string, block: string): string {
 
 
 
+function buildActionsHeaders(webhookSecret: string | null) {
+  const headers: Array<{ type: string; name: string; value: string }> = [
+    { type: "value", name: "Content-Type", value: "application/json" },
+  ];
+  if (webhookSecret) {
+    headers.push({ type: "value", name: "x-elevenlabs-secret", value: webhookSecret });
+  }
+  return headers;
+}
+
 function buildTransferTool(
   supabaseUrl: string,
-  members: Array<{ user_id: string; name: string; department: string | null }>,
+  members: Array<{ user_id: string; name: string; department: string | null; phone: string | null }>,
+  webhookSecret: string | null,
 ) {
-  // Departamentos únicos, no vacíos
   const depts = Array.from(
     new Set(
       members
@@ -124,28 +134,41 @@ function buildTransferTool(
         .filter((d): d is string => !!d && d.length > 0),
     ),
   );
-  const userIds = members.map((m) => m.user_id);
+  const phones = Array.from(
+    new Set(
+      members
+        .map((m) => m.phone?.trim())
+        .filter((p): p is string => !!p && p.length > 0),
+    ),
+  );
 
   return {
     type: "webhook",
     name: "transfer_call",
     description:
-      "Transfiere la llamada activa al empleado más adecuado según el departamento o el nombre solicitado. Usa el `target_user_id` exacto del directorio de personal incluido en tu prompt.",
+      "Transfiere la llamada activa al empleado más adecuado. Debes pasar el `target_phone` en formato E.164 y el `target_name` EXACTOS del directorio de personal incluido en tu prompt. La transferencia usa la llamada Twilio en curso; no necesitas pedir el número al cliente.",
     response_timeout_secs: 20,
     api_schema: {
-      url: `${supabaseUrl}/functions/v1/call-transfer`,
+      url: `${supabaseUrl}/functions/v1/elevenlabs-actions-webhook`,
       method: "POST",
-      request_headers: [
-        { type: "value", name: "Content-Type", value: "application/json" },
-      ],
+      request_headers: buildActionsHeaders(webhookSecret),
       request_body_schema: {
         type: "object",
-        required: ["target_user_id", "reason"],
+        required: ["tool_name", "target_phone", "target_name"],
         properties: {
-          target_user_id: {
+          tool_name: {
             type: "string",
-            description: "user_id exacto del empleado (según directorio en el prompt).",
-            ...(userIds.length > 0 ? { enum: userIds } : {}),
+            description: "Nombre de la acción a ejecutar.",
+            enum: ["transfer_call"],
+          },
+          target_phone: {
+            type: "string",
+            description: "Teléfono del empleado destino en formato E.164 (ej. +5215512345678).",
+            ...(phones.length > 0 ? { enum: phones } : {}),
+          },
+          target_name: {
+            type: "string",
+            description: "Nombre del empleado destino (para el whisper).",
           },
           department: {
             type: "string",
@@ -154,8 +177,108 @@ function buildTransferTool(
           },
           reason: {
             type: "string",
-            description: "Motivo breve de la transferencia para el whisper al empleado.",
+            description: "Motivo breve de la transferencia para el whisper.",
           },
+        },
+      },
+    },
+  };
+}
+
+function buildCheckAvailabilityTool(supabaseUrl: string, webhookSecret: string | null) {
+  return {
+    type: "webhook",
+    name: "check_availability",
+    description:
+      "Consulta los horarios disponibles para agendar una cita en una fecha específica. Llámala SIEMPRE antes de ofrecer u ofrecer horarios al cliente.",
+    response_timeout_secs: 20,
+    api_schema: {
+      url: `${supabaseUrl}/functions/v1/elevenlabs-actions-webhook`,
+      method: "POST",
+      request_headers: buildActionsHeaders(webhookSecret),
+      request_body_schema: {
+        type: "object",
+        required: ["tool_name", "date"],
+        properties: {
+          tool_name: { type: "string", enum: ["check_availability"] },
+          date: { type: "string", description: "Fecha a consultar en formato YYYY-MM-DD." },
+          employee_id: { type: "string", description: "user_id opcional para filtrar por un empleado específico." },
+        },
+      },
+    },
+  };
+}
+
+function buildBookAppointmentTool(supabaseUrl: string, webhookSecret: string | null) {
+  return {
+    type: "webhook",
+    name: "book_appointment",
+    description:
+      "Agenda una cita nueva. Requiere nombre del contacto, fecha (YYYY-MM-DD) y hora (HH:MM 24h en horario local del negocio). Llama primero a check_availability para confirmar que el horario esté libre.",
+    response_timeout_secs: 30,
+    api_schema: {
+      url: `${supabaseUrl}/functions/v1/elevenlabs-actions-webhook`,
+      method: "POST",
+      request_headers: buildActionsHeaders(webhookSecret),
+      request_body_schema: {
+        type: "object",
+        required: ["tool_name", "contact_name", "date", "time"],
+        properties: {
+          tool_name: { type: "string", enum: ["book_appointment"] },
+          contact_name: { type: "string", description: "Nombre del cliente para la cita." },
+          date: { type: "string", description: "Fecha de la cita en formato YYYY-MM-DD." },
+          time: { type: "string", description: "Hora de la cita en formato HH:MM (24h, hora local del negocio)." },
+          contact_phone: { type: "string", description: "Teléfono del cliente en E.164 (opcional; si no lo tienes, omítelo)." },
+          contact_email: { type: "string", description: "Email del cliente (opcional)." },
+          service_type: { type: "string", description: "Tipo de servicio o motivo breve de la cita." },
+          employee_id: { type: "string", description: "user_id del empleado a asignar (opcional; si se omite, se asigna automáticamente)." },
+          notes: { type: "string", description: "Notas adicionales (opcional)." },
+        },
+      },
+    },
+  };
+}
+
+function buildRescheduleTool(supabaseUrl: string, webhookSecret: string | null) {
+  return {
+    type: "webhook",
+    name: "reschedule_appointment",
+    description: "Reprograma una cita existente a una nueva fecha y hora.",
+    response_timeout_secs: 20,
+    api_schema: {
+      url: `${supabaseUrl}/functions/v1/elevenlabs-actions-webhook`,
+      method: "POST",
+      request_headers: buildActionsHeaders(webhookSecret),
+      request_body_schema: {
+        type: "object",
+        required: ["tool_name", "appointment_id", "new_date", "new_time"],
+        properties: {
+          tool_name: { type: "string", enum: ["reschedule_appointment"] },
+          appointment_id: { type: "string", description: "ID (UUID) de la cita a reprogramar." },
+          new_date: { type: "string", description: "Nueva fecha en formato YYYY-MM-DD." },
+          new_time: { type: "string", description: "Nueva hora en formato HH:MM (24h, hora local)." },
+        },
+      },
+    },
+  };
+}
+
+function buildCancelTool(supabaseUrl: string, webhookSecret: string | null) {
+  return {
+    type: "webhook",
+    name: "cancel_appointment",
+    description: "Cancela una cita existente.",
+    response_timeout_secs: 20,
+    api_schema: {
+      url: `${supabaseUrl}/functions/v1/elevenlabs-actions-webhook`,
+      method: "POST",
+      request_headers: buildActionsHeaders(webhookSecret),
+      request_body_schema: {
+        type: "object",
+        required: ["tool_name", "appointment_id"],
+        properties: {
+          tool_name: { type: "string", enum: ["cancel_appointment"] },
+          appointment_id: { type: "string", description: "ID (UUID) de la cita a cancelar." },
         },
       },
     },
