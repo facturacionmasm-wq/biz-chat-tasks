@@ -15,6 +15,8 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { PresenceProvider } from '@/contexts/PresenceContext';
 import BottomNav from '@/components/BottomNav';
 import { useRybixTheme } from '@/hooks/useRybixTheme';
+import TrialCardBanner from '@/components/TrialCardBanner';
+
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard', exact: true },
@@ -179,8 +181,10 @@ const AppLayout = ({ children }: AppLayoutProps) => {
             </div>
           </header>
           <main className={`flex-1 min-h-0 overflow-auto ${isMobile ? 'pb-[var(--bottom-nav-height)]' : ''}`}>
+            <TrialCardBanner />
             {children}
           </main>
+
         </div>
         {isMobile && <BottomNav />}
         <AIAssistantWidget />

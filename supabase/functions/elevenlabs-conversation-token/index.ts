@@ -1,6 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
 import { assertVoicePlan } from "../_shared/plan-guard.ts";
+import { resolveTenantAgentId, MASTER_TENANT } from "../_shared/elevenlabs-agent.ts";
+
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -36,13 +38,13 @@ serve(async (req) => {
   const userId = user.id;
 
   const ELEVENLABS_API_KEY = Deno.env.get('ELEVENLABS_API_KEY');
-  const ELEVENLABS_AGENT_ID = Deno.env.get('ELEVENLABS_AGENT_ID');
 
-  if (!ELEVENLABS_API_KEY || !ELEVENLABS_AGENT_ID) {
+  if (!ELEVENLABS_API_KEY) {
     return new Response(JSON.stringify({ error: 'ElevenLabs not configured' }), {
       status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
+
 
   try {
     // Fetch Knowledge Hub for dynamic context injection
@@ -103,10 +105,26 @@ serve(async (req) => {
       }
     }
 
+    // Resolve per-tenant agent (global fallback only for master tenant)
+    const { agentId, source } = await resolveTenantAgentId(serviceClient, profile?.tenant_id ?? null);
+    if (!agentId) {
+      return new Response(JSON.stringify({
+        error: 'Aprovisiona tu agente de voz en Ajustes',
+        code: 'no_tenant_agent',
+      }), { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+    if (profile?.tenant_id && profile.tenant_id !== MASTER_TENANT && source !== 'tenant') {
+      return new Response(JSON.stringify({
+        error: 'Aprovisiona tu agente de voz en Ajustes',
+        code: 'no_tenant_agent',
+      }), { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
     const response = await fetch(
-      `https://api.elevenlabs.io/v1/convai/conversation/token?agent_id=${ELEVENLABS_AGENT_ID}`,
+      `https://api.elevenlabs.io/v1/convai/conversation/token?agent_id=${agentId}`,
       { headers: { 'xi-api-key': ELEVENLABS_API_KEY } }
     );
+
 
     if (!response.ok) {
       const errorText = await response.text();

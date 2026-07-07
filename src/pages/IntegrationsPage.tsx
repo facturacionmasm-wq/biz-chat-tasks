@@ -6,6 +6,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import TwilioWizard from '@/components/TwilioWizard';
 import VoiceAgentWizard from '@/components/VoiceAgentWizard';
+import VoiceAgentProvisionCard from '@/components/VoiceAgentProvisionCard';
+
 import TenantNumberPurchaseWizard from '@/components/TenantNumberPurchaseWizard';
 import BringYourOwnNumberTab from '@/components/byon/BringYourOwnNumberTab';
 
@@ -540,7 +542,11 @@ const IntegrationsPage = () => {
         </div>
       </div>
 
+      {/* Voice Agent Provisioning (per-tenant) */}
+      <VoiceAgentProvisionCard />
+
       {/* Voice Agent Info */}
+
       <div className="mt-8 bg-card border border-[var(--rx-b1)] rounded-xl p-6 shadow-sm">
         <h2 className="text-lg font-bold text-foreground flex items-center gap-2 mb-3">
           <Phone size={18} className="text-[var(--rx-brand)]" /> Agente de Voz IA

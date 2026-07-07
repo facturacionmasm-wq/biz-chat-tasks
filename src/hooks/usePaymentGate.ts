@@ -75,12 +75,22 @@ export const usePaymentGate = () => {
     return hasActivePackage[serviceType] === true || hasPaymentMethod === true;
   };
 
+  const resolveDisplayName = useCallback(async () => {
+    if (!user) return 'Cliente';
+    const { data: profile } = await supabase
+      .from('profiles').select('name').eq('user_id', user.id).maybeSingle();
+    return profile?.name
+      || user.user_metadata?.name
+      || (user.email ? user.email.split('@')[0] : 'Cliente');
+  }, [user]);
+
   const purchasePackage = useCallback(async (packageId: string) => {
     if (!user) return;
     setRedirecting(true);
     try {
       const { data: tenantId } = await supabase.rpc('get_user_tenant_id', { _user_id: user.id });
       if (!tenantId) throw new Error('Tenant no encontrado');
+      const displayName = await resolveDisplayName();
 
       const { data, error } = await supabase.functions.invoke('stripe-billing', {
         body: {
@@ -88,7 +98,7 @@ export const usePaymentGate = () => {
           tenant_id: tenantId,
           package_id: packageId,
           email: user.email,
-          name: user.user_metadata?.name || user.email,
+          name: displayName,
         },
       });
 
@@ -102,7 +112,7 @@ export const usePaymentGate = () => {
       toast.error(err.message || 'Error al iniciar compra');
       setRedirecting(false);
     }
-  }, [user]);
+  }, [user, resolveDisplayName]);
 
   const setupCard = useCallback(async (serviceType: 'voice' | 'whatsapp') => {
     if (!user) return;
@@ -110,13 +120,14 @@ export const usePaymentGate = () => {
     try {
       const { data: tenantId } = await supabase.rpc('get_user_tenant_id', { _user_id: user.id });
       if (!tenantId) throw new Error('Tenant no encontrado');
+      const displayName = await resolveDisplayName();
 
       const { data, error } = await supabase.functions.invoke('stripe-billing', {
         body: {
           action: 'create_setup_session',
           tenant_id: tenantId,
           email: user.email,
-          name: user.user_metadata?.name || user.email,
+          name: displayName,
           service_type: serviceType,
         },
       });
@@ -131,7 +142,8 @@ export const usePaymentGate = () => {
       toast.error(err.message || 'Error al registrar tarjeta');
       setRedirecting(false);
     }
-  }, [user]);
+  }, [user, resolveDisplayName]);
+
 
   const voicePlanBlocked = !planIsMaster && !isOwnerTenant && !planLoading && !hasFeature('voice_agent');
 

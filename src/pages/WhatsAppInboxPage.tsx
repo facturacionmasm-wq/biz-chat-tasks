@@ -112,7 +112,9 @@ const WhatsAppInboxPage = () => {
       setDeletingConvId(null);
       toast.success('Conversación eliminada');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Error al eliminar conversación');
+      console.error('[WhatsAppInbox] delete conversation failed:', err);
+      toast.error('No se pudo eliminar la conversación. Intenta de nuevo.');
+
     } finally {
       setDeleting(false);
     }

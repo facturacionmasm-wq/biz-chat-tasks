@@ -525,13 +525,18 @@ const TenantBillingView = ({ status, subStatus, currentSub, currentPlanSlug, pla
     try {
       const { data: authData } = await supabase.auth.getUser();
       const u = authData.user;
+      const { data: profile } = u
+        ? await supabase.from('profiles').select('name').eq('user_id', u.id).maybeSingle()
+        : { data: null } as any;
+      const displayName = profile?.name || u?.user_metadata?.name || (u?.email ? u.email.split('@')[0] : 'Cliente');
+
       const { data, error } = await supabase.functions.invoke('stripe-billing', {
         body: {
           action: 'change_plan',
           tenant_id: tenantId,
           plan_slug: slug,
           email: u?.email,
-          name: u?.user_metadata?.name || u?.email,
+          name: displayName,
         },
       });
       if (error) throw error;
@@ -543,11 +548,12 @@ const TenantBillingView = ({ status, subStatus, currentSub, currentPlanSlug, pla
             action: 'create_setup_session',
             tenant_id: tenantId,
             email: u?.email,
-            name: u?.user_metadata?.name || u?.email,
+            name: displayName,
             service_type: 'onboarding',
             return_to: '/settings',
           },
         });
+
         if (setup?.checkout_url) {
           window.location.href = setup.checkout_url;
         }
