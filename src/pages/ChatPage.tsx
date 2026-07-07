@@ -86,6 +86,15 @@ const ChatPage = () => {
     }
   }, [memberDirectory, allChannels]);
 
+  // Hide DM channels whose counterpart is no longer an active member of the tenant.
+  // memberDirectory only contains active profiles (status='active'), so DMs pointing
+  // to deleted/deactivated users are filtered out here.
+  const visibleChannels = useMemo(() => {
+    if (memberDirectory.length === 0) return allChannels.filter(c => c.type !== 'direct');
+    const activeNames = new Set(memberDirectory.map(m => m.name));
+    return allChannels.filter(c => c.type !== 'direct' || activeNames.has(c.name));
+  }, [allChannels, memberDirectory]);
+
   const activeChannel = allChannels.find(c => c.id === activeChannelId) || allChannels[0];
   const channelMessages = allMessages.filter(m => m.channelId === activeChannelId);
 
