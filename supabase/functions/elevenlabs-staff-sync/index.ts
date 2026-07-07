@@ -154,7 +154,7 @@ function buildTransferTool(
       request_headers: buildActionsHeaders(webhookSecret),
       request_body_schema: {
         type: "object",
-        required: ["tool_name", "target_phone", "target_name"],
+        required: ["tool_name", "target_phone", "target_name", "call_sid", "tenant_id"],
         properties: {
           tool_name: {
             type: "string",
@@ -169,6 +169,30 @@ function buildTransferTool(
           target_name: {
             type: "string",
             description: "Nombre del empleado destino (para el whisper).",
+          },
+          call_sid: {
+            type: "string",
+            description: "Twilio Call SID de la llamada activa. Campo automático del sistema; no lo inventes ni lo pidas al cliente.",
+            dynamic_variable: "system__call_sid",
+            is_system_provided: true,
+          },
+          call_record_id: {
+            type: "string",
+            description: "ID interno del registro de llamada. Campo automático del sistema.",
+            dynamic_variable: "call_record_id",
+            is_system_provided: true,
+          },
+          tenant_id: {
+            type: "string",
+            description: "ID interno del tenant. Campo automático del sistema.",
+            dynamic_variable: "tenant_id",
+            is_system_provided: true,
+          },
+          caller_phone: {
+            type: "string",
+            description: "Teléfono del cliente que llama. Campo automático del sistema.",
+            dynamic_variable: "system__caller_id",
+            is_system_provided: true,
           },
           department: {
             type: "string",
