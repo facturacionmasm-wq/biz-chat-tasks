@@ -873,6 +873,24 @@ const CallsPage = () => {
         </div>
       </div>
 
+      {/* Usage & billing summary (MTD for tenant) */}
+      {monthlyUsage && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+          <div className="rx-panel">
+            <p className="text-xs sm:text-sm text-[var(--rx-t2)]">Minutos este mes</p>
+            <p className="text-xl sm:text-2xl font-bold text-foreground">{monthlyUsage.minutes.toFixed(1)}</p>
+          </div>
+          <div className="rx-panel">
+            <p className="text-xs sm:text-sm text-[var(--rx-t2)]">Costo agente IA (MTD)</p>
+            <p className="text-xl sm:text-2xl font-bold text-foreground">${monthlyUsage.cost_total.toFixed(2)}</p>
+          </div>
+          <div className="rx-panel">
+            <p className="text-xs sm:text-sm text-[var(--rx-t2)]">Facturación (MTD)</p>
+            <p className="text-xl sm:text-2xl font-bold text-[var(--rx-brand)]">${monthlyUsage.revenue.toFixed(2)}</p>
+          </div>
+        </div>
+      )}
+
       {/* Filters */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
         <div className="flex-1 flex items-center gap-2 bg-card border border-[var(--rx-b1)] rounded-lg px-3 py-2">
