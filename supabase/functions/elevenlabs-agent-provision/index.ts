@@ -113,6 +113,7 @@ serve(async (req) => {
         first_message: baseFirstMessage,
         language: baseLanguage,
       },
+      conversation: { max_duration_seconds: 5000 },
     };
     if (baseVoiceId) conversationConfig.tts = { voice_id: baseVoiceId };
     if (baseLlm) conversationConfig.agent.prompt.llm = baseLlm;
