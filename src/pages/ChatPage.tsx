@@ -222,7 +222,7 @@ const ChatPage = () => {
     }
     return (
       <div className="h-full">
-        <ChatSidebar channels={allChannels} activeChannelId={activeChannelId || ''} onSelectChannel={handleSelectChannel}
+        <ChatSidebar channels={visibleChannels} activeChannelId={activeChannelId || ''} onSelectChannel={handleSelectChannel}
           teamMembers={teamMembers} onCreateChannel={handleCreateChannel} onCreateDM={handleCreateDM} />
       </div>
     );
@@ -230,7 +230,7 @@ const ChatPage = () => {
 
   return (
     <div className="flex h-full">
-      <ChatSidebar channels={allChannels} activeChannelId={activeChannelId || ''} onSelectChannel={handleSelectChannel}
+      <ChatSidebar channels={visibleChannels} activeChannelId={activeChannelId || ''} onSelectChannel={handleSelectChannel}
         teamMembers={teamMembers} onCreateChannel={handleCreateChannel} onCreateDM={handleCreateDM} />
       <div className="flex-1 min-w-0">
         {activeChannel ? (

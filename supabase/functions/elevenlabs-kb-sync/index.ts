@@ -72,6 +72,20 @@ serve(async (req) => {
 
     // Add a document to ElevenLabs KB
     if (action === 'add') {
+      // SAFETY GATE: A single ELEVENLABS_AGENT_ID is shared across all tenants.
+      // Uploading tenant-specific knowledge to that shared agent would leak
+      // knowledge between tenants. Block until per-tenant agents are provisioned.
+      // Per-tenant RAG is served via the `document-search` edge function and
+      // `knowledge_items` queries in the WhatsApp bot, both scoped by tenant_id.
+      return new Response(
+        JSON.stringify({
+          error: 'Cross-tenant safety gate: sync to shared ElevenLabs agent is disabled. Per-tenant knowledge is served via document-search.',
+          code: 'kb_sync_disabled_shared_agent',
+        }),
+        { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+
+      // eslint-disable-next-line no-unreachable
       const { title, content, knowledge_item_id } = data;
 
       // Use multipart form for text document upload
