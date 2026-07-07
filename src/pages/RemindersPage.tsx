@@ -197,14 +197,23 @@ const RemindersPage = () => {
             <p className="text-sm text-[var(--rx-t2)]">Gestiona los recordatorios programados vía WhatsApp</p>
           </div>
         </div>
-        <button
-          onClick={fetchReminders}
-          disabled={loading}
-          className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--rx-s2)] text-secondary-foreground hover:bg-[var(--rx-s2)]/80 text-sm font-medium transition-colors"
-        >
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-          Actualizar
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setCreateOpen(true)}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--rx-brand)] text-primary-foreground hover:opacity-90 text-sm font-medium transition-opacity"
+          >
+            <Plus size={14} />
+            Agregar recordatorio
+          </button>
+          <button
+            onClick={fetchReminders}
+            disabled={loading}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--rx-s2)] text-secondary-foreground hover:bg-[var(--rx-s2)]/80 text-sm font-medium transition-colors"
+          >
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            Actualizar
+          </button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -307,7 +316,52 @@ const RemindersPage = () => {
           )}
         </TabsContent>
       </Tabs>
+
+      {/* Create reminder dialog */}
+      <Dialog open={createOpen} onOpenChange={(o) => { setCreateOpen(o); if (!o) resetCreate(); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Agregar recordatorio</DialogTitle>
+            <DialogDescription>Programa un recordatorio manual.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="rem-msg">Mensaje</Label>
+              <Textarea id="rem-msg" value={newMessage} onChange={(e) => setNewMessage(e.target.value)} placeholder="Ej: Llamar al cliente Juan" rows={3} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="rem-when">Fecha y hora</Label>
+              <Input id="rem-when" type="datetime-local" value={newWhen} onChange={(e) => setNewWhen(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Canal (opcional)</Label>
+              <Select value={newChannel} onValueChange={(v) => setNewChannel(v as any)}>
+                <SelectTrigger><SelectValue placeholder="Predeterminado" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="whatsapp">WhatsApp</SelectItem>
+                  <SelectItem value="email">Email</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="rem-contact">Contacto (opcional)</Label>
+              <Input id="rem-contact" value={newContact} onChange={(e) => setNewContact(e.target.value)} placeholder="+52 55 1234 5678" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateOpen(false)} disabled={creating}>Cancelar</Button>
+            <Button onClick={handleCreate} disabled={creating}>
+              {creating ? <Loader2 size={14} className="animate-spin mr-2" /> : <Plus size={14} className="mr-2" />}
+              Crear
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
+  );
+};
+
+export default RemindersPage;
   );
 };
 
