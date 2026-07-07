@@ -86,6 +86,15 @@ const ChatPage = () => {
     }
   }, [memberDirectory, allChannels]);
 
+  // Hide DM channels whose counterpart is no longer an active member of the tenant.
+  // memberDirectory only contains active profiles (status='active'), so DMs pointing
+  // to deleted/deactivated users are filtered out here.
+  const visibleChannels = useMemo(() => {
+    if (memberDirectory.length === 0) return allChannels.filter(c => c.type !== 'direct');
+    const activeNames = new Set(memberDirectory.map(m => m.name));
+    return allChannels.filter(c => c.type !== 'direct' || activeNames.has(c.name));
+  }, [allChannels, memberDirectory]);
+
   const activeChannel = allChannels.find(c => c.id === activeChannelId) || allChannels[0];
   const channelMessages = allMessages.filter(m => m.channelId === activeChannelId);
 
@@ -213,7 +222,7 @@ const ChatPage = () => {
     }
     return (
       <div className="h-full">
-        <ChatSidebar channels={allChannels} activeChannelId={activeChannelId || ''} onSelectChannel={handleSelectChannel}
+        <ChatSidebar channels={visibleChannels} activeChannelId={activeChannelId || ''} onSelectChannel={handleSelectChannel}
           teamMembers={teamMembers} onCreateChannel={handleCreateChannel} onCreateDM={handleCreateDM} />
       </div>
     );
@@ -221,7 +230,7 @@ const ChatPage = () => {
 
   return (
     <div className="flex h-full">
-      <ChatSidebar channels={allChannels} activeChannelId={activeChannelId || ''} onSelectChannel={handleSelectChannel}
+      <ChatSidebar channels={visibleChannels} activeChannelId={activeChannelId || ''} onSelectChannel={handleSelectChannel}
         teamMembers={teamMembers} onCreateChannel={handleCreateChannel} onCreateDM={handleCreateDM} />
       <div className="flex-1 min-w-0">
         {activeChannel ? (

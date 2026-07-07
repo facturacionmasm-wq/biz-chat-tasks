@@ -97,9 +97,16 @@ const WhatsAppInboxPage = () => {
   const handleDeleteConversation = async (convId: string) => {
     setDeleting(true);
     try {
-      // Delete messages first, then conversation
-      await supabase.from('whatsapp_messages').delete().eq('conversation_id', convId);
-      await supabase.from('whatsapp_conversations').delete().eq('id', convId);
+      // Delete messages first (RLS requires DELETE policy on whatsapp_messages)
+      const msgRes = await supabase.from('whatsapp_messages').delete().eq('conversation_id', convId).select('id');
+      if (msgRes.error) throw msgRes.error;
+
+      const convRes = await supabase.from('whatsapp_conversations').delete().eq('id', convId).select('id');
+      if (convRes.error) throw convRes.error;
+      if (!convRes.data || convRes.data.length === 0) {
+        throw new Error('No se pudo eliminar la conversación (permisos insuficientes)');
+      }
+
       if (selectedConvId === convId) setSelectedConvId(null);
       setShowDeleteConfirm(false);
       setDeletingConvId(null);
