@@ -109,14 +109,19 @@ export default function SuperAdminTenantsTab() {
       const { data, error } = await supabase.functions.invoke('admin-delete-tenant', {
         body: { tenant_id: deleteTarget.tenant_id, confirm_name: deleteTarget.tenant_name },
       });
+      // Surface real backend error message when the function returns non-2xx.
+      const bodyErr = (data as any)?.error
+        || (error as any)?.context?.responseJson?.error
+        || (error as any)?.context?.body?.error;
+      if (bodyErr) throw new Error(bodyErr);
       if (error) throw error;
-      if ((data as any)?.error) throw new Error((data as any).error);
       toast.success(`Tenant "${deleteTarget.tenant_name}" eliminado`);
       setDeleteTarget(null);
       setDeleteConfirmName('');
       await load();
     } catch (err: any) {
-      toast.error(err.message || 'Error al eliminar tenant');
+      console.error('[admin-delete-tenant] error:', err);
+      toast.error(err?.message || 'Error al eliminar tenant');
     } finally {
       setDeleting(false);
     }
