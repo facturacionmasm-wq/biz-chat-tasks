@@ -126,7 +126,7 @@ Genera proyecciones financieras para los próximos 30, 60 y 90 días basándote 
                     items: {
                       type: "object",
                       properties: {
-                        horizon_days: { type: "integer", enum: [30, 60, 90] },
+                        horizon_days: { type: "integer", description: "Horizon in days: must be 30, 60, or 90" },
                         projected_revenue: { type: "number", description: "Projected total revenue in MXN" },
                         projected_cost: { type: "number", description: "Projected total cost in MXN" },
                         projected_margin: { type: "number", description: "Projected margin (revenue - cost) in MXN" },
