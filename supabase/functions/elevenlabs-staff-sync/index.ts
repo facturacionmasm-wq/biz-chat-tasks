@@ -473,10 +473,26 @@ serve(async (req) => {
     if (agentPersonality) {
       newPrompt = upsertPersonalityBlock(newPrompt, buildPersonalityBlock(agentPersonality));
     }
-    const transferTool = buildTransferTool(supabaseUrl, members);
+    const webhookSecret = Deno.env.get("ELEVENLABS_WEBHOOK_SECRET") || null;
+    const transferTool = buildTransferTool(supabaseUrl, members, webhookSecret);
+    const checkAvailTool = buildCheckAvailabilityTool(supabaseUrl, webhookSecret);
+    const bookApptTool = buildBookAppointmentTool(supabaseUrl, webhookSecret);
+    const reschedTool = buildRescheduleTool(supabaseUrl, webhookSecret);
+    const cancelTool = buildCancelTool(supabaseUrl, webhookSecret);
+    const managedNames = new Set([
+      "transfer_call",
+      "check_availability",
+      "book_appointment",
+      "reschedule_appointment",
+      "cancel_appointment",
+    ]);
     const nextToolsRaw = [
-      ...currentTools.filter((t: any) => t?.name !== "transfer_call"),
+      ...currentTools.filter((t: any) => !managedNames.has(t?.name)),
       transferTool,
+      checkAvailTool,
+      bookApptTool,
+      reschedTool,
+      cancelTool,
     ];
 
     // Normalize each tool's webhook.api_schema.request_headers to a plain object
