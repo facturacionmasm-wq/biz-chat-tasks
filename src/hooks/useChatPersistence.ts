@@ -342,12 +342,12 @@ export function useChatPersistence() {
       return null;
     }
 
-    const existing = channels.find((c) => c.type === 'direct' && c.name === memberName);
+    const existing = channels.find((c) => c.type === 'direct' && (c.peerUserId === memberId || (!c.peerUserId && c.name === memberName)));
     if (existing) return existing;
 
     const { data, error } = await supabase
       .from('chat_channels')
-      .insert({ tenant_id: activeTenantId, name: memberName, type: 'direct', created_by: user.id })
+      .insert({ tenant_id: activeTenantId, name: memberName, type: 'direct', created_by: user.id, peer_user_id: memberId } as any)
       .select()
       .single();
 
@@ -357,7 +357,7 @@ export function useChatPersistence() {
       return null;
     }
 
-    const newDM: Channel = { id: data.id, name: data.name, type: 'direct', unread: 0 };
+    const newDM: Channel = { id: data.id, name: data.name, type: 'direct', unread: 0, peerUserId: (data as any).peer_user_id ?? memberId };
     setChannels((prev) => [...prev, newDM]);
     toast.success(`Chat con ${memberName} creado`);
     return newDM;

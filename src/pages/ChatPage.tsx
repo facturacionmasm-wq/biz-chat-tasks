@@ -86,13 +86,19 @@ const ChatPage = () => {
     }
   }, [memberDirectory, allChannels]);
 
-  // Hide DM channels whose counterpart is no longer an active member of the tenant.
-  // memberDirectory only contains active profiles (status='active'), so DMs pointing
-  // to deleted/deactivated users are filtered out here.
+  // Hide DM channels whose peer is no longer an active member of the tenant.
+  // Prefer the strong link (peerUserId → active profile). For legacy DMs without
+  // peerUserId, fall back to name-match against the active member directory so
+  // existing chats are not lost.
   const visibleChannels = useMemo(() => {
     if (memberDirectory.length === 0) return allChannels.filter(c => c.type !== 'direct');
+    const activeIds = new Set(memberDirectory.map(m => m.id));
     const activeNames = new Set(memberDirectory.map(m => m.name));
-    return allChannels.filter(c => c.type !== 'direct' || activeNames.has(c.name));
+    return allChannels.filter(c => {
+      if (c.type !== 'direct') return true;
+      if (c.peerUserId) return activeIds.has(c.peerUserId);
+      return activeNames.has(c.name);
+    });
   }, [allChannels, memberDirectory]);
 
   const activeChannel = allChannels.find(c => c.id === activeChannelId) || allChannels[0];
