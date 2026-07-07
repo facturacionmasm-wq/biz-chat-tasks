@@ -565,8 +565,35 @@ async function handleState(input: StateInput): Promise<StateResult> {
     reply = await getAIResponse(LOVABLE_API_KEY, tenantId, supabase, 'client', effectiveMessageBody, conv);
 
   } else if (botState === 'employee_mode') {
+    // Re-verify identity on every message: the whatsapp_number ↔ profile mapping
+    // may have changed since the PIN was validated (number reassigned to another
+    // employee, profile deactivated, etc). Never trust a stale bot_context.user_name.
+    if (!isSandbox) {
+      const { data: currentEmp } = await supabase
+        .from('profiles')
+        .select('user_id, name, id')
+        .eq('whatsapp_number', contactPhone)
+        .eq('tenant_id', tenantId)
+        .eq('status', 'active')
+        .maybeSingle();
+
+      const contextUserId = newContext.user_id as string | undefined;
+      if (!currentEmp || currentEmp.user_id !== contextUserId) {
+        reply = '🔒 Detecté un cambio en la cuenta asociada a este número. Por seguridad necesito re-verificarte. Envía cualquier mensaje para continuar.';
+        newState = 'welcome';
+        newContext = {};
+        return { reply, newState, newContext };
+      }
+
+      // Refresh the display name so the AI prompt never uses a stale value.
+      if (currentEmp.name && currentEmp.name !== newContext.user_name) {
+        newContext.user_name = currentEmp.name;
+      }
+    }
+
     const userId = newContext.user_id as string;
     const userName = newContext.user_name as string || '';
+
 
     // ---- 1. Check for approval responses (APROBAR/RECHAZAR) ----
     if (userId) {
