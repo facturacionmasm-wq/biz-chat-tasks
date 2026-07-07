@@ -181,8 +181,10 @@ const AppLayout = ({ children }: AppLayoutProps) => {
             </div>
           </header>
           <main className={`flex-1 min-h-0 overflow-auto ${isMobile ? 'pb-[var(--bottom-nav-height)]' : ''}`}>
+            <TrialCardBanner />
             {children}
           </main>
+
         </div>
         {isMobile && <BottomNav />}
         <AIAssistantWidget />
