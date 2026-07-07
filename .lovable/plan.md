@@ -1,111 +1,204 @@
+# Auditoría Stripe + Plan Agentes Voz por Tenant + Revisión Últimos Cambios
 
-Solo diagnóstico. No se modifica código.
+## TEMA A — Stripe: flujo, gaps y fix mínimo
 
-## Problema 1 — Usuarios/contactos eliminados siguen apareciendo en Chat Interno
+### A.1 Flujo real hoy (login → onboarding → plan → cobro)
 
-**Cómo se listan los miembros y canales hoy**
-- `src/pages/ChatPage.tsx` L46-L67: `memberDirectory` sale de `profiles` filtrado por `.eq('status','active')`. Correcto: si el perfil se marca `inactive`, desaparece de "Usuarios".
-- `src/hooks/useChatPersistence.ts`:
-  - L96-L99: carga `chat_channels` filtrado solo por `tenant_id`, sin distinguir si el DM apunta a un perfil que ya no existe/está inactivo.
-  - L18-L42 `getProfilesByUserId`: para mensajes no filtra por `status`, lo cual está OK (historial preserva nombre).
-- `chat_channels` (RLS): SELECT `tenant_id = get_user_tenant_id(auth.uid())` (sin condición sobre miembros).
-- No existe tabla `chat_channel_members`; los DMs se representan como filas `type='direct'` en `chat_channels` con `name = memberName` (ver `createDM` L281-L307 en `useChatPersistence.ts`).
+Trazabilidad completa:
 
-**Causa raíz**
-Cuando se elimina/desactiva un usuario:
-1. Su perfil queda con `status != 'active'` (o borrado), por lo que se cae de la lista "Usuarios" — bien.
-2. Pero los `chat_channels` `type='direct'` creados hacia ese usuario siguen en la BD sin ninguna referencia a `user_id`, así que la sidebar los sigue mostrando como DM huérfano.
-3. Aún peor: `resolveDirectRecipient` en `ChatPage.tsx` L94-L104 hace match por `name`, así que si otro miembro tuviera el mismo nombre podría "heredar" el DM.
+```text
+Login (AuthPage) → AuthContext.fetchUserData (src/contexts/AuthContext.tsx:54-91)
+  → onboarding_completed=false → redirect a /onboarding
+  → OnboardingPage step "company" → "country" → "plan"
+  → click plan → handlePlanSelect (src/pages/OnboardingPage.tsx:180-261):
+       1) rpc activate_trial_for_current_user  (BD: trial 15d)
+       2) invoke stripe-billing action=create_trial_subscription   (líneas 668-804 stripe-billing)
+       3) invoke stripe-billing action=create_setup_session return_to='/'
+       4) window.location.href = setup.checkout_url  → Stripe Checkout mode=setup
+  → tras pagar/verificar: Stripe redirige a /?setup=success
+  → stripe-webhook handleCheckoutCompleted (mode='setup') persiste stripe_customer_id
+  → stripe-webhook setup_intent.succeeded (líneas 428-477) engancha PM como default y a la suscripción
+```
 
-**Fix mínimo propuesto (sin aplicar)**
-- Filtrar en `useChatPersistence.ts` (load, L96-L110) los canales `type='direct'` cuya contraparte ya no exista en `memberDirectory`. Como el DM no guarda `user_id`, dos opciones:
-  a) **Opcional, mejor**: añadir columna `chat_channels.peer_user_id uuid` y usarla en `createDM` (L297) + filtrar en el load por `EXISTS profiles active`. Requiere migración pequeña.
-  b) **Mínimo sin migración**: en el load, tras obtener `memberDirectory`, filtrar `channels.filter(c => c.type!=='direct' || memberDirectory.some(m => m.name === c.name))`. Se hace en `ChatPage.tsx` (o en el hook exponiendo `memberDirectory`). Simple pero frágil ante nombres duplicados.
-- Además, opcional: cron/edge o trigger que marque `chat_channels` `type='direct'` cuyo peer quedó inactivo como `archived` para no volver a mostrarlos.
+Selector de plan real: `src/pages/OnboardingPage.tsx:412-558` (paso "plan"). En Settings → tab Billing: `src/components/BillingSection.tsx:508-565` (`TenantBillingView.handleChangePlan`). En Voice cuando falta plan: `src/components/PlanUpgradeCard.tsx` (solo redirige a /settings?tab=billing, no lanza checkout).
 
-Archivos/líneas involucrados: `src/hooks/useChatPersistence.ts` L96-L189, `src/pages/ChatPage.tsx` L43-L67, L94-L104. Política RLS: `chat_channels` SELECT `Users can view channels in their tenant`.
+### A.2 Edge functions relacionadas con Stripe
 
----
+| Función | Acción | Estado |
+|---|---|---|
+| `stripe-billing` `one_time_support_consult` (L53-140) | consulta única $20 | Completa (Checkout mode=payment) |
+| `stripe-billing` `validate_key` (L145-157) | valida formato sk_/rk_ | Placebo (no llama a Stripe) |
+| `stripe-billing` `create_customer_and_subscribe` (L162-309) | crea customer+sub metered | Completa pero **NO se usa desde UI** — legacy |
+| `stripe-billing` `report_usage` (L314-383) | reporta consumo mensual | Completa |
+| `stripe-billing` `create_setup_session` (L388-454) | Checkout mode=setup (tarjeta) | Completa |
+| `stripe-billing` `check_payment_method` (L459-488) | verifica PM guardado | Completa |
+| `stripe-billing` `purchase_package` (L493-625) | paquete prepago voice/wa | Completa (Checkout mode=payment) |
+| `stripe-billing` `get_billing_status` (L630-660) | resumen uso+margen | Completa |
+| `stripe-billing` `create_trial_subscription` (L668-804) | sub Stripe en trialing con trial_end fijo | Completa |
+| `stripe-billing` `change_plan` (L809-951) | upgrade/downgrade con proration | Completa (exige PM) |
+| `stripe-billing` `verify_payment_method` (L956-984) | detalle de tarjeta default | Completa |
+| `stripe-billing` `charge_phone_number` (L989-1098) | cargo puntual número | Completa |
+| `stripe-billing` `charge_verification_fee` (L1100-1195) | fee $15 regulatorio | Completa |
+| `stripe-webhook` (493L) | events firmados HMAC-SHA256 | Completa: checkout.session.completed, invoice.paid/failed, subscription.updated/deleted, setup_intent.succeeded, invoice.finalized |
+| `billing-monthly-report` | cron mensual | Existe |
 
-## Problema 2 — Botones "Eliminar" y "Limpiar" del módulo WhatsApp no persisten
+**No hay** funciones tipo `create-checkout-subscription` (mode=subscription puro), `customer-portal` (portal Stripe) ni `payment-method` (attach directo desde UI). No es bloqueante — el flujo se apoya en Checkout mode=setup + `default_incomplete`/proration.
 
-**Componentes y handler**
-- Botón "Eliminar conversación" en `src/pages/WhatsAppInboxPage.tsx` L38-L40, L304, handler `handleDeleteConversation` L97-L112.
-- El handler ejecuta desde el cliente:
-  - L101: `supabase.from('whatsapp_messages').delete().eq('conversation_id', convId)`
-  - L102: `supabase.from('whatsapp_conversations').delete().eq('id', convId)`
-- No hay RPC/edge involucrado. No hay botón "Limpiar chat" en `WhatsAppInboxPage.tsx` ni en `MessageComposer.tsx` (búsqueda `rg` no encuentra `clear/limpiar/purge`).
+### A.3 Ventanas que deberían cobrar — auditoría
 
-**Causa raíz — RLS bloquea el DELETE en silencio**
-Políticas actuales:
-- `whatsapp_messages`: solo `SELECT (Tenant users can view wa messages)` y `INSERT (Staff can create wa messages)`. **No hay policy DELETE ni UPDATE.** Con RLS habilitado, `DELETE` desde `authenticated` no borra ninguna fila y no arroja error (0 filas afectadas → el `try` pasa y aparece el toast "Conversación eliminada", pero los mensajes siguen ahí).
-- `whatsapp_conversations`: tiene `ALL (Staff can manage wa conversations)` con `tenant_id = get_user_tenant_id(auth.uid())`. El DELETE de la fila conversación sí procede… salvo que exista FK `whatsapp_messages.conversation_id → whatsapp_conversations(id)` sin `ON DELETE CASCADE`, en cuyo caso falla por violación de FK; si es CASCADE, borra la conv y sus mensajes en la BD por cascada (bypassea RLS de mensajes) — pero la UI ya intentó borrar mensajes antes y esa parte no aplicó.
+1. **Onboarding elegir plan** (`OnboardingPage.tsx:180-261`) — sí lanza `create_trial_subscription` **+** `create_setup_session` y redirige a Checkout. ✅
+2. **Settings → Billing → cambiar plan** (`BillingSection.tsx:522-564`) — llama `change_plan`; si `requires_payment_method` cae en `create_setup_session` → Checkout. ✅
+3. **PlanUpgradeCard** (`PlanUpgradeCard.tsx:32`) — solo `navigate('/settings?tab=billing')`; **no dispara checkout**. ⚠️ (esperado: el cobro se hace desde Billing).
+4. **PaymentGateCard** (voice/whatsapp) — `usePaymentGate.setupCard` (`src/hooks/usePaymentGate.ts:104-133`) → `create_setup_session` → Checkout. ✅  
+   `purchasePackage` (L84-102) → `purchase_package` → Checkout mode=payment. ✅
+5. **SubscriptionBlockedPage** — usa el mismo `BillingSection`/checkout. ✅
 
-Diagnóstico neto: el bug real es la ausencia de policy DELETE en `whatsapp_messages`; según la FK, el DELETE de la conversación además puede fallar o funcionar sólo por cascade sin feedback consistente.
+### A.4 Gaps y fix mínimo (Stripe)
 
-Adicionalmente en L106 se muestra "Conversación eliminada" incluso si RLS filtró todas las filas (Supabase no lanza error por 0 rows) — el usuario cree que funcionó.
+**Gap 1 — Onboarding no bloquea salida si el usuario cancela Checkout.**  
+`OnboardingPage.tsx:246-249` redirige a `/?setup=success`, pero si cancela llega a `/?setup=cancel` sin `PM` y con `onboarding_completed=true`. Trial válido pero sin tarjeta → al finalizar trial Stripe cancela por `trial_settings.end_behavior=cancel` (L765). El usuario cree que "no pagó y sigue funcionando" hasta el día 15.  
+**Fix mínimo**: en `AppLayout`/dashboard, si `subscriptionStatus.status='trialing'` y `check_payment_method.has_payment_method=false`, mostrar un banner persistente "Agrega tarjeta para no perder acceso al terminar el trial" con botón que invoque `create_setup_session` (`service_type:'onboarding', return_to:'/'`). Sin cambios en edge functions.
 
-**Fix mínimo propuesto (sin aplicar)**
-1. Migración: crear policies faltantes escoped a tenant y a rol staff/admin/owner:
-   ```sql
-   CREATE POLICY "Staff can delete wa messages" ON public.whatsapp_messages
-     FOR DELETE TO authenticated
-     USING (tenant_id = public.get_user_tenant_id(auth.uid()));
-   -- (opcional UPDATE si se quiere marcar leído desde UI)
-   ```
-   La de `whatsapp_conversations` ya cubre DELETE vía `ALL`.
-2. En `handleDeleteConversation` (L97-L112): tras cada `.delete()` chequear `error` **y** `count` (`.select('id', { count: 'exact', head: true })` previo o usar `returning`). Si count = 0, mostrar toast de error y NO cerrar el diálogo.
-3. Si no hay "Limpiar chat" en UI y el usuario dice que sí existe, hay que localizar el botón (no está en el árbol actual). Sugerir revisar si es un componente aún no montado o si se refiere al mismo botón "Eliminar". Confirmar con el usuario.
+**Gap 2 — `create_trial_subscription` falla silenciosamente en onboarding.**  
+`OnboardingPage.tsx:231` sólo hace `console.warn` si `trialErr`. Si Stripe rechaza (ej. moneda sin precio configurado, L709-713 devuelve 400 "Plan has no billable price configured"), el usuario avanza sin sub Stripe. Cuando el trial local expira, no hay charge automático.  
+**Fix mínimo**: al fallar `create_trial_subscription`, seguir a `create_setup_session` (ya se hace), **pero** guardar el error en `audit_events` desde el frontend y mostrar toast rojo. Alternativa robusta: mover el intento a un post-hook del webhook `setup_intent.succeeded` — si no hay `stripe_subscription_id`, invocar internamente `create_trial_subscription`.
 
-Archivos/líneas: `src/pages/WhatsAppInboxPage.tsx` L97-L112 y L304. Políticas: `whatsapp_messages` (falta DELETE), `whatsapp_conversations` (ALL ya existe).
+**Gap 3 — `PlanUpgradeCard` sólo navega; no ofrece CTA directo al Checkout.**  
+Usuario en /calls con plan sin voice_agent ve "actualizar a Pro" pero requiere 2 clics extra (Settings → Billing → botón por plan).  
+**Fix mínimo**: agregar prop `onUpgrade` al `PlanUpgradeCard` que, con el `slug` deseado, invoque `stripe-billing action=change_plan` directamente; si `requires_payment_method` redirigir a `create_setup_session` con `return_to='/calls'`. Sin cambios en edge functions.
 
----
+**Gap 4 — `validate_key` (L145-157) es cosmético.**  
+No llama a Stripe. Si `BillingSection` la usa para "Activar Stripe" da falso OK.  
+**Fix mínimo**: reemplazar el cuerpo por `GET /v1/balance` real y regresar `success = res.ok`. Cambio de <20 líneas.
 
-## Problema 3 — Aislamiento del Knowledge Hub por tenant en Voz y WhatsApp
+**Gap 5 — Nombre en Stripe queda como email cuando no hay `user_metadata.name`.**  
+Aparece en `OnboardingPage.tsx:217`, `BillingSection.tsx:534`, `usePaymentGate.ts:96/125`. Cosmético.  
+**Fix mínimo**: leer también `profiles.name` como fallback antes que `user.email`.
 
-**Modelo y RLS (correctos)**
-- Tablas: `documents`, `document_chunks`, `knowledge_items` — todas tienen `tenant_id` y RLS por `tenant_id = get_user_tenant_id(auth.uid())` (ver policies listadas: `Tenant members can view documents`, `Tenant members view chunks`, `Tenant users can view knowledge`, más `Admins can manage documents/knowledge`).
-- RPC `search_document_chunks(_tenant_id, _query, ...)` (definido en la BD) filtra internamente `WHERE dc.tenant_id = _tenant_id`.
-
-**Bot de WhatsApp — OK**
-- `supabase/functions/whatsapp-bot/ai-response.ts` L20-L38: ambos `knowledge_items` queries filtran `.eq('tenant_id', tenantId)`. El `tenantId` se resuelve en el webhook por `businessPhone` (número receptor) → tenant, y se propaga a la conversación.
-- Historial: L48-L54 filtra `whatsapp_messages` por `conversation_id`, y la conversación está scoped por `tenant_id` en el webhook.
-- `supabase/functions/document-search/index.ts` L30-L45, L94-L118: exige `tenant_id` (400 si falta) y filtra por él en `documents`, en la RPC y en el fallback ilike. Correcto.
-
-**Voz (ElevenLabs) — FUGA CROSS-TENANT CONFIRMADA**
-- `supabase/functions/elevenlabs-kb-sync/index.ts` L38-L39, L60, L83, L121: usa **un único `ELEVENLABS_AGENT_ID` global** (secreto de proyecto) para todas las operaciones `list/add/delete` de la KB del agente.
-- Consecuencia: cuando un tenant sube un `knowledge_item` a la KB del agente de voz, se agrega al **mismo agente compartido por todos los tenants**. Cualquier llamada entrante/saliente que use ese agente puede recuperar contexto de cualquier tenant → mezcla de conocimiento entre inquilinos.
-- Confirmación de que hay un solo agente:
-  - `call-inbound-webhook/index.ts` L291, L378: `agent_id: ELEVENLABS_AGENT_ID` (global).
-  - `elevenlabs-conversation-token/index.ts` L107: `?agent_id=${ELEVENLABS_AGENT_ID}` (global).
-  - No hay lectura de un `agent_id` por tenant en ningún edge function.
-- `elevenlabs-actions-webhook/index.ts` (tools del agente) no consulta `documents`/`knowledge_items` directamente; el conocimiento del agente vive dentro de la KB nativa de ElevenLabs — que hoy es única.
-
-**Fix mínimo propuesto (sin aplicar, dos alternativas)**
-
-A) Cortar la fuga sin rediseñar (rápido, seguro por defecto):
-1. Deshabilitar/gate la ruta `add` en `elevenlabs-kb-sync/index.ts` L74-L114 mientras exista un único agente compartido: devolver 409 si `!tenant_has_dedicated_agent`. Así ningún nuevo doc contamina la KB compartida.
-2. Ejecutar una limpieza única: llamar a `action:'delete'` para todos los `elevenlabs_doc_id` sincronizados hasta ahora (rastreables vía `audit_events.event_type = 'knowledge.synced_to_elevenlabs'`).
-3. Documentar que la RAG por tenant se sirva **exclusivamente** vía `document-search` + `knowledge_items` desde tools del agente (ya scoped por `tenant_id` resuelto en `elevenlabs-actions-webhook/index.ts` L60-L72).
-
-B) Solución definitiva (más trabajo, sin aplicar aquí):
-1. Añadir columna `tenants.elevenlabs_agent_id text` (o dentro de `settings_json`).
-2. Provisionar un agente ElevenLabs por tenant (o al menos por "voice profile") y usarlo en `kb-sync`, `conversation-token`, `call-inbound-webhook`.
-3. Cambiar `elevenlabs-kb-sync/index.ts` L60/L83/L121 para leer `agent_id` desde `tenants` según `data.tenant_id` (y validar que quien llama pertenece al tenant vía JWT L31-L37).
-
-**Verificación en WhatsApp/RAG por tenant (todo OK):**
-- `document-search/index.ts` L32-L34, L44, L94-L98, L112: `tenant_id` obligatorio y aplicado.
-- `whatsapp-bot/ai-response.ts` L22-L36: `tenant_id` aplicado en ambas queries.
-- RLS de `documents`, `document_chunks`, `knowledge_items`: correcto (todas restringen por `tenant_id`).
+**No falta** captura de método de pago en el propio onboarding: sí se dispara `create_setup_session` (L236-249). El único hueco es que la cancelación no se maneja. Con el banner del Gap 1, el flujo queda cerrado en todas las ventanas.
 
 ---
 
-## Resumen de acciones (para aprobar luego)
+## TEMA B — Agente ElevenLabs por tenant (solución definitiva)
 
-| # | Fix mínimo | Archivos | Riesgo |
-|---|---|---|---|
-| 1 | Filtrar DMs cuyo peer ya no está `active` | `src/hooks/useChatPersistence.ts`, `src/pages/ChatPage.tsx` | Bajo |
-| 2 | Añadir policy `DELETE` en `whatsapp_messages` + validar count en handler | migración SQL + `WhatsAppInboxPage.tsx` L97-L112 | Bajo |
-| 3 | Gate la sincronización a KB de ElevenLabs global y purgar docs ya subidos; plan a mediano plazo para agente-por-tenant | `elevenlabs-kb-sync/index.ts` L74-L135 (+ tabla `tenants`) | Medio |
+Estado actual: hay una única `ELEVENLABS_AGENT_ID` global usada por:
+- `elevenlabs-conversation-token/index.ts:40, 96` (widget WebRTC)
+- `elevenlabs-kb-sync/index.ts:38, 66, 96` (KB — actualmente bloqueado con 409 en `add`)
+- `call-inbound-webhook/index.ts:100, 291, 378` (Twilio inbound)
+- Existe columna `tenants.elevenlabs_config jsonb` (types.ts L4277) — **no requiere migración de esquema** si guardamos `agent_id` ahí; también existe `call_sessions.elevenlabs_agent_id` (types L866).
 
-Confírmame cuáles aplicar y paso a Build.
+### B.1 Migración mínima (opcional, sólo si se prefiere columna dedicada)
+
+```sql
+-- opción A (recomendada): reutilizar elevenlabs_config JSONB
+--   { "agent_id": "agent_xxx", "provisioned_at": "..." }
+-- opción B (columna explícita)
+ALTER TABLE public.tenants
+  ADD COLUMN IF NOT EXISTS elevenlabs_agent_id text;
+CREATE INDEX IF NOT EXISTS tenants_elevenlabs_agent_id_idx
+  ON public.tenants(elevenlabs_agent_id) WHERE elevenlabs_agent_id IS NOT NULL;
+```
+
+Preferir opción A para no crecer el esquema.
+
+### B.2 Provisioning por tenant (nueva edge function `elevenlabs-agent-provision`)
+
+Nueva función `supabase/functions/elevenlabs-agent-provision/index.ts`:
+- Requiere JWT del owner/super_admin.
+- Resuelve `tenant_id` vía `get_user_tenant_id(auth.uid())` y `has_tenant_role(auth.uid(), tenant_id, 'owner')`.
+- Lee `tenants.elevenlabs_config->>agent_id`; si existe, devuelve el agent.
+- Si no, `POST https://api.elevenlabs.io/v1/convai/agents/create` con `name=OfficeHub - {tenant.name}`, prompt base clonado del agente global.
+- Persiste en `tenants.elevenlabs_config = jsonb_set(coalesce(...), '{agent_id}', to_jsonb(new_id))` con `service_role`.
+- Registra `audit_events` (`elevenlabs.agent_provisioned`).
+
+Trigger de auto-provision: opcional botón en Settings → Integrations → "Aprovisionar agente de voz". No lo hacemos en `handle_new_user` para no gastar cuota si el tenant nunca usa voz.
+
+### B.3 Cambios en las 3 edge functions actuales
+
+Helper compartido nuevo `supabase/functions/_shared/elevenlabs-agent.ts`:
+
+```ts
+export async function resolveTenantAgentId(supabase, tenantId): Promise<string | null> {
+  if (!tenantId) return null;
+  const { data } = await supabase
+    .from('tenants').select('elevenlabs_config').eq('id', tenantId).maybeSingle();
+  const cfg = (data?.elevenlabs_config || {}) as any;
+  return typeof cfg.agent_id === 'string' && cfg.agent_id.length ? cfg.agent_id : null;
+}
+```
+
+**1) `supabase/functions/elevenlabs-conversation-token/index.ts`**
+- Línea 40: eliminar lectura de `ELEVENLABS_AGENT_ID` como *default*; conservar para fallback dev.
+- Después de resolver `profile.tenant_id` (L57-61): `const agentId = await resolveTenantAgentId(serviceClient, profile.tenant_id) ?? ELEVENLABS_AGENT_ID_FALLBACK;`
+- Si no hay `agentId`, devolver 409 `{error:'no_tenant_agent', message:'Aprovisiona tu agente de voz en Ajustes → Integraciones'}` en lugar del 500 genérico L44.
+- Línea 96 (fetch token): interpolar `agent_id=${agentId}` en vez del env.
+- Master tenant (`00000000-0000-0000-0000-000000000001`): puede seguir usando el global — mantener fallback sólo para ese ID.
+
+**2) `supabase/functions/elevenlabs-kb-sync/index.ts`**
+- Requerir `tenant_id` implícito: resolverlo vía `anonClient.auth.getUser()` en lugar de `getClaims` (L33-38 hoy) para reutilizar el patrón de `conversation-token`.
+- Reemplazar `ELEVENLABS_AGENT_ID` (L38, 66, 96) por `agentId = await resolveTenantAgentId(supabase, tenantId)`.
+- Retirar el gate 409 hoy en `add` (L74-87) **una vez** que `agentId` provenga del tenant; si sigue siendo `null`, mantener 409 con nuevo código `no_tenant_agent`.
+- Filtrar cualquier `data.tenant_id` de entrada para que coincida con el del JWT (defense-in-depth); si no coincide → 403.
+
+**3) `supabase/functions/call-inbound-webhook/index.ts`**
+- Después de `tenantId` resuelto (L191): `const agentId = await resolveTenantAgentId(supabase, tenantId) ?? ELEVENLABS_AGENT_ID;` (fallback global tolerado sólo por compat; loguear `voiceLog(...,'agent_id_fallback_global')` si se usa).
+- Línea 291 y 378: usar `agentId` en `registerBody.agent_id` y en `call_sessions.elevenlabs_agent_id`.
+- Si no hay agente y no hay global → responder con `twimlSay('El servicio de voz no está aprovisionado. Contacte al administrador.')` y NO llamar ElevenLabs.
+
+**4) `elevenlabs-post-call/index.ts`, `elevenlabs-actions-webhook/index.ts`, `elevenlabs-staff-sync/index.ts`, `elevenlabs-bridge/index.ts`** — auditar cada uno con el mismo patrón. En este plan cubro las 3 pedidas; el resto queda como TODO listado (no requiere cambios inmediatos porque reciben `agent_id` desde ElevenLabs en el payload).
+
+### B.4 UI: botón de provisioning
+
+`src/pages/IntegrationsPage.tsx` (u `AssistantAdminPage.tsx`): añadir tarjeta "Agente de Voz IA" con botón "Aprovisionar / Ver estado" que llame `supabase.functions.invoke('elevenlabs-agent-provision')`. No romper llamadas actuales: mientras `elevenlabs_config.agent_id` sea `null`, `conversation-token` responde 409 y la UI muestra CTA; el widget ya maneja errores.
+
+### B.5 Rollout seguro (no romper llamadas en curso)
+
+1. Deploy `_shared/elevenlabs-agent.ts` y `elevenlabs-agent-provision`.
+2. Migración jsonb (o columna) — no toca datos.
+3. Botón UI + backfill manual del master tenant (`elevenlabs_config = { agent_id: ELEVENLABS_AGENT_ID }`) vía `INSERT` tool para no dejarlo sin agente.
+4. Modificar las 3 edge functions con fallback al env global (mantiene status-quo).
+5. Backfill tenants que ya lo usen: ejecutar provision por cada uno.
+6. Cuando todos tengan `agent_id` propio, remover el fallback y eliminar `ELEVENLABS_AGENT_ID` global.
+
+---
+
+## TEMA C — Revisión línea a línea de los últimos 3 cambios
+
+### C.1 `chat_channels.peer_user_id`
+
+**Migración** (`supabase/migrations/20260707053846_*.sql`) — OK: `ADD COLUMN IF NOT EXISTS ... REFERENCES auth.users ON DELETE SET NULL` + índice parcial.
+
+**`src/hooks/useChatPersistence.ts:345`** — `existing = channels.find(c => c.type==='direct' && (c.peerUserId===memberId || (!c.peerUserId && c.name===memberName)))`.  
+Edge case: si dos usuarios tienen exactamente el mismo `name` (ej. dos "Juan Pérez") y el DM legacy no tiene `peerUserId`, `createDM` reutilizará el DM equivocado. Fix: preferir siempre `peerUserId===memberId` y **no** matchear por nombre en el fallback (aceptar crear un DM nuevo; el filtro de `visibleChannels` sigue funcionando).
+
+**`ChatPage.tsx:93-102 visibleChannels`** — fallback por nombre igualmente vulnerable a homónimos; mismo diagnóstico. Aceptable si se documenta.
+
+**Regresión posible**: al eliminar un usuario y volver a invitar con el mismo email/name, el nuevo user_id no coincidirá con el `peer_user_id` viejo (que quedó `NULL` por `ON DELETE SET NULL`). El DM legacy quedará oculto (correcto) pero **sin forma de reactivarlo**. Fix mínimo: si el nuevo perfil tiene el mismo nombre y hay DM con `peer_user_id IS NULL`, ofrecer "reasignar" al `createDM`. Baja prioridad.
+
+### C.2 `WhatsAppInboxPage.handleDeleteConversation` (L97-119)
+
+- L101: `.delete(...).select('id')` — OK, valida `error` y trata como duro.
+- L104-108: valida `convRes.data.length > 0` — OK.
+- **Bug menor**: si `msgRes` tiene 0 filas (conversación sin mensajes), no falla — correcto. Pero si RLS del DELETE en `whatsapp_messages` deniega y devuelve `error` de RLS, se lanza excepción y **no** se intenta borrar la conversación → estado consistente. OK.
+- **Regresión**: no revoca `subscription` de realtime si estaba suscrito a esta conversación; el listener seguirá activo hasta el próximo re-mount. Cosmético.
+- **UX**: `toast.error(err.message ...)` puede filtrar mensajes de Postgres (ej. "permission denied for table whatsapp_messages"). Aceptable pero recomiendo mensaje genérico + `console.error(err)`.
+
+### C.3 `elevenlabs-kb-sync` gate 409
+
+- L74-87: correcto — bloquea `add` con `kb_sync_disabled_shared_agent`.
+- **Regresión**: `list` (L67-73) sigue consultando el agente compartido; devuelve KB de otros tenants. Si la UI muestra la lista, un tenant vería documentos ajenos. Fix mínimo inmediato: aplicar el mismo 409 al `list` mientras exista agente compartido (o filtrar en el cliente, menos seguro).
+- **Regresión**: `delete` (L91-111) permite a cualquier tenant borrar por `elevenlabs_doc_id` en el agente compartido → **puede borrar docs de otro tenant**. Aplicar 409 también a `delete` hasta B.3.
+
+**Fix mínimo consolidado**: en el mismo `elevenlabs-kb-sync/index.ts`, envolver `list` y `delete` con el mismo gate 409 hasta que exista `resolveTenantAgentId(tenantId)`.
+
+---
+
+## Prioridad recomendada (cuando se apruebe build)
+
+1. Endurecer `elevenlabs-kb-sync` (gate 409 también en `list`/`delete`) — riesgo activo cross-tenant.
+2. Banner "agrega tarjeta" durante trial (Gap 1 Stripe).
+3. Provisioning por tenant (Tema B completo).
+4. Ajustes menores C.1 / C.2.
+5. Gaps 2-5 de Stripe.
+
+Nada de esto se ha aplicado — es plan puro.
