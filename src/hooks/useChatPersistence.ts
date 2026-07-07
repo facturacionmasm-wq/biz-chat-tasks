@@ -241,7 +241,7 @@ export function useChatPersistence() {
           const ch = payload.new as any;
           setChannels((prev) => {
             if (prev.some((c) => c.id === ch.id)) return prev;
-            return [...prev, { id: ch.id, name: ch.name, type: ch.type, unread: 0 }];
+            return [...prev, { id: ch.id, name: ch.name, type: ch.type, unread: 0, peerUserId: ch.peer_user_id ?? null }];
           });
         }
       )
