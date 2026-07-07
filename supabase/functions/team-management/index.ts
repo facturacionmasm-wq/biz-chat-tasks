@@ -153,7 +153,7 @@ Deno.serve(async (req) => {
       // Get all users in tenant
       const { data: profiles } = await adminClient
         .from("profiles")
-        .select("user_id")
+        .select("user_id, status")
         .eq("tenant_id", callerRole.tenant_id);
 
       const statuses: Record<string, { confirmed: boolean; last_sign_in: string | null }> = {};
@@ -161,8 +161,9 @@ Deno.serve(async (req) => {
       for (const p of profiles || []) {
         const { data: { user: u } } = await adminClient.auth.admin.getUserById(p.user_id);
         if (u) {
+          const emailConfirmed = !!((u as any).email_confirmed_at || (u as any).confirmed_at);
           statuses[p.user_id] = {
-            confirmed: !!u.last_sign_in_at,
+            confirmed: emailConfirmed || !!u.last_sign_in_at || p.status === "active",
             last_sign_in: u.last_sign_in_at || null,
           };
         }
