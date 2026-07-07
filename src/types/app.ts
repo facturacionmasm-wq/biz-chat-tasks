@@ -4,6 +4,7 @@ export interface Channel {
   type: 'channel' | 'direct';
   unread: number;
   icon?: string;
+  peerUserId?: string | null;
 }
 
 export interface Message {

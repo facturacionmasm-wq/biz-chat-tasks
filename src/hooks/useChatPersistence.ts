@@ -128,11 +128,12 @@ export function useChatPersistence() {
           return;
         }
 
-        const loadedChannels = (chRes.data || []).map((ch) => ({
+        const loadedChannels = (chRes.data || []).map((ch: any) => ({
           id: ch.id,
           name: ch.name,
           type: ch.type as 'channel' | 'direct',
           unread: 0,
+          peerUserId: ch.peer_user_id ?? null,
         }));
 
         setChannels(loadedChannels);
@@ -240,7 +241,7 @@ export function useChatPersistence() {
           const ch = payload.new as any;
           setChannels((prev) => {
             if (prev.some((c) => c.id === ch.id)) return prev;
-            return [...prev, { id: ch.id, name: ch.name, type: ch.type, unread: 0 }];
+            return [...prev, { id: ch.id, name: ch.name, type: ch.type, unread: 0, peerUserId: ch.peer_user_id ?? null }];
           });
         }
       )
@@ -341,12 +342,12 @@ export function useChatPersistence() {
       return null;
     }
 
-    const existing = channels.find((c) => c.type === 'direct' && c.name === memberName);
+    const existing = channels.find((c) => c.type === 'direct' && (c.peerUserId === memberId || (!c.peerUserId && c.name === memberName)));
     if (existing) return existing;
 
     const { data, error } = await supabase
       .from('chat_channels')
-      .insert({ tenant_id: activeTenantId, name: memberName, type: 'direct', created_by: user.id })
+      .insert({ tenant_id: activeTenantId, name: memberName, type: 'direct', created_by: user.id, peer_user_id: memberId } as any)
       .select()
       .single();
 
@@ -356,7 +357,7 @@ export function useChatPersistence() {
       return null;
     }
 
-    const newDM: Channel = { id: data.id, name: data.name, type: 'direct', unread: 0 };
+    const newDM: Channel = { id: data.id, name: data.name, type: 'direct', unread: 0, peerUserId: (data as any).peer_user_id ?? memberId };
     setChannels((prev) => [...prev, newDM]);
     toast.success(`Chat con ${memberName} creado`);
     return newDM;
