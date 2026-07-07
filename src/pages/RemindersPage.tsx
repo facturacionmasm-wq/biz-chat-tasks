@@ -41,6 +41,65 @@ const RemindersPage = () => {
   const [resending, setResending] = useState<string | null>(null);
   const [tab, setTab] = useState('all');
 
+  // Create-reminder dialog state
+  const [createOpen, setCreateOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [newMessage, setNewMessage] = useState('');
+  const [newWhen, setNewWhen] = useState('');
+  const [newChannel, setNewChannel] = useState<'whatsapp' | 'email' | ''>('');
+  const [newContact, setNewContact] = useState('');
+
+  const resetCreate = () => {
+    setNewMessage('');
+    setNewWhen('');
+    setNewChannel('');
+    setNewContact('');
+  };
+
+  const handleCreate = async () => {
+    if (!user) return;
+    if (!newMessage.trim()) { toast.error('Escribe un mensaje'); return; }
+    if (!newWhen) { toast.error('Elige fecha y hora'); return; }
+    const remindAt = new Date(newWhen);
+    if (isNaN(remindAt.getTime())) { toast.error('Fecha inválida'); return; }
+
+    setCreating(true);
+    try {
+      const { data: tenantId, error: tErr } = await supabase.rpc('get_user_tenant_id', { _user_id: user.id });
+      if (tErr) throw tErr;
+
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Mexico_City';
+      const payload: Record<string, any> = {
+        user_id: user.id,
+        tenant_id: tenantId ?? null,
+        message: newMessage.trim(),
+        remind_at: remindAt.toISOString(),
+        status: 'pending',
+        source: 'manual',
+        retry_count: 0,
+        max_retries: 3,
+        timezone,
+      };
+      if (newChannel) payload.channel = newChannel;
+      if (newContact.trim()) payload.contact_phone = newContact.trim();
+
+      const { error } = await supabase.from('reminders').insert(payload);
+      if (error) throw error;
+
+      toast.success('Recordatorio creado');
+      setCreateOpen(false);
+      resetCreate();
+      fetchReminders();
+    } catch (err: any) {
+      console.error('[reminders] create failed:', err);
+      toast.error(err?.message || 'Error al crear recordatorio');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+
+
   const fetchReminders = async () => {
     if (!user) return;
     setLoading(true);
