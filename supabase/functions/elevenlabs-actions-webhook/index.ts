@@ -289,3 +289,72 @@ function jsonResp(body: any, status = 200) {
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
 }
+
+function firstString(...values: unknown[]): string | null {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return null;
+}
+
+function normalizePhoneForDial(phone: string): string {
+  return phone.trim().replace(/[\s().-]/g, '');
+}
+
+async function resolveRecentCallContext(
+  supabase: any,
+  tenantId: string,
+  callSid: string | null,
+  callRecordId: string | null,
+): Promise<{ callSid: string | null; callRecordId: string | null }> {
+  if (callSid && callRecordId) return { callSid, callRecordId };
+
+  if (callSid && !callRecordId) {
+    const { data } = await supabase
+      .from('call_records')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .eq('external_call_id', callSid)
+      .maybeSingle();
+    return { callSid, callRecordId: data?.id || null };
+  }
+
+  if (callRecordId && !callSid) {
+    const { data } = await supabase
+      .from('call_records')
+      .select('external_call_id')
+      .eq('tenant_id', tenantId)
+      .eq('id', callRecordId)
+      .maybeSingle();
+    return { callSid: data?.external_call_id || null, callRecordId };
+  }
+
+  const recentSince = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+  const { data: sessions, error } = await supabase
+    .from('call_sessions')
+    .select('call_sid, call_record_id, state, created_at')
+    .eq('tenant_id', tenantId)
+    .gte('created_at', recentSince)
+    .order('created_at', { ascending: false })
+    .limit(2);
+
+  if (error) {
+    console.warn('[el-actions] recent call fallback failed:', error.message);
+    return { callSid, callRecordId };
+  }
+  if (!sessions || sessions.length !== 1) {
+    console.warn('[el-actions] recent call fallback skipped:', {
+      tenantId,
+      candidates: sessions?.length || 0,
+    });
+    return { callSid, callRecordId };
+  }
+
+  console.warn('[el-actions] call_sid recovered from recent tenant call_session fallback');
+  return {
+    callSid: sessions[0].call_sid || null,
+    callRecordId: sessions[0].call_record_id || null,
+  };
+}
