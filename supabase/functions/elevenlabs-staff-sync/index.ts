@@ -224,7 +224,7 @@ function buildBookAppointmentTool(supabaseUrl: string, webhookSecret: string | n
         type: "object",
         required: ["tool_name", "contact_name", "date", "time"],
         properties: {
-          tool_name: { type: "string", enum: ["book_appointment"] },
+          tool_name: { type: "string", description: "Nombre de la acción a ejecutar.", enum: ["book_appointment"] },
           contact_name: { type: "string", description: "Nombre del cliente para la cita." },
           date: { type: "string", description: "Fecha de la cita en formato YYYY-MM-DD." },
           time: { type: "string", description: "Hora de la cita en formato HH:MM (24h, hora local del negocio)." },
