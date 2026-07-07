@@ -200,7 +200,7 @@ function buildCheckAvailabilityTool(supabaseUrl: string, webhookSecret: string |
         type: "object",
         required: ["tool_name", "date"],
         properties: {
-          tool_name: { type: "string", enum: ["check_availability"] },
+          tool_name: { type: "string", description: "Nombre de la acción a ejecutar.", enum: ["check_availability"] },
           date: { type: "string", description: "Fecha a consultar en formato YYYY-MM-DD." },
           employee_id: { type: "string", description: "user_id opcional para filtrar por un empleado específico." },
         },
