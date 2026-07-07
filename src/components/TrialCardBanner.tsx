@@ -30,10 +30,12 @@ const TrialCardBanner = () => {
     (async () => {
       if (!user || subscriptionStatus?.status !== 'trialing') return;
       try {
-        const { data: tenantId } = await supabase.rpc('get_user_tenant_id', { _user_id: user.id });
-        if (!tenantId || cancelled) return;
+        const { data: resolvedTenantId } = await supabase.rpc('get_user_tenant_id', { _user_id: user.id });
+        if (cancelled) return;
+        setTenantId(resolvedTenantId ?? null);
+        if (!resolvedTenantId) return;
         const { data } = await supabase.functions.invoke('stripe-billing', {
-          body: { action: 'check_payment_method', tenant_id: tenantId },
+          body: { action: 'check_payment_method', tenant_id: resolvedTenantId },
         });
         if (!cancelled) setHasPaymentMethod(!!data?.has_payment_method);
       } catch (err) {
