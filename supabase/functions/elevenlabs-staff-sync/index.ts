@@ -277,7 +277,7 @@ function buildCancelTool(supabaseUrl: string, webhookSecret: string | null) {
         type: "object",
         required: ["tool_name", "appointment_id"],
         properties: {
-          tool_name: { type: "string", enum: ["cancel_appointment"] },
+          tool_name: { type: "string", description: "Nombre de la acción a ejecutar.", enum: ["cancel_appointment"] },
           appointment_id: { type: "string", description: "ID (UUID) de la cita a cancelar." },
         },
       },
