@@ -932,6 +932,7 @@ export type Database = {
           created_by: string | null
           id: string
           name: string
+          peer_user_id: string | null
           tenant_id: string
           type: string
         }
@@ -940,6 +941,7 @@ export type Database = {
           created_by?: string | null
           id?: string
           name: string
+          peer_user_id?: string | null
           tenant_id: string
           type?: string
         }
@@ -948,6 +950,7 @@ export type Database = {
           created_by?: string | null
           id?: string
           name?: string
+          peer_user_id?: string | null
           tenant_id?: string
           type?: string
         }
