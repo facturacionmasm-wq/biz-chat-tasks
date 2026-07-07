@@ -154,7 +154,7 @@ function buildTransferTool(
       request_headers: buildActionsHeaders(webhookSecret),
       request_body_schema: {
         type: "object",
-        required: ["tool_name", "target_phone", "target_name"],
+        required: ["tool_name", "target_phone", "target_name", "call_sid", "tenant_id"],
         properties: {
           tool_name: {
             type: "string",
@@ -169,6 +169,22 @@ function buildTransferTool(
           target_name: {
             type: "string",
             description: "Nombre del empleado destino (para el whisper).",
+          },
+          call_sid: {
+            type: "string",
+            dynamic_variable: "system__call_sid",
+          },
+          call_record_id: {
+            type: "string",
+            dynamic_variable: "call_record_id",
+          },
+          tenant_id: {
+            type: "string",
+            dynamic_variable: "tenant_id",
+          },
+          caller_phone: {
+            type: "string",
+            dynamic_variable: "system__caller_id",
           },
           department: {
             type: "string",

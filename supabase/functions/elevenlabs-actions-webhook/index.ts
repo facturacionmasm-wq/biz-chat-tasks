@@ -56,11 +56,33 @@ serve(async (req) => {
     const toolName = body.tool_name || body.name || body.action || body.function_name || '';
     const toolParams = body.parameters || body.params || body.arguments || body.data || body;
 
-    // Extract context from dynamic_variables (passed via register-call)
+    // Extract context from dynamic_variables (passed via register-call) and
+    // from system-provided fields mapped into the ElevenLabs tool body.
     const dynamicVars = body.dynamic_variables || body.conversation_initiation_client_data?.dynamic_variables || {};
-    const tenantId = toolParams.tenant_id || dynamicVars.tenant_id || null;
-    const callRecordId = toolParams.call_record_id || dynamicVars.call_record_id || null;
-    const callSid = toolParams.call_sid || dynamicVars.call_sid || null;
+    const tenantId = firstString(
+      toolParams.tenant_id,
+      toolParams.system__tenant_id,
+      dynamicVars.tenant_id,
+    );
+    let callRecordId = firstString(
+      toolParams.call_record_id,
+      toolParams.system__call_record_id,
+      dynamicVars.call_record_id,
+    );
+    let callSid = firstString(
+      toolParams.call_sid,
+      toolParams.system__call_sid,
+      dynamicVars.call_sid,
+      dynamicVars.system__call_sid,
+      body.metadata?.phone_call?.call_sid,
+    );
+    const callerPhoneFromContext = firstString(
+      toolParams.caller_phone,
+      toolParams.system__caller_id,
+      dynamicVars.caller_phone,
+      dynamicVars.system__caller_id,
+      body.metadata?.phone_call?.external_number,
+    );
 
     // Resolve tenant if not provided
     let resolvedTenantId = tenantId;
@@ -79,6 +101,15 @@ serve(async (req) => {
 
     if (!resolvedTenantId) {
       return jsonResp({ error: 'Could not resolve tenant', success: false }, 400);
+    }
+
+    // Last-resort lookup for legacy ElevenLabs tool schemas that did not send
+    // call_sid in the webhook body. Keep it tenant-scoped and recent so we do
+    // not accidentally transfer another tenant's live call.
+    if (toolName === 'transfer_call' || toolName === 'transferir_llamada') {
+      const fallback = await resolveRecentCallContext(supabase, resolvedTenantId, callSid, callRecordId);
+      callSid = fallback.callSid;
+      callRecordId = fallback.callRecordId;
     }
 
     console.log(`[el-actions] tool=${toolName} tenant=${resolvedTenantId} callSid=${callSid}`);
@@ -155,7 +186,7 @@ serve(async (req) => {
       case 'transferir_llamada': {
         // Transfer is executed by redirecting the LIVE Twilio call (call_sid)
         // to the target phone via call-transfer's internal server-to-server mode.
-        const targetPhone = toolParams.target_phone || toolParams.telefono_destino || '';
+        const targetPhone = normalizePhoneForDial(toolParams.target_phone || toolParams.telefono_destino || '');
         const targetName = toolParams.target_name || toolParams.nombre_destino || toolParams.employee_name || 'Agente';
 
         if (!targetPhone) {
@@ -166,7 +197,7 @@ serve(async (req) => {
         }
 
         // Fetch caller_phone and transcript from the call record (for whisper context)
-        let callerPhone: string | null = null;
+        let callerPhone: string | null = callerPhoneFromContext;
         let callTranscript: string | null = null;
         if (callRecordId) {
           const { data: cr } = await supabase
@@ -174,7 +205,7 @@ serve(async (req) => {
             .select('from_number, transcript')
             .eq('id', callRecordId)
             .maybeSingle();
-          callerPhone = cr?.from_number ?? null;
+          callerPhone = callerPhone || cr?.from_number || null;
           callTranscript = cr?.transcript ?? null;
         }
 
@@ -257,4 +288,73 @@ function jsonResp(body: any, status = 200) {
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
+}
+
+function firstString(...values: unknown[]): string | null {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return null;
+}
+
+function normalizePhoneForDial(phone: string): string {
+  return phone.trim().replace(/[\s().-]/g, '');
+}
+
+async function resolveRecentCallContext(
+  supabase: any,
+  tenantId: string,
+  callSid: string | null,
+  callRecordId: string | null,
+): Promise<{ callSid: string | null; callRecordId: string | null }> {
+  if (callSid && callRecordId) return { callSid, callRecordId };
+
+  if (callSid && !callRecordId) {
+    const { data } = await supabase
+      .from('call_records')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .eq('external_call_id', callSid)
+      .maybeSingle();
+    return { callSid, callRecordId: data?.id || null };
+  }
+
+  if (callRecordId && !callSid) {
+    const { data } = await supabase
+      .from('call_records')
+      .select('external_call_id')
+      .eq('tenant_id', tenantId)
+      .eq('id', callRecordId)
+      .maybeSingle();
+    return { callSid: data?.external_call_id || null, callRecordId };
+  }
+
+  const recentSince = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+  const { data: sessions, error } = await supabase
+    .from('call_sessions')
+    .select('call_sid, call_record_id, state, created_at')
+    .eq('tenant_id', tenantId)
+    .gte('created_at', recentSince)
+    .order('created_at', { ascending: false })
+    .limit(2);
+
+  if (error) {
+    console.warn('[el-actions] recent call fallback failed:', error.message);
+    return { callSid, callRecordId };
+  }
+  if (!sessions || sessions.length !== 1) {
+    console.warn('[el-actions] recent call fallback skipped:', {
+      tenantId,
+      candidates: sessions?.length || 0,
+    });
+    return { callSid, callRecordId };
+  }
+
+  console.warn('[el-actions] call_sid recovered from recent tenant call_session fallback');
+  return {
+    callSid: sessions[0].call_sid || null,
+    callRecordId: sessions[0].call_record_id || null,
+  };
 }
