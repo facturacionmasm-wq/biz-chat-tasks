@@ -413,6 +413,13 @@ async function handleState(input: StateInput): Promise<StateResult> {
       const profile = pinResult.match ? { id: pinResult.profile_id, user_id: pinResult.user_id, name: pinResult.name } : null;
 
       if (profile) {
+        // Clear this number from any OTHER profile in the same tenant to prevent
+        // duplicate whatsapp_number rows (which would break the identity lookup).
+        await supabase.from('profiles')
+          .update({ whatsapp_number: null })
+          .eq('tenant_id', tenantId)
+          .eq('whatsapp_number', contactPhone)
+          .neq('id', profile.id);
         await supabase.from('profiles').update({ whatsapp_number: contactPhone }).eq('id', profile.id);
         reply = `✅ ¡Qué tal, *${profile.name}*! 🎉 Me da gusto verte por aquí.\n\nTe he registrado con este número para que la próxima vez te reconozca automáticamente 🔓\n\nSoy Aria, tu asistente personal:\n\n• 📸 Registrar gastos — mándame la foto\n• 📋 Presupuestos por autorizar\n• 📅 Revisar tu agenda\n• 💬 Consultar información\n\n¿En qué te ayudo? 😊`;
         newState = 'employee_mode';
