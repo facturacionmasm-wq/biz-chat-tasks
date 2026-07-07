@@ -286,11 +286,26 @@ serve(async (req) => {
     let twiml: string | null = null;
     const statusCallbackUrl = `${SUPABASE_URL}/functions/v1/call-status-webhook`;
 
-    if (ELEVENLABS_API_KEY && ELEVENLABS_AGENT_ID) {
+    // Resolve per-tenant agent (global fallback only for master tenant)
+    const { agentId: tenantAgentId, source: agentSource } = await resolveTenantAgentId(supabase, tenantId);
+
+    // Non-master tenants without a provisioned agent do NOT fall back to the
+    // shared global agent — respond with a friendly TwiML and skip ElevenLabs.
+    if (!tenantAgentId && tenantId !== MASTER_TENANT) {
+      console.warn(`[inbound] Tenant ${tenantId} has no provisioned agent, skipping ElevenLabs`);
+      voiceLog(callSid, tenantId, 'no_tenant_agent', 'NO_TENANT_AGENT', 'Tenant has no provisioned ElevenLabs agent');
+      return new Response(
+        twimlSay('El servicio de asistente de voz aún no está aprovisionado para esta empresa. Por favor intente más tarde.'),
+        { headers: { ...corsHeaders, 'Content-Type': 'text/xml' } },
+      );
+    }
+
+    if (ELEVENLABS_API_KEY && tenantAgentId) {
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
           const registerBody = {
-            agent_id: ELEVENLABS_AGENT_ID,
+            agent_id: tenantAgentId,
+
             from_number: from,
             to_number: to,
             direction: 'inbound',
