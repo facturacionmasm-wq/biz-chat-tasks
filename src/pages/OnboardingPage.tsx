@@ -214,7 +214,12 @@ const OnboardingPage = () => {
       // Resolve slug + tenant to link a real Stripe subscription with the trial.
       const chosen = plans.find(p => p.id === selectedPlan);
       const { data: tenantId } = await supabase.rpc('get_user_tenant_id', { _user_id: user.id });
-      const displayName = user.user_metadata?.name || (user.email ? user.email.split('@')[0] : 'Cliente');
+      const { data: profileRow } = await supabase
+        .from('profiles').select('name').eq('user_id', user.id).maybeSingle();
+      const displayName = profileRow?.name
+        || user.user_metadata?.name
+        || (user.email ? user.email.split('@')[0] : 'Cliente');
+
 
       if (chosen && tenantId) {
         // 1) Create the Stripe-side subscription in trialing state — auto-charge
