@@ -76,7 +76,9 @@ const TrialCardBanner = () => {
     !user ||
     dismissed ||
     subscriptionStatus?.status !== 'trialing' ||
-    hasPaymentMethod !== false
+    hasPaymentMethod !== false ||
+    tenantId === MASTER_TENANT_ID ||
+    userRole === 'super_admin'
   ) return null;
 
   const daysLeft = subscriptionStatus?.days_remaining ?? 0;
