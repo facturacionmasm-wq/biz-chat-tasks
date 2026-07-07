@@ -228,7 +228,7 @@ const CallsPage = () => {
     }
   }, []);
 
-  useEffect(() => { loadDbCalls(); }, [loadDbCalls]);
+  useEffect(() => { loadDbCalls(); loadMonthlyUsage(); }, [loadDbCalls, loadMonthlyUsage]);
 
   // Realtime: call_records changes
   useEffect(() => {
