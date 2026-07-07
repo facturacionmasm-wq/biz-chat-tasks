@@ -5,15 +5,18 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
 const DISMISS_KEY = 'trial_card_banner_dismissed_at';
+const MASTER_TENANT_ID = '00000000-0000-0000-0000-000000000001';
 
 /**
  * Persistent banner shown when the tenant is on `trialing` status and
  * has NOT registered a payment method yet. Prevents silent trial expiry
  * after the user cancels the initial Stripe SetupIntent flow.
+ * Hidden for the master tenant and super_admin users, which never pay.
  */
 const TrialCardBanner = () => {
-  const { user, subscriptionStatus } = useAuth();
+  const { user, subscriptionStatus, userRole } = useAuth();
   const [hasPaymentMethod, setHasPaymentMethod] = useState<boolean | null>(null);
+  const [tenantId, setTenantId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [dismissed, setDismissed] = useState<boolean>(() => {
     const at = typeof window !== 'undefined' ? window.localStorage.getItem(DISMISS_KEY) : null;
@@ -27,10 +30,12 @@ const TrialCardBanner = () => {
     (async () => {
       if (!user || subscriptionStatus?.status !== 'trialing') return;
       try {
-        const { data: tenantId } = await supabase.rpc('get_user_tenant_id', { _user_id: user.id });
-        if (!tenantId || cancelled) return;
+        const { data: resolvedTenantId } = await supabase.rpc('get_user_tenant_id', { _user_id: user.id });
+        if (cancelled) return;
+        setTenantId(resolvedTenantId ?? null);
+        if (!resolvedTenantId) return;
         const { data } = await supabase.functions.invoke('stripe-billing', {
-          body: { action: 'check_payment_method', tenant_id: tenantId },
+          body: { action: 'check_payment_method', tenant_id: resolvedTenantId },
         });
         if (!cancelled) setHasPaymentMethod(!!data?.has_payment_method);
       } catch (err) {
@@ -71,7 +76,9 @@ const TrialCardBanner = () => {
     !user ||
     dismissed ||
     subscriptionStatus?.status !== 'trialing' ||
-    hasPaymentMethod !== false
+    hasPaymentMethod !== false ||
+    tenantId === MASTER_TENANT_ID ||
+    userRole === 'super_admin'
   ) return null;
 
   const daysLeft = subscriptionStatus?.days_remaining ?? 0;
