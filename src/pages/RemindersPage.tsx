@@ -83,7 +83,7 @@ const RemindersPage = () => {
       if (newChannel) payload.channel = newChannel;
       if (newContact.trim()) payload.contact_phone = newContact.trim();
 
-      const { error } = await supabase.from('reminders').insert(payload);
+      const { error } = await supabase.from('reminders').insert(payload as any);
       if (error) throw error;
 
       toast.success('Recordatorio creado');
