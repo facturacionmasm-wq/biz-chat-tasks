@@ -98,6 +98,7 @@ const AppointmentsPage = () => {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showHardDeleteDialog, setShowHardDeleteDialog] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [form, setForm] = useState<AppointmentForm>({ ...emptyForm });
 
@@ -323,6 +324,31 @@ const AppointmentsPage = () => {
     } catch (err: any) {
       console.error('Cancel appointment error:', err);
       toast.error(err.message || 'Error al cancelar la cita');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ─── HARD DELETE ───
+  const handleHardDelete = async () => {
+    if (!selectedAppointment) return;
+    setSaving(true);
+    try {
+      // Fire-and-forget calendar cancel first so external calendars don't keep the event.
+      if (selectedAppointment.calendarEventId) {
+        triggerCalendarSync(selectedAppointment.id, 'cancel_event');
+      }
+      const { error } = await supabase
+        .from('appointments')
+        .delete()
+        .eq('id', selectedAppointment.id);
+      if (error) throw error;
+      toast.success('Cita eliminada');
+      setShowHardDeleteDialog(false);
+      setSelectedAppointment(null);
+    } catch (err: any) {
+      console.error('Hard delete appointment error:', err);
+      toast.error(err.message || 'Error al eliminar la cita');
     } finally {
       setSaving(false);
     }
