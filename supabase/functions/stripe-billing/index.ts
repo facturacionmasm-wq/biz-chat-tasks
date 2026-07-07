@@ -147,14 +147,27 @@ serve(async (req) => {
           ? secret_key.trim()
           : STRIPE_RESTRICTED_API_KEY;
 
-        const looksValid = providedKey.startsWith('sk_') || providedKey.startsWith('rk_');
+        if (!providedKey || !(providedKey.startsWith('sk_') || providedKey.startsWith('rk_'))) {
+          return new Response(JSON.stringify({
+            success: false,
+            key_type: 'unknown',
+            message: 'Invalid Stripe key format',
+          }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        }
 
+        // Real reachability check against Stripe: GET /v1/balance
+        const res = await fetch(`${STRIPE_API}/balance`, {
+          headers: { 'Authorization': `Bearer ${providedKey}` },
+        });
+        const bodyText = await res.text();
         return new Response(JSON.stringify({
-          success: looksValid,
+          success: res.ok,
           key_type: providedKey.startsWith('rk_') ? 'restricted' : 'secret',
-          message: looksValid ? 'Key format accepted' : 'Invalid Stripe key format',
+          status: res.status,
+          message: res.ok ? 'Key verified against Stripe' : `Stripe rejected key: ${bodyText.substring(0, 200)}`,
         }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
+
 
       // ============================================
       // 1. CREATE CUSTOMER + SUBSCRIPTION
