@@ -682,6 +682,9 @@ const AppointmentsPage = () => {
                                 <XCircle size={14} className="mr-2" /> Cancelar
                               </DropdownMenuItem>
                             )}
+                            <DropdownMenuItem className="text-[var(--rx-rose)]" onClick={() => { setSelectedAppointment(apt); setShowHardDeleteDialog(true); }}>
+                              <Trash2 size={14} className="mr-2" /> Eliminar cita
+                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>
