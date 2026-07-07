@@ -447,7 +447,6 @@ serve(async (req) => {
           'metadata[mode]': modeTag,
           'setup_intent_data[metadata][tenant_id]': tenant_id,
           'setup_intent_data[metadata][mode]': modeTag,
-          'setup_intent_data[usage]': 'off_session',
         }, STRIPE_RESTRICTED_API_KEY);
 
         // Audit
