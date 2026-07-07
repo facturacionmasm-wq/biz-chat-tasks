@@ -110,8 +110,8 @@ Deno.serve(async (req) => {
         });
       }
 
-      // Delete and recreate to resend invite
-      const { data: { user: existingUser } } = await adminClient.auth.admin.getUserById(user_id);
+      const { data: existing } = await adminClient.auth.admin.getUserById(user_id);
+      const existingUser = existing?.user;
       if (!existingUser) {
         return new Response(JSON.stringify({ error: "Usuario no encontrado" }), {
           status: 404,
@@ -119,41 +119,35 @@ Deno.serve(async (req) => {
         });
       }
 
-      // Use generateLink to create a magic link for existing users
-      const { data: linkData, error: linkError } = await adminClient.auth.admin.generateLink({
-        type: "magiclink",
-        email,
-      });
-
-      if (linkError) {
-        return new Response(JSON.stringify({ error: linkError.message }), {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      // Send the magic link email via Supabase's built-in email
-      const { error: otpError } = await adminClient.auth.signInWithOtp({
-        email,
-        options: {
-          shouldCreateUser: false,
+      // Re-invite via Auth Admin — dispara la plantilla `invite` del auth-email-hook.
+      // Es el mismo patrón que usa invite-member y no está sujeto al rate-limit de OTP.
+      const { error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(email, {
+        data: {
+          name: existingUser.user_metadata?.name ?? null,
+          invited_to_tenant: callerRole.tenant_id,
         },
       });
 
-      if (otpError) {
-        const isRateLimit = otpError.message.includes("security purposes") || otpError.message.includes("after");
-        return new Response(JSON.stringify({ 
-          error: isRateLimit 
-            ? "Debes esperar 60 segundos antes de reenviar otro correo" 
-            : otpError.message 
-        }), {
-          status: isRateLimit ? 429 : 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+      if (inviteError) {
+        const msg = inviteError.message || "";
+        const isRateLimit = /rate limit|security purposes|after \d+ seconds/i.test(msg);
+        console.error(`[team-management] resend_invite failed user=${user_id} email=${email}: ${msg}`);
+        return new Response(
+          JSON.stringify({
+            error: isRateLimit
+              ? "Debes esperar unos segundos antes de reenviar otro correo"
+              : msg,
+          }),
+          {
+            status: isRateLimit ? 429 : 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
       }
 
+      console.log(`[team-management] resend_invite ok user=${user_id} email=${email} tenant=${callerRole.tenant_id}`);
       return new Response(
-        JSON.stringify({ success: true, message: "Se envió un enlace de acceso al correo del miembro" }),
+        JSON.stringify({ success: true, message: "Invitación reenviada al correo del miembro" }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
