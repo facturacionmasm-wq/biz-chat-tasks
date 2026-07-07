@@ -200,7 +200,7 @@ function buildCheckAvailabilityTool(supabaseUrl: string, webhookSecret: string |
         type: "object",
         required: ["tool_name", "date"],
         properties: {
-          tool_name: { type: "string", enum: ["check_availability"] },
+          tool_name: { type: "string", description: "Nombre de la acción a ejecutar.", enum: ["check_availability"] },
           date: { type: "string", description: "Fecha a consultar en formato YYYY-MM-DD." },
           employee_id: { type: "string", description: "user_id opcional para filtrar por un empleado específico." },
         },
@@ -224,7 +224,7 @@ function buildBookAppointmentTool(supabaseUrl: string, webhookSecret: string | n
         type: "object",
         required: ["tool_name", "contact_name", "date", "time"],
         properties: {
-          tool_name: { type: "string", enum: ["book_appointment"] },
+          tool_name: { type: "string", description: "Nombre de la acción a ejecutar.", enum: ["book_appointment"] },
           contact_name: { type: "string", description: "Nombre del cliente para la cita." },
           date: { type: "string", description: "Fecha de la cita en formato YYYY-MM-DD." },
           time: { type: "string", description: "Hora de la cita en formato HH:MM (24h, hora local del negocio)." },
@@ -253,7 +253,7 @@ function buildRescheduleTool(supabaseUrl: string, webhookSecret: string | null) 
         type: "object",
         required: ["tool_name", "appointment_id", "new_date", "new_time"],
         properties: {
-          tool_name: { type: "string", enum: ["reschedule_appointment"] },
+          tool_name: { type: "string", description: "Nombre de la acción a ejecutar.", enum: ["reschedule_appointment"] },
           appointment_id: { type: "string", description: "ID (UUID) de la cita a reprogramar." },
           new_date: { type: "string", description: "Nueva fecha en formato YYYY-MM-DD." },
           new_time: { type: "string", description: "Nueva hora en formato HH:MM (24h, hora local)." },
@@ -277,7 +277,7 @@ function buildCancelTool(supabaseUrl: string, webhookSecret: string | null) {
         type: "object",
         required: ["tool_name", "appointment_id"],
         properties: {
-          tool_name: { type: "string", enum: ["cancel_appointment"] },
+          tool_name: { type: "string", description: "Nombre de la acción a ejecutar.", enum: ["cancel_appointment"] },
           appointment_id: { type: "string", description: "ID (UUID) de la cita a cancelar." },
         },
       },
