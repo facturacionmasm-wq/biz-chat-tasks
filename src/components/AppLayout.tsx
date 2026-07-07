@@ -15,6 +15,8 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { PresenceProvider } from '@/contexts/PresenceContext';
 import BottomNav from '@/components/BottomNav';
 import { useRybixTheme } from '@/hooks/useRybixTheme';
+import TrialCardBanner from '@/components/TrialCardBanner';
+
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard', exact: true },
