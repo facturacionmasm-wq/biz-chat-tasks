@@ -1,204 +1,149 @@
-# Auditoría Stripe + Plan Agentes Voz por Tenant + Revisión Últimos Cambios
 
-## TEMA A — Stripe: flujo, gaps y fix mínimo
+# Auditoría (solo lectura) — 5 problemas
 
-### A.1 Flujo real hoy (login → onboarding → plan → cobro)
+## PROBLEMA 1 — Recordatorios sin botón "Agregar"
 
-Trazabilidad completa:
+**Archivo:** `src/pages/RemindersPage.tsx` (L31–247).
 
-```text
-Login (AuthPage) → AuthContext.fetchUserData (src/contexts/AuthContext.tsx:54-91)
-  → onboarding_completed=false → redirect a /onboarding
-  → OnboardingPage step "company" → "country" → "plan"
-  → click plan → handlePlanSelect (src/pages/OnboardingPage.tsx:180-261):
-       1) rpc activate_trial_for_current_user  (BD: trial 15d)
-       2) invoke stripe-billing action=create_trial_subscription   (líneas 668-804 stripe-billing)
-       3) invoke stripe-billing action=create_setup_session return_to='/'
-       4) window.location.href = setup.checkout_url  → Stripe Checkout mode=setup
-  → tras pagar/verificar: Stripe redirige a /?setup=success
-  → stripe-webhook handleCheckoutCompleted (mode='setup') persiste stripe_customer_id
-  → stripe-webhook setup_intent.succeeded (líneas 428-477) engancha PM como default y a la suscripción
-```
+**Hallazgo:** El componente sólo lista/filtra/reenvía/borra recordatorios. **No existe** ningún botón, form ni modal para crear (`create/insert/add`). En la cabecera (L125–143) sólo hay un botón "Actualizar". La creación hoy ocurre implícitamente desde el bot de WhatsApp o desde `expense-reminders`.
 
-Selector de plan real: `src/pages/OnboardingPage.tsx:412-558` (paso "plan"). En Settings → tab Billing: `src/components/BillingSection.tsx:508-565` (`TenantBillingView.handleChangePlan`). En Voice cuando falta plan: `src/components/PlanUpgradeCard.tsx` (solo redirige a /settings?tab=billing, no lanza checkout).
+**Tabla y RLS (`reminders`):**
+- INSERT policy: `Users can insert own reminders` con `WITH CHECK = null` (permisivo). SELECT/UPDATE/DELETE requieren `user_id = auth.uid()`.
+- Columnas relevantes usadas por el proyecto: `id, user_id, tenant_id, message, remind_at, status, source, retry_count, max_retries, error_message, timezone, sent_at, created_at` (más `channel`, `contact_phone` según código de otros módulos).
 
-### A.2 Edge functions relacionadas con Stripe
+**Causa raíz:** UI incompleta: nunca se añadió el CTA de crear.
 
-| Función | Acción | Estado |
-|---|---|---|
-| `stripe-billing` `one_time_support_consult` (L53-140) | consulta única $20 | Completa (Checkout mode=payment) |
-| `stripe-billing` `validate_key` (L145-157) | valida formato sk_/rk_ | Placebo (no llama a Stripe) |
-| `stripe-billing` `create_customer_and_subscribe` (L162-309) | crea customer+sub metered | Completa pero **NO se usa desde UI** — legacy |
-| `stripe-billing` `report_usage` (L314-383) | reporta consumo mensual | Completa |
-| `stripe-billing` `create_setup_session` (L388-454) | Checkout mode=setup (tarjeta) | Completa |
-| `stripe-billing` `check_payment_method` (L459-488) | verifica PM guardado | Completa |
-| `stripe-billing` `purchase_package` (L493-625) | paquete prepago voice/wa | Completa (Checkout mode=payment) |
-| `stripe-billing` `get_billing_status` (L630-660) | resumen uso+margen | Completa |
-| `stripe-billing` `create_trial_subscription` (L668-804) | sub Stripe en trialing con trial_end fijo | Completa |
-| `stripe-billing` `change_plan` (L809-951) | upgrade/downgrade con proration | Completa (exige PM) |
-| `stripe-billing` `verify_payment_method` (L956-984) | detalle de tarjeta default | Completa |
-| `stripe-billing` `charge_phone_number` (L989-1098) | cargo puntual número | Completa |
-| `stripe-billing` `charge_verification_fee` (L1100-1195) | fee $15 regulatorio | Completa |
-| `stripe-webhook` (493L) | events firmados HMAC-SHA256 | Completa: checkout.session.completed, invoice.paid/failed, subscription.updated/deleted, setup_intent.succeeded, invoice.finalized |
-| `billing-monthly-report` | cron mensual | Existe |
-
-**No hay** funciones tipo `create-checkout-subscription` (mode=subscription puro), `customer-portal` (portal Stripe) ni `payment-method` (attach directo desde UI). No es bloqueante — el flujo se apoya en Checkout mode=setup + `default_incomplete`/proration.
-
-### A.3 Ventanas que deberían cobrar — auditoría
-
-1. **Onboarding elegir plan** (`OnboardingPage.tsx:180-261`) — sí lanza `create_trial_subscription` **+** `create_setup_session` y redirige a Checkout. ✅
-2. **Settings → Billing → cambiar plan** (`BillingSection.tsx:522-564`) — llama `change_plan`; si `requires_payment_method` cae en `create_setup_session` → Checkout. ✅
-3. **PlanUpgradeCard** (`PlanUpgradeCard.tsx:32`) — solo `navigate('/settings?tab=billing')`; **no dispara checkout**. ⚠️ (esperado: el cobro se hace desde Billing).
-4. **PaymentGateCard** (voice/whatsapp) — `usePaymentGate.setupCard` (`src/hooks/usePaymentGate.ts:104-133`) → `create_setup_session` → Checkout. ✅  
-   `purchasePackage` (L84-102) → `purchase_package` → Checkout mode=payment. ✅
-5. **SubscriptionBlockedPage** — usa el mismo `BillingSection`/checkout. ✅
-
-### A.4 Gaps y fix mínimo (Stripe)
-
-**Gap 1 — Onboarding no bloquea salida si el usuario cancela Checkout.**  
-`OnboardingPage.tsx:246-249` redirige a `/?setup=success`, pero si cancela llega a `/?setup=cancel` sin `PM` y con `onboarding_completed=true`. Trial válido pero sin tarjeta → al finalizar trial Stripe cancela por `trial_settings.end_behavior=cancel` (L765). El usuario cree que "no pagó y sigue funcionando" hasta el día 15.  
-**Fix mínimo**: en `AppLayout`/dashboard, si `subscriptionStatus.status='trialing'` y `check_payment_method.has_payment_method=false`, mostrar un banner persistente "Agrega tarjeta para no perder acceso al terminar el trial" con botón que invoque `create_setup_session` (`service_type:'onboarding', return_to:'/'`). Sin cambios en edge functions.
-
-**Gap 2 — `create_trial_subscription` falla silenciosamente en onboarding.**  
-`OnboardingPage.tsx:231` sólo hace `console.warn` si `trialErr`. Si Stripe rechaza (ej. moneda sin precio configurado, L709-713 devuelve 400 "Plan has no billable price configured"), el usuario avanza sin sub Stripe. Cuando el trial local expira, no hay charge automático.  
-**Fix mínimo**: al fallar `create_trial_subscription`, seguir a `create_setup_session` (ya se hace), **pero** guardar el error en `audit_events` desde el frontend y mostrar toast rojo. Alternativa robusta: mover el intento a un post-hook del webhook `setup_intent.succeeded` — si no hay `stripe_subscription_id`, invocar internamente `create_trial_subscription`.
-
-**Gap 3 — `PlanUpgradeCard` sólo navega; no ofrece CTA directo al Checkout.**  
-Usuario en /calls con plan sin voice_agent ve "actualizar a Pro" pero requiere 2 clics extra (Settings → Billing → botón por plan).  
-**Fix mínimo**: agregar prop `onUpgrade` al `PlanUpgradeCard` que, con el `slug` deseado, invoque `stripe-billing action=change_plan` directamente; si `requires_payment_method` redirigir a `create_setup_session` con `return_to='/calls'`. Sin cambios en edge functions.
-
-**Gap 4 — `validate_key` (L145-157) es cosmético.**  
-No llama a Stripe. Si `BillingSection` la usa para "Activar Stripe" da falso OK.  
-**Fix mínimo**: reemplazar el cuerpo por `GET /v1/balance` real y regresar `success = res.ok`. Cambio de <20 líneas.
-
-**Gap 5 — Nombre en Stripe queda como email cuando no hay `user_metadata.name`.**  
-Aparece en `OnboardingPage.tsx:217`, `BillingSection.tsx:534`, `usePaymentGate.ts:96/125`. Cosmético.  
-**Fix mínimo**: leer también `profiles.name` como fallback antes que `user.email`.
-
-**No falta** captura de método de pago en el propio onboarding: sí se dispara `create_setup_session` (L236-249). El único hueco es que la cancelación no se maneja. Con el banner del Gap 1, el flujo queda cerrado en todas las ventanas.
+**Fix mínimo:**
+1. En `RemindersPage.tsx`, junto al botón "Actualizar" (L135–142) añadir botón "Agregar recordatorio" que abra un `Dialog` con: mensaje (textarea), fecha/hora (input datetime-local), canal (whatsapp/email, opcional), y contacto opcional.
+2. Handler `handleCreate`:
+   - Resolver `tenant_id` con `supabase.rpc('get_user_tenant_id', { _user_id: user.id })` (patrón ya usado en el proyecto).
+   - `insert` en `reminders` con `{ user_id: user.id, tenant_id, message, remind_at: new Date(local).toISOString(), status: 'pending', source: 'manual', retry_count: 0, max_retries: 3, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }`.
+   - Toast + `fetchReminders()` (el realtime también lo refresca).
+3. No hace falta migración: RLS INSERT ya lo permite y `tenant_id` es nullable en la tabla; se llena explícitamente para consistencia.
 
 ---
 
-## TEMA B — Agente ElevenLabs por tenant (solución definitiva)
+## PROBLEMA 2 — Panel Super Admin no refleja el conteo real de tenants
 
-Estado actual: hay una única `ELEVENLABS_AGENT_ID` global usada por:
-- `elevenlabs-conversation-token/index.ts:40, 96` (widget WebRTC)
-- `elevenlabs-kb-sync/index.ts:38, 66, 96` (KB — actualmente bloqueado con 409 en `add`)
-- `call-inbound-webhook/index.ts:100, 291, 378` (Twilio inbound)
-- Existe columna `tenants.elevenlabs_config jsonb` (types.ts L4277) — **no requiere migración de esquema** si guardamos `agent_id` ahí; también existe `call_sessions.elevenlabs_agent_id` (types L866).
+**Archivos:**
+- `src/pages/SuperAdminPage.tsx` L440: renderiza `latest?.active_tenants ?? 0 / latest?.total_tenants ?? 0`.
+- `src/hooks/useGlobalMetrics.ts` L70–83 y L197: `latest` = último snapshot de `global_metrics_daily` (region=GLOBAL, country_code=ALL).
+- `src/components/SuperAdminTenantsTab.tsx` L59+ y hook `useSuperAdminData.margins` (`src/hooks/useSuperAdminData.ts` L85–106): la tabla de tenants proviene de `realtime_margin_state`, no de `tenants`.
 
-### B.1 Migración mínima (opcional, sólo si se prefiere columna dedicada)
+**Causa raíz:** La UI muestra métricas derivadas (`global_metrics_daily`, `realtime_margin_state`), no la tabla `tenants`. Si `global-metrics-daily` no se ha ejecutado (o el snapshot es viejo) los KPIs de "Tenants" quedan a 0. Si un tenant no tiene llamadas, no existe fila en `realtime_margin_state` y desaparece del listado. Confirmado: hoy hay **11 tenants** en `public.tenants`, pero el panel puede mostrar 1.
 
-```sql
--- opción A (recomendada): reutilizar elevenlabs_config JSONB
---   { "agent_id": "agent_xxx", "provisioned_at": "..." }
--- opción B (columna explícita)
-ALTER TABLE public.tenants
-  ADD COLUMN IF NOT EXISTS elevenlabs_agent_id text;
-CREATE INDEX IF NOT EXISTS tenants_elevenlabs_agent_id_idx
-  ON public.tenants(elevenlabs_agent_id) WHERE elevenlabs_agent_id IS NOT NULL;
-```
+**Fix mínimo (dos cambios pequeños):**
+1. **KPI "Tenants Activos" (SuperAdminPage.tsx L438–441):** reemplazar la fuente por un contador directo de `tenants`. Añadir al hook `useSuperAdminData` (o a `useGlobalMetrics`) una query:
+   ```ts
+   const tenantsCount = useQuery({
+     queryKey: ['sa-tenants-count'], enabled,
+     queryFn: async () => {
+       const { count } = await supabase.from('tenants').select('id', { count: 'exact', head: true });
+       return count ?? 0;
+     },
+   });
+   ```
+   y en el JSX cambiar `latest?.total_tenants` por `tenantsCount.data`. Mantener `active_tenants` (con actividad) como sub-métrica.
+2. **Listado de tenants (`SuperAdminTenantsTab`):** ya usa `admin_list_tenants_with_subscription()` RPC en otras partes (existe en la BD y devuelve TODOS los tenants con estado de suscripción). Verificar que el listado principal lo consuma; si sigue usando `margins`, cambiar la fuente al RPC y hacer LEFT JOIN visual con `realtime_margin_state` para las métricas de margen.
 
-Preferir opción A para no crecer el esquema.
-
-### B.2 Provisioning por tenant (nueva edge function `elevenlabs-agent-provision`)
-
-Nueva función `supabase/functions/elevenlabs-agent-provision/index.ts`:
-- Requiere JWT del owner/super_admin.
-- Resuelve `tenant_id` vía `get_user_tenant_id(auth.uid())` y `has_tenant_role(auth.uid(), tenant_id, 'owner')`.
-- Lee `tenants.elevenlabs_config->>agent_id`; si existe, devuelve el agent.
-- Si no, `POST https://api.elevenlabs.io/v1/convai/agents/create` con `name=OfficeHub - {tenant.name}`, prompt base clonado del agente global.
-- Persiste en `tenants.elevenlabs_config = jsonb_set(coalesce(...), '{agent_id}', to_jsonb(new_id))` con `service_role`.
-- Registra `audit_events` (`elevenlabs.agent_provisioned`).
-
-Trigger de auto-provision: opcional botón en Settings → Integrations → "Aprovisionar agente de voz". No lo hacemos en `handle_new_user` para no gastar cuota si el tenant nunca usa voz.
-
-### B.3 Cambios en las 3 edge functions actuales
-
-Helper compartido nuevo `supabase/functions/_shared/elevenlabs-agent.ts`:
-
-```ts
-export async function resolveTenantAgentId(supabase, tenantId): Promise<string | null> {
-  if (!tenantId) return null;
-  const { data } = await supabase
-    .from('tenants').select('elevenlabs_config').eq('id', tenantId).maybeSingle();
-  const cfg = (data?.elevenlabs_config || {}) as any;
-  return typeof cfg.agent_id === 'string' && cfg.agent_id.length ? cfg.agent_id : null;
-}
-```
-
-**1) `supabase/functions/elevenlabs-conversation-token/index.ts`**
-- Línea 40: eliminar lectura de `ELEVENLABS_AGENT_ID` como *default*; conservar para fallback dev.
-- Después de resolver `profile.tenant_id` (L57-61): `const agentId = await resolveTenantAgentId(serviceClient, profile.tenant_id) ?? ELEVENLABS_AGENT_ID_FALLBACK;`
-- Si no hay `agentId`, devolver 409 `{error:'no_tenant_agent', message:'Aprovisiona tu agente de voz en Ajustes → Integraciones'}` en lugar del 500 genérico L44.
-- Línea 96 (fetch token): interpolar `agent_id=${agentId}` en vez del env.
-- Master tenant (`00000000-0000-0000-0000-000000000001`): puede seguir usando el global — mantener fallback sólo para ese ID.
-
-**2) `supabase/functions/elevenlabs-kb-sync/index.ts`**
-- Requerir `tenant_id` implícito: resolverlo vía `anonClient.auth.getUser()` en lugar de `getClaims` (L33-38 hoy) para reutilizar el patrón de `conversation-token`.
-- Reemplazar `ELEVENLABS_AGENT_ID` (L38, 66, 96) por `agentId = await resolveTenantAgentId(supabase, tenantId)`.
-- Retirar el gate 409 hoy en `add` (L74-87) **una vez** que `agentId` provenga del tenant; si sigue siendo `null`, mantener 409 con nuevo código `no_tenant_agent`.
-- Filtrar cualquier `data.tenant_id` de entrada para que coincida con el del JWT (defense-in-depth); si no coincide → 403.
-
-**3) `supabase/functions/call-inbound-webhook/index.ts`**
-- Después de `tenantId` resuelto (L191): `const agentId = await resolveTenantAgentId(supabase, tenantId) ?? ELEVENLABS_AGENT_ID;` (fallback global tolerado sólo por compat; loguear `voiceLog(...,'agent_id_fallback_global')` si se usa).
-- Línea 291 y 378: usar `agentId` en `registerBody.agent_id` y en `call_sessions.elevenlabs_agent_id`.
-- Si no hay agente y no hay global → responder con `twimlSay('El servicio de voz no está aprovisionado. Contacte al administrador.')` y NO llamar ElevenLabs.
-
-**4) `elevenlabs-post-call/index.ts`, `elevenlabs-actions-webhook/index.ts`, `elevenlabs-staff-sync/index.ts`, `elevenlabs-bridge/index.ts`** — auditar cada uno con el mismo patrón. En este plan cubro las 3 pedidas; el resto queda como TODO listado (no requiere cambios inmediatos porque reciben `agent_id` desde ElevenLabs en el payload).
-
-### B.4 UI: botón de provisioning
-
-`src/pages/IntegrationsPage.tsx` (u `AssistantAdminPage.tsx`): añadir tarjeta "Agente de Voz IA" con botón "Aprovisionar / Ver estado" que llame `supabase.functions.invoke('elevenlabs-agent-provision')`. No romper llamadas actuales: mientras `elevenlabs_config.agent_id` sea `null`, `conversation-token` responde 409 y la UI muestra CTA; el widget ya maneja errores.
-
-### B.5 Rollout seguro (no romper llamadas en curso)
-
-1. Deploy `_shared/elevenlabs-agent.ts` y `elevenlabs-agent-provision`.
-2. Migración jsonb (o columna) — no toca datos.
-3. Botón UI + backfill manual del master tenant (`elevenlabs_config = { agent_id: ELEVENLABS_AGENT_ID }`) vía `INSERT` tool para no dejarlo sin agente.
-4. Modificar las 3 edge functions con fallback al env global (mantiene status-quo).
-5. Backfill tenants que ya lo usen: ejecutar provision por cada uno.
-6. Cuando todos tengan `agent_id` propio, remover el fallback y eliminar `ELEVENLABS_AGENT_ID` global.
+Sin migración; se aprovechan RPC ya existentes (`admin_list_tenants_with_subscription`) y RLS actual (super_admin puede leer `tenants`).
 
 ---
 
-## TEMA C — Revisión línea a línea de los últimos 3 cambios
+## PROBLEMA 3 — Llamadas sin métricas de tokens/costo ni facturación
 
-### C.1 `chat_channels.peer_user_id`
+**Archivos y flujo actual:**
+- `supabase/functions/elevenlabs-post-call/index.ts` L249–263: al terminar la llamada llama `calculate-usage-cost` con `ai_tokens_used: Math.ceil(transcript.length / 4)` → **estimación cruda del transcript**, no tokens reales del LLM ni de TTS/STT de ElevenLabs.
+- `supabase/functions/calculate-usage-cost/index.ts` L10–14 y L66–70: tarifas hard-coded (`twilio_per_minute=0.013 USD`, `ai_per_1k_tokens=0.00025`, `infra_per_minute=0.002`, markup 35%). Escribe en `call_costs` (L75–91) y agrega en `realtime_margin_state` y `tenant_usage_monthly`.
+- Tabla `call_costs` (14 cols): `duration_minutes, ai_tokens_used, cost_twilio, cost_ai, cost_infra, cost_total, revenue_charged, margin, margin_pct`. **No** tiene desglose ElevenLabs (audio in/out, LLM cost, char count).
+- `call_records` (28 cols) guarda `duration`, `transcript`, `audio_url`, `extracted_data` (con `conversation_id`, `agent_id`, `analysis`) pero **no** costo ni tokens.
+- UI: `src/pages/CallsPage.tsx` sólo lee `call_records` (L180, L328, L376); no muestra ni consulta `call_costs`.
+- Stripe: `supabase/functions/stripe-billing/index.ts` L327–378 tiene `report_usage` (INSERT en `stripe_usage_records` y `POST` a `subscription_items/:id/usage_records`). `supabase/functions/billing-monthly-report/index.ts` L49 llama `report_usage`. **Pero** los `tenant_subscriptions` no tienen ítem metered configurado por defecto y no se dispara nada al terminar cada llamada.
 
-**Migración** (`supabase/migrations/20260707053846_*.sql`) — OK: `ADD COLUMN IF NOT EXISTS ... REFERENCES auth.users ON DELETE SET NULL` + índice parcial.
+**Causa raíz:**
+- Tokens del agente de voz no se capturan: sólo se estima con la longitud del transcript.
+- No se consulta la API de ElevenLabs para el costo real de la conversación (endpoint `/v1/convai/conversations/:id` retorna duración y charges).
+- `CallsPage` no expone `cost_total`, `ai_tokens_used`, `revenue_charged` por llamada, ni un resumen por tenant.
+- El puente con Stripe `report_usage` existe pero nadie lo llama al procesar la llamada; el cron mensual reporta agregados sin garantía de coincidencia y sin metered item ligado.
 
-**`src/hooks/useChatPersistence.ts:345`** — `existing = channels.find(c => c.type==='direct' && (c.peerUserId===memberId || (!c.peerUserId && c.name===memberName)))`.  
-Edge case: si dos usuarios tienen exactamente el mismo `name` (ej. dos "Juan Pérez") y el DM legacy no tiene `peerUserId`, `createDM` reutilizará el DM equivocado. Fix: preferir siempre `peerUserId===memberId` y **no** matchear por nombre en el fallback (aceptar crear un DM nuevo; el filtro de `visibleChannels` sigue funcionando).
+**Fix mínimo (por capas):**
+1. **Captura real de uso desde ElevenLabs**
+   - Nueva función `supabase/functions/_shared/elevenlabs-usage.ts` que, con `ELEVENLABS_API_KEY` (o el tenant-scoped en `tenants.elevenlabs_config`), haga `GET https://api.elevenlabs.io/v1/convai/conversations/{conversation_id}` y devuelva `{ llm_tokens, llm_cost_usd, tts_chars, stt_secs, total_cost_usd, duration_secs }` (los campos existentes en la respuesta actual de ElevenLabs).
+   - En `elevenlabs-post-call/index.ts` L249–263, antes de invocar `calculate-usage-cost`, obtener esos valores y pasarlos: `ai_tokens_used: llm_tokens`, y añadir campos nuevos: `tts_chars`, `stt_secs`, `elevenlabs_cost_usd`.
+2. **Persistencia**
+   - Migración: `ALTER TABLE public.call_costs ADD COLUMN IF NOT EXISTS tts_chars integer, ADD COLUMN IF NOT EXISTS stt_secs numeric, ADD COLUMN IF NOT EXISTS elevenlabs_cost_usd numeric;`.
+   - `ALTER TABLE public.call_records ADD COLUMN IF NOT EXISTS cost_total numeric, ADD COLUMN IF NOT EXISTS ai_tokens_used integer;` y actualizar al final del post-call (para que la lista de llamadas muestre costo por fila sin JOIN).
+3. **`calculate-usage-cost/index.ts`**
+   - Aceptar y persistir los nuevos campos; si `elevenlabs_cost_usd` viene, usarlo como `cost_ai` en vez del cálculo por tokens (fuente de verdad).
+4. **UI de Llamadas** (`src/pages/CallsPage.tsx` L180 y siguientes):
+   - Añadir columnas "Duración", "Tokens" y "Costo" leyendo `call_records.cost_total` y `ai_tokens_used`.
+   - Un panel superior con `SUM(cost_total)`, `SUM(revenue_charged)` y minutos MTD para el tenant (query a `tenant_usage_monthly`).
+5. **Facturación Stripe por consumo**
+   - En `elevenlabs-post-call` (después del cost calc), si `tenant_subscriptions.plan` tiene metered item (`stripe_subscription_id` + `stripe_item_id_voice`), llamar `stripe-billing` con `action: 'report_usage'` y `quantity = ceil(duration_minutes)`.
+   - Migración: `ALTER TABLE public.stripe_customers ADD COLUMN IF NOT EXISTS stripe_item_id_voice text, ADD COLUMN IF NOT EXISTS stripe_item_id_whatsapp text;` y usarlos en `report_usage` (hoy se pasa `subscription_item_id` como argumento y no se sabe de dónde).
+   - Configurar en `admin_manage_tenant_subscription`/onboarding la creación del item metered al crear la Subscription; alternativa mínima: si no hay metered item, hacer `invoice item` (`POST /v1/invoiceitems`) por llamada, que ya está soportado en el proyecto para números y consultas.
 
-**`ChatPage.tsx:93-102 visibleChannels`** — fallback por nombre igualmente vulnerable a homónimos; mismo diagnóstico. Aceptable si se documenta.
-
-**Regresión posible**: al eliminar un usuario y volver a invitar con el mismo email/name, el nuevo user_id no coincidirá con el `peer_user_id` viejo (que quedó `NULL` por `ON DELETE SET NULL`). El DM legacy quedará oculto (correcto) pero **sin forma de reactivarlo**. Fix mínimo: si el nuevo perfil tiene el mismo nombre y hay DM con `peer_user_id IS NULL`, ofrecer "reasignar" al `createDM`. Baja prioridad.
-
-### C.2 `WhatsAppInboxPage.handleDeleteConversation` (L97-119)
-
-- L101: `.delete(...).select('id')` — OK, valida `error` y trata como duro.
-- L104-108: valida `convRes.data.length > 0` — OK.
-- **Bug menor**: si `msgRes` tiene 0 filas (conversación sin mensajes), no falla — correcto. Pero si RLS del DELETE en `whatsapp_messages` deniega y devuelve `error` de RLS, se lanza excepción y **no** se intenta borrar la conversación → estado consistente. OK.
-- **Regresión**: no revoca `subscription` de realtime si estaba suscrito a esta conversación; el listener seguirá activo hasta el próximo re-mount. Cosmético.
-- **UX**: `toast.error(err.message ...)` puede filtrar mensajes de Postgres (ej. "permission denied for table whatsapp_messages"). Aceptable pero recomiendo mensaje genérico + `console.error(err)`.
-
-### C.3 `elevenlabs-kb-sync` gate 409
-
-- L74-87: correcto — bloquea `add` con `kb_sync_disabled_shared_agent`.
-- **Regresión**: `list` (L67-73) sigue consultando el agente compartido; devuelve KB de otros tenants. Si la UI muestra la lista, un tenant vería documentos ajenos. Fix mínimo inmediato: aplicar el mismo 409 al `list` mientras exista agente compartido (o filtrar en el cliente, menos seguro).
-- **Regresión**: `delete` (L91-111) permite a cualquier tenant borrar por `elevenlabs_doc_id` en el agente compartido → **puede borrar docs de otro tenant**. Aplicar 409 también a `delete` hasta B.3.
-
-**Fix mínimo consolidado**: en el mismo `elevenlabs-kb-sync/index.ts`, envolver `list` y `delete` con el mismo gate 409 hasta que exista `resolveTenantAgentId(tenantId)`.
+Nada de esto altera prompts, calendario, ni el webhook actual de Stripe; sólo suma columnas y lecturas.
 
 ---
 
-## Prioridad recomendada (cuando se apruebe build)
+## PROBLEMA 4 — Proyecciones lanza error
 
-1. Endurecer `elevenlabs-kb-sync` (gate 409 también en `list`/`delete`) — riesgo activo cross-tenant.
-2. Banner "agrega tarjeta" durante trial (Gap 1 Stripe).
-3. Provisioning por tenant (Tema B completo).
-4. Ajustes menores C.1 / C.2.
-5. Gaps 2-5 de Stripe.
+**Archivos:**
+- `supabase/functions/financial-projections/index.ts` L110: `model: "google/gemini-3-flash-preview"`.
+- Invocación desde UI: `src/hooks/useSuperAdminData.ts` L189–203 (`supabase.functions.invoke('financial-projections')`), y `SuperAdminPage.tsx` L389.
+- Tabla `financial_projections` con columna `input_data jsonb` (verificado en BD) — el insert L215–230 sí matchea el esquema, así que **no es error de columna**.
 
-Nada de esto se ha aplicado — es plan puro.
+**Causa raíz:** El identificador de modelo **no existe** en Lovable AI Gateway. Los modelos válidos son `google/gemini-2.5-flash`, `google/gemini-2.5-flash-lite`, `google/gemini-2.5-pro`. Con `google/gemini-3-flash-preview` el gateway responde 400/404, se cae al branch L176–194 y el hook muestra el `toast.error(...)` (L200–202). El manejo actual sólo diferencia 429/402, cualquier otro código devuelve "AI projection failed".
+
+**Fix mínimo:**
+1. `supabase/functions/financial-projections/index.ts` L110: cambiar a `"google/gemini-2.5-flash"` (mismo tool-calling, sin cambios de esquema).
+2. L228 opcional: actualizar `model_version` a `"v1-gemini-2.5-flash"` para trazabilidad.
+3. En L176–194 propagar el mensaje real del gateway (`errText.slice(0, 300)`) para que futuros errores sean diagnosticables desde el toast.
+
+No requiere migración ni cambios en RLS.
+
+---
+
+## PROBLEMA 5 — Eliminar tenant lanza error
+
+**Archivos:**
+- Botón/handler: `src/components/SuperAdminTenantsTab.tsx` L101–121 y confirmación L419–450.
+- Edge function: `supabase/functions/admin-delete-tenant/index.ts` L15–172.
+- FKs a `public.tenants`: 21 tablas con `ON DELETE NO ACTION` (todas ya listadas en `preTenantCleanupTables` L92–114). El resto son CASCADE.
+
+**Causa raíz probable (en orden de probabilidad, verificable en logs):**
+1. **Trigger `audit_role_changes`** dispara `INSERT INTO audit_events (tenant_id, ...)` durante el CASCADE de `user_roles` (línea del trigger). `audit_events` tiene FK a `tenants` (`ON DELETE CASCADE`), pero la inserción ocurre **después** de que se están cascadeando filas del tenant y **antes** de que el DELETE al `tenants` termine, generando `foreign_key_violation` intermitente o filas huérfanas. Además, para operaciones ejecutadas por `service_role`, `auth.uid()` es `NULL` y el `INSERT` puede fallar si algún NOT NULL de columna existe (no lo hay, pero el trigger añade ruido).
+2. **Tablas nuevas no listadas** en `preTenantCleanupTables`: revisando policy list, no vi cleanup de `document_alerts`, `document_jobs`, `bot_adaptive_profiles`, `voice_call_logs`, `webhook_logs`, `byon_requests`, `calcom_integrations`, `chat_channels`, `chat_messages`, `message_read_receipts`, `project_*`, `stripe_usage_records`, `phone_number_invoices`, `support_tickets`, `ticket_events`, `ticket_messages`, `platform_support_channels`, `platform_support_messages`, `support_consult_purchases`, `tenant_drive_settings`, `drive_audit_log`, `tenant_phone_numbers`, `expense_reminders`, `tenant_rate_limits`, `tenant_offer_history`, `plan_change_history`. La mayoría son CASCADE, pero cualquiera con NO ACTION y datos rompe el DELETE final (L124).
+3. **`tenant_id` en `audit_events` de la propia acción** (L152–162): si `auditTenantId` cae al MASTER pero el actor no tiene profile en otro tenant y el super_admin fue creado sin profile en master, `auditTenant?.tenant_id` es null → se usa MASTER que existe, OK. No suele fallar aquí.
+4. **Cancelación Stripe** L72–79: si la key no tiene permisos falla silencioso (warn). No bloquea.
+
+**Fix mínimo:**
+1. **Eliminar la fila de `user_roles` primero explícitamente** en `admin-delete-tenant/index.ts` (antes del loop L116) para evitar el trigger `audit_role_changes` en cascada:
+   ```ts
+   await admin.from('audit_events').delete().eq('tenant_id', tenant_id);
+   await admin.from('user_roles').delete().eq('tenant_id', tenant_id);
+   ```
+   Insertar el audit final en un tenant distinto (ya se hace en L143–163).
+2. **Ampliar `preTenantCleanupTables`** con la lista completa de tablas con FK NO ACTION (query ya ejecutada da: `expenses, contacts, shared_credentials, call_events, transfer_notifications, push_subscriptions, assistant_conversations, assistant_settings, reminders, google_calendar_tokens, call_jobs, tenant_ltv_estimates, whatsapp_usage_events, usage_costs_reconciled, tenant_package_balances, call_sessions, appointment_notifications, document_chunks, document_memory, document_workflow_rules, document_workflow_log`). Verificar que el listado hard-coded coincida con esta query y ordenarlas de forma segura (hijas antes que padres). El listado actual coincide; añadir cualquier tabla nueva creada después.
+3. **Migración opcional (recomendada) mínima**: convertir esas 21 FKs a `ON DELETE CASCADE` (usar `ALTER TABLE ... DROP CONSTRAINT ...; ADD CONSTRAINT ... FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;`). Elimina la necesidad de mantener `preTenantCleanupTables`.
+4. **Devolver el detalle del error al frontend**: en L120 y L125 hoy ya se devuelve `error: err.message`, pero el toast del cliente (L119 del componente) muestra sólo `err.message` — validar que la respuesta 500 se propague; con supabase-js v2 hay que leer `error.context?.body`. Añadir en `SuperAdminTenantsTab.handleDeleteTenant`:
+   ```ts
+   const msg = (data as any)?.error || (error as any)?.context?.responseJson?.error || error?.message || 'Error al eliminar tenant';
+   ```
+   para ver la causa real en pantalla.
+5. **Sanity check de super_admin**: el `handle_new_user` deja al primer super_admin con `profiles.tenant_id = MASTER_TENANT`. Confirmar que su propio tenant no sea el que intenta borrar (L47–49 ya bloquea master, OK).
+
+---
+
+## Resumen de fixes (sin aplicar aún)
+
+| # | Cambios |
+|---|---------|
+| 1 | Añadir botón + modal "Agregar recordatorio" en `RemindersPage.tsx` L125-142; insert en `reminders` con `user_id`, `tenant_id`. |
+| 2 | Añadir query directa a `tenants` (count) en `useSuperAdminData`/`useGlobalMetrics`; usar `admin_list_tenants_with_subscription()` para la tabla de tenants; JSX L440 usa el count real. |
+| 3 | Nuevo helper `elevenlabs-usage.ts`; pasar tokens/costo reales desde `elevenlabs-post-call` L249; migración de columnas en `call_costs`/`call_records`/`stripe_customers`; UI de columnas de costo en `CallsPage.tsx`; disparar `stripe-billing report_usage` post-call. |
+| 4 | Cambiar `model` a `google/gemini-2.5-flash` en `financial-projections/index.ts` L110; mejorar propagación del error del gateway L176-194. |
+| 5 | Añadir `DELETE user_roles/audit_events` explícito antes del cleanup en `admin-delete-tenant/index.ts` L115; opcionalmente migrar FKs a `ON DELETE CASCADE`; devolver detalle de error al UI en `SuperAdminTenantsTab.tsx` L118. |
+
+Todos los cambios son mínimos, preservan aislamiento por tenant y no tocan pin-service, calendario, ni el webhook de Stripe salvo por la ruta `report_usage` que ya existe.
