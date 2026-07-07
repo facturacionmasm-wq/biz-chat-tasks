@@ -173,8 +173,34 @@ const CallsPage = () => {
   const [callJobs, setCallJobs] = useState<any[]>([]);
   const [allJobs, setAllJobs] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<'calls' | 'analytics' | 'observability'>('calls');
+  const [monthlyUsage, setMonthlyUsage] = useState<{ cost_total: number; revenue: number; minutes: number } | null>(null);
   const isMobile = useIsMobile();
   const lastToastRef = useRef<string | null>(null);
+
+  // Monthly usage summary for the tenant
+  const loadMonthlyUsage = useCallback(async () => {
+    try {
+      const now = new Date();
+      const periodStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+      const { data } = await supabase
+        .from('tenant_usage_monthly')
+        .select('cost_total, revenue, total_minutes')
+        .eq('period_start', periodStart)
+        .maybeSingle();
+      if (data) {
+        setMonthlyUsage({
+          cost_total: Number(data.cost_total || 0),
+          revenue: Number(data.revenue || 0),
+          minutes: Number(data.total_minutes || 0),
+        });
+      } else {
+        setMonthlyUsage({ cost_total: 0, revenue: 0, minutes: 0 });
+      }
+    } catch (err) {
+      console.error('[calls] load monthly usage failed:', err);
+    }
+  }, []);
+
 
   const loadDbCalls = useCallback(async () => {
     try {
