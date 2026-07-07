@@ -54,57 +54,21 @@ serve(async (req) => {
       'Content-Type': 'application/json',
     };
 
-    // List current KB docs from ElevenLabs
-    if (action === 'list') {
-      const res = await fetch(
-        `${ELEVENLABS_API_URL}/convai/agents/${ELEVENLABS_AGENT_ID}/knowledge-base`,
-        { headers }
-      );
-      if (!res.ok) {
-        const err = await res.text();
-        throw new Error(`ElevenLabs list KB error [${res.status}]: ${err}`);
-      }
-      const result = await res.json();
-      return new Response(JSON.stringify(result), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    // Add a document to ElevenLabs KB
-    if (action === 'add') {
-      // SAFETY GATE: A single ELEVENLABS_AGENT_ID is shared across all tenants.
-      // Uploading tenant-specific knowledge to that shared agent would leak
-      // knowledge between tenants. Block until per-tenant agents are provisioned.
-      // Per-tenant RAG is served via the `document-search` edge function and
-      // `knowledge_items` queries in the WhatsApp bot, both scoped by tenant_id.
+    // CROSS-TENANT SAFETY GATE for `list`, `add`, `delete`:
+    // A single ELEVENLABS_AGENT_ID is shared across all tenants. Any KB
+    // read/write against that shared agent would leak or destroy knowledge
+    // belonging to other tenants. Per-tenant RAG is served via the
+    // `document-search` edge function and `knowledge_items` queries (both
+    // filtered by tenant_id). Block until per-tenant agents are provisioned.
+    if (action === 'list' || action === 'add' || action === 'delete') {
       return new Response(
         JSON.stringify({
-          error: 'Cross-tenant safety gate: sync to shared ElevenLabs agent is disabled. Per-tenant knowledge is served via document-search.',
+          error: 'Cross-tenant safety gate: KB operations against the shared ElevenLabs agent are disabled. Per-tenant knowledge is served via document-search.',
           code: 'kb_sync_disabled_shared_agent',
+          action,
         }),
         { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
-    }
-
-    // Delete a document from ElevenLabs KB
-    if (action === 'delete') {
-      const { elevenlabs_doc_id } = data;
-
-      const res = await fetch(
-        `${ELEVENLABS_API_URL}/convai/agents/${ELEVENLABS_AGENT_ID}/knowledge-base/${elevenlabs_doc_id}`,
-        { method: 'DELETE', headers }
-      );
-
-      if (!res.ok) {
-        const err = await res.text();
-        throw new Error(`ElevenLabs delete KB error [${res.status}]: ${err}`);
-      }
-
-      await res.text(); // consume body
-
-      return new Response(JSON.stringify({ success: true }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
     }
 
     return new Response(JSON.stringify({ error: 'Unknown action' }), {
