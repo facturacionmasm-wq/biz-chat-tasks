@@ -338,14 +338,19 @@ const AppointmentsPage = () => {
       if (selectedAppointment.calendarEventId) {
         triggerCalendarSync(selectedAppointment.id, 'cancel_event');
       }
-      const { error } = await supabase
+      const { data: deleted, error } = await supabase
         .from('appointments')
         .delete()
-        .eq('id', selectedAppointment.id);
+        .eq('id', selectedAppointment.id)
+        .select('id');
       if (error) throw error;
+      if (!deleted || deleted.length === 0) {
+        throw new Error('No se pudo eliminar la cita (verifica permisos).');
+      }
       toast.success('Cita eliminada');
       setShowHardDeleteDialog(false);
       setSelectedAppointment(null);
+      loadData();
     } catch (err: any) {
       console.error('Hard delete appointment error:', err);
       toast.error(err.message || 'Error al eliminar la cita');
