@@ -128,11 +128,12 @@ export function useChatPersistence() {
           return;
         }
 
-        const loadedChannels = (chRes.data || []).map((ch) => ({
+        const loadedChannels = (chRes.data || []).map((ch: any) => ({
           id: ch.id,
           name: ch.name,
           type: ch.type as 'channel' | 'direct',
           unread: 0,
+          peerUserId: ch.peer_user_id ?? null,
         }));
 
         setChannels(loadedChannels);
