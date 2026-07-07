@@ -84,47 +84,6 @@ serve(async (req) => {
         }),
         { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
-
-      // eslint-disable-next-line no-unreachable
-      const { title, content, knowledge_item_id } = data;
-
-      // Use multipart form for text document upload
-      const formData = new FormData();
-      const blob = new Blob([content], { type: 'text/plain' });
-      formData.append('file', blob, `${title}.txt`);
-
-      const res = await fetch(
-        `${ELEVENLABS_API_URL}/convai/agents/${ELEVENLABS_AGENT_ID}/add-to-knowledge-base`,
-        {
-          method: 'POST',
-          headers: { 'xi-api-key': ELEVENLABS_API_KEY },
-          body: formData,
-        }
-      );
-
-      if (!res.ok) {
-        const err = await res.text();
-        throw new Error(`ElevenLabs add KB error [${res.status}]: ${err}`);
-      }
-
-      const result = await res.json();
-
-      // Store the ElevenLabs doc ID in our knowledge_items metadata
-      if (knowledge_item_id && result.id) {
-        // We store the elevenlabs doc id in settings_json or extracted_data
-        // For now, log it for audit
-        await supabase.from('audit_events').insert({
-          tenant_id: data.tenant_id,
-          event_type: 'knowledge.synced_to_elevenlabs',
-          resource_type: 'knowledge_item',
-          resource_id: knowledge_item_id,
-          payload: { elevenlabs_doc_id: result.id, title },
-        });
-      }
-
-      return new Response(JSON.stringify({ success: true, elevenlabs_doc_id: result.id }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
     }
 
     // Delete a document from ElevenLabs KB
