@@ -38,13 +38,13 @@ serve(async (req) => {
   const userId = user.id;
 
   const ELEVENLABS_API_KEY = Deno.env.get('ELEVENLABS_API_KEY');
-  const ELEVENLABS_AGENT_ID = Deno.env.get('ELEVENLABS_AGENT_ID');
 
-  if (!ELEVENLABS_API_KEY || !ELEVENLABS_AGENT_ID) {
+  if (!ELEVENLABS_API_KEY) {
     return new Response(JSON.stringify({ error: 'ElevenLabs not configured' }), {
       status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
+
 
   try {
     // Fetch Knowledge Hub for dynamic context injection
