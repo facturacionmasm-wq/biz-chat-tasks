@@ -595,12 +595,15 @@ export type Database = {
           cost_twilio: number
           created_at: string
           duration_minutes: number
+          elevenlabs_cost_usd: number | null
           id: string
           margin: number
           margin_pct: number
           pricing_rule_id: string | null
           revenue_charged: number
+          stt_secs: number | null
           tenant_id: string
+          tts_chars: number | null
         }
         Insert: {
           ai_tokens_used?: number
@@ -611,12 +614,15 @@ export type Database = {
           cost_twilio?: number
           created_at?: string
           duration_minutes?: number
+          elevenlabs_cost_usd?: number | null
           id?: string
           margin?: number
           margin_pct?: number
           pricing_rule_id?: string | null
           revenue_charged?: number
+          stt_secs?: number | null
           tenant_id: string
+          tts_chars?: number | null
         }
         Update: {
           ai_tokens_used?: number
@@ -627,12 +633,15 @@ export type Database = {
           cost_twilio?: number
           created_at?: string
           duration_minutes?: number
+          elevenlabs_cost_usd?: number | null
           id?: string
           margin?: number
           margin_pct?: number
           pricing_rule_id?: string | null
           revenue_charged?: number
+          stt_secs?: number | null
           tenant_id?: string
+          tts_chars?: number | null
         }
         Relationships: [
           {
@@ -759,9 +768,11 @@ export type Database = {
       call_records: {
         Row: {
           agent_user_id: string | null
+          ai_tokens_used: number | null
           appointment_status: string
           audio_url: string | null
           channel: string | null
+          cost_total: number | null
           created_at: string
           created_by: string | null
           deleted_at: string | null
@@ -789,9 +800,11 @@ export type Database = {
         }
         Insert: {
           agent_user_id?: string | null
+          ai_tokens_used?: number | null
           appointment_status?: string
           audio_url?: string | null
           channel?: string | null
+          cost_total?: number | null
           created_at?: string
           created_by?: string | null
           deleted_at?: string | null
@@ -819,9 +832,11 @@ export type Database = {
         }
         Update: {
           agent_user_id?: string | null
+          ai_tokens_used?: number | null
           appointment_status?: string
           audio_url?: string | null
           channel?: string | null
+          cost_total?: number | null
           created_at?: string
           created_by?: string | null
           deleted_at?: string | null
@@ -3429,6 +3444,8 @@ export type Database = {
           name: string | null
           stripe_base_item_id: string | null
           stripe_customer_id: string
+          stripe_item_id_voice: string | null
+          stripe_item_id_whatsapp: string | null
           stripe_metered_item_id: string | null
           stripe_subscription_id: string | null
           tenant_id: string
@@ -3442,6 +3459,8 @@ export type Database = {
           name?: string | null
           stripe_base_item_id?: string | null
           stripe_customer_id: string
+          stripe_item_id_voice?: string | null
+          stripe_item_id_whatsapp?: string | null
           stripe_metered_item_id?: string | null
           stripe_subscription_id?: string | null
           tenant_id: string
@@ -3455,6 +3474,8 @@ export type Database = {
           name?: string | null
           stripe_base_item_id?: string | null
           stripe_customer_id?: string
+          stripe_item_id_voice?: string | null
+          stripe_item_id_whatsapp?: string | null
           stripe_metered_item_id?: string | null
           stripe_subscription_id?: string | null
           tenant_id?: string
