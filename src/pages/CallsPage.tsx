@@ -954,6 +954,12 @@ const CallsPage = () => {
                 <div className="text-right shrink-0 hidden sm:block">
                   <p className="text-sm text-foreground">{formatDuration(call.duration)}</p>
                   <p className="text-xs text-[var(--rx-t2)]">{cfg.label}</p>
+                  {(call.costTotal != null || call.aiTokensUsed != null) && (
+                    <p className="text-[10px] text-[var(--rx-t2)] mt-0.5">
+                      {call.costTotal != null && <>💵 ${Number(call.costTotal).toFixed(3)}</>}
+                      {call.aiTokensUsed != null && <> · 🔢 {call.aiTokensUsed}t</>}
+                    </p>
+                  )}
                 </div>
                 {call.tags.length > 0 && !isMobile && (
                   <div className="flex gap-1 shrink-0 max-w-[150px] overflow-hidden">
