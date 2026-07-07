@@ -6,6 +6,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import TwilioWizard from '@/components/TwilioWizard';
 import VoiceAgentWizard from '@/components/VoiceAgentWizard';
+import VoiceAgentProvisionCard from '@/components/VoiceAgentProvisionCard';
+
 import TenantNumberPurchaseWizard from '@/components/TenantNumberPurchaseWizard';
 import BringYourOwnNumberTab from '@/components/byon/BringYourOwnNumberTab';
 
