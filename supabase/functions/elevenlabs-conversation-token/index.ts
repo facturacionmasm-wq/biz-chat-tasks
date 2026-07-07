@@ -105,10 +105,26 @@ serve(async (req) => {
       }
     }
 
+    // Resolve per-tenant agent (global fallback only for master tenant)
+    const { agentId, source } = await resolveTenantAgentId(serviceClient, profile?.tenant_id ?? null);
+    if (!agentId) {
+      return new Response(JSON.stringify({
+        error: 'Aprovisiona tu agente de voz en Ajustes',
+        code: 'no_tenant_agent',
+      }), { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+    if (profile?.tenant_id && profile.tenant_id !== MASTER_TENANT && source !== 'tenant') {
+      return new Response(JSON.stringify({
+        error: 'Aprovisiona tu agente de voz en Ajustes',
+        code: 'no_tenant_agent',
+      }), { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
     const response = await fetch(
-      `https://api.elevenlabs.io/v1/convai/conversation/token?agent_id=${ELEVENLABS_AGENT_ID}`,
+      `https://api.elevenlabs.io/v1/convai/conversation/token?agent_id=${agentId}`,
       { headers: { 'xi-api-key': ELEVENLABS_API_KEY } }
     );
+
 
     if (!response.ok) {
       const errorText = await response.text();
