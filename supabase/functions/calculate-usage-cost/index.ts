@@ -24,7 +24,15 @@ serve(async (req) => {
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
   try {
-    const { call_record_id, tenant_id, duration_seconds, ai_tokens_used } = await req.json();
+    const {
+      call_record_id,
+      tenant_id,
+      duration_seconds,
+      ai_tokens_used,
+      tts_chars,
+      stt_secs,
+      elevenlabs_cost_usd,
+    } = await req.json();
 
     if (!call_record_id || !tenant_id) {
       return new Response(JSON.stringify({ error: 'call_record_id and tenant_id required' }), {
@@ -61,10 +69,15 @@ serve(async (req) => {
 
     const durationMinutes = Math.max((duration_seconds || 0) / 60, 0.1); // min 6 seconds
     const tokens = ai_tokens_used || 0;
+    const ttsChars = tts_chars ?? null;
+    const sttSecs = stt_secs ?? null;
+    const elevenlabsCostUsd = typeof elevenlabs_cost_usd === 'number' ? elevenlabs_cost_usd : null;
 
-    // Calculate costs
+    // Calculate costs — if ElevenLabs reports a real total AI cost, use it as source of truth.
     const costTwilio = +(durationMinutes * RATES.twilio_per_minute).toFixed(4);
-    const costAi = +((tokens / 1000) * RATES.ai_per_1k_tokens).toFixed(4);
+    const costAi = elevenlabsCostUsd !== null
+      ? +elevenlabsCostUsd.toFixed(4)
+      : +((tokens / 1000) * RATES.ai_per_1k_tokens).toFixed(4);
     const costInfra = +(durationMinutes * RATES.infra_per_minute).toFixed(4);
     const costTotal = +(costTwilio + costAi + costInfra).toFixed(4);
     const revenueCharged = +(costTotal * (1 + markupPct / 100)).toFixed(4);
@@ -86,6 +99,9 @@ serve(async (req) => {
         revenue_charged: revenueCharged,
         margin,
         margin_pct: marginPct,
+        tts_chars: ttsChars,
+        stt_secs: sttSecs,
+        elevenlabs_cost_usd: elevenlabsCostUsd,
       })
       .select('id')
       .single();

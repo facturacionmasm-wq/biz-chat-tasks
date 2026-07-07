@@ -1206,6 +1206,47 @@ serve(async (req) => {
         }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
 
+      case 'invoice_item_voice_call': {
+        // Lightweight per-call invoice item (no immediate charge). Consolidated
+        // on the tenant's next invoice cycle. Used as fallback when there is
+        // no metered subscription item configured.
+        const amountUsd: number | undefined = typeof body?.amount_usd === 'number' ? body.amount_usd : undefined;
+        const description: string = body?.description || 'Voice call usage';
+        const callRecordId: string | undefined = body?.call_record_id;
+
+        if (!tenant_id || !amountUsd || amountUsd <= 0) {
+          return new Response(JSON.stringify({ error: 'tenant_id and amount_usd(>0) required' }), {
+            status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        const { data: cust } = await supabase
+          .from('stripe_customers')
+          .select('stripe_customer_id')
+          .eq('tenant_id', tenant_id)
+          .maybeSingle();
+        if (!cust?.stripe_customer_id) {
+          return new Response(JSON.stringify({ ok: false, error: 'no_customer' }), {
+            status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        const amountMinor = Math.round(amountUsd * 100);
+        const item = await stripeRequest('/invoiceitems', 'POST', {
+          customer: cust.stripe_customer_id,
+          amount: String(amountMinor),
+          currency: 'usd',
+          description,
+          'metadata[type]': 'voice_call_usage',
+          'metadata[tenant_id]': tenant_id,
+          'metadata[call_record_id]': callRecordId || '',
+        }, STRIPE_RESTRICTED_API_KEY);
+
+        return new Response(JSON.stringify({ ok: true, invoice_item_id: item?.id }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
       default:
         return new Response(JSON.stringify({ error: `Unknown action: ${action}` }), {
           status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },

@@ -49,6 +49,8 @@ const dbRowToCallRecord = (row: any): CallRecord => ({
   summaryHuman: row.summary_human || null,
   extractedData: (row.extracted_data as CallRecord['extractedData']) || {},
   audioUrl: row.audio_url || null,
+  costTotal: row.cost_total !== null && row.cost_total !== undefined ? Number(row.cost_total) : null,
+  aiTokensUsed: row.ai_tokens_used !== null && row.ai_tokens_used !== undefined ? Number(row.ai_tokens_used) : null,
 });
 
 const dbRowToCallEvent = (row: any): CallEvent => ({
@@ -171,8 +173,34 @@ const CallsPage = () => {
   const [callJobs, setCallJobs] = useState<any[]>([]);
   const [allJobs, setAllJobs] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<'calls' | 'analytics' | 'observability'>('calls');
+  const [monthlyUsage, setMonthlyUsage] = useState<{ cost_total: number; revenue: number; minutes: number } | null>(null);
   const isMobile = useIsMobile();
   const lastToastRef = useRef<string | null>(null);
+
+  // Monthly usage summary for the tenant
+  const loadMonthlyUsage = useCallback(async () => {
+    try {
+      const now = new Date();
+      const periodStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+      const { data } = await supabase
+        .from('tenant_usage_monthly')
+        .select('cost_total, revenue, total_minutes')
+        .eq('period_start', periodStart)
+        .maybeSingle();
+      if (data) {
+        setMonthlyUsage({
+          cost_total: Number(data.cost_total || 0),
+          revenue: Number(data.revenue || 0),
+          minutes: Number(data.total_minutes || 0),
+        });
+      } else {
+        setMonthlyUsage({ cost_total: 0, revenue: 0, minutes: 0 });
+      }
+    } catch (err) {
+      console.error('[calls] load monthly usage failed:', err);
+    }
+  }, []);
+
 
   const loadDbCalls = useCallback(async () => {
     try {
@@ -200,7 +228,7 @@ const CallsPage = () => {
     }
   }, []);
 
-  useEffect(() => { loadDbCalls(); }, [loadDbCalls]);
+  useEffect(() => { loadDbCalls(); loadMonthlyUsage(); }, [loadDbCalls, loadMonthlyUsage]);
 
   // Realtime: call_records changes
   useEffect(() => {
@@ -845,6 +873,24 @@ const CallsPage = () => {
         </div>
       </div>
 
+      {/* Usage & billing summary (MTD for tenant) */}
+      {monthlyUsage && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+          <div className="rx-panel">
+            <p className="text-xs sm:text-sm text-[var(--rx-t2)]">Minutos este mes</p>
+            <p className="text-xl sm:text-2xl font-bold text-foreground">{monthlyUsage.minutes.toFixed(1)}</p>
+          </div>
+          <div className="rx-panel">
+            <p className="text-xs sm:text-sm text-[var(--rx-t2)]">Costo agente IA (MTD)</p>
+            <p className="text-xl sm:text-2xl font-bold text-foreground">${monthlyUsage.cost_total.toFixed(2)}</p>
+          </div>
+          <div className="rx-panel">
+            <p className="text-xs sm:text-sm text-[var(--rx-t2)]">Facturación (MTD)</p>
+            <p className="text-xl sm:text-2xl font-bold text-[var(--rx-brand)]">${monthlyUsage.revenue.toFixed(2)}</p>
+          </div>
+        </div>
+      )}
+
       {/* Filters */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
         <div className="flex-1 flex items-center gap-2 bg-card border border-[var(--rx-b1)] rounded-lg px-3 py-2">
@@ -908,6 +954,12 @@ const CallsPage = () => {
                 <div className="text-right shrink-0 hidden sm:block">
                   <p className="text-sm text-foreground">{formatDuration(call.duration)}</p>
                   <p className="text-xs text-[var(--rx-t2)]">{cfg.label}</p>
+                  {(call.costTotal != null || call.aiTokensUsed != null) && (
+                    <p className="text-[10px] text-[var(--rx-t2)] mt-0.5">
+                      {call.costTotal != null && <>💵 ${Number(call.costTotal).toFixed(3)}</>}
+                      {call.aiTokensUsed != null && <> · 🔢 {call.aiTokensUsed}t</>}
+                    </p>
+                  )}
                 </div>
                 {call.tags.length > 0 && !isMobile && (
                   <div className="flex gap-1 shrink-0 max-w-[150px] overflow-hidden">

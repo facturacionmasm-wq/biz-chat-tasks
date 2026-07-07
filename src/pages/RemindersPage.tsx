@@ -1,10 +1,16 @@
 import { useState, useEffect } from 'react';
-import { Bell, Clock, CheckCircle, XCircle, RefreshCw, Send, Loader2, Phone, AlertTriangle, Trash2 } from 'lucide-react';
+import { Bell, Clock, CheckCircle, XCircle, RefreshCw, Send, Loader2, Phone, AlertTriangle, Trash2, Plus } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 type Reminder = {
   id: string;
@@ -34,6 +40,65 @@ const RemindersPage = () => {
   const [loading, setLoading] = useState(true);
   const [resending, setResending] = useState<string | null>(null);
   const [tab, setTab] = useState('all');
+
+  // Create-reminder dialog state
+  const [createOpen, setCreateOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [newMessage, setNewMessage] = useState('');
+  const [newWhen, setNewWhen] = useState('');
+  const [newChannel, setNewChannel] = useState<'whatsapp' | 'email' | ''>('');
+  const [newContact, setNewContact] = useState('');
+
+  const resetCreate = () => {
+    setNewMessage('');
+    setNewWhen('');
+    setNewChannel('');
+    setNewContact('');
+  };
+
+  const handleCreate = async () => {
+    if (!user) return;
+    if (!newMessage.trim()) { toast.error('Escribe un mensaje'); return; }
+    if (!newWhen) { toast.error('Elige fecha y hora'); return; }
+    const remindAt = new Date(newWhen);
+    if (isNaN(remindAt.getTime())) { toast.error('Fecha inválida'); return; }
+
+    setCreating(true);
+    try {
+      const { data: tenantId, error: tErr } = await supabase.rpc('get_user_tenant_id', { _user_id: user.id });
+      if (tErr) throw tErr;
+
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Mexico_City';
+      const payload: Record<string, any> = {
+        user_id: user.id,
+        tenant_id: tenantId ?? null,
+        message: newMessage.trim(),
+        remind_at: remindAt.toISOString(),
+        status: 'pending',
+        source: 'manual',
+        retry_count: 0,
+        max_retries: 3,
+        timezone,
+      };
+      if (newChannel) payload.channel = newChannel;
+      if (newContact.trim()) payload.contact_phone = newContact.trim();
+
+      const { error } = await supabase.from('reminders').insert(payload as any);
+      if (error) throw error;
+
+      toast.success('Recordatorio creado');
+      setCreateOpen(false);
+      resetCreate();
+      fetchReminders();
+    } catch (err: any) {
+      console.error('[reminders] create failed:', err);
+      toast.error(err?.message || 'Error al crear recordatorio');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+
 
   const fetchReminders = async () => {
     if (!user) return;
@@ -132,14 +197,23 @@ const RemindersPage = () => {
             <p className="text-sm text-[var(--rx-t2)]">Gestiona los recordatorios programados vía WhatsApp</p>
           </div>
         </div>
-        <button
-          onClick={fetchReminders}
-          disabled={loading}
-          className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--rx-s2)] text-secondary-foreground hover:bg-[var(--rx-s2)]/80 text-sm font-medium transition-colors"
-        >
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-          Actualizar
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setCreateOpen(true)}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--rx-brand)] text-primary-foreground hover:opacity-90 text-sm font-medium transition-opacity"
+          >
+            <Plus size={14} />
+            Agregar recordatorio
+          </button>
+          <button
+            onClick={fetchReminders}
+            disabled={loading}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--rx-s2)] text-secondary-foreground hover:bg-[var(--rx-s2)]/80 text-sm font-medium transition-colors"
+          >
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            Actualizar
+          </button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -242,6 +316,47 @@ const RemindersPage = () => {
           )}
         </TabsContent>
       </Tabs>
+
+      {/* Create reminder dialog */}
+      <Dialog open={createOpen} onOpenChange={(o) => { setCreateOpen(o); if (!o) resetCreate(); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Agregar recordatorio</DialogTitle>
+            <DialogDescription>Programa un recordatorio manual.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="rem-msg">Mensaje</Label>
+              <Textarea id="rem-msg" value={newMessage} onChange={(e) => setNewMessage(e.target.value)} placeholder="Ej: Llamar al cliente Juan" rows={3} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="rem-when">Fecha y hora</Label>
+              <Input id="rem-when" type="datetime-local" value={newWhen} onChange={(e) => setNewWhen(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Canal (opcional)</Label>
+              <Select value={newChannel} onValueChange={(v) => setNewChannel(v as any)}>
+                <SelectTrigger><SelectValue placeholder="Predeterminado" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="whatsapp">WhatsApp</SelectItem>
+                  <SelectItem value="email">Email</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="rem-contact">Contacto (opcional)</Label>
+              <Input id="rem-contact" value={newContact} onChange={(e) => setNewContact(e.target.value)} placeholder="+52 55 1234 5678" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateOpen(false)} disabled={creating}>Cancelar</Button>
+            <Button onClick={handleCreate} disabled={creating}>
+              {creating ? <Loader2 size={14} className="animate-spin mr-2" /> : <Plus size={14} className="mr-2" />}
+              Crear
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
