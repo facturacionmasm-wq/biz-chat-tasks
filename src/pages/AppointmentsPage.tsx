@@ -761,6 +761,25 @@ const AppointmentsPage = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ─── HARD DELETE DIALOG ─── */}
+      <Dialog open={showHardDeleteDialog} onOpenChange={(open) => { if (!saving) setShowHardDeleteDialog(open); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Eliminar cita permanentemente</DialogTitle>
+            <DialogDescription>
+              Esta acción eliminará de forma <strong>permanente e irreversible</strong> la cita de{' '}
+              <strong>{selectedAppointment?.contactName}</strong>
+              {selectedAppointment && <> del {format(selectedAppointment.startAt, "d 'de' MMMM 'a las' HH:mm", { locale: es })}</>}.
+              {selectedAppointment?.calendarEventId && ' También se intentará eliminar del calendario sincronizado.'}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowHardDeleteDialog(false)} disabled={saving}>Cancelar</Button>
+            <Button variant="destructive" onClick={handleHardDelete} disabled={saving}>{saving ? 'Eliminando...' : 'Eliminar'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
