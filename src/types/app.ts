@@ -152,6 +152,8 @@ export interface CallRecord {
     [key: string]: any;
   };
   audioUrl: string | null;
+  costTotal?: number | null;
+  aiTokensUsed?: number | null;
 }
 
 export interface CallEvent {

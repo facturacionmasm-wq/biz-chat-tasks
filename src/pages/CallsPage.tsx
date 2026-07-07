@@ -49,6 +49,8 @@ const dbRowToCallRecord = (row: any): CallRecord => ({
   summaryHuman: row.summary_human || null,
   extractedData: (row.extracted_data as CallRecord['extractedData']) || {},
   audioUrl: row.audio_url || null,
+  costTotal: row.cost_total !== null && row.cost_total !== undefined ? Number(row.cost_total) : null,
+  aiTokensUsed: row.ai_tokens_used !== null && row.ai_tokens_used !== undefined ? Number(row.ai_tokens_used) : null,
 });
 
 const dbRowToCallEvent = (row: any): CallEvent => ({
