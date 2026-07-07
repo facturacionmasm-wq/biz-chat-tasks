@@ -536,6 +536,8 @@ serve(async (req) => {
     if (voiceId) {
       patchBody.conversation_config.tts = { voice_id: voiceId };
     }
+    // Enforce max call duration of 5000 seconds across all tenant agents.
+    patchBody.conversation_config.conversation = { max_duration_seconds: 5000 };
 
 
     const patchRes = await fetch(`${ELEVENLABS_API_URL}/convai/agents/${agentId}`, {
