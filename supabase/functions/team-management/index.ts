@@ -6,6 +6,78 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+const APP_NAME = "RYBIX";
+const FROM_EMAIL = "RYBIX <soporte@rybixholding.com>";
+
+function json(payload: unknown, status = 200) {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+function escapeHtml(value: string): string {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+async function sendInviteEmail({
+  to,
+  name,
+  actionLink,
+}: {
+  to: string;
+  name?: string | null;
+  actionLink: string;
+}): Promise<{ status: number; body: string }> {
+  const resendApiKey = Deno.env.get("RESEND_API_KEY");
+  if (!resendApiKey) {
+    throw new Error("RESEND_API_KEY no configurado");
+  }
+
+  const safeName = escapeHtml(name || "");
+  const safeLink = escapeHtml(actionLink);
+  const greeting = safeName ? `Hola ${safeName},` : "Hola,";
+
+  const html = `
+    <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;padding:28px;color:#0f172a">
+      <h1 style="font-size:22px;line-height:1.25;margin:0 0 16px;color:#0f172a">Tu acceso a ${APP_NAME}</h1>
+      <p style="font-size:15px;line-height:1.6;margin:0 0 14px">${greeting}</p>
+      <p style="font-size:15px;line-height:1.6;margin:0 0 22px">Te reenviamos tu enlace para entrar a ${APP_NAME}. Este enlace es personal y expira por seguridad.</p>
+      <p style="margin:0 0 24px">
+        <a href="${safeLink}" style="display:inline-block;background:#0f172a;color:#ffffff;text-decoration:none;border-radius:10px;padding:12px 18px;font-weight:700;font-size:14px">Entrar a ${APP_NAME}</a>
+      </p>
+      <p style="font-size:13px;line-height:1.6;color:#64748b;margin:0 0 8px">Si el botón no abre, copia y pega este enlace en tu navegador:</p>
+      <p style="font-size:12px;line-height:1.5;word-break:break-all;color:#334155;margin:0">${safeLink}</p>
+    </div>
+  `;
+
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${resendApiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: FROM_EMAIL,
+      to: [to],
+      subject: `Tu acceso a ${APP_NAME}`,
+      html,
+    }),
+  });
+
+  const body = await response.text();
+  if (!response.ok) {
+    throw new Error(`Resend ${response.status}: ${body}`);
+  }
+
+  return { status: response.status, body };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -119,33 +191,63 @@ Deno.serve(async (req) => {
         });
       }
 
-      // Re-invite via Auth Admin — dispara la plantilla `invite` del auth-email-hook.
-      // Es el mismo patrón que usa invite-member y no está sujeto al rate-limit de OTP.
-      const { error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(email, {
-        data: {
-          name: existingUser.user_metadata?.name ?? null,
-          invited_to_tenant: callerRole.tenant_id,
-        },
-      });
+      const { data: memberProfile, error: profileError } = await adminClient
+        .from("profiles")
+        .select("tenant_id, name, email")
+        .eq("user_id", user_id)
+        .eq("email", email)
+        .maybeSingle();
 
-      if (inviteError) {
-        const msg = inviteError.message || "";
-        const isRateLimit = /rate limit|security purposes|after \d+ seconds/i.test(msg);
-        console.error(`[team-management] resend_invite failed user=${user_id} email=${email}: ${msg}`);
-        return new Response(
-          JSON.stringify({
-            error: isRateLimit
-              ? "Debes esperar unos segundos antes de reenviar otro correo"
-              : msg,
-          }),
-          {
-            status: isRateLimit ? 429 : 400,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          }
-        );
+      if (profileError) {
+        console.error(`[team-management] resend_invite profile lookup failed user=${user_id} email=${email}: ${profileError.message}`);
+        return json({ error: profileError.message }, 400);
+      }
+      if (!memberProfile) {
+        return json({ error: "Perfil del miembro no encontrado" }, 404);
       }
 
-      console.log(`[team-management] resend_invite ok user=${user_id} email=${email} tenant=${callerRole.tenant_id}`);
+      const isSuperAdmin = allowed.some((r: any) => r.role === "super_admin");
+      if (!isSuperAdmin && memberProfile.tenant_id !== callerRole.tenant_id) {
+        console.error(`[team-management] resend_invite forbidden caller=${caller.id} target=${user_id} target_tenant=${memberProfile.tenant_id}`);
+        return json({ error: "No autorizado" }, 403);
+      }
+
+      const { data: linkData, error: linkError } = await adminClient.auth.admin.generateLink({
+        type: "magiclink",
+        email,
+      });
+
+      if (linkError) {
+        const status = (linkError as any).status || 400;
+        const msg = linkError.message || "No se pudo generar el enlace de acceso";
+        console.error(`[team-management] resend_invite generate_link failed user=${user_id} email=${email} status=${status}: ${msg}`);
+        return json({ error: msg }, status);
+      }
+
+      const actionLink =
+        (linkData?.properties as any)?.action_link ||
+        (linkData?.properties as any)?.email_otp ||
+        (linkData as any)?.action_link ||
+        (linkData as any)?.url;
+
+      if (!actionLink || typeof actionLink !== "string" || !actionLink.startsWith("http")) {
+        console.error(`[team-management] resend_invite missing action_link user=${user_id} email=${email}`);
+        return json({ error: "No se pudo generar el enlace de acceso" }, 500);
+      }
+
+      try {
+        const sendResult = await sendInviteEmail({
+          to: email,
+          name: memberProfile.name || existingUser.user_metadata?.name || null,
+          actionLink,
+        });
+        console.log(`[team-management] resend_invite ok existing_user_magiclink user=${user_id} email=${email} tenant=${memberProfile.tenant_id} resend_status=${sendResult.status}`);
+      } catch (sendError) {
+        const msg = sendError instanceof Error ? sendError.message : "No se pudo enviar el correo";
+        console.error(`[team-management] resend_invite email_send failed user=${user_id} email=${email}: ${msg}`);
+        return json({ error: msg }, 502);
+      }
+
       return new Response(
         JSON.stringify({ success: true, message: "Invitación reenviada al correo del miembro" }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }

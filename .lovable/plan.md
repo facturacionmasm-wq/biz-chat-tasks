@@ -1,61 +1,115 @@
-# Diagnóstico — botón "Reenviar" invitación de personal
+## Diagnóstico confirmado
 
-## 1. Ubicación del botón y su handler
+**Error real en logs recientes**
+- `team-management` mostró dos errores recientes:
+  - `2026-07-07T17:44:35Z ERROR [team-management] resend_invite failed user=1048cf9d-8069-49ba-a4d2-3e216dd9288b email=camaranidia1@gmail.com: A user with this email address has already been registered`
+  - `2026-07-07T17:46:31Z ERROR [team-management] resend_invite failed user=1048cf9d-8069-49ba-a4d2-3e216dd9288b email=camaranidia1@gmail.com: A user with this email address has already been registered`
+- El frontend captura eso como runtime error: `Edge function returned 400: {"error":"A user with this email address has already been registered"}`.
+- Los logs HTTP agregados de edge no devolvieron filas, pero el runtime log de la función sí confirma el fallo y el body expuesto al cliente.
 
-- **Botón**: `src/pages/SettingsPage.tsx` L1559–1569.
-  - Se renderiza sólo si `isSuperAdmin && !isSelf && m.status !== 'pending_approval' && !m.confirmed`.
-  - `onClick={() => handleResendInvite(m.user_id, m.email)}` (L1561).
-- **Handler**: `handleResendInvite` en `src/pages/SettingsPage.tsx` L472–486.
-  - Invoca `supabase.functions.invoke('team-management', { body: { action: 'resend_invite', user_id, email } })`.
-- Verificado en DB: NIDIA (`camaranidia1@gmail.com`, tenant master `…001`) tiene `status = 'active'` y nunca ha iniciado sesión (`confirmed = false`), por eso sí se muestra el botón.
+**Estado real de NIDIA en auth/base de datos**
+- `public.profiles`: `user_id=1048cf9d-8069-49ba-a4d2-3e216dd9288b`, `tenant_id=00000000-0000-0000-0000-000000000001`, `email=camaranidia1@gmail.com`, `status=active`, `onboarding_completed=true`.
+- `auth.users`: el usuario ya existe, `email_confirmed_at` y `confirmed_at` están presentes, `last_sign_in_at=null`, `invited_at=null`.
+- La UI lo marca como `confirmed=false` porque `team-management` usa `!!u.last_sign_in_at` como “confirmed” en `list_status`, no porque el email no esté confirmado. En esta app, el badge realmente significa “nunca inició sesión”.
 
-## 2. Edge function que atiende el resend
+## Causa raíz real
 
-- `supabase/functions/team-management/index.ts` bloque `action === "resend_invite"` L105–158.
-- Flujo actual:
-  1. `adminClient.auth.admin.getUserById(user_id)` (L114) — OK.
-  2. `adminClient.auth.admin.generateLink({ type: "magiclink", email })` (L123) — genera un link pero **la variable `linkData` no se usa**, o sea el link nunca se envía.
-  3. `adminClient.auth.signInWithOtp({ email, options: { shouldCreateUser: false } })` (L136) — intenta que Supabase Auth envíe un OTP/magic link.
-- No pasa `tenant_id` ni `role` al reenviar: la función depende sólo del email para disparar el correo de Auth.
+El fix anterior falló porque `adminClient.auth.admin.inviteUserByEmail(email)` sólo sirve para invitar/crear usuarios nuevos. Para NIDIA, el usuario ya existe en `auth.users`; por eso Auth responde `A user with this email address has already been registered` y `team-management` devuelve 400.
 
-## 3. Causa raíz
+La hipótesis queda confirmada: para “reenviar” a un usuario existente, no se puede depender de `inviteUserByEmail` ni de `generateLink({ type: 'invite' })` como flujo de creación. Hay que generar un link para un usuario existente y enviar ese link por nuestra propia función de correo.
 
-Doble problema en `resend_invite`:
+## Ubicación exacta del flujo actual
 
-- **`generateLink` no envía correo**, sólo devuelve el `action_link`. El código lo descarta.
-- **`signInWithOtp` en Lovable Cloud**: nuestro `auth-email-hook` está scaffoldado para plantillas `signup / magiclink / recovery / invite / email_change / reauthentication`. `signInWithOtp` con `shouldCreateUser:false` sobre un usuario **cuyo email nunca ha sido confirmado** normalmente responde `otp_disabled` / `email not confirmed`, y el hook no dispara un correo de tipo `invite`. Aunque el handler devuelva `success`, no llega correo.
-- Además `signInWithOtp` está sujeta a rate limit de 60s por email; si se apretó dos veces devuelve 429 silenciosamente (el toast dice "Error…" pero el usuario lo interpreta como que "no funciona").
+**Frontend**
+- `src/pages/SettingsPage.tsx:472-486`
+  - `handleResendInvite(targetUserId, targetEmail)` invoca `team-management` con:
+    - `{ action: 'resend_invite', user_id: targetUserId, email: targetEmail }`
+- `src/pages/SettingsPage.tsx:1559-1569`
+  - Botón `Reenviar` visible para `isSuperAdmin && !isSelf && m.status !== 'pending_approval' && !m.confirmed`.
 
-Logs recientes de `team-management` (últimos ~10 min): sólo eventos `booted/shutdown`, sin líneas de invocación de `resend_invite`. Es decir la última acción no dejó traza porque no llegamos a un `console.log`; en el mejor caso el request se ejecutó y respondió `{ success: true }` mientras Supabase Auth internamente **no envía correo** para ese estado.
+**Edge function actual**
+- `supabase/functions/team-management/index.ts:105-153`
+  - Valida `email` y `user_id`.
+  - Busca el usuario con `adminClient.auth.admin.getUserById(user_id)`.
+  - Línea `124`: llama `adminClient.auth.admin.inviteUserByEmail(email, { data: ... })`.
+  - Líneas `131-145`: en error devuelve 400 salvo rate-limit.
 
-El patrón correcto ya existe en `supabase/functions/invite-member/index.ts` L102–115 (`adminClient.auth.admin.inviteUserByEmail(email, { data: { … } })`), que sí dispara el template `invite` del `auth-email-hook`.
+## Funciones de correo encontradas
 
-## 4. Tablas / RLS / correo
+**No existe actualmente el flujo Lovable auth-email-hook en el repo**
+- No hay carpeta `supabase/functions/auth-email-hook`.
+- No hay `supabase/functions/_shared/email-templates/`.
+- `supabase/config.toml` no registra `auth-email-hook`.
+- `email_domain` reporta: “No email domain is configured for this project”, por lo que no hay infraestructura Lovable Emails activa para plantillas auth personalizadas.
 
-- Tablas involucradas: `auth.users` (gestionada por Supabase, no tocar), `public.profiles` (`status`, `email`), `public.user_roles`. No hay tabla `invitations` separada.
-- RLS: no se toca. El resend corre con `service_role` dentro de la edge function.
-- Envío de correo: `auth-email-hook` (`LOVABLE_API_KEY`, plantilla `invite`) — ya scaffoldado. Requiere que `inviteUserByEmail` sea quien dispare el evento.
+**Función de correo existente**
+- `supabase/functions/send-support-email/index.ts`
+  - Usa `RESEND_API_KEY` directamente.
+  - Firma actual: requiere usuario autenticado, crea ticket de soporte y envía sólo a `soporte@rybixholding.com`.
+  - No sirve directamente para invitaciones porque mezcla creación de ticket, recipient fijo y autorización de usuario normal.
 
-## 5. Fix mínimo propuesto (sin tocar RLS, pin-service, calendar, prompts, generated types, ni Stripe webhook)
+**Patrón reutilizable**
+- `send-support-email` demuestra que el proyecto ya tiene `RESEND_API_KEY` y puede enviar vía Resend.
+- Para `resend_invite`, lo mínimo no es invocar `send-support-email`, sino crear un helper interno dentro de `team-management` que use `RESEND_API_KEY` para enviar un email de invitación al `targetEmail` con el `action_link` generado.
 
-Un solo archivo: `supabase/functions/team-management/index.ts`, bloque `resend_invite` L105–158.
+## Fix mínimo concreto propuesto
 
-Cambios:
+Modificar sólo `supabase/functions/team-management/index.ts`, bloque `resend_invite`.
 
-1. Eliminar el `generateLink` muerto (L122–133) y la llamada a `signInWithOtp` (L136–156).
-2. Reemplazarlas por `adminClient.auth.admin.inviteUserByEmail(email, { data: { name: existingUser.user_metadata?.name, invited_to_tenant: callerRole.tenant_id } })` (mismo patrón que `invite-member`).
-3. Mantener el mapeo de rate-limit (Supabase devuelve `email rate limit exceeded` → 429 con mensaje "Debes esperar 60 segundos…").
-4. Añadir `console.log` de éxito/fallo con `user_id`, `email`, `status` HTTP para que quede rastro en runtime logs.
-5. Devolver `{ success:true, message:'Invitación reenviada al correo del miembro' }` sólo si la llamada al Auth Admin respondió sin error.
+1. Mantener validaciones existentes:
+   - Auth del caller.
+   - Caller `super_admin` u `owner`.
+   - `email` y `user_id` requeridos.
+   - `getUserById(user_id)`.
 
-No hace falta cambiar:
-- El botón/handler en `SettingsPage.tsx` (ya envía los datos correctos).
-- Migraciones, secretos, `auth-email-hook` (la plantilla `invite` ya existe).
-- Frontend, prompts, `pin-service`, RLS de ninguna tabla, generated types, ni `stripe-webhook`.
+2. Corregir aislamiento tenant antes de enviar:
+   - Consultar `profiles` por `user_id` y `email`.
+   - Si caller no es `super_admin`, exigir `profile.tenant_id === callerRole.tenant_id`.
+   - Para `super_admin`, permitir master tenant o el tenant del perfil encontrado.
+   - Esto preserva aislamiento por tenant sin tocar RLS.
 
-## 6. Verificación después de aplicar
+3. Cambiar la lógica de envío:
+   - Si el usuario ya existe:
+     - Usar `adminClient.auth.admin.generateLink({ type: 'magiclink', email })`.
+     - Extraer `properties.action_link` o `action_link/url` según lo que devuelva el SDK.
+     - Enviar ese link manualmente vía Resend desde `team-management` usando `RESEND_API_KEY`.
+   - Si en algún caso futuro el usuario no existe:
+     - Se puede devolver 404 como ahora, o usar `inviteUserByEmail`; para este bug basta mantener 404 porque `resend_invite` recibe `user_id` de un perfil existente.
 
-1. Redeploy de `team-management`.
-2. Clic en "Reenviar" para NIDIA desde `/settings` → `Equipo`.
-3. Confirmar en runtime logs `team-management`: línea `[team-management] resend_invite ok user=1048cf9d… email=camaranidia1@gmail.com` y HTTP 200.
-4. Confirmar en `email_send_log` una fila `template_name='invite'` reciente para ese email en estado `sent`.
+4. Agregar helper interno mínimo en `team-management`:
+   - `sendInviteEmail({ to, name, actionLink })`.
+   - Endpoint: `POST https://api.resend.com/emails`.
+   - From: usar dominio existente del proyecto, por ejemplo `Soporte OfficeHub <soporte@rybixholding.com>` o idealmente `RYBIX <soporte@rybixholding.com>` para evitar referencia OfficeHub visible.
+   - To: `[email]`.
+   - Subject: `Tu acceso a RYBIX`.
+   - HTML: copy breve con botón “Entrar a RYBIX” y fallback con URL.
+   - Si Resend falla, loguear status/body completos y devolver ese error; no mostrar éxito falso.
+
+5. Logging requerido:
+   - En `generateLink` error: log con `status`, `name`, `message` si existen.
+   - En Resend error: log `Resend <status>: <body>` completo.
+   - En éxito: log `resend_invite ok existing_user_magiclink user=... email=... tenant=... resend_status=...`.
+
+6. Respuesta al frontend:
+   - Éxito: `{ success: true, message: 'Invitación reenviada al correo del miembro' }`.
+   - Error real: `{ error: '...' }` con status apropiado.
+
+## No tocar
+
+- No tocar RLS.
+- No tocar `pin-service`.
+- No tocar calendario.
+- No tocar prompts.
+- No tocar generated types.
+- No tocar `stripe-webhook`.
+- No tocar `SettingsPage.tsx` salvo que se quiera mejorar el mensaje visual; no es necesario para resolver el bug.
+
+## Verificación después de implementar
+
+1. Deploy de `team-management`.
+2. Click en `Configuración -> Equipo -> Reenviar` para NIDIA.
+3. Revisar logs de `team-management`:
+   - Debe aparecer generación de magic link exitosa.
+   - Debe aparecer respuesta Resend 200/202 o el error exacto.
+4. Confirmar que el frontend ya no recibe 400 `already registered`.
+5. Confirmar que el correo se envía a `camaranidia1@gmail.com` con el link de acceso.
