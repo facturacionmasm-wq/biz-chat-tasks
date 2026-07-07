@@ -253,7 +253,7 @@ function buildRescheduleTool(supabaseUrl: string, webhookSecret: string | null) 
         type: "object",
         required: ["tool_name", "appointment_id", "new_date", "new_time"],
         properties: {
-          tool_name: { type: "string", enum: ["reschedule_appointment"] },
+          tool_name: { type: "string", description: "Nombre de la acción a ejecutar.", enum: ["reschedule_appointment"] },
           appointment_id: { type: "string", description: "ID (UUID) de la cita a reprogramar." },
           new_date: { type: "string", description: "Nueva fecha en formato YYYY-MM-DD." },
           new_time: { type: "string", description: "Nueva hora en formato HH:MM (24h, hora local)." },
