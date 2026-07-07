@@ -86,6 +86,11 @@ serve(async (req) => {
       .eq("tenant_id", tenant_id);
     const userIds = (profileUsers || []).map((p: any) => p.user_id as string);
 
+    // Purge audit_events and user_roles first to avoid noise from the
+    // audit_role_changes trigger firing during cascade cleanup.
+    await admin.from("audit_events").delete().eq("tenant_id", tenant_id);
+    await admin.from("user_roles").delete().eq("tenant_id", tenant_id);
+
     // Some tenant-owned tables were created with restrictive foreign keys instead
     // of ON DELETE CASCADE. Remove those rows first, then delete the tenant so
     // regular cascade relationships can finish the cleanup.

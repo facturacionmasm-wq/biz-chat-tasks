@@ -107,7 +107,7 @@ Genera proyecciones financieras para los próximos 30, 60 y 90 días basándote 
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: "google/gemini-2.5-flash",
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
@@ -176,7 +176,7 @@ Genera proyecciones financieras para los próximos 30, 60 y 90 días basándote 
     if (!aiResponse.ok) {
       const errText = await aiResponse.text();
       console.error("AI gateway error:", aiResponse.status, errText);
-      
+
       if (aiResponse.status === 429) {
         return new Response(JSON.stringify({ error: "Rate limit exceeded, try again later" }), {
           status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -187,8 +187,8 @@ Genera proyecciones financieras para los próximos 30, 60 y 90 días basándote 
           status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      
-      return new Response(JSON.stringify({ error: "AI projection failed" }), {
+
+      return new Response(JSON.stringify({ error: `AI projection failed (${aiResponse.status}): ${errText.slice(0, 300)}` }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -225,7 +225,7 @@ Genera proyecciones financieras para los próximos 30, 60 y 90 días basándote 
       risk_factors: p.risk_factors,
       opportunities: p.opportunities,
       ai_narrative: narrative,
-      model_version: "v1-gemini-3-flash",
+      model_version: "v1-gemini-2.5-flash",
       input_data: inputData,
     }));
 
