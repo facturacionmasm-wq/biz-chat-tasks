@@ -392,7 +392,7 @@ serve(async (req) => {
         call_record_id: callRecordId,
         call_sid: callSid,
         agent_mode: 'elevenlabs',
-        elevenlabs_agent_id: ELEVENLABS_AGENT_ID || null,
+        elevenlabs_agent_id: tenantAgentId || null,
         language: 'es',
         routing_method: routingMethod,
         state: sessionState,
