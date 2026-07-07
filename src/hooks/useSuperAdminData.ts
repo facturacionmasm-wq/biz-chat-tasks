@@ -82,6 +82,18 @@ export function useSuperAdminData() {
   const queryClient = useQueryClient();
   const enabled = userRole === 'super_admin';
 
+  // Real count of tenants in the tenants table (source of truth)
+  const tenantsCount = useQuery({
+    queryKey: ['sa-tenants-count'],
+    enabled,
+    queryFn: async () => {
+      const { count } = await supabase
+        .from('tenants')
+        .select('id', { count: 'exact', head: true });
+      return count ?? 0;
+    },
+  });
+
   const margins = useQuery({
     queryKey: ['sa-margins'],
     enabled,
@@ -216,6 +228,7 @@ export function useSuperAdminData() {
     marginMetrics,
     projections,
     generateProjections,
+    tenantsCount,
     totals: { totalRevenue, totalCost, totalMargin, avgMarginPct },
   };
 }

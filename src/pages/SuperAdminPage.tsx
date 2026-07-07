@@ -52,7 +52,7 @@ const SuperAdminPage = () => {
 };
 
 const SuperAdminDashboard = () => {
-  const { margins, fraudAlerts, churnScores, retentionOffers, pricingEvals, marginMetrics, projections, generateProjections, totals } = useSuperAdminData();
+  const { margins, fraudAlerts, churnScores, retentionOffers, pricingEvals, marginMetrics, projections, generateProjections, tenantsCount, totals } = useSuperAdminData();
   const globalData = useGlobalMetrics();
 
   const isLoading = margins.isLoading || fraudAlerts.isLoading;
@@ -437,7 +437,7 @@ const GlobalMetricsTab = ({ globalData }: { globalData: ReturnType<typeof useGlo
         </div>
         <div className="rx-panel">
           <p className="text-xs text-[var(--rx-t2)]">Tenants Activos</p>
-          <p className="rx-page-title">{latest?.active_tenants ?? 0} / {latest?.total_tenants ?? 0}</p>
+          <p className="rx-page-title">{latest?.active_tenants ?? 0} / {tenantsCount.data ?? latest?.total_tenants ?? 0}</p>
         </div>
         <div className="rx-panel">
           <p className="text-xs text-[var(--rx-t2)]">Revenue USD (MTD)</p>
