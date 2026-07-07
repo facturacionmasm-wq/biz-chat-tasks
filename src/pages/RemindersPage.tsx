@@ -362,7 +362,3 @@ const RemindersPage = () => {
 };
 
 export default RemindersPage;
-  );
-};
-
-export default RemindersPage;
