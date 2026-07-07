@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
+import { fetchElevenLabsConversationUsage } from "../_shared/elevenlabs-usage.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -246,20 +247,84 @@ serve(async (req) => {
       });
     }
 
+    // Fetch real usage/cost from ElevenLabs (tokens, TTS chars, STT secs, total USD)
+    const elUsage = await fetchElevenLabsConversationUsage(supabase, tenantId, conversationId);
+    const aiTokens = elUsage?.llm_tokens ?? (transcript ? Math.ceil(transcript.length / 4) : 0);
+    const effectiveDurationSecs = durationSecs || (elUsage?.duration_secs ?? 0);
+
     // Cost calculation
+    let costCalc: { cost_total?: number; revenue?: number } = {};
     try {
-      await fetch(`${SUPABASE_URL}/functions/v1/calculate-usage-cost`, {
+      const costRes = await fetch(`${SUPABASE_URL}/functions/v1/calculate-usage-cost`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
         body: JSON.stringify({
           call_record_id: callRecord!.id,
           tenant_id: tenantId,
-          duration_seconds: durationSecs,
-          ai_tokens_used: transcript ? Math.ceil(transcript.length / 4) : 0,
+          duration_seconds: effectiveDurationSecs,
+          ai_tokens_used: aiTokens,
+          tts_chars: elUsage?.tts_chars ?? null,
+          stt_secs: elUsage?.stt_secs ?? null,
+          elevenlabs_cost_usd: elUsage?.total_cost_usd ?? null,
         }),
       });
+      if (costRes.ok) {
+        try { costCalc = await costRes.json(); } catch { /* ignore */ }
+      }
     } catch (e) {
       console.error('[el-post-call] Cost calc error:', e);
+    }
+
+    // Persist top-level cost/tokens on the call record for the UI
+    try {
+      await supabase.from('call_records').update({
+        cost_total: costCalc?.cost_total ?? null,
+        ai_tokens_used: aiTokens,
+      }).eq('id', callRecord!.id);
+    } catch (e) {
+      console.warn('[el-post-call] Failed to update call_records cost/tokens:', e);
+    }
+
+    // Stripe metered usage reporting (or invoice item fallback)
+    try {
+      const durationMinutes = Math.max((effectiveDurationSecs || 0) / 60, 0);
+      if (durationMinutes > 0) {
+        const { data: sc } = await supabase
+          .from('stripe_customers')
+          .select('stripe_subscription_id, stripe_item_id_voice, stripe_customer_id')
+          .eq('tenant_id', tenantId)
+          .maybeSingle();
+
+        const qty = Math.ceil(durationMinutes);
+        if (sc?.stripe_item_id_voice) {
+          await fetch(`${SUPABASE_URL}/functions/v1/stripe-billing`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+            body: JSON.stringify({
+              action: 'report_usage',
+              tenant_id: tenantId,
+              subscription_item_id: sc.stripe_item_id_voice,
+              quantity: qty,
+              call_record_id: callRecord!.id,
+            }),
+          }).catch((e) => console.warn('[el-post-call] report_usage failed:', e));
+        } else if (sc?.stripe_customer_id && costCalc?.revenue) {
+          // Fallback: create a Stripe invoice item for this call
+          await fetch(`${SUPABASE_URL}/functions/v1/stripe-billing`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+            body: JSON.stringify({
+              action: 'invoice_item_voice_call',
+              tenant_id: tenantId,
+              amount_usd: costCalc.revenue,
+              call_record_id: callRecord!.id,
+              description: `Voice call ${callRecord!.id} (${qty} min)`,
+            }),
+          }).catch((e) => console.warn('[el-post-call] invoice_item fallback failed:', e));
+        }
+      }
+    } catch (e) {
+      console.warn('[el-post-call] Stripe usage reporting error:', e);
     }
 
     // Audit event
