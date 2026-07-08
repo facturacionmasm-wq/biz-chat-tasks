@@ -34,8 +34,10 @@ serve(async (req) => {
 
   try {
     const now = new Date().toISOString();
-    const basicAuth = btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`);
-    const fromWA = TWILIO_PHONE_NUMBER.startsWith('whatsapp:') ? TWILIO_PHONE_NUMBER : `whatsapp:${TWILIO_PHONE_NUMBER}`;
+    const basicAuth = twilioConfigured ? btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`) : '';
+    const fromWA = twilioConfigured
+      ? (TWILIO_PHONE_NUMBER!.startsWith('whatsapp:') ? TWILIO_PHONE_NUMBER! : `whatsapp:${TWILIO_PHONE_NUMBER}`)
+      : '';
 
     // ============================================================
     // PART 1: Process regular user reminders (existing logic)
