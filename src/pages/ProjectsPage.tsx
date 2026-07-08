@@ -12,6 +12,10 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useProjectsPersistence } from '@/hooks/useProjectsPersistence';
 import ProjectDocumentsTab from '@/components/projects/ProjectDocumentsTab';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 interface RealTeamMember {
   id: string;
