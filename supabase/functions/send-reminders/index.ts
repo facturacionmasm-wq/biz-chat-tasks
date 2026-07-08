@@ -228,7 +228,7 @@ serve(async (req) => {
     // ============================================================
     const { data: apptNotifs, error: apptErr } = await supabase
       .from('appointment_notifications')
-      .select('id, appointment_id, tenant_id, target_phone, target_user_id, notification_type, message_body, status')
+      .select('id, appointment_id, tenant_id, target_phone, target_email, target_user_id, notification_type, message_body, status')
       .in('status', ['pending'])
       .lte('scheduled_at', now)
       .order('scheduled_at')
@@ -284,38 +284,50 @@ serve(async (req) => {
           continue;
         }
 
-        // Determine target phone
+        // Determine target phone / email
         let targetPhone: string | null = notif.target_phone;
+        let targetEmail: string | null = notif.target_email || null;
         if (!targetPhone && notif.target_user_id) {
           const profile = notifProfileMap.get(`${notif.target_user_id}|${notif.tenant_id}`);
           targetPhone = profile?.whatsapp_number || profile?.phone || null;
         }
 
-        if (!targetPhone) {
-          await supabase.from('appointment_notifications').update({ 
-            status: 'no_phone', error_message: 'No phone number available',
+        if (!targetPhone && !targetEmail) {
+          await supabase.from('appointment_notifications').update({
+            status: 'no_phone', error_message: 'No phone or email available',
           }).eq('id', notif.id);
           results.push({ id: notif.id, type: 'appt_notif', status: 'no_phone' });
           continue;
         }
 
-        // Get tenant-specific from number
-        const waConfig = tenantConfigMap.get(notif.tenant_id) as Record<string, any> | null;
-        const tenantFromNum = waConfig?.phone_number ? String(waConfig.phone_number).replace(/^whatsapp:/i, '') : null;
-        const tenantMsgSvc = waConfig?.messaging_service_sid ? String(waConfig.messaging_service_sid).trim() : null;
-        const effectiveFrom = tenantFromNum ? (tenantFromNum.startsWith('whatsapp:') ? tenantFromNum : `whatsapp:${tenantFromNum}`) : fromWA;
-
         const messageBody = notif.message_body || `⏰ Recordatorio de tu cita programada.`;
+        let sendResult: { ok: boolean; sid?: string; error?: string } = { ok: false, error: 'no_channel' };
 
-        // Try sending with MessagingServiceSid first, then fallback
-        let sendResult: { ok: boolean; sid?: string; error?: string };
-        if (tenantMsgSvc) {
-          sendResult = await sendWhatsAppWithMsgSvc(basicAuth, TWILIO_ACCOUNT_SID, targetPhone, messageBody, tenantMsgSvc);
-          if (!sendResult.ok) {
-            sendResult = await sendWhatsApp(basicAuth, TWILIO_ACCOUNT_SID, effectiveFrom, targetPhone, messageBody);
+        // Prefer WhatsApp when phone available and Twilio configured
+        if (targetPhone && twilioConfigured) {
+          const waConfig = tenantConfigMap.get(notif.tenant_id) as Record<string, any> | null;
+          const tenantFromNum = waConfig?.phone_number ? String(waConfig.phone_number).replace(/^whatsapp:/i, '') : null;
+          const tenantMsgSvc = waConfig?.messaging_service_sid ? String(waConfig.messaging_service_sid).trim() : null;
+          const effectiveFrom = tenantFromNum ? (tenantFromNum.startsWith('whatsapp:') ? tenantFromNum : `whatsapp:${tenantFromNum}`) : fromWA;
+
+          if (tenantMsgSvc) {
+            sendResult = await sendWhatsAppWithMsgSvc(basicAuth, TWILIO_ACCOUNT_SID!, targetPhone, messageBody, tenantMsgSvc);
+            if (!sendResult.ok) {
+              sendResult = await sendWhatsApp(basicAuth, TWILIO_ACCOUNT_SID!, effectiveFrom, targetPhone, messageBody);
+            }
+          } else {
+            sendResult = await sendWhatsApp(basicAuth, TWILIO_ACCOUNT_SID!, effectiveFrom, targetPhone, messageBody);
           }
-        } else {
-          sendResult = await sendWhatsApp(basicAuth, TWILIO_ACCOUNT_SID, effectiveFrom, targetPhone, messageBody);
+        }
+
+        // Fallback / primary email path
+        if (!sendResult.ok && targetEmail && RESEND_API_KEY) {
+          const subject = notif.notification_type === 'reminder_1h'
+            ? 'Tu cita es en 1 hora'
+            : notif.notification_type === 'reminder_24h'
+              ? 'Recordatorio de tu cita para mañana'
+              : 'Recordatorio de tu cita';
+          sendResult = await sendEmail(RESEND_API_KEY, targetEmail, subject, messageBody);
         }
 
         if (sendResult.ok) {
@@ -323,7 +335,7 @@ serve(async (req) => {
           await supabase.from('appointment_notifications').update({
             status: 'sent', sent_at: now,
           }).eq('id', notif.id);
-          console.log(`✅ Appt notification sent: type=${notif.notification_type} to=${targetPhone}`);
+          console.log(`✅ Appt notification sent: type=${notif.notification_type} to=${targetPhone || targetEmail}`);
           results.push({ id: notif.id, type: 'appt_notif', status: 'sent' });
         } else {
           await supabase.from('appointment_notifications').update({
