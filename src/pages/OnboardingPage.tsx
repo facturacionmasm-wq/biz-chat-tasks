@@ -169,47 +169,9 @@ const OnboardingPage = () => {
     }
   };
 
-  const handlePlanSelect = async () => {
-    if (!selectedPlan || !user) return;
+  // Plan checkout is handled inside <PlanSelectionPanel />.
 
-    setLoading(true);
-    try {
-      // Ensure tenant/profile exist (idempotent) before invoking Stripe.
-      await supabase.rpc('ensure_tenant_for_current_user');
 
-      const chosen = plans.find(p => p.id === selectedPlan);
-      const { data: tenantId } = await supabase.rpc('get_user_tenant_id', { _user_id: user.id });
-      const { data: profileRow } = await supabase
-        .from('profiles').select('name').eq('user_id', user.id).maybeSingle();
-      const displayName = profileRow?.name
-        || user.user_metadata?.name
-        || (user.email ? user.email.split('@')[0] : 'Cliente');
-
-      if (!chosen || !tenantId) throw new Error('No se pudo resolver el plan o el tenant');
-
-      // Mandatory paid subscription — Stripe Checkout in mode=subscription.
-      // onboarding_completed is flipped by stripe-webhook on payment success.
-      const { data: checkout, error: checkoutErr } = await supabase.functions.invoke('stripe-billing', {
-        body: {
-          action: 'create_subscription_checkout',
-          tenant_id: tenantId,
-          email: user.email,
-          name: displayName,
-          plan_slug: chosen.slug,
-          plan_id: chosen.id,
-          billing_period: billingCycle,
-        },
-      });
-      if (checkoutErr) throw checkoutErr;
-      if (!checkout?.checkout_url) throw new Error('Stripe no devolvió una URL de checkout');
-
-      toast.success('Redirigiendo al pago seguro con Stripe…');
-      window.location.href = checkout.checkout_url;
-    } catch (err: any) {
-      toast.error(err.message || 'Error al iniciar el checkout');
-      setLoading(false);
-    }
-  };
 
 
   // ── Step indicators ──
