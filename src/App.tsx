@@ -99,8 +99,9 @@ const OnboardingRoute = forwardRef<HTMLDivElement, RouteGuardProps>(({ children 
   // Super admin / master tenant never need onboarding.
   const bypass = userRole === 'super_admin' || subscriptionStatus?.is_master_tenant;
   if (bypass) return <Navigate to="/" replace />;
-  // If the tenant already has an active paid subscription AND onboarding is done → app.
-  if (onboardingCompleted === true && subscriptionStatus?.has_paid_subscription) {
+  // Allow entry whenever there is no active paid subscription — even if
+  // onboarding was marked complete previously (trial ended, canceled, past_due).
+  if (subscriptionStatus?.has_paid_subscription && onboardingCompleted === true) {
     return <Navigate to="/" replace />;
   }
   return <>{children}</>;
@@ -111,7 +112,9 @@ const BlockedRoute = forwardRef<HTMLDivElement, RouteGuardProps>(({ children }, 
   const { user, loading, subscriptionStatus, userRole } = useAuth();
   if (loading) return null;
   if (!user) return <Navigate to="/auth" replace />;
-  if (userRole === 'super_admin' || !subscriptionStatus?.is_blocked) return <Navigate to="/" replace />;
+  if (userRole === 'super_admin' || subscriptionStatus?.is_master_tenant) return <Navigate to="/" replace />;
+  // Show the reactivation panel whenever there is no active paid subscription.
+  if (subscriptionStatus?.has_paid_subscription) return <Navigate to="/" replace />;
   return <>{children}</>;
 });
 BlockedRoute.displayName = 'BlockedRoute';
