@@ -89,32 +89,18 @@ const OnboardingPage = () => {
   const [tenantId, setTenantId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    const fetchPlans = async () => {
-      const { data } = await supabase
-        .from('subscription_plans')
-        .select('*')
-        .eq('active', true)
-        .order('sort_order');
-      if (data) setPlans(data as unknown as Plan[]);
-      setLoadingPlans(false);
-    };
-    fetchPlans();
-  }, []);
-
-  // If the tenant already has name + country (e.g. the user returned from a
-  // canceled Stripe checkout), skip straight to the plan step so they can
-  // complete payment without redoing the wizard.
+  // Prefetch tenant: skip straight to plan step if company + country already set.
   useEffect(() => {
     if (!user) return;
     (async () => {
       try {
-        const { data: tenantId } = await supabase.rpc('get_user_tenant_id', { _user_id: user.id });
-        if (!tenantId) return;
+        const { data: tid } = await supabase.rpc('get_user_tenant_id', { _user_id: user.id });
+        if (!tid) return;
+        setTenantId(tid as unknown as string);
         const { data: t } = await supabase
           .from('tenants')
           .select('name, country_code, region, currency, timezone')
-          .eq('id', tenantId)
+          .eq('id', tid as unknown as string)
           .maybeSingle();
         if (!t) return;
         const hasName = t.name && t.name.trim() && t.name !== 'Mi Empresa';
@@ -132,28 +118,6 @@ const OnboardingPage = () => {
     })();
   }, [user]);
 
-  // Fetch localized pricing when country changes
-  useEffect(() => {
-    if (!selectedCountry) return;
-    const fetchPricing = async () => {
-      const { data } = await supabase
-        .from('global_plan_pricing')
-        .select('plan_id, base_price, currency')
-        .eq('country_code', selectedCountry.code)
-        .eq('active', true);
-      setLocalizedPrices((data || []) as LocalizedPrice[]);
-    };
-    fetchPricing();
-  }, [selectedCountry]);
-
-  const getLocalizedPrice = (planId: string, fallbackPrice: number): { price: number; currency: string; symbol: string } => {
-    const local = localizedPrices.find(p => p.plan_id === planId);
-    if (local) {
-      return { price: local.base_price, currency: local.currency, symbol: CURRENCY_SYMBOLS[local.currency] || '$' };
-    }
-    const currency = selectedCountry?.currency || 'MXN';
-    return { price: fallbackPrice, currency, symbol: CURRENCY_SYMBOLS[currency] || '$' };
-  };
 
   const handleCompanySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
