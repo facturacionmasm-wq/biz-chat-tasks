@@ -433,7 +433,22 @@ serve(async (req) => {
             ? (tFromN.startsWith('whatsapp:') ? tFromN : `whatsapp:${tFromN}`)
             : fromWA;
           const phoneNormN = normalizeMxWA(phoneN);
-          if (tFromN) {
+          // Prefer approved template to bypass 24h freeform window (63016).
+          if (WHATSAPP_REMINDER_CONTENT_SID && tFromN) {
+            const appt = apptMap.get(notif.appointment_id);
+            const startAt = appt?.start_at ? new Date(appt.start_at) : null;
+            const dateStr = startAt ? startAt.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }) : '';
+            const timeStr = startAt ? startAt.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }) : '';
+            const vars = {
+              '1': (appt?.contact_name || 'Hola').split(' ')[0],
+              '2': `tu cita${dateStr ? ` el ${dateStr}${timeStr ? ` a las ${timeStr}` : ''}` : ''}`,
+              '3': 'https://rybixholding.com',
+            };
+            sendResult = await sendWhatsAppTemplate(basicAuth, TWILIO_ACCOUNT_SID!, effectiveFromN, phoneNormN, WHATSAPP_REMINDER_CONTENT_SID, vars);
+            if (!sendResult.ok) {
+              sendResult = await sendWhatsApp(basicAuth, TWILIO_ACCOUNT_SID!, effectiveFromN, phoneNormN, messageBody);
+            }
+          } else if (tFromN) {
             sendResult = await sendWhatsApp(basicAuth, TWILIO_ACCOUNT_SID!, effectiveFromN, phoneNormN, messageBody);
             if (!sendResult.ok && tMsgSvcN) {
               sendResult = await sendWhatsAppWithMsgSvc(basicAuth, TWILIO_ACCOUNT_SID!, phoneNormN, messageBody, tMsgSvcN);
