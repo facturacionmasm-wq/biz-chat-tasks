@@ -277,6 +277,15 @@ serve(async (req) => {
       const apptMap = new Map<string, any>();
       for (const a of (apptFull || [])) apptMap.set(a.id, a);
 
+      // Batch-fetch tenant WhatsApp config for Part 2 (reminder_whatsapp branch)
+      const tenantIdsN = [...new Set(apptNotifications.map((n: any) => n.tenant_id))];
+      const missingTenantIds = tenantIdsN.filter((id: string) => !tenantConfigMapR.has(id));
+      if (missingTenantIds.length > 0) {
+        const { data: tenantsN } = await supabase
+          .from('tenants').select('id, whatsapp_config').in('id', missingTenantIds);
+        for (const t of (tenantsN || [])) tenantConfigMapR.set(t.id, t.whatsapp_config);
+      }
+
       for (const notif of apptNotifications) {
         // Skip if appointment was cancelled
         if (!activeApptIds.has(notif.appointment_id)) {
@@ -302,10 +311,11 @@ serve(async (req) => {
         let sendResult: { ok: boolean; sid?: string; error?: string } = { ok: false, error: 'no_channel' };
 
         // ────────── Channel routing by notification_type ──────────
-        // reminder_24h  → EMAIL only (client)
-        // reminder_1h   → VOICE outbound call (client), fallback email if voice fails/unsupported
-        // staff_update  → EMAIL to staff (target_user_id)
-        // (unknown)     → email if available
+        // reminder_24h        → EMAIL only (client)
+        // reminder_1h         → VOICE outbound call (client), fallback email if voice fails
+        // staff_update        → EMAIL to staff (target_user_id)
+        // reminder_whatsapp / staff_whatsapp → WhatsApp (optional additional channel)
+        // (unknown)           → email if available
         if (notifType === 'reminder_1h') {
           if (!targetPhone) {
             await supabase.from('appointment_notifications').update({
@@ -375,6 +385,44 @@ serve(async (req) => {
               ? 'Actualización de cita'
               : 'Recordatorio de tu cita';
           sendResult = await sendEmail(RESEND_API_KEY, targetEmail, subject, messageBody);
+        } else if (notifType === 'reminder_whatsapp' || notifType === 'staff_whatsapp') {
+          // Optional WhatsApp channel for appointments (additional, non-default)
+          if (!targetPhone) {
+            await supabase.from('appointment_notifications').update({
+              status: 'no_phone', error_message: 'No phone available for WhatsApp reminder',
+            }).eq('id', notif.id);
+            results.push({ id: notif.id, type: 'appt_notif', status: 'no_phone' });
+            continue;
+          }
+          if (!twilioConfigured) {
+            await supabase.from('appointment_notifications').update({
+              status: 'failed', error_message: 'Twilio not configured',
+            }).eq('id', notif.id);
+            results.push({ id: notif.id, type: 'appt_notif', status: 'failed', error: 'twilio_missing' });
+            continue;
+          }
+          const phoneN = String(targetPhone).replace(/\s/g, '');
+          if (!/^\+?\d{10,15}$/.test(phoneN.replace('whatsapp:', ''))) {
+            await supabase.from('appointment_notifications').update({
+              status: 'failed', error_message: `Invalid phone: ${phoneN}`,
+            }).eq('id', notif.id);
+            results.push({ id: notif.id, type: 'appt_notif', status: 'invalid_phone' });
+            continue;
+          }
+          const waN = tenantConfigMapR.get(notif.tenant_id) as Record<string, any> | null;
+          const tFromN = waN?.phone_number ? String(waN.phone_number).replace(/^whatsapp:/i, '') : null;
+          const tMsgSvcN = waN?.messaging_service_sid ? String(waN.messaging_service_sid).trim() : null;
+          const effectiveFromN = tFromN
+            ? (tFromN.startsWith('whatsapp:') ? tFromN : `whatsapp:${tFromN}`)
+            : fromWA;
+          if (tMsgSvcN) {
+            sendResult = await sendWhatsAppWithMsgSvc(basicAuth, TWILIO_ACCOUNT_SID!, phoneN, messageBody, tMsgSvcN);
+            if (!sendResult.ok) {
+              sendResult = await sendWhatsApp(basicAuth, TWILIO_ACCOUNT_SID!, effectiveFromN, phoneN, messageBody);
+            }
+          } else {
+            sendResult = await sendWhatsApp(basicAuth, TWILIO_ACCOUNT_SID!, effectiveFromN, phoneN, messageBody);
+          }
         } else {
           // Unknown legacy types → prefer email
           if (targetEmail && RESEND_API_KEY) {
