@@ -65,17 +65,16 @@ const ProtectedRoute = forwardRef<HTMLDivElement, RouteGuardProps>(({ children }
   // Super admins and the master tenant bypass all billing gates.
   const bypass = userRole === 'super_admin' || subscriptionStatus?.is_master_tenant;
   if (!bypass) {
-    // Paid-subscription gate. Never-paid tenants (no stripe_subscription_id yet)
-    // are sent to onboarding to complete Stripe checkout. Tenants that had a
-    // subscription but are now past_due / canceled / blocked go to /blocked.
+    // Paid-subscription gate. Any tenant without an active paid subscription
+    // is routed to /onboarding where the shared plan-selection panel handles
+    // the Stripe Checkout flow (with the 30-day satisfaction guarantee).
     const status = subscriptionStatus?.status;
-    const neverPaid = !subscriptionStatus?.stripe_subscription_id;
-    if (subscriptionStatus?.is_blocked || onboardingCompleted === false) {
-      if (neverPaid) return <Navigate to="/onboarding" replace />;
-      return <Navigate to="/blocked" replace />;
+    const hasPaid = subscriptionStatus?.has_paid_subscription;
+    if (subscriptionStatus?.is_blocked || onboardingCompleted === false || !hasPaid) {
+      return <Navigate to="/onboarding" replace />;
     }
     if (status && status !== 'active' && status !== 'trialing') {
-      return <Navigate to="/blocked" replace />;
+      return <Navigate to="/onboarding" replace />;
     }
   }
   return <>{children}</>;
