@@ -46,14 +46,16 @@ const RemindersPage = () => {
   const [creating, setCreating] = useState(false);
   const [newMessage, setNewMessage] = useState('');
   const [newWhen, setNewWhen] = useState('');
-  const [newChannel, setNewChannel] = useState<'whatsapp' | 'email' | ''>('');
+  const [newChannel, setNewChannel] = useState<'whatsapp' | 'email'>('whatsapp');
   const [newContact, setNewContact] = useState('');
+  const [newContactEmail, setNewContactEmail] = useState('');
 
   const resetCreate = () => {
     setNewMessage('');
     setNewWhen('');
-    setNewChannel('');
+    setNewChannel('whatsapp');
     setNewContact('');
+    setNewContactEmail('');
   };
 
   const handleCreate = async () => {
@@ -79,9 +81,10 @@ const RemindersPage = () => {
         retry_count: 0,
         max_retries: 3,
         timezone,
+        channel: newChannel,
       };
-      if (newChannel) payload.channel = newChannel;
-      if (newContact.trim()) payload.contact_phone = newContact.trim();
+      if (newChannel === 'whatsapp' && newContact.trim()) payload.contact_phone = newContact.trim();
+      if (newChannel === 'email' && newContactEmail.trim()) payload.contact_email = newContactEmail.trim();
 
       const { error } = await supabase.from('reminders').insert(payload as any);
       if (error) throw error;
