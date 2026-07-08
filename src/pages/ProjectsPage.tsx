@@ -12,6 +12,10 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useProjectsPersistence } from '@/hooks/useProjectsPersistence';
 import ProjectDocumentsTab from '@/components/projects/ProjectDocumentsTab';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 interface RealTeamMember {
   id: string;
@@ -74,6 +78,7 @@ const ProjectsPage = () => {
   const [view, setView] = useState<'list' | 'board'>('list');
   const [activeDetailTab, setActiveDetailTab] = useState<'tasks' | 'documents'>('tasks');
   const [selectedTask, setSelectedTask] = useState<TaskWithMeta | null>(null);
+  const [deleteProjectTarget, setDeleteProjectTarget] = useState<{ id: string; name: string } | null>(null);
 
   // New project modal
   const [showNewProject, setShowNewProject] = useState(false);
@@ -187,10 +192,17 @@ const ProjectsPage = () => {
     await dbDeleteMilestone(projectId, milestoneId);
   };
 
-  const handleDeleteProject = async (projectId: string, projectName: string) => {
-    if (!window.confirm(`¿Eliminar el proyecto "${projectName}"?\n\nEsto también eliminará sus tareas, hitos, miembros y documentos asociados. Esta acción no se puede deshacer.`)) return;
-    const ok = await dbDeleteProject(projectId);
-    if (ok) setSelectedProjectId(null);
+  const handleDeleteProject = (projectId: string, projectName: string) => {
+    setDeleteProjectTarget({ id: projectId, name: projectName });
+  };
+
+  const confirmDeleteProject = async () => {
+    if (!deleteProjectTarget) return;
+    const ok = await dbDeleteProject(deleteProjectTarget.id);
+    setDeleteProjectTarget(null);
+    if (ok) {
+      setSelectedProjectId(null);
+    }
   };
 
 
@@ -831,6 +843,23 @@ const ProjectsPage = () => {
           );
         })}
       </div>
+
+      <AlertDialog open={!!deleteProjectTarget} onOpenChange={(open) => { if (!open) setDeleteProjectTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminar proyecto</AlertDialogTitle>
+            <AlertDialogDescription>
+              ¿Seguro que deseas eliminar el proyecto <strong>{deleteProjectTarget?.name}</strong>? Esto también borrará sus tareas, hitos, miembros y documentos asociados. Esta acción no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeleteProject} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
