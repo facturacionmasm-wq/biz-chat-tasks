@@ -379,6 +379,13 @@ serve(async (req) => {
       const newEnd = new Date(newStart);
       newEnd.setMinutes(newEnd.getMinutes() + 30);
 
+      // Read previous state to notify staff
+      const { data: prev } = await supabase
+        .from('appointments')
+        .select('start_at, user_id, tenant_id, contact_name, service_type')
+        .eq('id', appointment_id)
+        .maybeSingle();
+
       const { data: updated, error: updateErr } = await supabase
         .from('appointments')
         .update({
@@ -387,10 +394,36 @@ serve(async (req) => {
           status: 'scheduled',
         })
         .eq('id', appointment_id)
-        .select('id, start_at, end_at, contact_name')
+        .select('id, start_at, end_at, contact_name, tenant_id, user_id')
         .single();
 
       if (updateErr) throw updateErr;
+
+      // Mirror to Google Calendar (best-effort)
+      try {
+        await fetch(`${SUPABASE_URL}/functions/v1/calendar-sync`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}` },
+          body: JSON.stringify({ action: 'update_event', appointment_id }),
+        });
+      } catch (e) { console.error('[voice-scheduling] calendar-sync update_event failed', e); }
+
+      // Notify staff owner (if any) via email
+      if (updated.user_id) {
+        const prevDisplay = prev?.start_at
+          ? new Date(prev.start_at).toLocaleString('es-MX', { dateStyle: 'full', timeStyle: 'short' })
+          : 'anterior';
+        const newDisplay = newStart.toLocaleString('es-MX', { dateStyle: 'full', timeStyle: 'short' });
+        const msg = `La cita con ${updated.contact_name}${prev?.service_type ? ' (' + prev.service_type + ')' : ''} fue reprogramada.\n\nAntes: ${prevDisplay}\nAhora: ${newDisplay}\n\nActualización automática desde el asistente de voz.`;
+        await supabase.from('appointment_notifications').insert({
+          appointment_id, tenant_id: updated.tenant_id,
+          target_user_id: updated.user_id,
+          notification_type: 'staff_update',
+          status: 'pending',
+          scheduled_at: new Date().toISOString(),
+          message_body: msg,
+        });
+      }
 
       return jsonResp({
         success: true,
@@ -410,16 +443,62 @@ serve(async (req) => {
         .from('appointments')
         .update({ status: 'cancelled' })
         .eq('id', appointment_id)
-        .select('id, contact_name')
+        .select('id, contact_name, tenant_id, user_id, start_at, service_type')
         .single();
 
       if (cancelErr) throw cancelErr;
+
+      // Mirror cancel to Google Calendar (best-effort)
+      try {
+        await fetch(`${SUPABASE_URL}/functions/v1/calendar-sync`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}` },
+          body: JSON.stringify({ action: 'cancel_event', appointment_id }),
+        });
+      } catch (e) { console.error('[voice-scheduling] calendar-sync cancel_event failed', e); }
+
+      // Notify staff owner
+      if (cancelled.user_id) {
+        const when = cancelled.start_at
+          ? new Date(cancelled.start_at).toLocaleString('es-MX', { dateStyle: 'full', timeStyle: 'short' })
+          : '';
+        const msg = `La cita con ${cancelled.contact_name}${cancelled.service_type ? ' (' + cancelled.service_type + ')' : ''} programada para ${when} fue CANCELADA por el cliente.\n\nActualización automática desde el asistente de voz.`;
+        await supabase.from('appointment_notifications').insert({
+          appointment_id, tenant_id: cancelled.tenant_id,
+          target_user_id: cancelled.user_id,
+          notification_type: 'staff_update',
+          status: 'pending',
+          scheduled_at: new Date().toISOString(),
+          message_body: msg,
+        });
+      }
 
       return jsonResp({
         success: true,
         message: `Cita de ${cancelled.contact_name} cancelada exitosamente`,
       });
     }
+
+    // ─── CONFIRM ───
+    if (action === 'confirm_appointment') {
+      const { appointment_id } = data;
+      if (!appointment_id) {
+        return jsonResp({ error: 'Missing appointment_id' }, 400);
+      }
+      const { data: confirmed, error: confErr } = await supabase
+        .from('appointments')
+        .update({ status: 'confirmed' })
+        .eq('id', appointment_id)
+        .select('id, contact_name')
+        .single();
+      if (confErr) throw confErr;
+      return jsonResp({
+        success: true,
+        message: `Cita de ${confirmed.contact_name} confirmada`,
+      });
+    }
+
+
 
     // ─── LIST EMPLOYEES ───
     if (action === 'list_employees') {

@@ -260,21 +260,22 @@ serve(async (req) => {
       // Get user profiles for internal notifications
       const notifUserIds = [...new Set(apptNotifications.filter((n: any) => n.target_user_id).map((n: any) => n.target_user_id))];
       const { data: notifProfiles } = notifUserIds.length > 0
-        ? await supabase.from('profiles').select('user_id, tenant_id, whatsapp_number, phone, name').in('user_id', notifUserIds)
+        ? await supabase.from('profiles').select('user_id, tenant_id, whatsapp_number, phone, name, email').in('user_id', notifUserIds)
         : { data: [] };
+
 
       const notifProfileMap = new Map<string, any>();
       for (const p of (notifProfiles || [])) {
         notifProfileMap.set(`${p.user_id}|${p.tenant_id}`, p);
       }
 
-      // Get tenant from-numbers
-      const tenantIds = [...new Set(apptNotifications.map((n: any) => n.tenant_id))];
-      const { data: tenants } = await supabase.from('tenants').select('id, whatsapp_config').in('id', tenantIds);
-      const tenantConfigMap = new Map<string, any>();
-      for (const t of (tenants || [])) {
-        tenantConfigMap.set(t.id, t.whatsapp_config);
-      }
+      // Fetch appointments (used by voice-call reminders for dynamic variables)
+      const { data: apptFull } = await supabase
+        .from('appointments')
+        .select('id, contact_name, contact_phone, contact_email, service_type, start_at, notes, user_id, tenant_id')
+        .in('id', apptIds);
+      const apptMap = new Map<string, any>();
+      for (const a of (apptFull || [])) apptMap.set(a.id, a);
 
       for (const notif of apptNotifications) {
         // Skip if appointment was cancelled
@@ -291,43 +292,100 @@ serve(async (req) => {
           const profile = notifProfileMap.get(`${notif.target_user_id}|${notif.tenant_id}`);
           targetPhone = profile?.whatsapp_number || profile?.phone || null;
         }
-
-        if (!targetPhone && !targetEmail) {
-          await supabase.from('appointment_notifications').update({
-            status: 'no_phone', error_message: 'No phone or email available',
-          }).eq('id', notif.id);
-          results.push({ id: notif.id, type: 'appt_notif', status: 'no_phone' });
-          continue;
+        if (!targetEmail && notif.target_user_id) {
+          const profile = notifProfileMap.get(`${notif.target_user_id}|${notif.tenant_id}`);
+          targetEmail = (profile as any)?.email || null;
         }
 
-        const messageBody = notif.message_body || `⏰ Recordatorio de tu cita programada.`;
+        const notifType: string = String(notif.notification_type || '');
+        const messageBody: string = notif.message_body || `⏰ Recordatorio de tu cita programada.`;
         let sendResult: { ok: boolean; sid?: string; error?: string } = { ok: false, error: 'no_channel' };
 
-        // Prefer WhatsApp when phone available and Twilio configured
-        if (targetPhone && twilioConfigured) {
-          const waConfig = tenantConfigMap.get(notif.tenant_id) as Record<string, any> | null;
-          const tenantFromNum = waConfig?.phone_number ? String(waConfig.phone_number).replace(/^whatsapp:/i, '') : null;
-          const tenantMsgSvc = waConfig?.messaging_service_sid ? String(waConfig.messaging_service_sid).trim() : null;
-          const effectiveFrom = tenantFromNum ? (tenantFromNum.startsWith('whatsapp:') ? tenantFromNum : `whatsapp:${tenantFromNum}`) : fromWA;
-
-          if (tenantMsgSvc) {
-            sendResult = await sendWhatsAppWithMsgSvc(basicAuth, TWILIO_ACCOUNT_SID!, targetPhone, messageBody, tenantMsgSvc);
-            if (!sendResult.ok) {
-              sendResult = await sendWhatsApp(basicAuth, TWILIO_ACCOUNT_SID!, effectiveFrom, targetPhone, messageBody);
-            }
-          } else {
-            sendResult = await sendWhatsApp(basicAuth, TWILIO_ACCOUNT_SID!, effectiveFrom, targetPhone, messageBody);
+        // ────────── Channel routing by notification_type ──────────
+        // reminder_24h  → EMAIL only (client)
+        // reminder_1h   → VOICE outbound call (client), fallback email if voice fails/unsupported
+        // staff_update  → EMAIL to staff (target_user_id)
+        // (unknown)     → email if available
+        if (notifType === 'reminder_1h') {
+          if (!targetPhone) {
+            await supabase.from('appointment_notifications').update({
+              status: 'no_phone', error_message: 'No phone available for voice reminder',
+            }).eq('id', notif.id);
+            results.push({ id: notif.id, type: 'appt_notif', status: 'no_phone' });
+            continue;
           }
-        }
 
-        // Fallback / primary email path
-        if (!sendResult.ok && targetEmail && RESEND_API_KEY) {
-          const subject = notif.notification_type === 'reminder_1h'
-            ? 'Tu cita es en 1 hora'
-            : notif.notification_type === 'reminder_24h'
-              ? 'Recordatorio de tu cita para mañana'
+          // Invoke voice-outbound-call
+          try {
+            const appt = apptMap.get(notif.appointment_id);
+            const startAt = appt?.start_at ? new Date(appt.start_at) : null;
+            const voiceRes = await fetch(`${SUPABASE_URL}/functions/v1/voice-outbound-call`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+              },
+              body: JSON.stringify({
+                tenant_id: notif.tenant_id,
+                to_number: targetPhone,
+                appointment_id: notif.appointment_id,
+                notification_id: notif.id,
+                dynamic_variables: {
+                  contact_name: appt?.contact_name || '',
+                  service_type: appt?.service_type || '',
+                  appointment_date: startAt ? startAt.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }) : '',
+                  appointment_time: startAt ? startAt.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }) : '',
+                  purpose: 'appointment_reminder_1h',
+                },
+              }),
+            });
+            const voiceData = await voiceRes.json();
+            if (voiceRes.ok && voiceData?.success) {
+              sendResult = { ok: true, sid: voiceData.call_sid || voiceData.conversation_id || 'voice' };
+            } else {
+              sendResult = { ok: false, error: voiceData?.error || voiceData?.message || `voice-outbound-call ${voiceRes.status}` };
+            }
+          } catch (err) {
+            sendResult = { ok: false, error: err instanceof Error ? err.message : 'voice-outbound-call error' };
+          }
+
+          // Fallback to email if voice fails
+          if (!sendResult.ok && targetEmail && RESEND_API_KEY) {
+            console.warn(`[appt-1h] voice failed (${sendResult.error}); falling back to email`);
+            sendResult = await sendEmail(RESEND_API_KEY, targetEmail, 'Tu cita es en 1 hora', messageBody);
+          }
+        } else if (notifType === 'reminder_24h' || notifType === 'staff_update') {
+          if (!targetEmail) {
+            await supabase.from('appointment_notifications').update({
+              status: 'no_phone', error_message: 'No email available',
+            }).eq('id', notif.id);
+            results.push({ id: notif.id, type: 'appt_notif', status: 'no_email' });
+            continue;
+          }
+          if (!RESEND_API_KEY) {
+            await supabase.from('appointment_notifications').update({
+              status: 'failed', error_message: 'Resend not configured',
+            }).eq('id', notif.id);
+            results.push({ id: notif.id, type: 'appt_notif', status: 'failed', error: 'resend_missing' });
+            continue;
+          }
+          const subject = notifType === 'reminder_24h'
+            ? 'Recordatorio de tu cita para mañana'
+            : notifType === 'staff_update'
+              ? 'Actualización de cita'
               : 'Recordatorio de tu cita';
           sendResult = await sendEmail(RESEND_API_KEY, targetEmail, subject, messageBody);
+        } else {
+          // Unknown legacy types → prefer email
+          if (targetEmail && RESEND_API_KEY) {
+            sendResult = await sendEmail(RESEND_API_KEY, targetEmail, 'Recordatorio', messageBody);
+          } else {
+            await supabase.from('appointment_notifications').update({
+              status: 'failed', error_message: `Unsupported notification_type=${notifType}`,
+            }).eq('id', notif.id);
+            results.push({ id: notif.id, type: 'appt_notif', status: 'failed', error: 'unsupported_type' });
+            continue;
+          }
         }
 
         if (sendResult.ok) {

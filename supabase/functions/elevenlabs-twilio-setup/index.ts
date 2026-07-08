@@ -302,6 +302,18 @@ serve(async (req) => {
         .maybeSingle();
 
       if (profile?.tenant_id) {
+        // Persist agent_phone_number_id so voice-outbound-call can use it for outbound calls
+        try {
+          const { data: t } = await serviceClient.from('tenants')
+            .select('elevenlabs_config').eq('id', profile.tenant_id).maybeSingle();
+          const nextCfg = { ...(t?.elevenlabs_config || {}), agent_phone_number_id: phoneNumberId };
+          await serviceClient.from('tenants')
+            .update({ elevenlabs_config: nextCfg })
+            .eq('id', profile.tenant_id);
+        } catch (persistErr) {
+          console.error('[el-twilio] Failed to persist agent_phone_number_id:', persistErr);
+        }
+
         await serviceClient.from('audit_events').insert({
           tenant_id: profile.tenant_id,
           actor_id: user.id,
@@ -311,10 +323,12 @@ serve(async (req) => {
           payload: {
             phone_number: PHONE_NUMBER,
             agent_id: ELEVENLABS_AGENT_ID,
+            agent_phone_number_id: phoneNumberId,
             action: 'setup',
           },
         });
       }
+
 
       return new Response(JSON.stringify({
         success: true,
