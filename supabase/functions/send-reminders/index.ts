@@ -277,6 +277,15 @@ serve(async (req) => {
       const apptMap = new Map<string, any>();
       for (const a of (apptFull || [])) apptMap.set(a.id, a);
 
+      // Batch-fetch tenant WhatsApp config for Part 2 (reminder_whatsapp branch)
+      const tenantIdsN = [...new Set(apptNotifications.map((n: any) => n.tenant_id))];
+      const missingTenantIds = tenantIdsN.filter((id: string) => !tenantConfigMapR.has(id));
+      if (missingTenantIds.length > 0) {
+        const { data: tenantsN } = await supabase
+          .from('tenants').select('id, whatsapp_config').in('id', missingTenantIds);
+        for (const t of (tenantsN || [])) tenantConfigMapR.set(t.id, t.whatsapp_config);
+      }
+
       for (const notif of apptNotifications) {
         // Skip if appointment was cancelled
         if (!activeApptIds.has(notif.appointment_id)) {
