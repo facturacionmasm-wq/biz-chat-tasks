@@ -21,6 +21,9 @@ serve(async (req) => {
   const TWILIO_AUTH_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN');
   const TWILIO_PHONE_NUMBER = Deno.env.get('TWILIO_PHONE_NUMBER');
   const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
+  // Optional: approved WhatsApp Content Template SID for reminders (bypasses 24h freeform window).
+  // Configure in Supabase secrets as WHATSAPP_REMINDER_CONTENT_SID (starts with HX...).
+  const WHATSAPP_REMINDER_CONTENT_SID = Deno.env.get('WHATSAPP_REMINDER_CONTENT_SID') || null;
 
   // Twilio is required for WhatsApp; email works independently via Resend.
   const twilioConfigured = !!(TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && TWILIO_PHONE_NUMBER);
