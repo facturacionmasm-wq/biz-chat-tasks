@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import type { User } from '@supabase/supabase-js';
 import { useTenantBilling } from '@/hooks/useTenantBilling';
+import SatisfactionGuaranteeBadge from '@/components/SatisfactionGuaranteeBadge';
 
 interface BillingSectionProps {
   user: User | null;
@@ -668,6 +669,9 @@ const TenantBillingView = ({ status, subStatus, currentSub, currentPlanSlug, pla
           </div>
         </div>
       )}
+
+      {/* 30-day satisfaction guarantee */}
+      <SatisfactionGuaranteeBadge className="mb-4" />
 
       {/* Plans (read-only) */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

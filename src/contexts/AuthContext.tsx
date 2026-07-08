@@ -9,6 +9,9 @@ interface SubscriptionStatus {
   plan_name: string | null;
   is_blocked: boolean;
   days_remaining: number;
+  stripe_subscription_id?: string | null;
+  has_paid_subscription?: boolean;
+  is_master_tenant?: boolean;
 }
 
 interface AuthContextType {
