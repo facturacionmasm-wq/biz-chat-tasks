@@ -408,6 +408,13 @@ const ProjectsPage = () => {
                 <option key={s} value={s}>{statusLabels[s].label}</option>
               ))}
             </select>
+            <button
+              onClick={() => handleDeleteProject(selectedProject.id, selectedProject.name)}
+              className="ml-auto p-1.5 rounded-lg text-[var(--rx-t2)] hover:text-[var(--rx-rose)] hover:bg-destructive/10 transition-colors"
+              title="Eliminar proyecto"
+            >
+              <Trash2 size={16} />
+            </button>
           </div>
           <h2 className="text-lg sm:text-xl font-bold text-foreground">{selectedProject.name}</h2>
           <p className="text-sm text-[var(--rx-t2)] mt-1">{selectedProject.description}</p>
