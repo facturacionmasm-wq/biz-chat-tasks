@@ -311,10 +311,11 @@ serve(async (req) => {
         let sendResult: { ok: boolean; sid?: string; error?: string } = { ok: false, error: 'no_channel' };
 
         // ────────── Channel routing by notification_type ──────────
-        // reminder_24h  → EMAIL only (client)
-        // reminder_1h   → VOICE outbound call (client), fallback email if voice fails/unsupported
-        // staff_update  → EMAIL to staff (target_user_id)
-        // (unknown)     → email if available
+        // reminder_24h        → EMAIL only (client)
+        // reminder_1h         → VOICE outbound call (client), fallback email if voice fails
+        // staff_update        → EMAIL to staff (target_user_id)
+        // reminder_whatsapp / staff_whatsapp → WhatsApp (optional additional channel)
+        // (unknown)           → email if available
         if (notifType === 'reminder_1h') {
           if (!targetPhone) {
             await supabase.from('appointment_notifications').update({
