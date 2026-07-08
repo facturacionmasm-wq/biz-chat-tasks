@@ -62,6 +62,7 @@ const ProjectsPage = () => {
   const {
     projects: allProjects, tasks: allTasks, loading: dbLoading,
     createProject: dbCreateProject, updateProjectStatus: dbUpdateProjectStatus,
+    deleteProject: dbDeleteProject,
     createTask: dbCreateTask, updateTaskStatus: dbUpdateTaskStatus,
     deleteTask: dbDeleteTask, createMilestone: dbCreateMilestone,
     toggleMilestone: dbToggleMilestone, deleteMilestone: dbDeleteMilestone,

@@ -483,6 +483,7 @@ export function useProjectsPersistence() {
     loading,
     createProject,
     updateProjectStatus,
+    deleteProject,
     createTask,
     updateTaskStatus,
     deleteTask,
