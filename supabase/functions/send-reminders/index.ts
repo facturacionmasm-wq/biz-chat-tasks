@@ -21,6 +21,9 @@ serve(async (req) => {
   const TWILIO_AUTH_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN');
   const TWILIO_PHONE_NUMBER = Deno.env.get('TWILIO_PHONE_NUMBER');
   const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
+  // Optional: approved WhatsApp Content Template SID for reminders (bypasses 24h freeform window).
+  // Configure in Supabase secrets as WHATSAPP_REMINDER_CONTENT_SID (starts with HX...).
+  const WHATSAPP_REMINDER_CONTENT_SID = Deno.env.get('WHATSAPP_REMINDER_CONTENT_SID') || null;
 
   // Twilio is required for WhatsApp; email works independently via Resend.
   const twilioConfigured = !!(TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && TWILIO_PHONE_NUMBER);
@@ -176,7 +179,18 @@ serve(async (req) => {
           : fromWA;
 
         const phoneNorm = normalizeMxWA(phone);
-        if (tFromR) {
+        // Prefer approved template to bypass 24h freeform window (63016).
+        if (WHATSAPP_REMINDER_CONTENT_SID && tFromR) {
+          const vars = {
+            '1': (profile?.full_name || profile?.email || 'Hola').split(' ')[0],
+            '2': reminder.message || 'tu recordatorio',
+            '3': 'https://rybixholding.com',
+          };
+          sendResult = await sendWhatsAppTemplate(basicAuth, TWILIO_ACCOUNT_SID!, effectiveFromR, phoneNorm, WHATSAPP_REMINDER_CONTENT_SID, vars);
+          if (!sendResult.ok) {
+            sendResult = await sendWhatsApp(basicAuth, TWILIO_ACCOUNT_SID!, effectiveFromR, phoneNorm, reminderMsg);
+          }
+        } else if (tFromR) {
           sendResult = await sendWhatsApp(basicAuth, TWILIO_ACCOUNT_SID!, effectiveFromR, phoneNorm, reminderMsg);
           if (!sendResult.ok && tMsgSvcR) {
             sendResult = await sendWhatsAppWithMsgSvc(basicAuth, TWILIO_ACCOUNT_SID!, phoneNorm, reminderMsg, tMsgSvcR);
@@ -419,7 +433,22 @@ serve(async (req) => {
             ? (tFromN.startsWith('whatsapp:') ? tFromN : `whatsapp:${tFromN}`)
             : fromWA;
           const phoneNormN = normalizeMxWA(phoneN);
-          if (tFromN) {
+          // Prefer approved template to bypass 24h freeform window (63016).
+          if (WHATSAPP_REMINDER_CONTENT_SID && tFromN) {
+            const appt = apptMap.get(notif.appointment_id);
+            const startAt = appt?.start_at ? new Date(appt.start_at) : null;
+            const dateStr = startAt ? startAt.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }) : '';
+            const timeStr = startAt ? startAt.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }) : '';
+            const vars = {
+              '1': (appt?.contact_name || 'Hola').split(' ')[0],
+              '2': `tu cita${dateStr ? ` el ${dateStr}${timeStr ? ` a las ${timeStr}` : ''}` : ''}`,
+              '3': 'https://rybixholding.com',
+            };
+            sendResult = await sendWhatsAppTemplate(basicAuth, TWILIO_ACCOUNT_SID!, effectiveFromN, phoneNormN, WHATSAPP_REMINDER_CONTENT_SID, vars);
+            if (!sendResult.ok) {
+              sendResult = await sendWhatsApp(basicAuth, TWILIO_ACCOUNT_SID!, effectiveFromN, phoneNormN, messageBody);
+            }
+          } else if (tFromN) {
             sendResult = await sendWhatsApp(basicAuth, TWILIO_ACCOUNT_SID!, effectiveFromN, phoneNormN, messageBody);
             if (!sendResult.ok && tMsgSvcN) {
               sendResult = await sendWhatsAppWithMsgSvc(basicAuth, TWILIO_ACCOUNT_SID!, phoneNormN, messageBody, tMsgSvcN);
@@ -519,6 +548,35 @@ async function sendWhatsAppWithMsgSvc(basicAuth: string, accountSid: string, to:
     return { ok: false, error: err instanceof Error ? err.message : 'Unknown error' };
   }
 }
+
+// Send WhatsApp via an approved Twilio Content Template (ContentSid + ContentVariables).
+// Bypasses Meta's 24h freeform window (error 63016). Requires an APPROVED template.
+async function sendWhatsAppTemplate(
+  basicAuth: string, accountSid: string, from: string, to: string,
+  contentSid: string, variables: Record<string, string>,
+): Promise<{ ok: boolean; sid?: string; error?: string }> {
+  const toWA = to.startsWith('whatsapp:') ? to : `whatsapp:${to}`;
+  const fromWA = from.startsWith('whatsapp:') ? from : `whatsapp:${from}`;
+  try {
+    const params = new URLSearchParams({
+      From: fromWA, To: toWA,
+      ContentSid: contentSid,
+      ContentVariables: JSON.stringify(variables),
+    });
+    const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
+      method: 'POST',
+      headers: { Authorization: `Basic ${basicAuth}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+    });
+    const data = await res.json();
+    if (res.ok) return { ok: true, sid: data.sid };
+    return { ok: false, error: data.message || data.error_message || `Twilio error ${data.code}` };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : 'Unknown error' };
+  }
+}
+
+
 
 async function sendEmail(apiKey: string, to: string, subject: string, body: string): Promise<{ ok: boolean; sid?: string; error?: string }> {
   try {
