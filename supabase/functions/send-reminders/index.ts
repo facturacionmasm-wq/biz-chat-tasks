@@ -20,9 +20,12 @@ serve(async (req) => {
   const TWILIO_ACCOUNT_SID = Deno.env.get('TWILIO_ACCOUNT_SID');
   const TWILIO_AUTH_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN');
   const TWILIO_PHONE_NUMBER = Deno.env.get('TWILIO_PHONE_NUMBER');
+  const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
 
-  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_PHONE_NUMBER) {
-    return new Response(JSON.stringify({ error: 'Twilio not configured' }), {
+  // Twilio is required for WhatsApp; email works independently via Resend.
+  const twilioConfigured = !!(TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && TWILIO_PHONE_NUMBER);
+  if (!twilioConfigured && !RESEND_API_KEY) {
+    return new Response(JSON.stringify({ error: 'Neither Twilio nor Resend configured' }), {
       status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
