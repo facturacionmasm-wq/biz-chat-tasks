@@ -328,7 +328,7 @@ const OnboardingPage = () => {
       <div className="w-full max-w-4xl">
         <StepIndicator />
         <PlanSelectionPanel
-          tenantId={null /* resolved inside panel via ensure_tenant + get_user_tenant_id? no — pass explicit */ as any}
+          tenantId={tenantId}
           countryCode={selectedCountry?.code}
           variant="onboarding"
         />
