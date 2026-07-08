@@ -65,17 +65,16 @@ const ProtectedRoute = forwardRef<HTMLDivElement, RouteGuardProps>(({ children }
   // Super admins and the master tenant bypass all billing gates.
   const bypass = userRole === 'super_admin' || subscriptionStatus?.is_master_tenant;
   if (!bypass) {
-    // Paid-subscription gate. Never-paid tenants (no stripe_subscription_id yet)
-    // are sent to onboarding to complete Stripe checkout. Tenants that had a
-    // subscription but are now past_due / canceled / blocked go to /blocked.
+    // Paid-subscription gate. Any tenant without an active paid subscription
+    // is routed to /onboarding where the shared plan-selection panel handles
+    // the Stripe Checkout flow (with the 30-day satisfaction guarantee).
     const status = subscriptionStatus?.status;
-    const neverPaid = !subscriptionStatus?.stripe_subscription_id;
-    if (subscriptionStatus?.is_blocked || onboardingCompleted === false) {
-      if (neverPaid) return <Navigate to="/onboarding" replace />;
-      return <Navigate to="/blocked" replace />;
+    const hasPaid = subscriptionStatus?.has_paid_subscription;
+    if (subscriptionStatus?.is_blocked || onboardingCompleted === false || !hasPaid) {
+      return <Navigate to="/onboarding" replace />;
     }
     if (status && status !== 'active' && status !== 'trialing') {
-      return <Navigate to="/blocked" replace />;
+      return <Navigate to="/onboarding" replace />;
     }
   }
   return <>{children}</>;
@@ -100,8 +99,9 @@ const OnboardingRoute = forwardRef<HTMLDivElement, RouteGuardProps>(({ children 
   // Super admin / master tenant never need onboarding.
   const bypass = userRole === 'super_admin' || subscriptionStatus?.is_master_tenant;
   if (bypass) return <Navigate to="/" replace />;
-  // If the tenant already has an active paid subscription AND onboarding is done → app.
-  if (onboardingCompleted === true && subscriptionStatus?.has_paid_subscription) {
+  // Allow entry whenever there is no active paid subscription — even if
+  // onboarding was marked complete previously (trial ended, canceled, past_due).
+  if (subscriptionStatus?.has_paid_subscription && onboardingCompleted === true) {
     return <Navigate to="/" replace />;
   }
   return <>{children}</>;
@@ -112,7 +112,9 @@ const BlockedRoute = forwardRef<HTMLDivElement, RouteGuardProps>(({ children }, 
   const { user, loading, subscriptionStatus, userRole } = useAuth();
   if (loading) return null;
   if (!user) return <Navigate to="/auth" replace />;
-  if (userRole === 'super_admin' || !subscriptionStatus?.is_blocked) return <Navigate to="/" replace />;
+  if (userRole === 'super_admin' || subscriptionStatus?.is_master_tenant) return <Navigate to="/" replace />;
+  // Show the reactivation panel whenever there is no active paid subscription.
+  if (subscriptionStatus?.has_paid_subscription) return <Navigate to="/" replace />;
   return <>{children}</>;
 });
 BlockedRoute.displayName = 'BlockedRoute';

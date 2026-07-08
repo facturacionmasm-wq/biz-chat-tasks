@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { Loader2, Building2, Check, Sparkles, Zap, Shield, Globe, MapPin } from 'lucide-react';
 import SatisfactionGuaranteeBadge from '@/components/SatisfactionGuaranteeBadge';
+import PlanSelectionPanel from '@/components/PlanSelectionPanel';
 
 interface Plan {
   id: string;
@@ -85,39 +86,21 @@ const OnboardingPage = () => {
   const [step, setStep] = useState<'company' | 'country' | 'plan'>('company');
   const [companyName, setCompanyName] = useState('');
   const [selectedCountry, setSelectedCountry] = useState<CountryOption | null>(null);
-  const [plans, setPlans] = useState<Plan[]>([]);
-  const [localizedPrices, setLocalizedPrices] = useState<LocalizedPrice[]>([]);
-  const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
+  const [tenantId, setTenantId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [loadingPlans, setLoadingPlans] = useState(true);
-  const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
 
-  useEffect(() => {
-    const fetchPlans = async () => {
-      const { data } = await supabase
-        .from('subscription_plans')
-        .select('*')
-        .eq('active', true)
-        .order('sort_order');
-      if (data) setPlans(data as unknown as Plan[]);
-      setLoadingPlans(false);
-    };
-    fetchPlans();
-  }, []);
-
-  // If the tenant already has name + country (e.g. the user returned from a
-  // canceled Stripe checkout), skip straight to the plan step so they can
-  // complete payment without redoing the wizard.
+  // Prefetch tenant: skip straight to plan step if company + country already set.
   useEffect(() => {
     if (!user) return;
     (async () => {
       try {
-        const { data: tenantId } = await supabase.rpc('get_user_tenant_id', { _user_id: user.id });
-        if (!tenantId) return;
+        const { data: tid } = await supabase.rpc('get_user_tenant_id', { _user_id: user.id });
+        if (!tid) return;
+        setTenantId(tid as unknown as string);
         const { data: t } = await supabase
           .from('tenants')
           .select('name, country_code, region, currency, timezone')
-          .eq('id', tenantId)
+          .eq('id', tid as unknown as string)
           .maybeSingle();
         if (!t) return;
         const hasName = t.name && t.name.trim() && t.name !== 'Mi Empresa';
@@ -135,28 +118,6 @@ const OnboardingPage = () => {
     })();
   }, [user]);
 
-  // Fetch localized pricing when country changes
-  useEffect(() => {
-    if (!selectedCountry) return;
-    const fetchPricing = async () => {
-      const { data } = await supabase
-        .from('global_plan_pricing')
-        .select('plan_id, base_price, currency')
-        .eq('country_code', selectedCountry.code)
-        .eq('active', true);
-      setLocalizedPrices((data || []) as LocalizedPrice[]);
-    };
-    fetchPricing();
-  }, [selectedCountry]);
-
-  const getLocalizedPrice = (planId: string, fallbackPrice: number): { price: number; currency: string; symbol: string } => {
-    const local = localizedPrices.find(p => p.plan_id === planId);
-    if (local) {
-      return { price: local.base_price, currency: local.currency, symbol: CURRENCY_SYMBOLS[local.currency] || '$' };
-    }
-    const currency = selectedCountry?.currency || 'MXN';
-    return { price: fallbackPrice, currency, symbol: CURRENCY_SYMBOLS[currency] || '$' };
-  };
 
   const handleCompanySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -208,47 +169,9 @@ const OnboardingPage = () => {
     }
   };
 
-  const handlePlanSelect = async () => {
-    if (!selectedPlan || !user) return;
+  // Plan checkout is handled inside <PlanSelectionPanel />.
 
-    setLoading(true);
-    try {
-      // Ensure tenant/profile exist (idempotent) before invoking Stripe.
-      await supabase.rpc('ensure_tenant_for_current_user');
 
-      const chosen = plans.find(p => p.id === selectedPlan);
-      const { data: tenantId } = await supabase.rpc('get_user_tenant_id', { _user_id: user.id });
-      const { data: profileRow } = await supabase
-        .from('profiles').select('name').eq('user_id', user.id).maybeSingle();
-      const displayName = profileRow?.name
-        || user.user_metadata?.name
-        || (user.email ? user.email.split('@')[0] : 'Cliente');
-
-      if (!chosen || !tenantId) throw new Error('No se pudo resolver el plan o el tenant');
-
-      // Mandatory paid subscription — Stripe Checkout in mode=subscription.
-      // onboarding_completed is flipped by stripe-webhook on payment success.
-      const { data: checkout, error: checkoutErr } = await supabase.functions.invoke('stripe-billing', {
-        body: {
-          action: 'create_subscription_checkout',
-          tenant_id: tenantId,
-          email: user.email,
-          name: displayName,
-          plan_slug: chosen.slug,
-          plan_id: chosen.id,
-          billing_period: billingCycle,
-        },
-      });
-      if (checkoutErr) throw checkoutErr;
-      if (!checkout?.checkout_url) throw new Error('Stripe no devolvió una URL de checkout');
-
-      toast.success('Redirigiendo al pago seguro con Stripe…');
-      window.location.href = checkout.checkout_url;
-    } catch (err: any) {
-      toast.error(err.message || 'Error al iniciar el checkout');
-      setLoading(false);
-    }
-  };
 
 
   // ── Step indicators ──
@@ -399,151 +322,24 @@ const OnboardingPage = () => {
     );
   }
 
-  // ── STEP 3: Plan selection (with localized pricing) ──
+  // ── STEP 3: Plan selection (shared panel used also on /blocked reactivation) ──
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
+    <div className="min-h-screen bg-background flex items-start justify-center p-4 py-10">
       <div className="w-full max-w-4xl">
         <StepIndicator />
-        <div className="text-center mb-6">
-          <h1 className="rx-page-title">Elige tu plan</h1>
-          <p className="text-sm text-[var(--rx-t2)] mt-2">
-            Suscripción mensual, cancela cuando quieras. Se requiere método de pago para activar tu cuenta.
-          </p>
-          {selectedCountry && (
-            <p className="text-xs text-[var(--rx-t2)] mt-1 flex items-center justify-center gap-1">
-              <span>{selectedCountry.flag}</span> Precios en {selectedCountry.currency}
-            </p>
-          )}
-          <div className="flex items-center justify-center gap-2 mt-4">
-            <button
-              onClick={() => setBillingCycle('monthly')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                billingCycle === 'monthly'
-                  ? 'bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground'
-                  : 'bg-[var(--rx-s2)] text-[var(--rx-t2)] hover:text-foreground'
-              }`}
-            >
-              Mensual
-            </button>
-            <button
-              onClick={() => setBillingCycle('yearly')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                billingCycle === 'yearly'
-                  ? 'bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground'
-                  : 'bg-[var(--rx-s2)] text-[var(--rx-t2)] hover:text-foreground'
-              }`}
-            >
-              Anual <span className="text-emerald-500 ml-1">-17%</span>
-            </button>
-          </div>
-        </div>
-
-        {/* 30-day satisfaction guarantee — hero placement */}
-        <SatisfactionGuaranteeBadge className="mb-6" />
-
-
-        {loadingPlans ? (
-          <div className="flex justify-center py-12">
-            <Loader2 className="animate-spin text-[var(--rx-brand)]" size={32} />
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {plans.map((plan) => {
-              const Icon = PLAN_ICONS[plan.slug] || Sparkles;
-              const colorClass = PLAN_COLORS[plan.slug] || '';
-              const isSelected = selectedPlan === plan.id;
-              const localized = getLocalizedPrice(plan.id, plan.price_monthly);
-              const price = billingCycle === 'yearly' && plan.price_yearly
-                ? Math.round(localized.price * 0.83) // ~17% discount
-                : localized.price;
-
-              return (
-                <button
-                  key={plan.id}
-                  onClick={() => setSelectedPlan(plan.id)}
-                  className={`relative text-left p-6 rounded-xl border-2 transition-all ${colorClass} ${
-                    isSelected
-                      ? 'border-primary shadow-lg shadow-primary/10 scale-[1.02]'
-                      : 'hover:border-primary/30'
-                  }`}
-                >
-                  {plan.slug === 'pro' && (
-                    <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground text-[10px] font-bold px-3 py-0.5 rounded-full uppercase tracking-wider">
-                      Popular
-                    </span>
-                  )}
-
-                  <div className="flex items-center gap-2 mb-3">
-                    <Icon size={20} className="text-[var(--rx-brand)]" />
-                    <span className="font-bold text-foreground">{plan.name}</span>
-                  </div>
-
-                  <div className="mb-4">
-                    <span className="text-3xl font-bold text-foreground">{localized.symbol}{price.toLocaleString()}</span>
-                    <span className="text-xs text-[var(--rx-t2)]">/{billingCycle === 'yearly' ? 'mes' : 'mes'}</span>
-                    {billingCycle === 'yearly' && (
-                      <p className="text-[10px] text-[var(--rx-t2)] mt-0.5">
-                        {localized.symbol}{Math.round(price * 12).toLocaleString()}/año facturado anual
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="space-y-2 mb-4">
-                    {Object.entries(plan.features).map(([key, enabled]) => (
-                      <div key={key} className="flex items-center gap-2 text-xs">
-                        <Check
-                          size={14}
-                          className={enabled ? 'text-emerald-500' : 'text-[var(--rx-t2)]/30'}
-                        />
-                        <span className={enabled ? 'text-foreground' : 'text-[var(--rx-t2)]/50 line-through'}>
-                          {FEATURE_LABELS[key] || key}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="border-t border-[var(--rx-b1)] pt-3 space-y-1">
-                    {Object.entries(plan.limits).map(([key, value]) => (
-                      <p key={key} className="text-[11px] text-[var(--rx-t2)]">
-                        {LIMIT_LABELS[key] || key}:{' '}
-                        <span className="font-medium text-foreground">
-                          {value === -1 ? 'Ilimitado' : value}
-                        </span>
-                      </p>
-                    ))}
-                  </div>
-
-                  {isSelected && (
-                    <div className="absolute top-3 right-3 w-5 h-5 bg-[var(--rx-brand)] rounded-full flex items-center justify-center">
-                      <Check size={12} className="text-[var(--rx-brand)]-foreground" />
-                    </div>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        <div className="flex items-center justify-center gap-3 mt-8">
+        <PlanSelectionPanel
+          tenantId={tenantId}
+          countryCode={selectedCountry?.code}
+          variant="onboarding"
+        />
+        <div className="flex justify-center mt-4">
           <button
             onClick={() => setStep('country')}
-            className="px-4 py-3 rounded-lg border border-[var(--rx-b1)] text-sm font-medium text-[var(--rx-t2)] hover:text-foreground hover:bg-[var(--rx-s2)] transition-colors"
+            className="px-4 py-2 rounded-lg border border-[var(--rx-b1)] text-sm font-medium text-[var(--rx-t2)] hover:text-foreground hover:bg-[var(--rx-s2)] transition-colors"
           >
             Atrás
           </button>
-          <button
-            onClick={handlePlanSelect}
-            disabled={!selectedPlan || loading}
-            className="bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground font-medium text-sm px-8 py-3 rounded-lg hover:opacity-90 disabled:opacity-50 flex items-center gap-2"
-          >
-            {loading && <Loader2 size={16} className="animate-spin" />}
-            Continuar al pago seguro
-          </button>
         </div>
-
-        <p className="text-center text-[11px] text-[var(--rx-t2)] mt-3">
-          Pago procesado por Stripe. Cancela cuando quieras. Cobertura de garantía de 30 días.
-        </p>
       </div>
     </div>
   );
