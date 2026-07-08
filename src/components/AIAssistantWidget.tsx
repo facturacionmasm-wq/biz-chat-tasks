@@ -74,7 +74,7 @@ const AIAssistantWidget = () => {
     return (
       <button
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-primary text-primary-foreground shadow-lg hover:shadow-xl transition-all duration-300 flex items-center justify-center group hover:scale-105"
+        className="fixed bottom-[calc(var(--bottom-nav-height)+1.5rem)] sm:bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-primary text-primary-foreground shadow-lg hover:shadow-xl transition-all duration-300 flex items-center justify-center group hover:scale-105"
         aria-label="Abrir asistente virtual"
       >
         <Sparkles size={24} className="group-hover:rotate-12 transition-transform" />
