@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { Loader2, Building2, Check, Sparkles, Zap, Shield, Globe, MapPin } from 'lucide-react';
 import SatisfactionGuaranteeBadge from '@/components/SatisfactionGuaranteeBadge';
+import PlanSelectionPanel from '@/components/PlanSelectionPanel';
 
 interface Plan {
   id: string;
