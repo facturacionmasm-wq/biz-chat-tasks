@@ -844,6 +844,23 @@ const ProjectsPage = () => {
           );
         })}
       </div>
+
+      <AlertDialog open={!!deleteProjectTarget} onOpenChange={(open) => { if (!open) setDeleteProjectTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminar proyecto</AlertDialogTitle>
+            <AlertDialogDescription>
+              ¿Seguro que deseas eliminar el proyecto <strong>{deleteProjectTarget?.name}</strong>? Esto también borrará sus tareas, hitos, miembros y documentos asociados. Esta acción no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeleteProject} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
