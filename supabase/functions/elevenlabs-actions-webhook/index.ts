@@ -182,6 +182,20 @@ serve(async (req) => {
         break;
       }
 
+      case 'confirm_appointment':
+      case 'confirmar_cita': {
+        schedulingAction = 'confirm_appointment';
+        schedulingData.appointment_id = toolParams.appointment_id || dynamicVars.appointment_id || '';
+        if (!schedulingData.appointment_id) {
+          return jsonResp({
+            success: false,
+            message: 'Necesito el ID de la cita para confirmarla.',
+          });
+        }
+        break;
+      }
+
+
       case 'transfer_call':
       case 'transferir_llamada': {
         // Transfer is executed by redirecting the LIVE Twilio call (call_sid)
