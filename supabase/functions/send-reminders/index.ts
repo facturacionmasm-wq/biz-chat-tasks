@@ -549,6 +549,35 @@ async function sendWhatsAppWithMsgSvc(basicAuth: string, accountSid: string, to:
   }
 }
 
+// Send WhatsApp via an approved Twilio Content Template (ContentSid + ContentVariables).
+// Bypasses Meta's 24h freeform window (error 63016). Requires an APPROVED template.
+async function sendWhatsAppTemplate(
+  basicAuth: string, accountSid: string, from: string, to: string,
+  contentSid: string, variables: Record<string, string>,
+): Promise<{ ok: boolean; sid?: string; error?: string }> {
+  const toWA = to.startsWith('whatsapp:') ? to : `whatsapp:${to}`;
+  const fromWA = from.startsWith('whatsapp:') ? from : `whatsapp:${from}`;
+  try {
+    const params = new URLSearchParams({
+      From: fromWA, To: toWA,
+      ContentSid: contentSid,
+      ContentVariables: JSON.stringify(variables),
+    });
+    const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
+      method: 'POST',
+      headers: { Authorization: `Basic ${basicAuth}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+    });
+    const data = await res.json();
+    if (res.ok) return { ok: true, sid: data.sid };
+    return { ok: false, error: data.message || data.error_message || `Twilio error ${data.code}` };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : 'Unknown error' };
+  }
+}
+
+
+
 async function sendEmail(apiKey: string, to: string, subject: string, body: string): Promise<{ ok: boolean; sid?: string; error?: string }> {
   try {
     // Convert plain-text markdown-lite body (with * and \n) into simple HTML
