@@ -142,6 +142,10 @@ verify_jwt = false
 [functions.tmp-content-list]
 verify_jwt = false
 
+[functions.tmp-template-send]
+verify_jwt = false
+
+
 
 
 
