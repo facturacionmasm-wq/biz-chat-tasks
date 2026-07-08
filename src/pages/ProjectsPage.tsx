@@ -192,10 +192,18 @@ const ProjectsPage = () => {
     await dbDeleteMilestone(projectId, milestoneId);
   };
 
-  const handleDeleteProject = async (projectId: string, projectName: string) => {
-    if (!window.confirm(`¿Eliminar el proyecto "${projectName}"?\n\nEsto también eliminará sus tareas, hitos, miembros y documentos asociados. Esta acción no se puede deshacer.`)) return;
-    const ok = await dbDeleteProject(projectId);
-    if (ok) setSelectedProjectId(null);
+  const handleDeleteProject = (projectId: string, projectName: string) => {
+    setDeleteProjectTarget({ id: projectId, name: projectName });
+  };
+
+  const confirmDeleteProject = async () => {
+    if (!deleteProjectTarget) return;
+    const ok = await dbDeleteProject(deleteProjectTarget.id);
+    setDeleteProjectTarget(null);
+    if (ok) {
+      setSelectedProjectId(null);
+      toast.success('Proyecto eliminado');
+    }
   };
 
 
