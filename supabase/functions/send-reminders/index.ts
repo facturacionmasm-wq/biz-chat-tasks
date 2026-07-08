@@ -49,7 +49,7 @@ serve(async (req) => {
       console.log('claim_due_reminders RPC not available, using fallback query');
       const { data, error: fetchErr } = await supabase
         .from('reminders')
-        .select('id, user_id, tenant_id, message, remind_at, retry_count, max_retries, status, timezone')
+        .select('id, user_id, tenant_id, message, remind_at, retry_count, max_retries, status, timezone, channel, contact_phone, contact_email')
         .or('status.eq.pending,status.eq.failed')
         .lte('remind_at', now)
         .order('remind_at')
@@ -70,6 +70,16 @@ serve(async (req) => {
       }
     } else {
       reminders = claimed || [];
+      // Hydrate channel/contact fields (RPC may not return them)
+      if (reminders.length > 0) {
+        const { data: extra } = await supabase
+          .from('reminders')
+          .select('id, channel, contact_phone, contact_email')
+          .in('id', reminders.map((r: any) => r.id));
+        const extraMap = new Map<string, any>();
+        for (const e of (extra || [])) extraMap.set(e.id, e);
+        reminders = reminders.map((r: any) => ({ ...r, ...(extraMap.get(r.id) || {}) }));
+      }
     }
 
     console.log(`Processing ${reminders.length} user reminders`);
