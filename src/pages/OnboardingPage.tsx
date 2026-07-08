@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { Loader2, Building2, Check, Sparkles, Zap, Shield, Globe, MapPin } from 'lucide-react';
+import SatisfactionGuaranteeBadge from '@/components/SatisfactionGuaranteeBadge';
 
 interface Plan {
   id: string;
