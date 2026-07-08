@@ -124,23 +124,23 @@ serve(async (req) => {
       );
     }
 
-    // Format destination for Twilio WhatsApp (normalize MX format to +521 for mobile)
+    // Format destination for Twilio WhatsApp — MX defensive: strip legacy `1` after +52
     const normalizedTo = (() => {
       const raw = String(to || '').trim().replace(/\s+/g, '');
-      if (/^\+52\d{10}$/.test(raw) && !/^\+521\d{10}$/.test(raw)) return `+521${raw.slice(3)}`;
+      if (/^\+521\d{10}$/.test(raw)) return `+52${raw.slice(4)}`;
       return raw;
     })();
     const toWhatsApp = normalizedTo.startsWith("whatsapp:") ? normalizedTo : `whatsapp:${normalizedTo}`;
 
     const statusCallbackUrl = `${supabaseUrl}/functions/v1/whatsapp-webhook`;
 
-    // Build request params — prefer explicit tenant sender number to keep same WhatsApp session
+    // Prefer explicit From (avoids Messaging Service sender-pool issues like error 21703).
+    // Fall back to MessagingServiceSid only if no From is available.
     const twilioParams: Record<string, string> = {
       To: toWhatsApp,
       Body: body,
       StatusCallback: statusCallbackUrl,
     };
-
     if (fromNumber) {
       const fromWhatsApp = fromNumber.startsWith("whatsapp:") ? fromNumber : `whatsapp:${fromNumber}`;
       twilioParams.From = fromWhatsApp;
