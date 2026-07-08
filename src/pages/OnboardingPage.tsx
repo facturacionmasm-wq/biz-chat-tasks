@@ -537,12 +537,12 @@ const OnboardingPage = () => {
             className="bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground font-medium text-sm px-8 py-3 rounded-lg hover:opacity-90 disabled:opacity-50 flex items-center gap-2"
           >
             {loading && <Loader2 size={16} className="animate-spin" />}
-            Comenzar prueba gratuita de 15 días
+            Continuar al pago seguro
           </button>
         </div>
 
         <p className="text-center text-[11px] text-[var(--rx-t2)] mt-3">
-          No se requiere tarjeta de crédito durante el período de prueba.
+          Pago procesado por Stripe. Cancela cuando quieras. Cobertura de garantía de 30 días.
         </p>
       </div>
     </div>
