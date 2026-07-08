@@ -548,34 +548,14 @@ async function executeScheduleAppointment(
     }
   }
 
-  // 2. Schedule reminders: 1h and 15min before for BOTH parties
+  // 2. Schedule INTERNAL reminders (for the assigned employee / creator).
+  //    Client-facing reminders (24h + 1h) are auto-scheduled by the
+  //    `schedule_appointment_reminders` DB trigger on `appointments`.
   const reminder1h = new Date(startAt.getTime() - 60 * 60 * 1000);
   const reminder15m = new Date(startAt.getTime() - 15 * 60 * 1000);
   const now = new Date();
 
   const notificationsToInsert: any[] = [];
-
-  // Reminders for the contact (external)
-  if (finalContactPhone) {
-    if (reminder1h > now) {
-      notificationsToInsert.push({
-        appointment_id: apt.id, tenant_id: tenantId,
-        target_phone: finalContactPhone,
-        notification_type: 'reminder_1h', status: 'pending',
-        scheduled_at: reminder1h.toISOString(),
-        message_body: `⏰ *Recordatorio de cita — ${companyName}*\n\nHola *${contact_name}*, tu cita es en *1 hora*:\n\n📆 ${dateDisplay}\n⏰ ${timeDisplay}\n${service_type ? `📋 ${service_type}\n` : ''}\n¡Te esperamos! 😊`,
-      });
-    }
-    if (reminder15m > now) {
-      notificationsToInsert.push({
-        appointment_id: apt.id, tenant_id: tenantId,
-        target_phone: finalContactPhone,
-        notification_type: 'reminder_15m', status: 'pending',
-        scheduled_at: reminder15m.toISOString(),
-        message_body: `⏰ *¡Tu cita es en 15 minutos!*\n\nHola *${contact_name}*, tu cita con *${companyName}* es en 15 minutos.\n\n⏰ ${timeDisplay}\n${employee_name ? `👤 Con: ${employee_name}\n` : ''}\n¡Ya casi! 🙌`,
-      });
-    }
-  }
 
   // Reminders for the creator/employee (internal user)
   const creatorUserId = employeeId || userId || null;

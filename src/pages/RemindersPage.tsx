@@ -46,14 +46,16 @@ const RemindersPage = () => {
   const [creating, setCreating] = useState(false);
   const [newMessage, setNewMessage] = useState('');
   const [newWhen, setNewWhen] = useState('');
-  const [newChannel, setNewChannel] = useState<'whatsapp' | 'email' | ''>('');
+  const [newChannel, setNewChannel] = useState<'whatsapp' | 'email'>('whatsapp');
   const [newContact, setNewContact] = useState('');
+  const [newContactEmail, setNewContactEmail] = useState('');
 
   const resetCreate = () => {
     setNewMessage('');
     setNewWhen('');
-    setNewChannel('');
+    setNewChannel('whatsapp');
     setNewContact('');
+    setNewContactEmail('');
   };
 
   const handleCreate = async () => {
@@ -79,9 +81,10 @@ const RemindersPage = () => {
         retry_count: 0,
         max_retries: 3,
         timezone,
+        channel: newChannel,
       };
-      if (newChannel) payload.channel = newChannel;
-      if (newContact.trim()) payload.contact_phone = newContact.trim();
+      if (newChannel === 'whatsapp' && newContact.trim()) payload.contact_phone = newContact.trim();
+      if (newChannel === 'email' && newContactEmail.trim()) payload.contact_email = newContactEmail.trim();
 
       const { error } = await supabase.from('reminders').insert(payload as any);
       if (error) throw error;
@@ -334,19 +337,28 @@ const RemindersPage = () => {
               <Input id="rem-when" type="datetime-local" value={newWhen} onChange={(e) => setNewWhen(e.target.value)} />
             </div>
             <div className="space-y-1.5">
-              <Label>Canal (opcional)</Label>
+              <Label>Canal</Label>
               <Select value={newChannel} onValueChange={(v) => setNewChannel(v as any)}>
-                <SelectTrigger><SelectValue placeholder="Predeterminado" /></SelectTrigger>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="whatsapp">WhatsApp</SelectItem>
                   <SelectItem value="email">Email</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="rem-contact">Contacto (opcional)</Label>
-              <Input id="rem-contact" value={newContact} onChange={(e) => setNewContact(e.target.value)} placeholder="+52 55 1234 5678" />
-            </div>
+            {newChannel === 'whatsapp' ? (
+              <div className="space-y-1.5">
+                <Label htmlFor="rem-contact">Teléfono (opcional)</Label>
+                <Input id="rem-contact" value={newContact} onChange={(e) => setNewContact(e.target.value)} placeholder="+52 55 1234 5678" />
+                <p className="text-[11px] text-[var(--rx-t2)]">Si se deja vacío, se enviará a tu número personal.</p>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <Label htmlFor="rem-email">Email (opcional)</Label>
+                <Input id="rem-email" type="email" value={newContactEmail} onChange={(e) => setNewContactEmail(e.target.value)} placeholder="cliente@correo.com" />
+                <p className="text-[11px] text-[var(--rx-t2)]">Si se deja vacío, se enviará a tu correo.</p>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)} disabled={creating}>Cancelar</Button>

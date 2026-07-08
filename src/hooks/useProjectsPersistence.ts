@@ -342,6 +342,30 @@ export function useProjectsPersistence() {
     );
   }, [ensureTenant, tasks]);
 
+  const deleteProject = useCallback(async (projectId: string) => {
+    const activeTenantId = await ensureTenant();
+    if (!activeTenantId) return false;
+
+    const { data, error } = await supabase
+      .from('projects')
+      .delete()
+      .eq('id', projectId)
+      .eq('tenant_id', activeTenantId)
+      .select('id')
+      .maybeSingle();
+
+    if (error || !data) {
+      console.error('Error deleting project:', error);
+      toast.error('No se pudo eliminar el proyecto');
+      return false;
+    }
+
+    setProjects((prev) => prev.filter((p) => p.id !== projectId));
+    setTasks((prev) => prev.filter((t) => t.projectId !== projectId));
+    toast.success('Proyecto eliminado');
+    return true;
+  }, [ensureTenant]);
+
   const deleteTask = useCallback(async (taskId: string) => {
     const activeTenantId = await ensureTenant();
     if (!activeTenantId) return;
@@ -459,6 +483,7 @@ export function useProjectsPersistence() {
     loading,
     createProject,
     updateProjectStatus,
+    deleteProject,
     createTask,
     updateTaskStatus,
     deleteTask,

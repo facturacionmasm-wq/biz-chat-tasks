@@ -62,6 +62,7 @@ const ProjectsPage = () => {
   const {
     projects: allProjects, tasks: allTasks, loading: dbLoading,
     createProject: dbCreateProject, updateProjectStatus: dbUpdateProjectStatus,
+    deleteProject: dbDeleteProject,
     createTask: dbCreateTask, updateTaskStatus: dbUpdateTaskStatus,
     deleteTask: dbDeleteTask, createMilestone: dbCreateMilestone,
     toggleMilestone: dbToggleMilestone, deleteMilestone: dbDeleteMilestone,
@@ -185,6 +186,13 @@ const ProjectsPage = () => {
   const handleDeleteMilestone = async (projectId: string, milestoneId: string) => {
     await dbDeleteMilestone(projectId, milestoneId);
   };
+
+  const handleDeleteProject = async (projectId: string, projectName: string) => {
+    if (!window.confirm(`¿Eliminar el proyecto "${projectName}"?\n\nEsto también eliminará sus tareas, hitos, miembros y documentos asociados. Esta acción no se puede deshacer.`)) return;
+    const ok = await dbDeleteProject(projectId);
+    if (ok) setSelectedProjectId(null);
+  };
+
 
   const handleChangeProjectStatus = async (projectId: string, newStatus: string) => {
     await dbUpdateProjectStatus(projectId, newStatus);
@@ -400,6 +408,13 @@ const ProjectsPage = () => {
                 <option key={s} value={s}>{statusLabels[s].label}</option>
               ))}
             </select>
+            <button
+              onClick={() => handleDeleteProject(selectedProject.id, selectedProject.name)}
+              className="ml-auto p-1.5 rounded-lg text-[var(--rx-t2)] hover:text-[var(--rx-rose)] hover:bg-destructive/10 transition-colors"
+              title="Eliminar proyecto"
+            >
+              <Trash2 size={16} />
+            </button>
           </div>
           <h2 className="text-lg sm:text-xl font-bold text-foreground">{selectedProject.name}</h2>
           <p className="text-sm text-[var(--rx-t2)] mt-1">{selectedProject.description}</p>

@@ -27,6 +27,7 @@ export type Database = {
           scheduled_at: string
           sent_at: string | null
           status: string
+          target_email: string | null
           target_phone: string | null
           target_user_id: string | null
           tenant_id: string
@@ -43,6 +44,7 @@ export type Database = {
           scheduled_at: string
           sent_at?: string | null
           status?: string
+          target_email?: string | null
           target_phone?: string | null
           target_user_id?: string | null
           tenant_id: string
@@ -59,6 +61,7 @@ export type Database = {
           scheduled_at?: string
           sent_at?: string | null
           status?: string
+          target_email?: string | null
           target_phone?: string | null
           target_user_id?: string | null
           tenant_id?: string
@@ -3239,6 +3242,9 @@ export type Database = {
       }
       reminders: {
         Row: {
+          channel: string
+          contact_email: string | null
+          contact_phone: string | null
           created_at: string
           error_message: string | null
           id: string
@@ -3254,6 +3260,9 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          channel?: string
+          contact_email?: string | null
+          contact_phone?: string | null
           created_at?: string
           error_message?: string | null
           id?: string
@@ -3269,6 +3278,9 @@ export type Database = {
           user_id: string
         }
         Update: {
+          channel?: string
+          contact_email?: string | null
+          contact_phone?: string | null
           created_at?: string
           error_message?: string | null
           id?: string

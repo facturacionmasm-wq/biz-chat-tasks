@@ -20,9 +20,12 @@ serve(async (req) => {
   const TWILIO_ACCOUNT_SID = Deno.env.get('TWILIO_ACCOUNT_SID');
   const TWILIO_AUTH_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN');
   const TWILIO_PHONE_NUMBER = Deno.env.get('TWILIO_PHONE_NUMBER');
+  const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
 
-  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_PHONE_NUMBER) {
-    return new Response(JSON.stringify({ error: 'Twilio not configured' }), {
+  // Twilio is required for WhatsApp; email works independently via Resend.
+  const twilioConfigured = !!(TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && TWILIO_PHONE_NUMBER);
+  if (!twilioConfigured && !RESEND_API_KEY) {
+    return new Response(JSON.stringify({ error: 'Neither Twilio nor Resend configured' }), {
       status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
@@ -31,8 +34,10 @@ serve(async (req) => {
 
   try {
     const now = new Date().toISOString();
-    const basicAuth = btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`);
-    const fromWA = TWILIO_PHONE_NUMBER.startsWith('whatsapp:') ? TWILIO_PHONE_NUMBER : `whatsapp:${TWILIO_PHONE_NUMBER}`;
+    const basicAuth = twilioConfigured ? btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`) : '';
+    const fromWA = twilioConfigured
+      ? (TWILIO_PHONE_NUMBER!.startsWith('whatsapp:') ? TWILIO_PHONE_NUMBER! : `whatsapp:${TWILIO_PHONE_NUMBER}`)
+      : '';
 
     // ============================================================
     // PART 1: Process regular user reminders (existing logic)
@@ -44,7 +49,7 @@ serve(async (req) => {
       console.log('claim_due_reminders RPC not available, using fallback query');
       const { data, error: fetchErr } = await supabase
         .from('reminders')
-        .select('id, user_id, tenant_id, message, remind_at, retry_count, max_retries, status, timezone')
+        .select('id, user_id, tenant_id, message, remind_at, retry_count, max_retries, status, timezone, channel, contact_phone, contact_email')
         .or('status.eq.pending,status.eq.failed')
         .lte('remind_at', now)
         .order('remind_at')
@@ -65,14 +70,24 @@ serve(async (req) => {
       }
     } else {
       reminders = claimed || [];
+      // Hydrate channel/contact fields (RPC may not return them)
+      if (reminders.length > 0) {
+        const { data: extra } = await supabase
+          .from('reminders')
+          .select('id, channel, contact_phone, contact_email')
+          .in('id', reminders.map((r: any) => r.id));
+        const extraMap = new Map<string, any>();
+        for (const e of (extra || [])) extraMap.set(e.id, e);
+        reminders = reminders.map((r: any) => ({ ...r, ...(extraMap.get(r.id) || {}) }));
+      }
     }
 
     console.log(`Processing ${reminders.length} user reminders`);
 
     // Batch-fetch profiles for user reminders
     const userIds = [...new Set(reminders.map((r: any) => r.user_id))];
-    const { data: profiles } = userIds.length > 0 
-      ? await supabase.from('profiles').select('user_id, tenant_id, name, whatsapp_number').in('user_id', userIds)
+    const { data: profiles } = userIds.length > 0
+      ? await supabase.from('profiles').select('user_id, tenant_id, name, whatsapp_number, email').in('user_id', userIds)
       : { data: [] };
 
     const profileMap = new Map<string, any>();
@@ -97,74 +112,109 @@ serve(async (req) => {
 
     for (const reminder of reminders) {
       const profile = profileMap.get(`${reminder.user_id}|${reminder.tenant_id}`);
-
-      if (!profile?.whatsapp_number) {
-        await supabase.from('reminders').update({ 
-          status: 'no_phone', sent_at: now,
-          error_message: 'El usuario no tiene número de WhatsApp configurado',
-        }).eq('id', reminder.id);
-        results.push({ id: reminder.id, status: 'no_phone' });
-        continue;
-      }
-
-      const phone = profile.whatsapp_number.replace(/\s/g, '');
-      if (!/^\+?\d{10,15}$/.test(phone.replace('whatsapp:', ''))) {
-        await supabase.from('reminders').update({ 
-          status: 'failed', error_message: `Número inválido: ${phone}`,
-          retry_count: (reminder.retry_count || 0) + 1,
-        }).eq('id', reminder.id);
-        results.push({ id: reminder.id, status: 'invalid_phone' });
-        continue;
-      }
-
-      const reminderMsg = `⏰ *Recordatorio de Aria*\n\n${reminder.message}\n\n_Este recordatorio fue programado por ti._`;
-
-      // Resolve sender per-tenant (mirrors Part 2, lines 224-240)
-      const waR = tenantConfigMapR.get(reminder.tenant_id) as Record<string, any> | null;
-      const tFromR = waR?.phone_number ? String(waR.phone_number).replace(/^whatsapp:/i, '') : null;
-      const tMsgSvcR = waR?.messaging_service_sid ? String(waR.messaging_service_sid).trim() : null;
-      const effectiveFromR = tFromR
-        ? (tFromR.startsWith('whatsapp:') ? tFromR : `whatsapp:${tFromR}`)
-        : fromWA;
+      const channel: 'whatsapp' | 'email' = reminder.channel === 'email' ? 'email' : 'whatsapp';
 
       let sendResult: { ok: boolean; sid?: string; error?: string };
-      if (tMsgSvcR) {
-        sendResult = await sendWhatsAppWithMsgSvc(basicAuth, TWILIO_ACCOUNT_SID, phone, reminderMsg, tMsgSvcR);
-        if (!sendResult.ok) {
-          sendResult = await sendWhatsApp(basicAuth, TWILIO_ACCOUNT_SID, effectiveFromR, phone, reminderMsg);
+      const reminderMsg = `⏰ *Recordatorio de Aria*\n\n${reminder.message}\n\n_Este recordatorio fue programado por ti._`;
+
+      if (channel === 'email') {
+        const toEmail = (reminder.contact_email && String(reminder.contact_email).trim()) || profile?.email;
+        if (!toEmail) {
+          await supabase.from('reminders').update({
+            status: 'no_phone', sent_at: now,
+            error_message: 'No hay email disponible para enviar el recordatorio',
+          }).eq('id', reminder.id);
+          results.push({ id: reminder.id, status: 'no_email' });
+          continue;
         }
+        if (!RESEND_API_KEY) {
+          await supabase.from('reminders').update({
+            status: 'failed', error_message: 'Resend no está configurado',
+            retry_count: (reminder.retry_count || 0) + 1,
+          }).eq('id', reminder.id);
+          results.push({ id: reminder.id, status: 'failed', error: 'resend_missing' });
+          continue;
+        }
+        sendResult = await sendEmail(RESEND_API_KEY, toEmail, 'Recordatorio', reminder.message);
       } else {
-        sendResult = await sendWhatsApp(basicAuth, TWILIO_ACCOUNT_SID, effectiveFromR, phone, reminderMsg);
+        // WhatsApp path
+        const targetPhone = (reminder.contact_phone && String(reminder.contact_phone).trim()) || profile?.whatsapp_number;
+        if (!targetPhone) {
+          await supabase.from('reminders').update({
+            status: 'no_phone', sent_at: now,
+            error_message: 'El usuario no tiene número de WhatsApp configurado',
+          }).eq('id', reminder.id);
+          results.push({ id: reminder.id, status: 'no_phone' });
+          continue;
+        }
+
+        const phone = String(targetPhone).replace(/\s/g, '');
+        if (!/^\+?\d{10,15}$/.test(phone.replace('whatsapp:', ''))) {
+          await supabase.from('reminders').update({
+            status: 'failed', error_message: `Número inválido: ${phone}`,
+            retry_count: (reminder.retry_count || 0) + 1,
+          }).eq('id', reminder.id);
+          results.push({ id: reminder.id, status: 'invalid_phone' });
+          continue;
+        }
+
+        if (!twilioConfigured) {
+          await supabase.from('reminders').update({
+            status: 'failed', error_message: 'Twilio no está configurado',
+            retry_count: (reminder.retry_count || 0) + 1,
+          }).eq('id', reminder.id);
+          results.push({ id: reminder.id, status: 'failed', error: 'twilio_missing' });
+          continue;
+        }
+
+        // Resolve sender per-tenant
+        const waR = tenantConfigMapR.get(reminder.tenant_id) as Record<string, any> | null;
+        const tFromR = waR?.phone_number ? String(waR.phone_number).replace(/^whatsapp:/i, '') : null;
+        const tMsgSvcR = waR?.messaging_service_sid ? String(waR.messaging_service_sid).trim() : null;
+        const effectiveFromR = tFromR
+          ? (tFromR.startsWith('whatsapp:') ? tFromR : `whatsapp:${tFromR}`)
+          : fromWA;
+
+        if (tMsgSvcR) {
+          sendResult = await sendWhatsAppWithMsgSvc(basicAuth, TWILIO_ACCOUNT_SID!, phone, reminderMsg, tMsgSvcR);
+          if (!sendResult.ok) {
+            sendResult = await sendWhatsApp(basicAuth, TWILIO_ACCOUNT_SID!, effectiveFromR, phone, reminderMsg);
+          }
+        } else {
+          sendResult = await sendWhatsApp(basicAuth, TWILIO_ACCOUNT_SID!, effectiveFromR, phone, reminderMsg);
+        }
+
+        // Save to WhatsApp messages on success
+        if (sendResult.ok && profile?.whatsapp_number) {
+          try {
+            const { data: conv } = await supabase.from('whatsapp_conversations').select('id')
+              .eq('contact_phone', profile.whatsapp_number).eq('tenant_id', reminder.tenant_id)
+              .neq('status', 'closed').limit(1).maybeSingle();
+            if (conv) {
+              await supabase.from('whatsapp_messages').insert({
+                tenant_id: reminder.tenant_id, conversation_id: conv.id,
+                direction: 'out', body: reminderMsg, status: 'sent',
+                metadata: { provider: 'reminder', reminder_id: reminder.id, message_sid: sendResult.sid },
+              });
+            }
+          } catch (convErr) {
+            console.error(`Warning: couldn't save to conversation:`, convErr);
+          }
+        }
       }
 
       if (sendResult.ok) {
         sentCount++;
-        console.log(`✅ Reminder sent to ${profile.name}: "${reminder.message}" (id=${reminder.id})`);
+        console.log(`✅ Reminder sent (${channel}) id=${reminder.id}`);
         await supabase.from('reminders').update({ status: 'sent', sent_at: now, error_message: null }).eq('id', reminder.id);
-
-        // Save to WhatsApp messages
-        try {
-          const { data: conv } = await supabase.from('whatsapp_conversations').select('id')
-            .eq('contact_phone', profile.whatsapp_number).eq('tenant_id', reminder.tenant_id)
-            .neq('status', 'closed').limit(1).maybeSingle();
-          if (conv) {
-            await supabase.from('whatsapp_messages').insert({
-              tenant_id: reminder.tenant_id, conversation_id: conv.id,
-              direction: 'out', body: reminderMsg, status: 'sent',
-              metadata: { provider: 'reminder', reminder_id: reminder.id, message_sid: sendResult.sid },
-            });
-          }
-        } catch (convErr) {
-          console.error(`Warning: couldn't save to conversation:`, convErr);
-        }
-        results.push({ id: reminder.id, status: 'sent', sid: sendResult.sid });
+        results.push({ id: reminder.id, status: 'sent', channel, sid: sendResult.sid });
       } else {
         const newRetryCount = (reminder.retry_count || 0) + 1;
         const maxRetries = reminder.max_retries || 3;
         const isFinalFailure = newRetryCount >= maxRetries;
         const nextRetryAt = isFinalFailure ? undefined : new Date(Date.now() + getNextRetryDelay(newRetryCount) * 60000).toISOString();
 
-        await supabase.from('reminders').update({ 
+        await supabase.from('reminders').update({
           status: isFinalFailure ? 'failed' : 'pending',
           error_message: sendResult.error, retry_count: newRetryCount,
           ...(nextRetryAt ? { remind_at: nextRetryAt } : {}),
@@ -178,7 +228,7 @@ serve(async (req) => {
     // ============================================================
     const { data: apptNotifs, error: apptErr } = await supabase
       .from('appointment_notifications')
-      .select('id, appointment_id, tenant_id, target_phone, target_user_id, notification_type, message_body, status')
+      .select('id, appointment_id, tenant_id, target_phone, target_email, target_user_id, notification_type, message_body, status')
       .in('status', ['pending'])
       .lte('scheduled_at', now)
       .order('scheduled_at')
@@ -234,38 +284,50 @@ serve(async (req) => {
           continue;
         }
 
-        // Determine target phone
+        // Determine target phone / email
         let targetPhone: string | null = notif.target_phone;
+        let targetEmail: string | null = notif.target_email || null;
         if (!targetPhone && notif.target_user_id) {
           const profile = notifProfileMap.get(`${notif.target_user_id}|${notif.tenant_id}`);
           targetPhone = profile?.whatsapp_number || profile?.phone || null;
         }
 
-        if (!targetPhone) {
-          await supabase.from('appointment_notifications').update({ 
-            status: 'no_phone', error_message: 'No phone number available',
+        if (!targetPhone && !targetEmail) {
+          await supabase.from('appointment_notifications').update({
+            status: 'no_phone', error_message: 'No phone or email available',
           }).eq('id', notif.id);
           results.push({ id: notif.id, type: 'appt_notif', status: 'no_phone' });
           continue;
         }
 
-        // Get tenant-specific from number
-        const waConfig = tenantConfigMap.get(notif.tenant_id) as Record<string, any> | null;
-        const tenantFromNum = waConfig?.phone_number ? String(waConfig.phone_number).replace(/^whatsapp:/i, '') : null;
-        const tenantMsgSvc = waConfig?.messaging_service_sid ? String(waConfig.messaging_service_sid).trim() : null;
-        const effectiveFrom = tenantFromNum ? (tenantFromNum.startsWith('whatsapp:') ? tenantFromNum : `whatsapp:${tenantFromNum}`) : fromWA;
-
         const messageBody = notif.message_body || `⏰ Recordatorio de tu cita programada.`;
+        let sendResult: { ok: boolean; sid?: string; error?: string } = { ok: false, error: 'no_channel' };
 
-        // Try sending with MessagingServiceSid first, then fallback
-        let sendResult: { ok: boolean; sid?: string; error?: string };
-        if (tenantMsgSvc) {
-          sendResult = await sendWhatsAppWithMsgSvc(basicAuth, TWILIO_ACCOUNT_SID, targetPhone, messageBody, tenantMsgSvc);
-          if (!sendResult.ok) {
-            sendResult = await sendWhatsApp(basicAuth, TWILIO_ACCOUNT_SID, effectiveFrom, targetPhone, messageBody);
+        // Prefer WhatsApp when phone available and Twilio configured
+        if (targetPhone && twilioConfigured) {
+          const waConfig = tenantConfigMap.get(notif.tenant_id) as Record<string, any> | null;
+          const tenantFromNum = waConfig?.phone_number ? String(waConfig.phone_number).replace(/^whatsapp:/i, '') : null;
+          const tenantMsgSvc = waConfig?.messaging_service_sid ? String(waConfig.messaging_service_sid).trim() : null;
+          const effectiveFrom = tenantFromNum ? (tenantFromNum.startsWith('whatsapp:') ? tenantFromNum : `whatsapp:${tenantFromNum}`) : fromWA;
+
+          if (tenantMsgSvc) {
+            sendResult = await sendWhatsAppWithMsgSvc(basicAuth, TWILIO_ACCOUNT_SID!, targetPhone, messageBody, tenantMsgSvc);
+            if (!sendResult.ok) {
+              sendResult = await sendWhatsApp(basicAuth, TWILIO_ACCOUNT_SID!, effectiveFrom, targetPhone, messageBody);
+            }
+          } else {
+            sendResult = await sendWhatsApp(basicAuth, TWILIO_ACCOUNT_SID!, effectiveFrom, targetPhone, messageBody);
           }
-        } else {
-          sendResult = await sendWhatsApp(basicAuth, TWILIO_ACCOUNT_SID, effectiveFrom, targetPhone, messageBody);
+        }
+
+        // Fallback / primary email path
+        if (!sendResult.ok && targetEmail && RESEND_API_KEY) {
+          const subject = notif.notification_type === 'reminder_1h'
+            ? 'Tu cita es en 1 hora'
+            : notif.notification_type === 'reminder_24h'
+              ? 'Recordatorio de tu cita para mañana'
+              : 'Recordatorio de tu cita';
+          sendResult = await sendEmail(RESEND_API_KEY, targetEmail, subject, messageBody);
         }
 
         if (sendResult.ok) {
@@ -273,7 +335,7 @@ serve(async (req) => {
           await supabase.from('appointment_notifications').update({
             status: 'sent', sent_at: now,
           }).eq('id', notif.id);
-          console.log(`✅ Appt notification sent: type=${notif.notification_type} to=${targetPhone}`);
+          console.log(`✅ Appt notification sent: type=${notif.notification_type} to=${targetPhone || targetEmail}`);
           results.push({ id: notif.id, type: 'appt_notif', status: 'sent' });
         } else {
           await supabase.from('appointment_notifications').update({
@@ -333,6 +395,34 @@ async function sendWhatsAppWithMsgSvc(basicAuth: string, accountSid: string, to:
     const data = await res.json();
     if (res.ok) return { ok: true, sid: data.sid };
     return { ok: false, error: data.message || data.error_message || `Twilio error ${data.code}` };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : 'Unknown error' };
+  }
+}
+
+async function sendEmail(apiKey: string, to: string, subject: string, body: string): Promise<{ ok: boolean; sid?: string; error?: string }> {
+  try {
+    // Convert plain-text markdown-lite body (with * and \n) into simple HTML
+    const html = body
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/\*(.+?)\*/g, '<strong>$1</strong>')
+      .replace(/\n/g, '<br/>');
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: 'Recordatorios <onboarding@resend.dev>',
+        to: [to],
+        subject,
+        html: `<div style="font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; font-size: 15px; color: #111; line-height: 1.5;">${html}</div>`,
+      }),
+    });
+    const data = await res.json();
+    if (res.ok) return { ok: true, sid: data.id };
+    return { ok: false, error: data?.message || `Resend error ${res.status}` };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : 'Unknown error' };
   }
