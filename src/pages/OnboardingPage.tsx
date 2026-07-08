@@ -182,36 +182,9 @@ const OnboardingPage = () => {
 
     setLoading(true);
     try {
-      // Ensure tenant/profile exist (idempotent) so the subsequent updates persist.
+      // Ensure tenant/profile exist (idempotent) before invoking Stripe.
       await supabase.rpc('ensure_tenant_for_current_user');
 
-      // Activate (or create) the 15-day trial via a security-definer RPC.
-      const { error: subError } = await supabase.rpc(
-        'activate_trial_for_current_user',
-        { _plan_id: selectedPlan },
-      );
-      if (subError) throw subError;
-
-      // Upsert to guarantee the row exists and onboarding flag persists.
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .upsert(
-          { user_id: user.id, onboarding_completed: true } as any,
-          { onConflict: 'user_id' },
-        );
-      if (profileError) throw profileError;
-
-      // Verify the flag actually persisted (RLS/row-missing safety net).
-      const { data: check } = await supabase
-        .from('profiles')
-        .select('onboarding_completed')
-        .eq('user_id', user.id)
-        .maybeSingle();
-      if (!check?.onboarding_completed) {
-        throw new Error('No se pudo guardar el estado de onboarding. Intenta de nuevo.');
-      }
-
-      // Resolve slug + tenant to link a real Stripe subscription with the trial.
       const chosen = plans.find(p => p.id === selectedPlan);
       const { data: tenantId } = await supabase.rpc('get_user_tenant_id', { _user_id: user.id });
       const { data: profileRow } = await supabase
@@ -220,47 +193,28 @@ const OnboardingPage = () => {
         || user.user_metadata?.name
         || (user.email ? user.email.split('@')[0] : 'Cliente');
 
+      if (!chosen || !tenantId) throw new Error('No se pudo resolver el plan o el tenant');
 
-      if (chosen && tenantId) {
-        // 1) Create the Stripe-side subscription in trialing state — auto-charge
-        //    will fire when the trial ends.
-        const { error: trialErr } = await supabase.functions.invoke('stripe-billing', {
-          body: {
-            action: 'create_trial_subscription',
-            tenant_id: tenantId,
-            email: user.email,
-            name: displayName,
-            plan_slug: chosen.slug,
-          },
-        });
-        if (trialErr) console.warn('[Onboarding] create_trial_subscription failed:', trialErr);
+      // Mandatory paid subscription — Stripe Checkout in mode=subscription.
+      // onboarding_completed is flipped by stripe-webhook on payment success.
+      const { data: checkout, error: checkoutErr } = await supabase.functions.invoke('stripe-billing', {
+        body: {
+          action: 'create_subscription_checkout',
+          tenant_id: tenantId,
+          email: user.email,
+          name: displayName,
+          plan_slug: chosen.slug,
+          plan_id: chosen.id,
+          billing_period: billingCycle,
+        },
+      });
+      if (checkoutErr) throw checkoutErr;
+      if (!checkout?.checkout_url) throw new Error('Stripe no devolvió una URL de checkout');
 
-        // 2) Redirect to Stripe Checkout (mode=setup) to VERIFY a real card
-        //    via SetupIntent. On success Stripe sets it as default PM and the
-        //    trial-end invoice charges automatically.
-        const { data: setup, error: setupErr } = await supabase.functions.invoke('stripe-billing', {
-          body: {
-            action: 'create_setup_session',
-            tenant_id: tenantId,
-            email: user.email,
-            name: displayName,
-            service_type: 'onboarding',
-            return_to: '/',
-          },
-        });
-        if (!setupErr && setup?.checkout_url) {
-          toast.success('¡Plan activado! Verifica tu método de pago.');
-          window.location.href = setup.checkout_url;
-          return;
-        }
-        console.warn('[Onboarding] create_setup_session failed, continuing:', setupErr);
-      }
-
-      toast.success('¡Bienvenido! Tu prueba de 15 días ha comenzado.');
-      window.location.replace('/');
+      toast.success('Redirigiendo al pago seguro con Stripe…');
+      window.location.href = checkout.checkout_url;
     } catch (err: any) {
-      toast.error(err.message || 'Error al activar plan');
-    } finally {
+      toast.error(err.message || 'Error al iniciar el checkout');
       setLoading(false);
     }
   };

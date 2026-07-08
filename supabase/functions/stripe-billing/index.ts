@@ -44,7 +44,7 @@ serve(async (req) => {
 
   try {
     const body = await req.json();
-    const { action, tenant_id, email, name, plan_slug, currency: reqCurrency, package_id, service_type, secret_key, return_to } = body;
+    const { action, tenant_id, email, name, plan_slug, plan_id, billing_period, currency: reqCurrency, package_id, service_type, secret_key, return_to } = body;
 
     switch (action) {
       // ============================================
@@ -1245,6 +1245,149 @@ serve(async (req) => {
         return new Response(JSON.stringify({ ok: true, invoice_item_id: item?.id }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
+      }
+
+      // ============================================
+      // CREATE SUBSCRIPTION CHECKOUT (mode=subscription)
+      // Obligatory paid subscription at onboarding — no free trial.
+      // ============================================
+      case 'create_subscription_checkout': {
+        if (!tenant_id || !email || (!plan_slug && !plan_id)) {
+          return new Response(JSON.stringify({ error: 'tenant_id, email and plan_slug (or plan_id) required' }), {
+            status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Load plan
+        const planQuery = plan_id
+          ? supabase.from('subscription_plans').select('*').eq('id', plan_id).maybeSingle()
+          : supabase.from('subscription_plans').select('*').eq('slug', plan_slug).maybeSingle();
+        const { data: plan } = await planQuery;
+        if (!plan) throw new Error(`Plan not found: ${plan_slug || plan_id}`);
+
+        const { data: tInfo } = await supabase
+          .from('tenants')
+          .select('currency, country_code, region')
+          .eq('id', tenant_id)
+          .maybeSingle();
+
+        const country = tInfo?.country_code || 'MX';
+        const region = tInfo?.region || 'LATAM';
+        const interval = billing_period === 'yearly' ? 'year' : 'month';
+
+        // Localized monthly base_price for this plan/country
+        const { data: local } = await supabase
+          .from('global_plan_pricing')
+          .select('base_price, currency')
+          .eq('country_code', country)
+          .eq('plan_id', plan.id)
+          .eq('active', true)
+          .maybeSingle();
+
+        const fallbackMonthly = (local?.base_price ?? plan.price_monthly) || 0;
+        const monthlyAmount = Math.round(fallbackMonthly * 100);
+        // Yearly: use plan.price_yearly if set; otherwise 12x monthly with ~17% discount
+        const yearlyBase = plan.price_yearly ?? Math.round(fallbackMonthly * 12 * 0.83);
+        const yearlyAmount = Math.round(yearlyBase * 100);
+        const priceAmount = interval === 'year' ? yearlyAmount : monthlyAmount;
+        const priceCurrency = (local?.currency || tInfo?.currency || 'usd').toLowerCase();
+
+        if (priceAmount <= 0) {
+          return new Response(JSON.stringify({ error: 'Plan has no billable price configured' }), {
+            status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Ensure product + recurring price exist in Stripe for this plan+currency+interval
+        const products = await stripeRequest('/products?active=true&limit=100', 'GET', undefined, STRIPE_RESTRICTED_API_KEY);
+        let product = products.data.find((p: any) =>
+          p.metadata?.type === 'officehub_plan' && p.metadata?.plan_slug === plan.slug);
+        if (!product) {
+          product = await stripeRequest('/products', 'POST', {
+            name: `OfficeHub - Plan ${plan.name}`,
+            'metadata[type]': 'officehub_plan',
+            'metadata[plan_slug]': plan.slug,
+          }, STRIPE_RESTRICTED_API_KEY);
+        }
+
+        const lookup = `plan_${plan.slug}_${interval}_${priceCurrency}_${priceAmount}`;
+        const priceSearch = await stripeRequest(
+          `/prices?active=true&limit=20&lookup_keys%5B%5D=${lookup}`,
+          'GET', undefined, STRIPE_RESTRICTED_API_KEY,
+        );
+        let stripePrice = priceSearch.data?.[0];
+        if (!stripePrice) {
+          stripePrice = await stripeRequest('/prices', 'POST', {
+            product: product.id,
+            unit_amount: String(priceAmount),
+            currency: priceCurrency,
+            'recurring[interval]': interval,
+            lookup_key: lookup,
+          }, STRIPE_RESTRICTED_API_KEY);
+        }
+
+        // Get or create Stripe customer
+        const { data: existingCust } = await supabase
+          .from('stripe_customers')
+          .select('stripe_customer_id')
+          .eq('tenant_id', tenant_id)
+          .maybeSingle();
+        let customerId = existingCust?.stripe_customer_id;
+        if (!customerId) {
+          const customer = await stripeRequest('/customers', 'POST', {
+            email,
+            name: name || email,
+            'metadata[tenant_id]': tenant_id,
+            'metadata[country]': country,
+            'metadata[region]': region,
+            'metadata[source]': 'onboarding_paid_subscription',
+          }, STRIPE_RESTRICTED_API_KEY);
+          customerId = customer.id;
+          await supabase.from('stripe_customers').upsert({
+            tenant_id,
+            stripe_customer_id: customerId,
+            email,
+            name: name || email,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'tenant_id' });
+        }
+
+        // Create Checkout Session in subscription mode
+        const origin = req.headers.get('origin') || 'https://biz-chat-tasks.lovable.app';
+        const session = await stripeRequest('/checkout/sessions', 'POST', {
+          customer: customerId,
+          mode: 'subscription',
+          'line_items[0][price]': stripePrice.id,
+          'line_items[0][quantity]': '1',
+          success_url: `${origin}/?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
+          cancel_url: `${origin}/onboarding?checkout=cancel`,
+          allow_promotion_codes: 'true',
+          'metadata[tenant_id]': tenant_id,
+          'metadata[plan_slug]': plan.slug,
+          'metadata[billing_period]': interval === 'year' ? 'yearly' : 'monthly',
+          'subscription_data[metadata][tenant_id]': tenant_id,
+          'subscription_data[metadata][plan_slug]': plan.slug,
+        }, STRIPE_RESTRICTED_API_KEY);
+
+        await supabase.from('audit_events').insert({
+          tenant_id,
+          event_type: 'billing.subscription_checkout_created',
+          resource_type: 'stripe_session',
+          resource_id: session.id,
+          payload: {
+            plan_slug: plan.slug,
+            interval,
+            price_id: stripePrice.id,
+            currency: priceCurrency,
+            amount: priceAmount,
+          },
+        });
+
+        return new Response(JSON.stringify({
+          success: true,
+          checkout_url: session.url,
+          session_id: session.id,
+        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
 
       default:
