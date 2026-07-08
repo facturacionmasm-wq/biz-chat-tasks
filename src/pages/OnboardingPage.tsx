@@ -86,12 +86,8 @@ const OnboardingPage = () => {
   const [step, setStep] = useState<'company' | 'country' | 'plan'>('company');
   const [companyName, setCompanyName] = useState('');
   const [selectedCountry, setSelectedCountry] = useState<CountryOption | null>(null);
-  const [plans, setPlans] = useState<Plan[]>([]);
-  const [localizedPrices, setLocalizedPrices] = useState<LocalizedPrice[]>([]);
-  const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
+  const [tenantId, setTenantId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [loadingPlans, setLoadingPlans] = useState(true);
-  const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
 
   useEffect(() => {
     const fetchPlans = async () => {
