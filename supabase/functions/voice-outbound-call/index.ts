@@ -22,9 +22,13 @@ const corsHeaders = {
 function normalizeE164(raw: string): string {
   const cleaned = String(raw || '').trim().replace(/[\s().-]/g, '');
   if (!cleaned) return '';
-  if (cleaned.startsWith('+')) return cleaned;
-  if (/^\d{10,15}$/.test(cleaned)) return `+${cleaned}`;
-  return cleaned;
+  let out = cleaned;
+  if (!out.startsWith('+')) {
+    if (/^\d{10,15}$/.test(out)) out = `+${out}`;
+  }
+  // MX defensive: +521XXXXXXXXXX (13 digits) → +52XXXXXXXXXX (Twilio expects no legacy 1)
+  if (/^\+521\d{10}$/.test(out)) out = `+52${out.slice(4)}`;
+  return out;
 }
 
 async function resolveAgentPhoneNumberId(

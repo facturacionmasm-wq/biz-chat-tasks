@@ -175,13 +175,16 @@ serve(async (req) => {
           ? (tFromR.startsWith('whatsapp:') ? tFromR : `whatsapp:${tFromR}`)
           : fromWA;
 
-        if (tMsgSvcR) {
-          sendResult = await sendWhatsAppWithMsgSvc(basicAuth, TWILIO_ACCOUNT_SID!, phone, reminderMsg, tMsgSvcR);
-          if (!sendResult.ok) {
-            sendResult = await sendWhatsApp(basicAuth, TWILIO_ACCOUNT_SID!, effectiveFromR, phone, reminderMsg);
+        const phoneNorm = normalizeMxWA(phone);
+        if (tFromR) {
+          sendResult = await sendWhatsApp(basicAuth, TWILIO_ACCOUNT_SID!, effectiveFromR, phoneNorm, reminderMsg);
+          if (!sendResult.ok && tMsgSvcR) {
+            sendResult = await sendWhatsAppWithMsgSvc(basicAuth, TWILIO_ACCOUNT_SID!, phoneNorm, reminderMsg, tMsgSvcR);
           }
+        } else if (tMsgSvcR) {
+          sendResult = await sendWhatsAppWithMsgSvc(basicAuth, TWILIO_ACCOUNT_SID!, phoneNorm, reminderMsg, tMsgSvcR);
         } else {
-          sendResult = await sendWhatsApp(basicAuth, TWILIO_ACCOUNT_SID!, effectiveFromR, phone, reminderMsg);
+          sendResult = await sendWhatsApp(basicAuth, TWILIO_ACCOUNT_SID!, effectiveFromR, phoneNorm, reminderMsg);
         }
 
         // Save to WhatsApp messages on success
@@ -415,13 +418,16 @@ serve(async (req) => {
           const effectiveFromN = tFromN
             ? (tFromN.startsWith('whatsapp:') ? tFromN : `whatsapp:${tFromN}`)
             : fromWA;
-          if (tMsgSvcN) {
-            sendResult = await sendWhatsAppWithMsgSvc(basicAuth, TWILIO_ACCOUNT_SID!, phoneN, messageBody, tMsgSvcN);
-            if (!sendResult.ok) {
-              sendResult = await sendWhatsApp(basicAuth, TWILIO_ACCOUNT_SID!, effectiveFromN, phoneN, messageBody);
+          const phoneNormN = normalizeMxWA(phoneN);
+          if (tFromN) {
+            sendResult = await sendWhatsApp(basicAuth, TWILIO_ACCOUNT_SID!, effectiveFromN, phoneNormN, messageBody);
+            if (!sendResult.ok && tMsgSvcN) {
+              sendResult = await sendWhatsAppWithMsgSvc(basicAuth, TWILIO_ACCOUNT_SID!, phoneNormN, messageBody, tMsgSvcN);
             }
+          } else if (tMsgSvcN) {
+            sendResult = await sendWhatsAppWithMsgSvc(basicAuth, TWILIO_ACCOUNT_SID!, phoneNormN, messageBody, tMsgSvcN);
           } else {
-            sendResult = await sendWhatsApp(basicAuth, TWILIO_ACCOUNT_SID!, effectiveFromN, phoneN, messageBody);
+            sendResult = await sendWhatsApp(basicAuth, TWILIO_ACCOUNT_SID!, effectiveFromN, phoneNormN, messageBody);
           }
         } else {
           // Unknown legacy types → prefer email
@@ -473,6 +479,14 @@ serve(async (req) => {
 });
 
 // ==================== Helper functions ====================
+
+// MX defensive: normalize legacy +521XXXXXXXXXX (13 digits) → +52XXXXXXXXXX
+function normalizeMxWA(raw: string): string {
+  const cleaned = String(raw || '').replace(/^whatsapp:/i, '').trim();
+  if (/^\+521\d{10}$/.test(cleaned)) return `+52${cleaned.slice(4)}`;
+  return cleaned;
+}
+
 
 async function sendWhatsApp(basicAuth: string, accountSid: string, from: string, to: string, body: string): Promise<{ ok: boolean; sid?: string; error?: string }> {
   const toWA = to.startsWith('whatsapp:') ? to : `whatsapp:${to}`;
