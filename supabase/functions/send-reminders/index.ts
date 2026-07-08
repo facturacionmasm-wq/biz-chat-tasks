@@ -399,3 +399,31 @@ async function sendWhatsAppWithMsgSvc(basicAuth: string, accountSid: string, to:
     return { ok: false, error: err instanceof Error ? err.message : 'Unknown error' };
   }
 }
+
+async function sendEmail(apiKey: string, to: string, subject: string, body: string): Promise<{ ok: boolean; sid?: string; error?: string }> {
+  try {
+    // Convert plain-text markdown-lite body (with * and \n) into simple HTML
+    const html = body
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/\*(.+?)\*/g, '<strong>$1</strong>')
+      .replace(/\n/g, '<br/>');
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: 'Recordatorios <onboarding@resend.dev>',
+        to: [to],
+        subject,
+        html: `<div style="font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; font-size: 15px; color: #111; line-height: 1.5;">${html}</div>`,
+      }),
+    });
+    const data = await res.json();
+    if (res.ok) return { ok: true, sid: data.id };
+    return { ok: false, error: data?.message || `Resend error ${res.status}` };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : 'Unknown error' };
+  }
+}
