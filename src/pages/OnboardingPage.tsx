@@ -105,6 +105,36 @@ const OnboardingPage = () => {
     fetchPlans();
   }, []);
 
+  // If the tenant already has name + country (e.g. the user returned from a
+  // canceled Stripe checkout), skip straight to the plan step so they can
+  // complete payment without redoing the wizard.
+  useEffect(() => {
+    if (!user) return;
+    (async () => {
+      try {
+        const { data: tenantId } = await supabase.rpc('get_user_tenant_id', { _user_id: user.id });
+        if (!tenantId) return;
+        const { data: t } = await supabase
+          .from('tenants')
+          .select('name, country_code, region, currency, timezone')
+          .eq('id', tenantId)
+          .maybeSingle();
+        if (!t) return;
+        const hasName = t.name && t.name.trim() && t.name !== 'Mi Empresa';
+        const hasCountry = !!t.country_code;
+        if (hasName) setCompanyName(t.name);
+        if (hasCountry) {
+          const match = COUNTRIES.find(c => c.code === t.country_code);
+          if (match) setSelectedCountry(match);
+        }
+        if (hasName && hasCountry) setStep('plan');
+        else if (hasName) setStep('country');
+      } catch (e) {
+        console.warn('[Onboarding] prefetch tenant failed:', e);
+      }
+    })();
+  }, [user]);
+
   // Fetch localized pricing when country changes
   useEffect(() => {
     if (!selectedCountry) return;
@@ -374,10 +404,10 @@ const OnboardingPage = () => {
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="w-full max-w-4xl">
         <StepIndicator />
-        <div className="text-center mb-8">
+        <div className="text-center mb-6">
           <h1 className="rx-page-title">Elige tu plan</h1>
           <p className="text-sm text-[var(--rx-t2)] mt-2">
-            Comienza con 15 días de prueba gratuita. Sin compromiso.
+            Suscripción mensual, cancela cuando quieras. Se requiere método de pago para activar tu cuenta.
           </p>
           {selectedCountry && (
             <p className="text-xs text-[var(--rx-t2)] mt-1 flex items-center justify-center gap-1">
@@ -407,6 +437,10 @@ const OnboardingPage = () => {
             </button>
           </div>
         </div>
+
+        {/* 30-day satisfaction guarantee — hero placement */}
+        <SatisfactionGuaranteeBadge className="mb-6" />
+
 
         {loadingPlans ? (
           <div className="flex justify-center py-12">
