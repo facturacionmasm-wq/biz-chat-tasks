@@ -260,8 +260,9 @@ serve(async (req) => {
       // Get user profiles for internal notifications
       const notifUserIds = [...new Set(apptNotifications.filter((n: any) => n.target_user_id).map((n: any) => n.target_user_id))];
       const { data: notifProfiles } = notifUserIds.length > 0
-        ? await supabase.from('profiles').select('user_id, tenant_id, whatsapp_number, phone, name').in('user_id', notifUserIds)
+        ? await supabase.from('profiles').select('user_id, tenant_id, whatsapp_number, phone, name, email').in('user_id', notifUserIds)
         : { data: [] };
+
 
       const notifProfileMap = new Map<string, any>();
       for (const p of (notifProfiles || [])) {
