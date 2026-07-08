@@ -202,7 +202,6 @@ const ProjectsPage = () => {
     setDeleteProjectTarget(null);
     if (ok) {
       setSelectedProjectId(null);
-      toast.success('Proyecto eliminado');
     }
   };
 
