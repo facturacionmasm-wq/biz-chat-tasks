@@ -192,6 +192,14 @@ async function handleCheckoutCompleted(client: any, session: any) {
       email: session.customer_email || null,
       updated_at: new Date().toISOString(),
     }, { onConflict: 'tenant_id' });
+
+    // Payment confirmed → unlock the app for every user of this tenant.
+    // Onboarding is now gated on real payment, not just wizard completion.
+    const { error: profErr } = await client
+      .from('profiles')
+      .update({ onboarding_completed: true, updated_at: new Date().toISOString() })
+      .eq('tenant_id', tenantId);
+    if (profErr) console.error('Error flipping onboarding_completed:', profErr);
   }
 }
 

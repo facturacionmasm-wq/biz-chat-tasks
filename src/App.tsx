@@ -62,8 +62,22 @@ const ProtectedRoute = forwardRef<HTMLDivElement, RouteGuardProps>(({ children }
   // Wait for role to resolve before role-based redirects (prevents flicker to "/" on refresh).
   if (userRole === null) return <LoadingScreen />;
   if (profileStatus === 'pending_approval') return <Navigate to="/pending-approval" replace />;
-  if (onboardingCompleted === false) return <Navigate to="/onboarding" replace />;
-  if (userRole !== 'super_admin' && subscriptionStatus?.is_blocked) return <Navigate to="/blocked" replace />;
+  // Super admins and the master tenant bypass all billing gates.
+  const bypass = userRole === 'super_admin' || subscriptionStatus?.is_master_tenant;
+  if (!bypass) {
+    // Paid-subscription gate. Never-paid tenants (no stripe_subscription_id yet)
+    // are sent to onboarding to complete Stripe checkout. Tenants that had a
+    // subscription but are now past_due / canceled / blocked go to /blocked.
+    const status = subscriptionStatus?.status;
+    const neverPaid = !subscriptionStatus?.stripe_subscription_id;
+    if (subscriptionStatus?.is_blocked || onboardingCompleted === false) {
+      if (neverPaid) return <Navigate to="/onboarding" replace />;
+      return <Navigate to="/blocked" replace />;
+    }
+    if (status && status !== 'active' && status !== 'trialing') {
+      return <Navigate to="/blocked" replace />;
+    }
+  }
   return <>{children}</>;
 });
 ProtectedRoute.displayName = 'ProtectedRoute';
@@ -80,10 +94,16 @@ const AdminRoute = forwardRef<HTMLDivElement, RouteGuardProps>(({ children }, _r
 AdminRoute.displayName = 'AdminRoute';
 
 const OnboardingRoute = forwardRef<HTMLDivElement, RouteGuardProps>(({ children }, _ref) => {
-  const { user, loading, onboardingCompleted } = useAuth();
+  const { user, loading, onboardingCompleted, subscriptionStatus, userRole } = useAuth();
   if (loading) return null;
   if (!user) return <Navigate to="/auth" replace />;
-  if (onboardingCompleted === true) return <Navigate to="/" replace />;
+  // Super admin / master tenant never need onboarding.
+  const bypass = userRole === 'super_admin' || subscriptionStatus?.is_master_tenant;
+  if (bypass) return <Navigate to="/" replace />;
+  // If the tenant already has an active paid subscription AND onboarding is done → app.
+  if (onboardingCompleted === true && subscriptionStatus?.has_paid_subscription) {
+    return <Navigate to="/" replace />;
+  }
   return <>{children}</>;
 });
 OnboardingRoute.displayName = 'OnboardingRoute';
