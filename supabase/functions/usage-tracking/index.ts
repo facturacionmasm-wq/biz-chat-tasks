@@ -54,6 +54,14 @@ serve(async (req) => {
         const { error } = await supabase.from('whatsapp_usage_events').insert(rows);
         if (error) throw error;
 
+        // Invalidate cached aggregates for this tenant + global for today's day-scoped key.
+        const day = todayUTC();
+        await Promise.all([
+          cacheInvalidate(`usage:agg:${tenant_id}:`),
+          cacheInvalidate(`usage:summary:${tenant_id}:`),
+          cacheInvalidate(`usage:agg:global:${day}`),
+        ]);
+
         return new Response(JSON.stringify({ success: true, recorded: rows.length }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
