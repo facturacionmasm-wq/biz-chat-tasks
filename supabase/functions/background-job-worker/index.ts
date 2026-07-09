@@ -81,19 +81,59 @@ serve(async (req) => {
 async function dispatch(supabase: any, job: BackgroundJob): Promise<Record<string, unknown>> {
   switch (job.job_type) {
     case "send_email":
+      return await handleSendEmail(job);
+
     case "generate_report":
     case "kb_sync_all":
     case "calendar_sync":
     case "cleanup":
-      // Skeleton — real handlers land in follow-up phases. For now, treat as
-      // not-implemented so we don't silently swallow real work.
       throw new Error(`Handler for '${job.job_type}' not implemented yet`);
 
     default:
       throw new Error(`unknown job_type: ${job.job_type}`);
   }
+}
 
-  // Unreachable, kept to document the intended return shape.
-  // deno-lint-ignore no-unreachable
-  return { ok: true };
+// send_email payload: { to, subject, html?, text?, from?, replyTo?, kind? }
+async function handleSendEmail(job: BackgroundJob): Promise<Record<string, unknown>> {
+  const p = (job.payload || {}) as Record<string, unknown>;
+  const to = p.to as string | string[] | undefined;
+  const subject = p.subject as string | undefined;
+  const html = p.html as string | undefined;
+  const text = p.text as string | undefined;
+  const from = (p.from as string | undefined) || "RYBIX <soporte@rybixholding.com>";
+  const replyTo = p.replyTo as string | undefined;
+
+  if (!to || !subject || (!html && !text)) {
+    throw new Error("send_email: missing required fields (to, subject, html|text)");
+  }
+
+  const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
+  if (!RESEND_API_KEY) throw new Error("RESEND_API_KEY not configured");
+
+  const body: Record<string, unknown> = {
+    from,
+    to: Array.isArray(to) ? to : [to],
+    subject,
+  };
+  if (html) body.html = html;
+  if (text) body.text = text;
+  if (replyTo) body.reply_to = replyTo;
+
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  const respText = await res.text();
+  if (!res.ok) {
+    throw new Error(`Resend ${res.status}: ${respText}`);
+  }
+  let parsed: any = null;
+  try { parsed = JSON.parse(respText); } catch { /* ignore */ }
+  return { resend_id: parsed?.id ?? null, status: res.status, kind: p.kind ?? null };
 }
