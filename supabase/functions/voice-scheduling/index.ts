@@ -426,49 +426,68 @@ serve(async (req) => {
         .eq('id', appointment_id)
         .maybeSingle();
 
-      const { data: updated, error: updateErr } = await supabase
-        .from('appointments')
-        .update({
-          start_at: newStart.toISOString(),
-          end_at: newEnd.toISOString(),
-          status: 'scheduled',
-        })
-        .eq('id', appointment_id)
-        .select('id, start_at, end_at, contact_name, tenant_id, user_id')
-        .single();
-
-      if (updateErr) throw updateErr;
-
-      // Mirror to Google Calendar (best-effort)
+      let updated: any = null;
       try {
-        await fetch(`${SUPABASE_URL}/functions/v1/calendar-sync`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}` },
-          body: JSON.stringify({ action: 'update_event', appointment_id }),
+        const { data: updRow, error: updateErr } = await supabase
+          .from('appointments')
+          .update({
+            start_at: newStart.toISOString(),
+            end_at: newEnd.toISOString(),
+            status: 'scheduled',
+          })
+          .eq('id', appointment_id)
+          .select('id, start_at, end_at, contact_name, tenant_id, user_id')
+          .maybeSingle();
+        if (updateErr) throw updateErr;
+        updated = updRow;
+      } catch (e) {
+        console.error('[voice-scheduling] reschedule update error:', e);
+        return jsonResp({
+          success: false,
+          message: 'No pude reprogramar la cita en este momento. ¿Podemos intentar de nuevo?',
         });
-      } catch (e) { console.error('[voice-scheduling] calendar-sync update_event failed', e); }
-
-      // Notify staff owner (if any) via email
-      if (updated.user_id) {
-        const prevDisplay = prev?.start_at
-          ? new Date(prev.start_at).toLocaleString('es-MX', { dateStyle: 'full', timeStyle: 'short' })
-          : 'anterior';
-        const newDisplay = newStart.toLocaleString('es-MX', { dateStyle: 'full', timeStyle: 'short' });
-        const msg = `La cita con ${updated.contact_name}${prev?.service_type ? ' (' + prev.service_type + ')' : ''} fue reprogramada.\n\nAntes: ${prevDisplay}\nAhora: ${newDisplay}\n\nActualización automática desde el asistente de voz.`;
-        await supabase.from('appointment_notifications').insert({
-          appointment_id, tenant_id: updated.tenant_id,
-          target_user_id: updated.user_id,
-          notification_type: 'staff_update',
-          status: 'pending',
-          scheduled_at: new Date().toISOString(),
-          message_body: msg,
+      }
+      if (!updated?.id) {
+        return jsonResp({
+          success: false,
+          message: 'No encontré esa cita. ¿Puedes verificar el identificador?',
         });
       }
 
+      const tzR = await resolveTenantTimezone(supabase, updated.tenant_id);
+
+      // Fire-and-forget Google Calendar mirror
+      detach(fetch(`${SUPABASE_URL}/functions/v1/calendar-sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+        body: JSON.stringify({ action: 'update_event', appointment_id }),
+      }).then(() => undefined));
+
+      // Notify staff owner (if any)
+      if (updated.user_id) {
+        const prevDisplay = prev?.start_at
+          ? formatInTimezone(new Date(prev.start_at), tzR, { dateStyle: 'full', timeStyle: 'short' })
+          : 'anterior';
+        const newDisplay = formatInTimezone(newStart, tzR, { dateStyle: 'full', timeStyle: 'short' });
+        const msg = `La cita con ${updated.contact_name}${prev?.service_type ? ' (' + prev.service_type + ')' : ''} fue reprogramada.\n\nAntes: ${prevDisplay}\nAhora: ${newDisplay}\n\nActualización automática desde el asistente de voz.`;
+        try {
+          await supabase.from('appointment_notifications').insert({
+            appointment_id, tenant_id: updated.tenant_id,
+            target_user_id: updated.user_id,
+            notification_type: 'staff_update',
+            status: 'pending',
+            scheduled_at: new Date().toISOString(),
+            message_body: msg,
+          });
+        } catch (nErr) { console.warn('[voice-scheduling] notify insert failed:', nErr); }
+      }
+
+      const dateStrR = formatInTimezone(newStart, tzR, { weekday: 'long', day: 'numeric', month: 'long' });
+      const timeStrR = formatInTimezone(newStart, tzR, { hour: '2-digit', minute: '2-digit', hour12: true });
       return jsonResp({
         success: true,
         appointment: updated,
-        message: `Cita de ${updated.contact_name} reprogramada para ${newStart.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' })} a las ${newStart.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}`,
+        message: `Cita de ${updated.contact_name} reprogramada para ${dateStrR} a las ${timeStrR}`,
       });
     }
 
@@ -479,62 +498,58 @@ serve(async (req) => {
         return jsonResp({ error: 'Missing appointment_id' }, 400);
       }
 
-      const { data: cancelled, error: cancelErr } = await supabase
-        .from('appointments')
-        .update({ status: 'cancelled' })
-        .eq('id', appointment_id)
-        .select('id, contact_name, tenant_id, user_id, start_at, service_type')
-        .single();
-
-      if (cancelErr) throw cancelErr;
-
-      // Mirror cancel to Google Calendar (best-effort)
+      let cancelled: any = null;
       try {
-        await fetch(`${SUPABASE_URL}/functions/v1/calendar-sync`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}` },
-          body: JSON.stringify({ action: 'cancel_event', appointment_id }),
+        const { data: cRow, error: cancelErr } = await supabase
+          .from('appointments')
+          .update({ status: 'cancelled' })
+          .eq('id', appointment_id)
+          .select('id, contact_name, tenant_id, user_id, start_at, service_type')
+          .maybeSingle();
+        if (cancelErr) throw cancelErr;
+        cancelled = cRow;
+      } catch (e) {
+        console.error('[voice-scheduling] cancel update error:', e);
+        return jsonResp({
+          success: false,
+          message: 'No pude cancelar la cita en este momento. ¿Podemos intentar de nuevo?',
         });
-      } catch (e) { console.error('[voice-scheduling] calendar-sync cancel_event failed', e); }
+      }
+      if (!cancelled?.id) {
+        return jsonResp({
+          success: false,
+          message: 'No encontré esa cita para cancelarla.',
+        });
+      }
 
-      // Notify staff owner
+      // Fire-and-forget Google Calendar mirror
+      detach(fetch(`${SUPABASE_URL}/functions/v1/calendar-sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+        body: JSON.stringify({ action: 'cancel_event', appointment_id }),
+      }).then(() => undefined));
+
       if (cancelled.user_id) {
+        const tzC = await resolveTenantTimezone(supabase, cancelled.tenant_id);
         const when = cancelled.start_at
-          ? new Date(cancelled.start_at).toLocaleString('es-MX', { dateStyle: 'full', timeStyle: 'short' })
+          ? formatInTimezone(new Date(cancelled.start_at), tzC, { dateStyle: 'full', timeStyle: 'short' })
           : '';
         const msg = `La cita con ${cancelled.contact_name}${cancelled.service_type ? ' (' + cancelled.service_type + ')' : ''} programada para ${when} fue CANCELADA por el cliente.\n\nActualización automática desde el asistente de voz.`;
-        await supabase.from('appointment_notifications').insert({
-          appointment_id, tenant_id: cancelled.tenant_id,
-          target_user_id: cancelled.user_id,
-          notification_type: 'staff_update',
-          status: 'pending',
-          scheduled_at: new Date().toISOString(),
-          message_body: msg,
-        });
+        try {
+          await supabase.from('appointment_notifications').insert({
+            appointment_id, tenant_id: cancelled.tenant_id,
+            target_user_id: cancelled.user_id,
+            notification_type: 'staff_update',
+            status: 'pending',
+            scheduled_at: new Date().toISOString(),
+            message_body: msg,
+          });
+        } catch (nErr) { console.warn('[voice-scheduling] cancel notify insert failed:', nErr); }
       }
 
       return jsonResp({
         success: true,
         message: `Cita de ${cancelled.contact_name} cancelada exitosamente`,
-      });
-    }
-
-    // ─── CONFIRM ───
-    if (action === 'confirm_appointment') {
-      const { appointment_id } = data;
-      if (!appointment_id) {
-        return jsonResp({ error: 'Missing appointment_id' }, 400);
-      }
-      const { data: confirmed, error: confErr } = await supabase
-        .from('appointments')
-        .update({ status: 'confirmed' })
-        .eq('id', appointment_id)
-        .select('id, contact_name')
-        .single();
-      if (confErr) throw confErr;
-      return jsonResp({
-        success: true,
-        message: `Cita de ${confirmed.contact_name} confirmada`,
       });
     }
 
