@@ -65,6 +65,9 @@ const SettingsPage = () => {
   const [companyWebsite, setCompanyWebsite] = useState('');
   const [companyPhone, setCompanyPhone] = useState('');
   const [companyAddress, setCompanyAddress] = useState('');
+  type Branch = { id: string; name: string; address: string; maps_url: string; is_default: boolean };
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [savingBranches, setSavingBranches] = useState(false);
   const [welcomeMessage, setWelcomeMessage] = useState('');
   const [voiceId, setVoiceId] = useState('');
   const [agentPersonality, setAgentPersonality] = useState('');
