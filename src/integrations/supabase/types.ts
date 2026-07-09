@@ -2272,6 +2272,39 @@ export type Database = {
           },
         ]
       }
+      load_test_runs: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          ended_at: string | null
+          id: string
+          params: Json
+          results: Json
+          started_at: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          ended_at?: string | null
+          id?: string
+          params?: Json
+          results?: Json
+          started_at?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          ended_at?: string | null
+          id?: string
+          params?: Json
+          results?: Json
+          started_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       margin_metrics: {
         Row: {
           cost_mtd: number
