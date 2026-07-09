@@ -131,8 +131,12 @@ serve(async (req) => {
         });
       } catch { /* audit best-effort */ }
 
+      // KB changed — invalidate all cached RAG results for this tenant.
+      cacheInvalidate(`rag:${callerTenantId}:`).catch(() => {});
+
       return new Response(body, { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
+
 
     if (action === 'delete') {
       const docId = data?.document_id || data?.id;
