@@ -122,6 +122,31 @@ const AppointmentsPage = () => {
   const [showHardDeleteDialog, setShowHardDeleteDialog] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [form, setForm] = useState<AppointmentForm>({ ...emptyForm });
+  const [tenantTz, setTenantTz] = useState<string>('America/Mexico_City');
+
+  // Resolve the tenant's default-branch timezone once. Falls back to
+  // America/Mexico_City (LATAM default) if there are no branches or no explicit
+  // tz. Kept outside loadData to avoid re-fetching on every week change.
+  useEffect(() => {
+    let cancel = false;
+    (async () => {
+      try {
+        const { data: userRes } = await supabase.auth.getUser();
+        const uid = userRes.user?.id;
+        if (!uid) return;
+        const { data: tid } = await supabase.rpc('get_user_tenant_id', { _user_id: uid });
+        if (!tid) return;
+        const { data: tenant } = await supabase.from('tenants').select('settings_json').eq('id', tid as string).maybeSingle();
+        const settings = ((tenant?.settings_json || {}) as Record<string, any>);
+        const branches = Array.isArray(settings?.branches) ? settings.branches : [];
+        const def = branches.find((b: any) => b?.is_default) || branches[0];
+        const tz = (def?.timezone || settings?.timezone || '').toString().trim() || 'America/Mexico_City';
+        if (!cancel) setTenantTz(tz);
+      } catch { /* keep default */ }
+    })();
+    return () => { cancel = true; };
+  }, []);
+
 
   const weekStart = startOfWeek(currentWeek, { weekStartsOn: 1 });
   const weekEnd = endOfWeek(currentWeek, { weekStartsOn: 1 });
