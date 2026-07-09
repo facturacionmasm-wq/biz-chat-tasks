@@ -145,8 +145,11 @@ serve(async (req) => {
       const allResults = [...(ftsResults || []), ...directResults];
 
       if (allResults.length === 0) {
-        return jsonRes({ results: [], answer: null, query });
+        const emptyPayload = { results: [], answer: null, query };
+        cacheSet(ragKey, emptyPayload, 60 * 60).catch(() => {});
+        return jsonRes(emptyPayload);
       }
+
 
       // 3. AI Reranking + Answer Generation
       let answer: string | null = null;
