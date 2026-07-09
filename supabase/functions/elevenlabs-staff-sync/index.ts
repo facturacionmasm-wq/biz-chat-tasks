@@ -12,6 +12,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
+import { MAX_CALL_DURATION_SECONDS, upsertAgentClosingBlock } from "../_shared/elevenlabs-agent.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -489,6 +490,9 @@ serve(async (req) => {
     if (agentPersonality) {
       newPrompt = upsertPersonalityBlock(newPrompt, buildPersonalityBlock(agentPersonality));
     }
+    // Always enforce the closing/farewell instruction block so the agent asks
+    // "¿algo más?" and delivers a proper farewell before hanging up.
+    newPrompt = upsertAgentClosingBlock(newPrompt);
     const webhookSecret = Deno.env.get("ELEVENLABS_WEBHOOK_SECRET") || null;
     const transferTool = buildTransferTool(supabaseUrl, members, webhookSecret);
     const checkAvailTool = buildCheckAvailabilityTool(supabaseUrl, webhookSecret);
@@ -552,8 +556,8 @@ serve(async (req) => {
     if (voiceId) {
       patchBody.conversation_config.tts = { voice_id: voiceId };
     }
-    // Enforce max call duration of 5000 seconds across all tenant agents.
-    patchBody.conversation_config.conversation = { max_duration_seconds: 5000 };
+    // Enforce max call duration across all tenant agents.
+    patchBody.conversation_config.conversation = { max_duration_seconds: MAX_CALL_DURATION_SECONDS };
 
 
     const patchRes = await fetch(`${ELEVENLABS_API_URL}/convai/agents/${agentId}`, {

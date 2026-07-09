@@ -5,6 +5,33 @@
 
 const MASTER_TENANT_ID = '00000000-0000-0000-0000-000000000001';
 
+// Hard cap on any ElevenLabs conversation. ElevenLabs typically caps at 1800s
+// (30 min) on all plans; keep both provision + staff-sync pinned to this.
+export const MAX_CALL_DURATION_SECONDS = 1800;
+
+// Instruction block appended to every tenant agent prompt so the agent
+// ALWAYS asks "algo más" and delivers a farewell before hanging up.
+export const AGENT_CLOSING_BLOCK_START = '<!-- AGENT_CLOSING_BLOCK_START -->';
+export const AGENT_CLOSING_BLOCK_END = '<!-- AGENT_CLOSING_BLOCK_END -->';
+export const AGENT_CLOSING_INSTRUCTIONS = `${AGENT_CLOSING_BLOCK_START}
+CIERRE DE LLAMADA (OBLIGATORIO):
+- Después de agendar, reagendar, cancelar o confirmar una cita, y en general al terminar cualquier tarea, DEBES preguntar textualmente: "Perfecto, tu cita quedó agendada. ¿Hay algo más en lo que pueda ayudarte?" (adapta ligeramente el verbo si fue reagendar/cancelar/confirmar).
+- Si el cliente pide algo más, atiéndelo.
+- Solo cuando el cliente diga que NO necesita nada más, despídete con: "Con gusto, que tengas excelente día." y termina la llamada.
+- NUNCA cuelgues de golpe después de confirmar una cita sin hacer la pregunta y despedirte.
+${AGENT_CLOSING_BLOCK_END}`;
+
+export function upsertAgentClosingBlock(prompt: string): string {
+  const startIdx = prompt.indexOf(AGENT_CLOSING_BLOCK_START);
+  const endIdx = prompt.indexOf(AGENT_CLOSING_BLOCK_END);
+  if (startIdx >= 0 && endIdx > startIdx) {
+    const before = prompt.slice(0, startIdx).trimEnd();
+    const after = prompt.slice(endIdx + AGENT_CLOSING_BLOCK_END.length).trimStart();
+    return [before, AGENT_CLOSING_INSTRUCTIONS, after].filter(Boolean).join('\n\n');
+  }
+  return `${prompt.trimEnd()}\n\n${AGENT_CLOSING_INSTRUCTIONS}`;
+}
+
 export interface ResolvedAgent {
   agentId: string | null;
   source: 'tenant' | 'master_fallback' | 'none';
