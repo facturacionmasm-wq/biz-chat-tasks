@@ -940,6 +940,65 @@ const SettingsPage = () => {
     }
   };
 
+  const handleSaveBranches = async () => {
+    setSavingBranches(true);
+    try {
+      const tenantId = await getTenantId();
+      // Normalize + guarantee at most one default
+      let hasDefault = false;
+      const cleaned = branches.map((b) => {
+        const isDef = !!b.is_default && !hasDefault;
+        if (isDef) hasDefault = true;
+        return {
+          id: b.id,
+          name: (b.name || '').trim(),
+          address: (b.address || '').trim(),
+          maps_url: (b.maps_url || '').trim(),
+          is_default: isDef,
+        };
+      }).filter(b => b.name || b.address || b.maps_url);
+      // If none marked default and there is at least one, promote the first.
+      if (cleaned.length > 0 && !cleaned.some(b => b.is_default)) {
+        cleaned[0].is_default = true;
+      }
+
+      const { data: tenant } = await supabase.from('tenants').select('settings_json').eq('id', tenantId).maybeSingle();
+      const current = ((tenant?.settings_json || {}) as Record<string, any>);
+      const updated = { ...current, branches: cleaned };
+      const { error } = await supabase.from('tenants').update({ settings_json: updated } as any).eq('id', tenantId);
+      if (error) throw error;
+      setBranches(cleaned);
+      toast.success('Sucursales guardadas');
+    } catch (err: any) {
+      toast.error(err.message || 'Error al guardar sucursales');
+    } finally {
+      setSavingBranches(false);
+    }
+  };
+
+  const addBranch = () => {
+    setBranches(prev => [...prev, {
+      id: `br_${Date.now()}_${prev.length}`,
+      name: '',
+      address: '',
+      maps_url: '',
+      is_default: prev.length === 0,
+    }]);
+  };
+  const updateBranch = (id: string, patch: Partial<Branch>) => {
+    setBranches(prev => prev.map(b => b.id === id ? { ...b, ...patch } : b));
+  };
+  const removeBranch = (id: string) => {
+    setBranches(prev => {
+      const filtered = prev.filter(b => b.id !== id);
+      if (filtered.length > 0 && !filtered.some(b => b.is_default)) filtered[0].is_default = true;
+      return filtered;
+    });
+  };
+  const setDefaultBranch = (id: string) => {
+    setBranches(prev => prev.map(b => ({ ...b, is_default: b.id === id })));
+  };
+
   // Google Drive: check status & setup
   useEffect(() => {
     if (!user || activeSection !== 'drive') return;
