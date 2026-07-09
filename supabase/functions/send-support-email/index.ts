@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
 import { enqueueJob } from "../_shared/jobs.ts";
+import { isDryRun, simulatedOk, LOADTEST_TENANT_ID } from "../_shared/loadtest.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -39,6 +40,13 @@ serve(async (req) => {
 
     const { subject, message, priority = "normal", contact_email } = await req.json();
     if (!subject || !message) return json({ error: "subject and message required" }, 400);
+
+    // Dry-run guard: LOADTEST or explicit signal → simulate send, no Resend/enqueue.
+    const dryRun = isDryRun(req) || profile.tenant_id === LOADTEST_TENANT_ID;
+    if (dryRun) {
+      return json(simulatedOk("support_email", { subject, priority, tenant_id: profile.tenant_id }));
+    }
+
 
     // Fetch tenant name for the email body
     const { data: tenant } = await admin

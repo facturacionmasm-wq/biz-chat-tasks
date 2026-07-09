@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
+import { isDryRun, LOADTEST_TENANT_ID } from "../_shared/loadtest.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -58,6 +59,49 @@ serve(async (req) => {
 
   try {
     const now = new Date().toISOString();
+
+    // ─── Dry-run guard (load-test harness) ────────────────────────────────
+    // When the caller opts into LOADTEST mode, drain ONLY rows attached to
+    // the reserved LOADTEST tenant and mark them sent without calling any
+    // external provider. Production traffic is never affected because this
+    // guard requires an explicit signal (header, env, or tenant flag).
+    if (isDryRun(req)) {
+      const [remRes, notifRes] = await Promise.all([
+        supabase
+          .from('reminders')
+          .select('id')
+          .eq('tenant_id', LOADTEST_TENANT_ID)
+          .in('status', ['pending', 'failed', 'processing'])
+          .lte('remind_at', now)
+          .limit(500),
+        supabase
+          .from('appointment_notifications')
+          .select('id')
+          .eq('tenant_id', LOADTEST_TENANT_ID)
+          .eq('status', 'pending')
+          .lte('scheduled_at', now)
+          .limit(500),
+      ]);
+      const remIds = (remRes.data || []).map((r: any) => r.id);
+      const notifIds = (notifRes.data || []).map((r: any) => r.id);
+      if (remIds.length > 0) {
+        await supabase
+          .from('reminders')
+          .update({ status: 'sent', sent_at: now, error_message: '[LOADTEST dry-run]' })
+          .in('id', remIds);
+      }
+      if (notifIds.length > 0) {
+        await supabase
+          .from('appointment_notifications')
+          .update({ status: 'sent', sent_at: now, error_message: '[LOADTEST dry-run]' })
+          .in('id', notifIds);
+      }
+      return new Response(
+        JSON.stringify({ ok: true, dry_run: true, reminders_drained: remIds.length, appt_notifications_drained: notifIds.length }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+
     const basicAuth = twilioConfigured ? btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`) : '';
     const fromWA = twilioConfigured
       ? (TWILIO_PHONE_NUMBER!.startsWith('whatsapp:') ? TWILIO_PHONE_NUMBER! : `whatsapp:${TWILIO_PHONE_NUMBER}`)

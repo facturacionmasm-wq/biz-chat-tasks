@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
 import { resolveTenantAgentId } from "../_shared/elevenlabs-agent.ts";
 import { assertVoicePlan } from "../_shared/plan-guard.ts";
+import { isDryRun, simulatedOk, LOADTEST_TENANT_ID } from "../_shared/loadtest.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -104,6 +105,36 @@ serve(async (req) => {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+
+    // Dry-run guard: LOADTEST or explicit signal → simulate call, no ElevenLabs/Twilio.
+    if (isDryRun(req) || tenantId === LOADTEST_TENANT_ID) {
+      const simSid = `CA_DRYRUN_${crypto.randomUUID()}`;
+      try {
+        await supabase.from('call_records').insert({
+          tenant_id: tenantId,
+          call_sid: simSid,
+          direction: 'outbound',
+          status: 'simulated',
+          from_number: 'LOADTEST',
+          to_number: rawTo,
+          metadata: { loadtest: true, appointment_id: appointmentId, dynamic_variables: dynamicVariables },
+        });
+      } catch (e) {
+        console.warn('[voice-outbound-call] loadtest call_records insert failed:', (e as Error).message);
+      }
+      if (notificationId) {
+        await supabase.from('appointment_notifications').update({
+          status: 'sent',
+          sent_at: new Date().toISOString(),
+          error_message: '[LOADTEST dry-run]',
+        }).eq('id', notificationId);
+      }
+      return new Response(
+        JSON.stringify(simulatedOk('voice_call', { call_sid: simSid, to_number: rawTo })),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+
 
     // Plan guard — voice must be enabled
     const blocked = await assertVoicePlan(supabase, tenantId, corsHeaders);
