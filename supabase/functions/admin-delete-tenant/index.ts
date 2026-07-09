@@ -23,30 +23,48 @@ serve(async (req) => {
     const authHeader = req.headers.get("Authorization") || "";
     if (!authHeader.startsWith("Bearer ")) return j({ error: "Unauthorized" }, 401);
 
-    const anon = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      global: { headers: { Authorization: authHeader } },
-    });
-    const { data: userData } = await anon.auth.getUser();
-    const caller = userData?.user;
-    if (!caller) return j({ error: "Unauthorized" }, 401);
-
     const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const bearer = authHeader.replace("Bearer ", "").trim();
+
+    const body = await req.json();
+    const { tenant_id, confirm_name, caller_user_id } = body ?? {};
+
+    // Allow two authentication modes:
+    //  1) Direct call from a super_admin user (JWT in Authorization).
+    //  2) Background worker call using service_role bearer + caller_user_id in body
+    //     (verified as super_admin below). This is what the delete_tenant job uses.
+    let effectiveCallerId: string | null = null;
+    if (bearer === SUPABASE_SERVICE_ROLE_KEY) {
+      if (!caller_user_id || typeof caller_user_id !== "string") {
+        return j({ error: "caller_user_id required for service-role invocation" }, 401);
+      }
+      effectiveCallerId = caller_user_id;
+    } else {
+      const anon = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data: userData } = await anon.auth.getUser();
+      const caller = userData?.user;
+      if (!caller) return j({ error: "Unauthorized" }, 401);
+      effectiveCallerId = caller.id;
+    }
 
     const { data: roleRow } = await admin
       .from("user_roles")
       .select("role")
-      .eq("user_id", caller.id)
+      .eq("user_id", effectiveCallerId)
       .eq("role", "super_admin")
       .maybeSingle();
     if (!roleRow) return j({ error: "Only super_admin can delete tenants" }, 403);
 
-    const { tenant_id, confirm_name } = await req.json();
     if (!tenant_id || typeof tenant_id !== "string") {
       return j({ error: "tenant_id required" }, 400);
     }
     if (tenant_id === MASTER_TENANT) {
       return j({ error: "Master tenant cannot be deleted" }, 400);
     }
+
+
 
     const { data: tenant } = await admin
       .from("tenants")
