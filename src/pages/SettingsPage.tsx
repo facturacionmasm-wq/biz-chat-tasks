@@ -65,6 +65,9 @@ const SettingsPage = () => {
   const [companyWebsite, setCompanyWebsite] = useState('');
   const [companyPhone, setCompanyPhone] = useState('');
   const [companyAddress, setCompanyAddress] = useState('');
+  type Branch = { id: string; name: string; address: string; maps_url: string; is_default: boolean };
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [savingBranches, setSavingBranches] = useState(false);
   const [welcomeMessage, setWelcomeMessage] = useState('');
   const [voiceId, setVoiceId] = useState('');
   const [agentPersonality, setAgentPersonality] = useState('');
@@ -176,6 +179,14 @@ const SettingsPage = () => {
         setAgentPersonality(settings.agent_personality || '');
         setLogoUrl(settings.logo_url || '');
         setFaviconUrl(settings.favicon_url || '');
+        const rawBranches = Array.isArray(settings.branches) ? settings.branches : [];
+        setBranches(rawBranches.map((b: any, i: number) => ({
+          id: String(b?.id || `br_${Date.now()}_${i}`),
+          name: String(b?.name || ''),
+          address: String(b?.address || ''),
+          maps_url: String(b?.maps_url || ''),
+          is_default: !!b?.is_default,
+        })));
 
         // Load calendar config from tenant (legacy) and always verify OAuth status
         const calConfig = (tenant.google_calendar_config || {}) as Record<string, any>;
@@ -929,6 +940,65 @@ const SettingsPage = () => {
     }
   };
 
+  const handleSaveBranches = async () => {
+    setSavingBranches(true);
+    try {
+      const tenantId = await getTenantId();
+      // Normalize + guarantee at most one default
+      let hasDefault = false;
+      const cleaned = branches.map((b) => {
+        const isDef = !!b.is_default && !hasDefault;
+        if (isDef) hasDefault = true;
+        return {
+          id: b.id,
+          name: (b.name || '').trim(),
+          address: (b.address || '').trim(),
+          maps_url: (b.maps_url || '').trim(),
+          is_default: isDef,
+        };
+      }).filter(b => b.name || b.address || b.maps_url);
+      // If none marked default and there is at least one, promote the first.
+      if (cleaned.length > 0 && !cleaned.some(b => b.is_default)) {
+        cleaned[0].is_default = true;
+      }
+
+      const { data: tenant } = await supabase.from('tenants').select('settings_json').eq('id', tenantId).maybeSingle();
+      const current = ((tenant?.settings_json || {}) as Record<string, any>);
+      const updated = { ...current, branches: cleaned };
+      const { error } = await supabase.from('tenants').update({ settings_json: updated } as any).eq('id', tenantId);
+      if (error) throw error;
+      setBranches(cleaned);
+      toast.success('Sucursales guardadas');
+    } catch (err: any) {
+      toast.error(err.message || 'Error al guardar sucursales');
+    } finally {
+      setSavingBranches(false);
+    }
+  };
+
+  const addBranch = () => {
+    setBranches(prev => [...prev, {
+      id: `br_${Date.now()}_${prev.length}`,
+      name: '',
+      address: '',
+      maps_url: '',
+      is_default: prev.length === 0,
+    }]);
+  };
+  const updateBranch = (id: string, patch: Partial<Branch>) => {
+    setBranches(prev => prev.map(b => b.id === id ? { ...b, ...patch } : b));
+  };
+  const removeBranch = (id: string) => {
+    setBranches(prev => {
+      const filtered = prev.filter(b => b.id !== id);
+      if (filtered.length > 0 && !filtered.some(b => b.is_default)) filtered[0].is_default = true;
+      return filtered;
+    });
+  };
+  const setDefaultBranch = (id: string) => {
+    setBranches(prev => prev.map(b => ({ ...b, is_default: b.id === id })));
+  };
+
   // Google Drive: check status & setup
   useEffect(() => {
     if (!user || activeSection !== 'drive') return;
@@ -1435,6 +1505,84 @@ const SettingsPage = () => {
                   </div>
                 </div>
               </div>
+
+              <div className="rx-panel">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <h4 className="text-sm font-semibold text-foreground">Sucursales</h4>
+                    <p className="text-[11px] text-[var(--rx-t2)]">Se usa la sucursal predeterminada como “lugar” en los recordatorios de WhatsApp.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={addBranch}
+                    className="text-xs px-3 py-1.5 rounded-lg border border-[var(--rx-b1)] hover:bg-[var(--rx-bg2)] text-foreground"
+                  >
+                    + Agregar sucursal
+                  </button>
+                </div>
+
+                {branches.length === 0 ? (
+                  <div className="text-xs text-[var(--rx-t2)] p-3 rounded-lg border border-dashed border-[var(--rx-b1)] text-center">
+                    Aún no tienes sucursales. Agrega al menos una con dirección y link de Google Maps.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {branches.map((b) => (
+                      <div key={b.id} className="p-3 rounded-lg border border-[var(--rx-b1)] space-y-2">
+                        <div className="flex items-center gap-2">
+                          <input
+                            className={`${inputClass} flex-1`}
+                            value={b.name}
+                            onChange={e => updateBranch(b.id, { name: e.target.value })}
+                            placeholder="Nombre (ej. Matriz, Sucursal Centro)"
+                          />
+                          <label className="flex items-center gap-1.5 text-[11px] text-[var(--rx-t2)] whitespace-nowrap">
+                            <input
+                              type="radio"
+                              name="default-branch"
+                              checked={!!b.is_default}
+                              onChange={() => setDefaultBranch(b.id)}
+                            />
+                            Predeterminada
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => removeBranch(b.id)}
+                            className="text-[11px] px-2 py-1 rounded-md border border-[var(--rx-b1)] hover:bg-[var(--rx-bg2)] text-red-500"
+                            aria-label="Eliminar sucursal"
+                          >
+                            Eliminar
+                          </button>
+                        </div>
+                        <input
+                          className={inputClass}
+                          value={b.address}
+                          onChange={e => updateBranch(b.id, { address: e.target.value })}
+                          placeholder="Dirección (Calle, Ciudad, País)"
+                        />
+                        <input
+                          className={inputClass}
+                          value={b.maps_url}
+                          onChange={e => updateBranch(b.id, { maps_url: e.target.value })}
+                          placeholder="https://maps.app.goo.gl/..."
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="mt-3 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={handleSaveBranches}
+                    disabled={savingBranches}
+                    className="text-xs px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-60"
+                  >
+                    {savingBranches ? 'Guardando…' : 'Guardar sucursales'}
+                  </button>
+                </div>
+              </div>
+
 
               <div className="rx-panel">
                 <h4 className="text-sm font-semibold text-foreground mb-3">Vista previa</h4>

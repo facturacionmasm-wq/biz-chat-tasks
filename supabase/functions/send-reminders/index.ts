@@ -10,6 +10,27 @@ function getNextRetryDelay(retryCount: number, baseMinutes = 5): number {
   return baseMinutes * Math.pow(2, retryCount);
 }
 
+const MASTER_TENANT_ID = '00000000-0000-0000-0000-000000000001';
+const MASTER_MAPS_FALLBACK = 'https://maps.app.goo.gl/tp1nMuX6mkxxhRtS7';
+
+// Resolve the location string used as WhatsApp template var5.
+// Priority: default branch maps_url > default branch address > first branch >
+// legacy settings.address > master-tenant hard fallback > '' (caller decides final default).
+function resolveTenantLocation(settings: any, tenantId: string | null | undefined): string {
+  const branches = Array.isArray(settings?.branches) ? settings.branches : [];
+  const def = branches.find((b: any) => b && b.is_default) || branches[0] || null;
+  if (def) {
+    const url = String(def.maps_url || '').trim();
+    if (url) return url;
+    const addr = String(def.address || '').trim();
+    if (addr) return addr;
+  }
+  const legacyAddr = String(settings?.address || '').trim();
+  if (legacyAddr) return legacyAddr;
+  if (tenantId === MASTER_TENANT_ID) return MASTER_MAPS_FALLBACK;
+  return '';
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -103,11 +124,13 @@ serve(async (req) => {
     // when the global TWILIO_PHONE_NUMBER isn't a registered WhatsApp channel.
     const tenantIdsR = [...new Set(reminders.map((r: any) => r.tenant_id))];
     const { data: tenantsR } = tenantIdsR.length > 0
-      ? await supabase.from('tenants').select('id, whatsapp_config').in('id', tenantIdsR)
+      ? await supabase.from('tenants').select('id, whatsapp_config, settings_json').in('id', tenantIdsR)
       : { data: [] };
     const tenantConfigMapR = new Map<string, any>();
+    const tenantSettingsMap = new Map<string, any>();
     for (const t of (tenantsR || [])) {
       tenantConfigMapR.set(t.id, t.whatsapp_config);
+      tenantSettingsMap.set(t.id, t.settings_json);
     }
 
     let sentCount = 0;
@@ -185,12 +208,14 @@ serve(async (req) => {
           const rDateStr = remindAt ? remindAt.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }) : '-';
           const rTimeStr = remindAt ? remindAt.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }) : '-';
           const firstName = String((profile?.full_name || profile?.name || profile?.email || 'Hola')).split(' ')[0] || 'Hola';
+          const tenantLocR = resolveTenantLocation(tenantSettingsMap.get(reminder.tenant_id), reminder.tenant_id);
+          const locationR = tenantLocR || 'https://rybixholding.com';
           const vars = {
             '1': firstName,
             '2': String(reminder.message || 'tu recordatorio'),
             '3': rDateStr,
             '4': rTimeStr,
-            '5': 'https://rybixholding.com',
+            '5': locationR,
           };
           sendResult = await sendWhatsAppTemplate(basicAuth, TWILIO_ACCOUNT_SID!, effectiveFromR, phoneNorm, WHATSAPP_REMINDER_CONTENT_SID, vars);
           if (!sendResult.ok) {
@@ -305,8 +330,11 @@ serve(async (req) => {
       const missingTenantIds = tenantIdsN.filter((id: string) => !tenantConfigMapR.has(id));
       if (missingTenantIds.length > 0) {
         const { data: tenantsN } = await supabase
-          .from('tenants').select('id, whatsapp_config').in('id', missingTenantIds);
-        for (const t of (tenantsN || [])) tenantConfigMapR.set(t.id, t.whatsapp_config);
+          .from('tenants').select('id, whatsapp_config, settings_json').in('id', missingTenantIds);
+        for (const t of (tenantsN || [])) {
+          tenantConfigMapR.set(t.id, t.whatsapp_config);
+          tenantSettingsMap.set(t.id, t.settings_json);
+        }
       }
 
       for (const notif of apptNotifications) {
@@ -447,9 +475,14 @@ serve(async (req) => {
             const timeStr = startAt ? startAt.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }) : '-';
             const firstName = String(appt?.contact_name || 'Hola').split(' ')[0] || 'Hola';
             const serviceStr = String(appt?.service_type || 'tu cita');
-            const locationStr = String(
-              (appt as any)?.location || (appt as any)?.meeting_url || appt?.notes || 'Te contactaremos con los detalles'
-            );
+            const tenantLocN = resolveTenantLocation(tenantSettingsMap.get(notif.tenant_id), notif.tenant_id);
+            const rawLoc =
+              (appt as any)?.location ||
+              (appt as any)?.meeting_url ||
+              tenantLocN ||
+              appt?.notes ||
+              'Te contactaremos con los detalles';
+            const locationStr = String(rawLoc).trim() || 'Te contactaremos con los detalles';
             const vars = {
               '1': firstName,
               '2': serviceStr,
