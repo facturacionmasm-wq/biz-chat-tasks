@@ -187,6 +187,7 @@ const SettingsPage = () => {
           address: String(b?.address || ''),
           maps_url: String(b?.maps_url || ''),
           is_default: !!b?.is_default,
+          timezone: String(b?.timezone || 'America/Mexico_City'),
         })));
 
         // Load calendar config from tenant (legacy) and always verify OAuth status
