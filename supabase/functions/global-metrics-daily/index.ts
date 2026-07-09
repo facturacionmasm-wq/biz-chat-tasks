@@ -247,6 +247,12 @@ serve(async (req) => {
       });
     }
 
+    // Rollup finished — invalidate day-scoped caches so downstream reads pick up fresh data.
+    await Promise.all([
+      cacheInvalidate(`metrics:daily:${today}`),
+      cacheInvalidate(`usage:agg:global:${today}`),
+    ]);
+
     console.log(`Global metrics calculated: MRR=$${globalMetrics.mrr.toFixed(2)}, ARR=$${globalMetrics.arr.toFixed(2)}, ${Object.keys(regionMetrics).length} regions`);
 
     return new Response(JSON.stringify({
