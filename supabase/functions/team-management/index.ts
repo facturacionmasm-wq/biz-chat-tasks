@@ -26,7 +26,7 @@ function escapeHtml(value: string): string {
     .replaceAll("'", "&#39;");
 }
 
-async function sendInviteEmail({
+function buildInviteEmailPayload({
   to,
   name,
   actionLink,
@@ -34,12 +34,7 @@ async function sendInviteEmail({
   to: string;
   name?: string | null;
   actionLink: string;
-}): Promise<{ status: number; body: string }> {
-  const resendApiKey = Deno.env.get("RESEND_API_KEY");
-  if (!resendApiKey) {
-    throw new Error("RESEND_API_KEY no configurado");
-  }
-
+}): { to: string; from: string; subject: string; html: string; kind: string } {
   const safeName = escapeHtml(name || "");
   const safeLink = escapeHtml(actionLink);
   const greeting = safeName ? `Hola ${safeName},` : "Hola,";
@@ -57,6 +52,25 @@ async function sendInviteEmail({
     </div>
   `;
 
+  return {
+    to,
+    from: FROM_EMAIL,
+    subject: `Tu acceso a ${APP_NAME}`,
+    html,
+    kind: "team_invite",
+  };
+}
+
+async function sendInviteEmailDirect(payload: {
+  to: string;
+  from: string;
+  subject: string;
+  html: string;
+}): Promise<{ status: number; body: string }> {
+  const resendApiKey = Deno.env.get("RESEND_API_KEY");
+  if (!resendApiKey) {
+    throw new Error("RESEND_API_KEY no configurado");
+  }
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
@@ -64,18 +78,16 @@ async function sendInviteEmail({
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      from: FROM_EMAIL,
-      to: [to],
-      subject: `Tu acceso a ${APP_NAME}`,
-      html,
+      from: payload.from,
+      to: [payload.to],
+      subject: payload.subject,
+      html: payload.html,
     }),
   });
-
   const body = await response.text();
   if (!response.ok) {
     throw new Error(`Resend ${response.status}: ${body}`);
   }
-
   return { status: response.status, body };
 }
 
