@@ -378,6 +378,54 @@ export type Database = {
           },
         ]
       }
+      background_jobs: {
+        Row: {
+          attempts: number
+          created_at: string
+          created_by: string | null
+          error: string | null
+          id: string
+          job_type: string
+          max_attempts: number
+          payload: Json
+          result: Json | null
+          run_after: string
+          status: string
+          tenant_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          created_by?: string | null
+          error?: string | null
+          id?: string
+          job_type: string
+          max_attempts?: number
+          payload?: Json
+          result?: Json | null
+          run_after?: string
+          status?: string
+          tenant_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          created_by?: string | null
+          error?: string | null
+          id?: string
+          job_type?: string
+          max_attempts?: number
+          payload?: Json
+          result?: Json | null
+          run_after?: string
+          status?: string
+          tenant_id?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       bot_adaptive_profiles: {
         Row: {
           contact_phone: string
