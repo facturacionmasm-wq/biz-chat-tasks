@@ -330,8 +330,11 @@ serve(async (req) => {
       const missingTenantIds = tenantIdsN.filter((id: string) => !tenantConfigMapR.has(id));
       if (missingTenantIds.length > 0) {
         const { data: tenantsN } = await supabase
-          .from('tenants').select('id, whatsapp_config').in('id', missingTenantIds);
-        for (const t of (tenantsN || [])) tenantConfigMapR.set(t.id, t.whatsapp_config);
+          .from('tenants').select('id, whatsapp_config, settings_json').in('id', missingTenantIds);
+        for (const t of (tenantsN || [])) {
+          tenantConfigMapR.set(t.id, t.whatsapp_config);
+          tenantSettingsMap.set(t.id, t.settings_json);
+        }
       }
 
       for (const notif of apptNotifications) {
