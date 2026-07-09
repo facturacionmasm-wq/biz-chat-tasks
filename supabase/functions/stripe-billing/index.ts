@@ -157,18 +157,31 @@ serve(async (req) => {
           }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
         }
 
+        // Read-through cache — /balance is a pure GET, safe to cache 120s per key.
+        const keyHash = await sha256Hex(providedKey);
+        const balCacheKey = `stripe:balance:${keyHash}`;
+        const balCached = await cacheGet<Record<string, unknown>>(balCacheKey);
+        if (balCached) {
+          return new Response(JSON.stringify({ ...balCached, cached: true }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
         // Real reachability check against Stripe: GET /v1/balance
         const res = await fetch(`${STRIPE_API}/balance`, {
           headers: { 'Authorization': `Bearer ${providedKey}` },
         });
         const bodyText = await res.text();
-        return new Response(JSON.stringify({
+        const payload = {
           success: res.ok,
           key_type: providedKey.startsWith('rk_') ? 'restricted' : 'secret',
           status: res.status,
           message: res.ok ? 'Key verified against Stripe' : `Stripe rejected key: ${bodyText.substring(0, 200)}`,
-        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        };
+        if (res.ok) cacheSet(balCacheKey, payload, 120).catch(() => {});
+        return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
+
 
 
       // ============================================
