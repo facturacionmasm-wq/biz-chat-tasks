@@ -181,10 +181,16 @@ serve(async (req) => {
         const phoneNorm = normalizeMxWA(phone);
         // Prefer approved template to bypass 24h freeform window (63016).
         if (WHATSAPP_REMINDER_CONTENT_SID && tFromR) {
+          const remindAt = reminder.remind_at ? new Date(reminder.remind_at) : null;
+          const rDateStr = remindAt ? remindAt.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }) : '-';
+          const rTimeStr = remindAt ? remindAt.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }) : '-';
+          const firstName = String((profile?.full_name || profile?.name || profile?.email || 'Hola')).split(' ')[0] || 'Hola';
           const vars = {
-            '1': (profile?.full_name || profile?.email || 'Hola').split(' ')[0],
-            '2': reminder.message || 'tu recordatorio',
-            '3': 'https://rybixholding.com',
+            '1': firstName,
+            '2': String(reminder.message || 'tu recordatorio'),
+            '3': rDateStr,
+            '4': rTimeStr,
+            '5': 'https://rybixholding.com',
           };
           sendResult = await sendWhatsAppTemplate(basicAuth, TWILIO_ACCOUNT_SID!, effectiveFromR, phoneNorm, WHATSAPP_REMINDER_CONTENT_SID, vars);
           if (!sendResult.ok) {
