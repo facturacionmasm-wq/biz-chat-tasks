@@ -184,8 +184,26 @@ serve(async (req) => {
       console.log(`[bridge] ElevenLabs closed (${label}) callSid=${callSid} ${reason}`);
       logStage('elevenlabs_closed', String(event.code), event.reason || 'closed', { retry: isRetry });
 
-      // Single retry attempt
-      if (!reconnectAttempted && !cleaned && twilioSocket.readyState === WebSocket.OPEN) {
+      const isNormalClose = event.code === 1000;
+
+      // Normal close = intentional goodbye (agent end_call or client hangup).
+      // Persist that signal so the inbound-webhook re-entry after <Redirect>
+      // knows to <Hangup/> instead of re-registering the ElevenLabs stream.
+      if (isNormalClose && tenantId !== 'unknown' && callSid !== 'unknown') {
+        supabase.from('call_sessions')
+          .update({
+            state: 'completed',
+            ended_intentionally: true,
+            ended_at: new Date().toISOString(),
+          })
+          .eq('call_sid', callSid)
+          .then(({ error }) => {
+            if (error) console.error(`[bridge] session end-flag update failed: ${error.message}`);
+          });
+      }
+
+      // Retry ONLY on error/abnormal closes — never on a clean 1000.
+      if (!isNormalClose && !reconnectAttempted && !cleaned && twilioSocket.readyState === WebSocket.OPEN) {
         reconnectAttempted = true;
         console.log(`[bridge] Attempting reconnect callSid=${callSid}`);
         logStage('elevenlabs_retry');
@@ -195,9 +213,13 @@ serve(async (req) => {
           }
         }, 500);
       } else if (!cleaned) {
-        // Send fallback message via Twilio clear message
-        logStage('fallback_triggered', 'ELEVENLABS_UNAVAILABLE', 'All connection attempts exhausted');
-        cleanup('elevenlabs_final_close');
+        // Either normal close, retry already attempted, or Twilio side gone.
+        if (isNormalClose) {
+          logStage('elevenlabs_normal_close', undefined, 'Intentional conversation end');
+        } else {
+          logStage('fallback_triggered', 'ELEVENLABS_UNAVAILABLE', 'All connection attempts exhausted');
+        }
+        cleanup(isNormalClose ? 'elevenlabs_normal_close' : 'elevenlabs_final_close');
       }
     };
   };
