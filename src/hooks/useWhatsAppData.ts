@@ -176,7 +176,7 @@ export function useWhatsAppData() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [tenantId, fetchConversations]);
+  }, [tenantId, fetchConversations, queryClient]);
 
   // Send a WhatsApp message via Edge Function
   const sendMessage = useCallback(async (
