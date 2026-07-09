@@ -65,21 +65,68 @@ export function useWhatsAppData() {
     }
   }, [tenantId]);
 
+  const PAGE_SIZE = 50;
+  const [hasMoreMessages, setHasMoreMessages] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+
   const fetchMessages = useCallback(async (conversationId: string) => {
     activeConvIdRef.current = conversationId;
     try {
+      // Fetch the most recent PAGE_SIZE messages using the (conversation_id, created_at DESC) index,
+      // then reverse client-side so the UI keeps the ascending order it expects.
       const { data, error } = await supabase
         .from('whatsapp_messages')
         .select('*')
         .eq('conversation_id', conversationId)
-        .order('created_at', { ascending: true });
+        .order('created_at', { ascending: false })
+        .limit(PAGE_SIZE);
       if (error) throw error;
-      if (data) setMessages(data as DBMessage[]);
+      const rows = (data || []) as DBMessage[];
+      setHasMoreMessages(rows.length === PAGE_SIZE);
+      setMessages(rows.slice().reverse());
     } catch (err: any) {
       console.error('[WA] fetchMessages error:', err);
       toast.error('Error al cargar mensajes');
     }
   }, []);
+
+  const loadOlderMessages = useCallback(async (conversationId: string) => {
+    if (loadingOlder) return;
+    setLoadingOlder(true);
+    try {
+      // Snapshot oldest currently-loaded message for this conversation.
+      let oldestCreatedAt: string | null = null;
+      setMessages(prev => {
+        const forConv = prev.filter(m => m.conversation_id === conversationId);
+        oldestCreatedAt = forConv.length > 0 ? forConv[0].created_at : null;
+        return prev;
+      });
+      if (!oldestCreatedAt) { setLoadingOlder(false); return; }
+
+      const { data, error } = await supabase
+        .from('whatsapp_messages')
+        .select('*')
+        .eq('conversation_id', conversationId)
+        .lt('created_at', oldestCreatedAt)
+        .order('created_at', { ascending: false })
+        .limit(PAGE_SIZE);
+      if (error) throw error;
+      const older = (data || []) as DBMessage[];
+      setHasMoreMessages(older.length === PAGE_SIZE);
+      if (older.length > 0) {
+        setMessages(prev => {
+          const seen = new Set(prev.map(m => m.id));
+          const merged = [...older.slice().reverse().filter(m => !seen.has(m.id)), ...prev];
+          return merged;
+        });
+      }
+    } catch (err: any) {
+      console.error('[WA] loadOlderMessages error:', err);
+      toast.error('Error al cargar mensajes anteriores');
+    } finally {
+      setLoadingOlder(false);
+    }
+  }, [loadingOlder]);
 
   // Initial load
   useEffect(() => {
