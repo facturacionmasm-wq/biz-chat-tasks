@@ -220,13 +220,78 @@ serve(async (req) => {
 
     // ═══════════ 4. IDEMPOTENCY ═══════════
     let callRecordId: string | null = null;
+    let isReentry = false;
 
     const { data: existing } = await supabase
-      .from('call_records').select('id').eq('external_call_id', callSid).maybeSingle();
+      .from('call_records')
+      .select('id, status, extracted_data')
+      .eq('external_call_id', callSid)
+      .maybeSingle();
 
     if (existing) {
       callRecordId = existing.id;
+      isReentry = true;
       console.log(`[inbound] Idempotent hit: existing record ${callRecordId}`);
+
+      // ═══════════ RE-ENTRY DECISION: intentional close vs transient drop ═══════════
+      // This handler is re-invoked by Twilio when the <Redirect> after <Connect><Stream>
+      // fires. That Redirect fires for BOTH intentional goodbyes and transient WS drops;
+      // here we distinguish them and hang up cleanly when the conversation already ended.
+      const { data: sessionRow } = await supabase
+        .from('call_sessions')
+        .select('id, state, retry_count, ended_intentionally')
+        .eq('call_sid', callSid)
+        .maybeSingle();
+
+      const recStatus = String((existing as any).status || '').toLowerCase();
+      const extracted = ((existing as any).extracted_data || {}) as Record<string, unknown>;
+      const convEnded = String(extracted?.conversation_ended || '').toLowerCase();
+
+      const endedIntentionally =
+        (sessionRow?.ended_intentionally === true) ||
+        (typeof sessionRow?.state === 'string' && ['completed', 'ended_completed'].includes(sessionRow.state)) ||
+        recStatus === 'completed' ||
+        convEnded === 'intentional';
+
+      const currentRetryCount = Number(sessionRow?.retry_count ?? 0);
+      const nextRetryCount = currentRetryCount + 1;
+
+      // Bump retry_count for observability + loop guard
+      if (sessionRow?.id) {
+        await supabase
+          .from('call_sessions')
+          .update({ retry_count: nextRetryCount })
+          .eq('id', sessionRow.id);
+      }
+
+      const loopGuardTripped = nextRetryCount > 2;
+
+      if (endedIntentionally || loopGuardTripped) {
+        const stage = endedIntentionally ? 'redirect_hangup_intentional' : 'redirect_hangup_loop_guard';
+        console.log(`[inbound] Re-entry → HANGUP callSid=${callSid} reason=${stage} retry=${nextRetryCount} endedIntentionally=${endedIntentionally}`);
+        voiceLog(callSid, tenantId, stage, undefined, undefined, {
+          retry_count: nextRetryCount,
+          session_state: sessionRow?.state ?? null,
+          ended_intentionally: sessionRow?.ended_intentionally ?? null,
+          record_status: recStatus,
+          conversation_ended: convEnded || null,
+        });
+
+        const hangupTwiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="Polly.Mia-Neural" language="es-MX">Gracias por tu llamada. Hasta luego.</Say>
+  <Hangup/>
+</Response>`;
+        return new Response(hangupTwiml, {
+          headers: { ...corsHeaders, 'Content-Type': 'text/xml' },
+        });
+      }
+
+      // Transient drop with room to retry → fall through to reconnect flow
+      voiceLog(callSid, tenantId, 'redirect_reconnect_attempt', undefined, undefined, {
+        retry_count: nextRetryCount,
+        session_state: sessionRow?.state ?? null,
+      });
     } else {
       const { data: newRecord, error: insertError } = await supabase
         .from('call_records')
