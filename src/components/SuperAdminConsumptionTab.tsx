@@ -171,9 +171,22 @@ const SuperAdminConsumptionTab = () => {
     onError: (e: any) => toast.error(`Error: ${e.message}`),
   });
 
-  const filtered = (tenantUsage.data || []).filter(t =>
-    t.name.toLowerCase().includes(search.toLowerCase())
+  const filtered = useMemo(
+    () => (tenantUsage.data || []).filter(t => t.name.toLowerCase().includes(search.toLowerCase())),
+    [tenantUsage.data, search],
   );
+
+  const totals = useMemo(() => ({
+    waMsgs: filtered.reduce((s, t) => s + t.waMsgs, 0),
+    waOut: filtered.reduce((s, t) => s + t.waOut, 0),
+    waIn: filtered.reduce((s, t) => s + t.waIn, 0),
+    voiceCalls: filtered.reduce((s, t) => s + t.voiceCalls, 0),
+    voiceMinutes: filtered.reduce((s, t) => s + t.voiceMinutes, 0),
+    voiceTotalCost: filtered.reduce((s, t) => s + t.voiceTotalCost, 0),
+    voiceTotalRevenue: filtered.reduce((s, t) => s + t.voiceTotalRevenue, 0),
+    activePackages: filtered.reduce((s, t) => s + t.activePackages, 0),
+    tenantsWithPackage: filtered.filter(t => t.activePackages > 0).length,
+  }), [filtered]);
 
   if (tenantUsage.isLoading) {
     return <div className="flex justify-center py-12"><Loader2 size={24} className="animate-spin text-muted-foreground" /></div>;
