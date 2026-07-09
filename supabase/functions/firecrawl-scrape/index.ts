@@ -32,6 +32,15 @@ serve(async (req) => {
       formattedUrl = `https://${formattedUrl}`;
     }
 
+    // Read-through cache — idempotent scrape by URL, 6h TTL.
+    const cacheKey = `scrape:${await sha256Hex(formattedUrl.toLowerCase())}`;
+    const cached = await cacheGet<{ markdown: string; title: string }>(cacheKey);
+    if (cached) {
+      return new Response(JSON.stringify({ success: true, cached: true, ...cached }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     const response = await fetch('https://api.firecrawl.dev/v1/scrape', {
       method: 'POST',
       headers: {
@@ -53,9 +62,15 @@ serve(async (req) => {
     const markdown = data.data?.markdown || data.markdown || '';
     const title = data.data?.metadata?.title || data.metadata?.title || '';
 
+    // Only cache successful scrapes with real content.
+    if (markdown) {
+      cacheSet(cacheKey, { markdown, title }, 6 * 60 * 60).catch(() => {});
+    }
+
     return new Response(JSON.stringify({ success: true, markdown, title }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
+
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Unknown error';
     console.error('Scrape error:', msg);
