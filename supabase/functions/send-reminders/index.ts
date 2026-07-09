@@ -541,7 +541,9 @@ serve(async (req) => {
               tenantLocN ||
               appt?.notes ||
               'Te contactaremos con los detalles';
-            const locationStr = `${(String(rawLoc).trim() || 'Te contactaremos con los detalles')}\n`;
+            // NOTE: Twilio Content Variables reject newline chars (21656). Use trailing space
+            // to separate the {{5}} value from the "Cualquier duda…" text glued after it in the template.
+            const locationStr = `${(String(rawLoc).trim() || 'Te contactaremos con los detalles')} `;
             const vars = {
               '1': firstName,
               '2': serviceStr,
