@@ -1,108 +1,95 @@
-## Diagnóstico de rendimiento de BD (read-only)
-
-Analicé `pg_stat_statements` (slow queries reales), `pg_indexes` para todas las tablas, `pg_stat_user_tables` (volumen), y todas las llamadas `.from(...)`, `.rpc(...)`, `.functions.invoke(...)` en `src/` y `supabase/functions/`.
+## Diagnóstico read-only (sin cambios aplicados)
 
 ---
 
-### 1. Volumen actual de datos (top tablas)
+### 1) `SELECT` sobre `whatsapp_usage_events` — el que aparece como ~141 ms
 
-| Tabla | Filas | Tamaño |
-|---|---|---|
-| webhook_logs | 3.438 | 1.4 MB |
-| whatsapp_messages | 1.407 | 1.1 MB |
-| whatsapp_usage_events | 1.201 | 696 kB |
-| audit_events | 973 | 568 kB |
-| call_events | 150 | 152 kB |
-| appointments | 137 | 248 kB |
-| call_jobs | 131 | 152 kB |
-| appointment_notifications | 128 | 144 kB |
-| call_records | 76 | 288 kB |
+**Ubicación real del `SELECT` sin filtro por `tenant_id`:**
+`src/components/SuperAdminConsumptionTab.tsx`, líneas **43–46** (dentro del query `sa-tenant-usage`, es el que se ejecuta al abrir el tab de SuperAdmin → Consumo):
 
-Volumen aún moderado; muchos "escaneos" hoy son baratos pero **crecen linealmente**. Prioricé según `total_ms` real de `pg_stat_statements`.
+```ts
+// líneas 43–46
+const { data: waEvents } = await supabase
+  .from('whatsapp_usage_events')
+  .select('tenant_id, units, event_type')
+  .gte('occurred_at', monthStart);
+```
 
----
+- **Columnas seleccionadas:** `tenant_id, units, event_type` (no es literalmente `*`; `pg_stat_statements` lo reporta así porque no hay `WHERE tenant_id=…`).
+- **Filtro:** solo `occurred_at >= primer día del mes`. **No filtra por `tenant_id`** (a propósito: es la vista de super_admin que agrega todos los tenants).
+- **Uso posterior (líneas 61–66):** en JS se agrupa por tenant con `.filter(e => e.tenant_id === t.id)` y se suma `units`, separando `message_out` vs `message_in`.
+- **Impacto:** al crecer `whatsapp_usage_events` este query se vuelve el más caro del SuperAdmin. Ya existe `idx_wa_usage_events_tenant_created(tenant_id, created_at DESC)` creado en la migración P1+P2, pero **este query filtra por `occurred_at` (no `created_at`) y no por `tenant_id`**, así que ese índice no le aplica.
 
-### 2. Frecuencia de acceso (llamadas en código)
+**Segundo lugar donde se lee (con filtro correcto):**
+`src/hooks/useTenantBilling.ts`, líneas **36–43** — este sí filtra `.eq('tenant_id', tenantId).gte('occurred_at', monthStart)`, es el que consume `UsagePage`.
 
-Top tablas leídas desde app + edge functions (conteo de referencias):
-`tenants` 84 · `profiles` 75 · `call_records` 70 · `appointments` 68 · `audit_events` 35 · `stripe_customers` 29 · `google_calendar_tokens` 25 · `whatsapp_messages/conversations` 24+24 · `call_jobs` 24 · `knowledge_items` 23 · `appointment_notifications` 23 · `tenant_subscriptions` 22 · `contacts` 22 · `expenses` 19 · `user_roles` 16.
+**Sobre `SuperAdminConsumptionTab.tsx` líneas 118 y 132** (las que mencionaste):
+- **línea 118:** `supabase.from('tenants').select('id, name').order('name')` — es de `tenants`, no de `whatsapp_usage_events`. Está cubierto por PK.
+- **línea 132:** `supabase.from('usage_packages' as any).insert({...})` — es un `INSERT`, no un `SELECT`.
 
----
+**En `src/pages/UsagePage.tsx` línea 18:** es `supabase.from('profiles').select('tenant_id').eq('user_id', user.id).maybeSingle()`. **No toca `whatsapp_usage_events`.** El acceso a `whatsapp_usage_events` desde `UsagePage` ocurre indirectamente vía `useTenantBilling` (ya filtrado por tenant).
 
-### 3. Queries realmente lentas (de `pg_stat_statements`)
-
-Ordenado por `total_ms` acumulado. Marcadas con **[SEQ SCAN probable]** las que no tienen índice que las cubra.
-
-| # | Query (resumida) | Calls | Total ms | Estado del índice |
-|---|---|---|---|---|
-| 1 | `appointment_notifications WHERE status IN(pending,failed) AND scheduled_at<=now() ORDER BY scheduled_at` (cron `send-reminders`) | 46.383 | 19.162 | ✅ Cubierta por `idx_appt_notif_due(status, scheduled_at) WHERE status IN (...)` |
-| 2 | `reminders WHERE (status=$1 OR status=$2) AND remind_at<=$3 ORDER BY remind_at` (cron `send-reminders`) | 46.383 | 11.921 | ❌ **[SEQ SCAN]** — no hay ningún índice en `reminders` (solo PK) |
-| 3 | `appointments WHERE calendar_sync_status IN(PENDING_SYNC,FAILED_SYNC) AND status<>cancelled AND deleted_at IS NULL AND sync_attempts<N ORDER BY last_sync_attempt ASC NULLS FIRST` (cron `calendar-sync`) | 23.944 | 7.885 | ⚠️ Parcial `idx_appointments_sync_status(calendar_sync_status)` cubre filtro pero **no el ORDER BY last_sync_attempt** |
-| 4 | `call_jobs WHERE status='queued' AND run_after<=now() ORDER BY created_at` (cron `call-job-worker`) | 23.969 | 4.883 | ⚠️ Parcial `idx_call_jobs_queue(status, run_after)` cubre filtro pero **no ordena por created_at** |
-| 5 | `whatsapp_messages WHERE metadata @> $1 ORDER BY created_at DESC` | 502 | 3.784 | ❌ **[SEQ SCAN]** — sin índice GIN en `metadata` y sin índice en `created_at` |
-| 6 | `whatsapp_messages WHERE conversation_id=$1 ORDER BY created_at ASC` (inbox al abrir chat) | 45 | 1.520 (mean 34 ms) | ⚠️ Sin índice compuesto `(conversation_id, created_at)` |
-| 7 | `whatsapp_messages WHERE conversation_id=$1 AND direction=$2 AND metadata @> $3` | 139 | 1.167 | ❌ Igual que #6, sin cubrir |
-| 8 | `whatsapp_usage_events` sin filtros (`SELECT *`) | 14 | 1.976 (mean 141 ms) | ❌ Es un `SELECT *` sin WHERE — problema de aplicación, no de índice |
-| 9 | `user_roles WHERE user_id=$1 AND tenant_id=$2` | 799 | 1.446 | ⚠️ Verificar índice `(user_id, tenant_id)` — hay PK y varios parciales, pero mean 1.8 ms sugiere cubierto adecuadamente |
-| 10 | `tenants WHERE id=$1` | 149 | 842 | ✅ PK |
+**Conclusión punto 1:** el `SELECT` de ~141 ms es el de `SuperAdminConsumptionTab.tsx` líneas 43–46. Para optimizarlo sin cambiar lo que muestra hay dos opciones (a decidir después):
+- A) añadir índice `(occurred_at)` — ayuda al escaneo por rango del mes actual.
+- B) reescribir la agregación en SQL (RPC) con `GROUP BY tenant_id, event_type` para que Postgres devuelva ya sumado en vez de traer todas las filas al cliente.
 
 ---
 
-### 4. Consultas probablemente `Seq Scan` (por código, sin índice conocido)
+### 2) Cómo carga hoy el inbox de WhatsApp los mensajes
 
-Analizando `.from(...).eq/.gte/.order` en el código contra `pg_indexes`:
+**Archivo/hook:** `src/hooks/useWhatsAppData.ts` (usado por `WhatsAppInboxPage.tsx`).
 
-| Tabla | Filtro / Order en código | Índice existente | Riesgo |
+**Query exacta al abrir una conversación**, líneas **69–77**:
+
+```ts
+const fetchMessages = useCallback(async (conversationId: string) => {
+  activeConvIdRef.current = conversationId;
+  try {
+    const { data, error } = await supabase
+      .from('whatsapp_messages')
+      .select('*')
+      .eq('conversation_id', conversationId)
+      .order('created_at', { ascending: true });
+    if (error) throw error;
+    if (data) setMessages(data as DBMessage[]);
+```
+
+- **`select('*')`** — trae todas las columnas.
+- **Filtro:** `conversation_id = <id>`.
+- **Orden:** `created_at ASC`.
+- **`limit` / `range`: NO hay.** Se traen todos los mensajes históricos de la conversación en una sola llamada. Ya existe `idx_whatsapp_messages_conv_created(conversation_id, created_at DESC)` (P0), que sirve tanto para ASC como DESC, pero no limita el volumen devuelto.
+
+**Realtime (mismo archivo, líneas ~99–137):** un solo canal `whatsapp-realtime-${tenantId}` con dos suscripciones:
+- `whatsapp_conversations` filtrado por `tenant_id=eq.${tenantId}` → recarga la lista.
+- `whatsapp_messages` **sin filtro server-side** (Supabase Realtime no soporta filtros compuestos aquí) → en el handler compara `newMsg.conversation_id === activeConvIdRef.current` y hace `setMessages(prev => [...prev, newMsg])` evitando duplicados por `id`. Cleanup con `supabase.removeChannel(channel)` en el `return` del `useEffect`.
+
+**Implicación para paginar sin romper realtime:** cualquier paginación tiene que
+- ordenar `DESC` en la query inicial (últimos N) y luego invertir en cliente,
+- mantener el mismo `activeConvIdRef` y el mismo append por INSERT del realtime (los mensajes nuevos siempre van al final),
+- gestionar un "cargar más antiguos" con `range()` o `.lt('created_at', oldestLoaded)` sin tocar el canal ya suscrito.
+
+**Otros lugares que tocan `whatsapp_messages`** (para referencia, no requieren cambio ahora):
+- `src/pages/WhatsAppInboxPage.tsx:86` — `INSERT` al crear nueva conversación.
+- `src/pages/WhatsAppInboxPage.tsx:101` — `DELETE` por `conversation_id` al borrar conversación.
+- `src/pages/AnalyticsPage.tsx:139` — `select('id, created_at').eq('tenant_id').gte('created_at', since)` (analytics).
+
+---
+
+### 3) Monitoreo de queries y `pg_stat_statements`
+
+- **`pg_stat_statements` está instalado:** `extname=pg_stat_statements`, `extversion=1.11`. Es la fuente que ya usamos vía el tool `supabase--slow_queries`.
+- **Otras extensiones relevantes presentes:** `vector` (0.8.0). **NO está instalado `pg_trgm`** (haría falta para el `GIN (name gin_trgm_ops)` en `contacts` cuando lo abordemos).
+- **Vistas/funciones de monitoreo propias en `public`:** ninguna. La búsqueda `pg_class` en schema `public` con nombres tipo `%stat%|%monitor%|%slow%` solo devuelve índices de features existentes (`idx_reminders_status_remind_at`, `idx_call_records_tenant_status`, `idx_appointments_sync_status`, etc.) y la tabla `realtime_margin_state`. No hay vista tipo `v_slow_queries` ni función `get_slow_queries()`.
+- **Consecuencia:** sí es posible crear un **monitor read-only** (una vista `SECURITY DEFINER` o RPC `SECURITY DEFINER` restringida a `super_admin` que exponga `pg_stat_statements` filtrado por schema `public`). Ese cambio requeriría migración; por ahora queda solo diagnosticado.
+
+---
+
+### Resumen ejecutivo
+
+| # | Hallazgo | Ubicación exacta | Estado |
 |---|---|---|---|
-| **reminders** | `status IN(...) AND remind_at<=now() ORDER BY remind_at` (cada minuto) | ninguno | **ALTO** — cron dispara 46k veces |
-| **reminders** | `.eq('user_id', …)` y `.eq('tenant_id', …)` (RemindersPage) | ninguno | **MEDIO** |
-| **whatsapp_messages** | `conversation_id + ORDER BY created_at` (abrir chat) | ninguno compuesto | **ALTO** — crece 1.4k → millones |
-| **whatsapp_messages** | `metadata @> {...}` (búsqueda por provider/message_sid en `daily-reminders`, `twilio-send`) | ninguno GIN | **ALTO** |
-| **whatsapp_conversations** | `.eq('tenant_id') .order('last_message_at' DESC)` (inbox realtime) | verificar | **MEDIO** |
-| **whatsapp_usage_events** | `.eq('tenant_id') .gte('created_at')` (dashboard uso) | verificar | **MEDIO** |
-| **webhook_logs** | INSERTs 770 calls (mean 3.6 ms) + reads por tenant | solo PK | **MEDIO** — tabla crece rápido |
-| **expenses** | `.eq('user_id') .eq('status')` (`daily-reminders`), `.eq('tenant_id') .order('date')` (ExpensesPage) | solo PK | **MEDIO** — sin ningún índice secundario |
-| **contacts** | `.ilike('name', '%q%')` búsqueda global | `phone` y `starred` sí; **`name` no** y `ilike` con `%…%` no usa btree | **MEDIO** (necesitaría `pg_trgm` GIN si es común) |
-| **appointments** | `calendar_sync_status + ORDER BY last_sync_attempt` | parcial cubre filtro, no orden | **MEDIO** |
-| **call_jobs** | `status='queued' AND run_after<= ORDER BY created_at` | parcial cubre filtro, no orden | **MEDIO** |
-| **audit_events** | `.eq('tenant_id') .order('created_at' DESC)` | ✅ `idx_audit_tenant_created` | OK |
-| **call_records** | `.eq('tenant_id') .order('created_at')` / `.eq('tenant_id',status)` | ✅ ambos cubiertos | OK |
-| **appointment_notifications** | cron | ✅ cubierta | OK |
-| **profiles** | `whatsapp_number + status='active'` | ✅ `idx_profiles_whatsapp_tenant` | OK |
-| **user_roles** | `user_id, tenant_id, role` | ✅ | OK |
+| 1 | `SELECT` sin `tenant_id` sobre `whatsapp_usage_events` (~141 ms) | `src/components/SuperAdminConsumptionTab.tsx:43–46` | Diseño intencional del panel super_admin. Se optimiza con índice en `occurred_at` o RPC agregada. |
+| 2 | Inbox WhatsApp carga **todo el historial** de la conversación sin `limit` | `src/hooks/useWhatsAppData.ts:69–77` (query) + `:99–137` (realtime) | Índice compuesto ya cubre; falta paginación en app. Realtime seguro de mantener si se pagina con `DESC + range`. |
+| 3 | `pg_stat_statements` disponible (v1.11), sin monitor propio en `public` | — | Posible crear vista/RPC restringida a super_admin más adelante. |
 
----
-
-### 5. Tabla priorizada de índices candidatos (SOLO diagnóstico, no ejecutar)
-
-| Prio | Tabla | Índice sugerido | Query que lo motiva | Impacto esperado |
-|---|---|---|---|---|
-| **P0** | `reminders` | `(status, remind_at)` parcial `WHERE status IN ('pending','failed')` | cron cada minuto, 46k calls, 12 s acumulados | Elimina seq scan recurrente |
-| **P0** | `whatsapp_messages` | `(conversation_id, created_at DESC)` | abrir chat en inbox (mean 34 ms) | Reduce a <1 ms; escalabilidad |
-| **P0** | `whatsapp_messages` | `GIN (metadata)` | filtros `metadata @>` (3.8 s acumulados) | De seq scan a lookup |
-| **P1** | `call_jobs` | `(status, run_after, created_at)` reemplazando `idx_call_jobs_queue` | cron worker, 24k calls | Cubre filtro + orden |
-| **P1** | `appointments` | `(calendar_sync_status, last_sync_attempt NULLS FIRST)` parcial | cron calendar-sync, 24k calls, 7.9 s | Cubre filtro + orden |
-| **P1** | `whatsapp_conversations` | `(tenant_id, last_message_at DESC)` | inbox principal | Ordenamiento del listado |
-| **P2** | `expenses` | `(tenant_id, date DESC)` y `(user_id, status)` | ExpensesPage + daily-reminders | Sin ningún índice hoy |
-| **P2** | `whatsapp_usage_events` | `(tenant_id, created_at DESC)` | dashboard uso y billing | Crece rápido |
-| **P2** | `reminders` | `(tenant_id, user_id, remind_at)` | RemindersPage listado por usuario | UI listado |
-| **P3** | `webhook_logs` | `(tenant_id, created_at DESC)` | trazabilidad; crece más rápido que otras | Preventivo |
-| **P3** | `contacts` | `GIN (name gin_trgm_ops)` (requiere extensión) | búsqueda `ilike '%q%'` | Solo si búsqueda global es frecuente |
-| **P3** | `whatsapp_usage_events` código | Revisar `SELECT *` sin WHERE (mean 141 ms) | app envía query sin filtro | Fix en código, no índice |
-
----
-
-### 6. Observaciones no relacionadas con índices
-
-- `whatsapp_usage_events` `SELECT *` sin `WHERE` (14 calls, mean 141 ms): probablemente en `SuperAdminConsumptionTab` o `UsagePage`. Debería filtrarse por `tenant_id` y ventana temporal.
-- `DELETE FROM tenants WHERE id=$1` (12 calls, mean 182 ms): normal por cascadas; no optimizar.
-- `webhook_logs` INSERTs 770 × 3.6 ms = ~2.8 s acumulados: coste de escritura, no de lectura.
-- `SuperAdminConsumptionTab.tsx:118,132` y `UsagePage.tsx:18` leen `whatsapp_usage_events` / `usage_costs_reconciled` — revisar que siempre filtren por `tenant_id`+rango de fechas.
-
----
-
-### 7. Qué NO hacer todavía
-
-No se ejecutan cambios. Este plan es solo diagnóstico. Cuando apruebes, propondré una migración por prioridad (P0 primero) con `CREATE INDEX` (nunca `CONCURRENTLY` dentro de migración), y verificación con `EXPLAIN (ANALYZE, BUFFERS)` antes/después.
-
-¿Apruebas para pasar a la siguiente fase (proponer migración P0: `reminders`, `whatsapp_messages` compuesto + GIN)?
+No se ejecutó ningún cambio. ¿Apruebas pasar a la fase de propuesta de fixes concretos (índice `occurred_at`, paginación del inbox, y RPC de monitor)?
