@@ -181,7 +181,7 @@ serve(async (req) => {
       actor_id: user.id,
       resource_type: "support_ticket",
       resource_id: ticketId,
-      payload: { subject, priority: pr, email_sent: emailSent, email_error: emailError, contact_email },
+      payload: { subject, priority: pr, email_sent: emailSent, email_queued: emailQueued, email_error: emailError, contact_email },
     });
 
     return json({
@@ -189,6 +189,7 @@ serve(async (req) => {
       ticket_id: ticketId,
       ticket_number: ticketShort,
       email_sent: emailSent,
+      email_queued: emailQueued,
       email_error: emailError,
     });
   } catch (e) {
