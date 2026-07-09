@@ -553,6 +553,42 @@ serve(async (req) => {
       });
     }
 
+    // ─── CONFIRM ───
+    if (action === 'confirm_appointment') {
+      const { appointment_id } = data;
+      if (!appointment_id) {
+        return jsonResp({ error: 'Missing appointment_id' }, 400);
+      }
+      let confirmed: any = null;
+      try {
+        const { data: cRow, error: confErr } = await supabase
+          .from('appointments')
+          .update({ status: 'confirmed' })
+          .eq('id', appointment_id)
+          .select('id, contact_name')
+          .maybeSingle();
+        if (confErr) throw confErr;
+        confirmed = cRow;
+      } catch (e) {
+        console.error('[voice-scheduling] confirm update error:', e);
+        return jsonResp({
+          success: false,
+          message: 'No pude confirmar la cita en este momento. ¿Podemos intentar de nuevo?',
+        });
+      }
+      if (!confirmed?.id) {
+        return jsonResp({
+          success: false,
+          message: 'No encontré esa cita para confirmarla.',
+        });
+      }
+      return jsonResp({
+        success: true,
+        message: `Cita de ${confirmed.contact_name} confirmada`,
+      });
+    }
+
+
 
 
     // ─── LIST EMPLOYEES ───
