@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
+import { cacheInvalidate, todayUTC } from "../_shared/cache.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -217,6 +218,15 @@ serve(async (req) => {
         action_taken: 'logged',
       });
     }
+
+    // Invalidate cached aggregates for this tenant + global for today's day-scoped key.
+    const _day = todayUTC();
+    await Promise.all([
+      cacheInvalidate(`usage:agg:${tenant_id}:`),
+      cacheInvalidate(`usage:summary:${tenant_id}:`),
+      cacheInvalidate(`usage:agg:global:${_day}`),
+      cacheInvalidate(`margin:state:${tenant_id}`),
+    ]);
 
     console.log(`Cost calculated for call ${call_record_id}: $${costTotal} cost, $${revenueCharged} revenue, ${marginPct}% margin`);
 

@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
+import { cacheGet, cacheSet, cacheInvalidate, todayUTC } from "../_shared/cache.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -52,6 +53,14 @@ serve(async (req) => {
 
         const { error } = await supabase.from('whatsapp_usage_events').insert(rows);
         if (error) throw error;
+
+        // Invalidate cached aggregates for this tenant + global for today's day-scoped key.
+        const day = todayUTC();
+        await Promise.all([
+          cacheInvalidate(`usage:agg:${tenant_id}:`),
+          cacheInvalidate(`usage:summary:${tenant_id}:`),
+          cacheInvalidate(`usage:agg:global:${day}`),
+        ]);
 
         return new Response(JSON.stringify({ success: true, recorded: rows.length }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -166,6 +175,13 @@ serve(async (req) => {
           .lt('occurred_at', period_end)
           .eq('billing_status', 'pending');
 
+        // Invalidate cached aggregates for every reconciled tenant + global.
+        await Promise.all([
+          cacheInvalidate('usage:agg:global:'),
+          ...results.map(r => cacheInvalidate(`usage:agg:${r.tenant_id}:`)),
+          ...results.map(r => cacheInvalidate(`usage:summary:${r.tenant_id}:`)),
+        ]);
+
         return new Response(JSON.stringify({ success: true, reconciled: results.length, results }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
@@ -183,6 +199,16 @@ serve(async (req) => {
 
         const now = new Date();
         const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+        const day = todayUTC(now);
+        const cacheKey = `usage:summary:${tenant_id}:${day}`;
+
+        // Read-through cache (300s TTL for current-day rollup). Safe fallback on miss/error.
+        const cached = await cacheGet<any>(cacheKey);
+        if (cached) {
+          return new Response(JSON.stringify(cached), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json', 'x-cache': 'HIT' },
+          });
+        }
 
         const [eventsRes, reconciledRes] = await Promise.all([
           supabase
@@ -206,10 +232,17 @@ serve(async (req) => {
           byType[ev.event_type] = (byType[ev.event_type] || 0) + Number(ev.units);
         }
 
-        return new Response(JSON.stringify({
+        const payload = {
           current_month: { total_units: totalUnits, by_type: byType, period_start: monthStart },
           reconciled_history: reconciledRes.data || [],
-        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        };
+
+        // Best-effort write; failure never breaks the response.
+        await cacheSet(cacheKey, payload, 300);
+
+        return new Response(JSON.stringify(payload), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json', 'x-cache': 'MISS' },
+        });
       }
 
       default:

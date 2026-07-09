@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
+import { cacheInvalidate } from "../_shared/cache.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -245,6 +246,12 @@ serve(async (req) => {
         fx_instability_factor: 0,
       });
     }
+
+    // Rollup finished — invalidate day-scoped caches so downstream reads pick up fresh data.
+    await Promise.all([
+      cacheInvalidate(`metrics:daily:${today}`),
+      cacheInvalidate(`usage:agg:global:${today}`),
+    ]);
 
     console.log(`Global metrics calculated: MRR=$${globalMetrics.mrr.toFixed(2)}, ARR=$${globalMetrics.arr.toFixed(2)}, ${Object.keys(regionMetrics).length} regions`);
 
