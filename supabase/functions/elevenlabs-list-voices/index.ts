@@ -64,7 +64,10 @@ serve(async (req) => {
 
     const payload = { voices };
     cache = { ts: Date.now(), data: payload };
+    // Best-effort persist to shared KV (24h) — silent on failure.
+    cacheSet(KV_KEY, payload, KV_TTL_SECONDS).catch(() => {});
     return jsonRes({ ok: true, cached: false, ...payload });
+
   } catch (e) {
     console.error("[elevenlabs-list-voices] fatal:", (e as Error).message);
     return jsonRes({ ok: false, error: (e as Error).message }, 500);
