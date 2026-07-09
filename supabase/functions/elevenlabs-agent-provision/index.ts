@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
 import { resolveTenantAgentId } from "../_shared/elevenlabs-agent.ts";
+import { MAX_CALL_DURATION_SECONDS, upsertAgentClosingBlock } from "../_shared/elevenlabs-agent.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -107,13 +108,14 @@ serve(async (req) => {
     }
 
     // Build create payload
+    const promptWithClosing = upsertAgentClosingBlock(basePrompt);
     const conversationConfig: any = {
       agent: {
-        prompt: { prompt: basePrompt },
+        prompt: { prompt: promptWithClosing },
         first_message: baseFirstMessage,
         language: baseLanguage,
       },
-      conversation: { max_duration_seconds: 5000 },
+      conversation: { max_duration_seconds: MAX_CALL_DURATION_SECONDS },
     };
     if (baseVoiceId) conversationConfig.tts = { voice_id: baseVoiceId };
     if (baseLlm) conversationConfig.agent.prompt.llm = baseLlm;

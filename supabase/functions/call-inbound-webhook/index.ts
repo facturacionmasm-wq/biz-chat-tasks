@@ -69,11 +69,14 @@ function parseRequestBody(contentType: string, rawBody: string): Record<string, 
 function buildTwimlWithElevenLabs(elTwiml: string, statusCallbackUrl: string, companyName: string): string {
   console.log(`[inbound] Raw ElevenLabs TwiML: ${elTwiml}`);
 
-  // Keep ElevenLabs TwiML untouched, but append a safe fallback message.
-  // If the WebSocket closes early, Twilio will continue with this <Say>
-  // instead of ending the call abruptly.
+  // Build a reconnect URL that points BACK to this same inbound webhook so a
+  // dropped ElevenLabs WebSocket does not terminate the call — Twilio will
+  // re-fetch fresh TwiML and re-open the stream instead of hanging up.
+  const SUPABASE_URL_ENV = Deno.env.get('SUPABASE_URL') || '';
+  const reconnectUrl = `${SUPABASE_URL_ENV}/functions/v1/call-inbound-webhook`;
+  const fallback = `<Say voice="Polly.Mia-Neural" language="es-MX">Tuvimos una desconexión con el asistente. Reintentando…</Say><Redirect method="POST">${reconnectUrl}</Redirect>`;
+
   if (elTwiml.includes('<Response')) {
-    const fallback = `<Say voice="Polly.Mia-Neural" language="es-MX">Tuvimos una desconexión con el asistente. Por favor intente de nuevo en unos segundos.</Say>`;
     if (elTwiml.includes('</Response>')) {
       return elTwiml.replace('</Response>', `${fallback}</Response>`);
     }
@@ -86,7 +89,7 @@ function buildTwimlWithElevenLabs(elTwiml: string, statusCallbackUrl: string, co
   <Connect>
     <Stream url="${elTwiml}"/>
   </Connect>
-  <Say voice="Polly.Mia-Neural" language="es-MX">Tuvimos una desconexión con el asistente. Por favor intente de nuevo en unos segundos.</Say>
+  ${fallback}
 </Response>`;
 }
 
