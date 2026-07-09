@@ -175,6 +175,13 @@ serve(async (req) => {
           .lt('occurred_at', period_end)
           .eq('billing_status', 'pending');
 
+        // Invalidate cached aggregates for every reconciled tenant + global.
+        await Promise.all([
+          cacheInvalidate('usage:agg:global:'),
+          ...results.map(r => cacheInvalidate(`usage:agg:${r.tenant_id}:`)),
+          ...results.map(r => cacheInvalidate(`usage:summary:${r.tenant_id}:`)),
+        ]);
+
         return new Response(JSON.stringify({ success: true, reconciled: results.length, results }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
