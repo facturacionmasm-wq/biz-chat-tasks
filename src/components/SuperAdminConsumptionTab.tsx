@@ -198,23 +198,23 @@ const SuperAdminConsumptionTab = () => {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
           <div className="flex items-center gap-2 mb-1"><MessageSquare size={14} className="text-green-600" /><span className="text-xs text-muted-foreground">WhatsApp Total</span></div>
-          <p className="text-2xl font-bold text-foreground">{filtered.reduce((s, t) => s + t.waMsgs, 0)}</p>
-          <p className="text-xs text-muted-foreground">{filtered.reduce((s, t) => s + t.waOut, 0)} env · {filtered.reduce((s, t) => s + t.waIn, 0)} rec</p>
+          <p className="text-2xl font-bold text-foreground">{totals.waMsgs}</p>
+          <p className="text-xs text-muted-foreground">{totals.waOut} env · {totals.waIn} rec</p>
         </div>
         <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
           <div className="flex items-center gap-2 mb-1"><Phone size={14} className="text-blue-600" /><span className="text-xs text-muted-foreground">Voice Total</span></div>
-          <p className="text-2xl font-bold text-foreground">{filtered.reduce((s, t) => s + t.voiceCalls, 0)}</p>
-          <p className="text-xs text-muted-foreground">{filtered.reduce((s, t) => s + t.voiceMinutes, 0).toFixed(1)} min</p>
+          <p className="text-2xl font-bold text-foreground">{totals.voiceCalls}</p>
+          <p className="text-xs text-muted-foreground">{totals.voiceMinutes.toFixed(1)} min</p>
         </div>
         <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
           <div className="flex items-center gap-2 mb-1"><DollarSign size={14} className="text-amber-600" /><span className="text-xs text-muted-foreground">Costo Voice Total</span></div>
-          <p className="text-2xl font-bold text-foreground">{fmt(filtered.reduce((s, t) => s + t.voiceTotalCost, 0))}</p>
-          <p className="text-xs text-muted-foreground">Revenue: {fmt(filtered.reduce((s, t) => s + t.voiceTotalRevenue, 0))}</p>
+          <p className="text-2xl font-bold text-foreground">{fmt(totals.voiceTotalCost)}</p>
+          <p className="text-xs text-muted-foreground">Revenue: {fmt(totals.voiceTotalRevenue)}</p>
         </div>
         <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
           <div className="flex items-center gap-2 mb-1"><Package size={14} className="text-purple-600" /><span className="text-xs text-muted-foreground">Paquetes Activos</span></div>
-          <p className="text-2xl font-bold text-foreground">{filtered.reduce((s, t) => s + t.activePackages, 0)}</p>
-          <p className="text-xs text-muted-foreground">{filtered.filter(t => t.activePackages > 0).length} tenants con paquete</p>
+          <p className="text-2xl font-bold text-foreground">{totals.activePackages}</p>
+          <p className="text-xs text-muted-foreground">{totals.tenantsWithPackage} tenants con paquete</p>
         </div>
       </div>
 
