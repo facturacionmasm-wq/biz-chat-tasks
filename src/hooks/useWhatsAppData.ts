@@ -138,6 +138,9 @@ export function useWhatsAppData() {
         },
         () => {
           fetchConversations();
+          // Invalidate dashboards that count open conversations
+          queryClient.invalidateQueries({ queryKey: ['dashboard-stats', tenantId] });
+          queryClient.invalidateQueries({ queryKey: ['analytics', tenantId] });
         }
       )
       .on(
@@ -160,6 +163,8 @@ export function useWhatsAppData() {
 
           // Always refresh conversation list to update last_message_at
           fetchConversations();
+          // Invalidate analytics (message counts)
+          queryClient.invalidateQueries({ queryKey: ['analytics', tenantId] });
         }
       )
       .subscribe((status) => {
