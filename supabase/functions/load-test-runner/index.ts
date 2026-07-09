@@ -215,7 +215,9 @@ serve(async (req) => {
 
     // B. APPOINTMENT: insert row → trigger creates notifications → dry-run drain
     appointment: async (i) => {
-      const startAt = new Date(Date.now() + (60 + (i % 300)) * 60_000).toISOString();
+      const startMs = Date.now() + (60 + (i % 300)) * 60_000;
+      const startAt = new Date(startMs).toISOString();
+      const endAt = new Date(startMs + 30 * 60_000).toISOString();
       const { data: appt, error: apErr } = await admin
         .from('appointments')
         .insert({
@@ -225,36 +227,28 @@ serve(async (req) => {
           contact_email: `vu_${i}@${LOADTEST_EMAIL_DOMAIN}`,
           service_type: 'loadtest',
           start_at: startAt,
+          end_at: endAt,
           status: 'scheduled',
           notes: '[LOADTEST]',
         })
         .select('id')
         .single();
       if (apErr) throw new Error(`insert appointment: ${apErr.message}`);
-      // Kick send-reminders in dry-run to drain the notifications this trigger created.
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/send-reminders`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${SERVICE_KEY}`,
-          apikey: SERVICE_KEY,
-          'Content-Type': 'application/json',
-          'x-loadtest': '1',
-        },
-        body: JSON.stringify({ tenant_id: LOADTEST_TENANT_ID, appointment_id: appt.id }),
-      });
-      await res.text();
-      if (!res.ok) throw new Error(`send-reminders ${res.status}`);
+      // Trigger schedule_appointment_reminders already ran and fanned out into
+      // appointment_notifications. Draining send-reminders per-row would hit
+      // the Edge Functions rate limit (1 fetch × 200 VUs). It's drained ONCE
+      // after all batches in the post-drain phase below.
       return { start: 0, end: 0, ok: true };
     },
 
-    // C. CHAT: insert message + read last 50
+    // C. CHAT: insert message + read last 50 — real schema uses user_id (NOT sender_id)
     chat: async (i) => {
       if (!chatChannelId) throw new Error('no loadtest-general channel');
       const senderId = vuList[i % Math.max(vuList.length, 1)]?.user_id || caller.id;
       const { error: insErr } = await admin.from('chat_messages').insert({
         tenant_id: LOADTEST_TENANT_ID,
         channel_id: chatChannelId,
-        sender_id: senderId,
+        user_id: senderId,
         content: `[LOADTEST] msg #${i} @ ${Date.now()}`,
       });
       if (insErr) throw new Error(`chat insert: ${insErr.message}`);
@@ -268,7 +262,8 @@ serve(async (req) => {
       return { start: 0, end: 0, ok: true };
     },
 
-    // D. JOBS: enqueue loadtest_noop then invoke worker
+    // D. JOBS: enqueue only. Worker is drained in a bounded post-step to avoid
+    // hitting the Edge Functions per-function rate limit with 1 fetch per job.
     jobs: async (i) => {
       const jobId = await enqueueJob(admin, {
         jobType: 'loadtest_noop',
@@ -277,18 +272,6 @@ serve(async (req) => {
         createdBy: caller.id,
       });
       if (!jobId) throw new Error('enqueue failed');
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/background-job-worker`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${SERVICE_KEY}`,
-          apikey: SERVICE_KEY,
-          'Content-Type': 'application/json',
-          'x-loadtest': '1',
-        },
-        body: '{}',
-      });
-      await res.text();
-      if (!res.ok) throw new Error(`worker ${res.status}`);
       return { start: 0, end: 0, ok: true };
     },
 
@@ -329,6 +312,79 @@ serve(async (req) => {
   }
   const runEnd = Date.now();
 
+  // ── Drain phase: process background_jobs enqueued by flow D + drain the
+  // appointment_notifications fanned out by the trigger. Both drains are
+  // sequential with bounded retries so we respect the Edge Functions rate
+  // limit (which throws RateLimitError from fetch itself, not a 429 body).
+  const drain = {
+    jobs: { invocations: 0, processed: 0, errors: 0, duration_ms: 0, empty_stops: 0, rate_limit_hits: 0 },
+    reminders: { invocations: 0, sent: 0, errors: 0, duration_ms: 0, rate_limit_hits: 0 },
+  };
+
+  async function safeFetch(url: string, body: string, maxAttempts = 6): Promise<{ status: number; text: string } | null> {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${SERVICE_KEY}`,
+            apikey: SERVICE_KEY,
+            'Content-Type': 'application/json',
+            'x-loadtest': '1',
+          },
+          body,
+        });
+        const text = await res.text();
+        return { status: res.status, text };
+      } catch (e: any) {
+        // Supabase Edge Runtime throws RateLimitError from fetch when the
+        // per-function limit is hit. Back off using retryAfterMs when present.
+        const isRate = e?.name === 'RateLimitError' || /rate limit/i.test(String(e?.message));
+        if (!isRate) return null;
+        const wait = Math.min(Number(e?.retryAfterMs) || 2000, 8000);
+        await new Promise((r) => setTimeout(r, wait));
+      }
+    }
+    return null;
+  }
+
+  if (requestedFlows.includes('jobs')) {
+    const t0 = Date.now();
+    const MAX_INVOCATIONS = 50;
+    for (let k = 0; k < MAX_INVOCATIONS; k++) {
+      const r = await safeFetch(`${SUPABASE_URL}/functions/v1/background-job-worker`, JSON.stringify({ max: 100 }));
+      drain.jobs.invocations++;
+      if (!r) { drain.jobs.rate_limit_hits++; drain.jobs.errors++; continue; }
+      if (r.status < 200 || r.status >= 300) { drain.jobs.errors++; continue; }
+      let parsed: any = null; try { parsed = JSON.parse(r.text); } catch {/* ignore */}
+      const processed = Number(parsed?.processed || 0);
+      drain.jobs.processed += processed;
+      if (processed === 0) { drain.jobs.empty_stops++; break; }
+    }
+    drain.jobs.duration_ms = Date.now() - t0;
+  }
+
+  if (requestedFlows.includes('appointment')) {
+    const t0 = Date.now();
+    // Drain the notifications fanned out by schedule_appointment_reminders.
+    // Each invocation processes a batch of due notifications; loop until empty.
+    for (let k = 0; k < 30; k++) {
+      const r = await safeFetch(
+        `${SUPABASE_URL}/functions/v1/send-reminders`,
+        JSON.stringify({ tenant_id: LOADTEST_TENANT_ID }),
+      );
+      drain.reminders.invocations++;
+      if (!r) { drain.reminders.rate_limit_hits++; drain.reminders.errors++; continue; }
+      if (r.status < 200 || r.status >= 300) { drain.reminders.errors++; continue; }
+      let parsed: any = null; try { parsed = JSON.parse(r.text); } catch {/* ignore */}
+      const sent = Number(parsed?.sent ?? parsed?.total_sent ?? 0);
+      drain.reminders.sent += sent;
+      if (sent === 0) break;
+    }
+    drain.reminders.duration_ms = Date.now() - t0;
+  }
+
+
   // Build per-flow summary
   const flowsReport: Record<string, unknown> = {};
   for (const flow of requestedFlows) {
@@ -343,6 +399,7 @@ serve(async (req) => {
     batch_size: batchSize,
     flows: flowsReport,
     vu_pool_size: vuList.length,
+    drain,
   };
 
   await admin

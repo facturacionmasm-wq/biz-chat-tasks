@@ -19,7 +19,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const MAX_JOBS_PER_RUN = 10;
+const DEFAULT_MAX_JOBS_PER_RUN = 10;
+const HARD_CAP_JOBS_PER_RUN = 100;
 
 const j = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -36,8 +37,19 @@ serve(async (req) => {
 
   const results: Array<{ job_id: string; job_type: string; status: string; error?: string }> = [];
 
+  let requestedMax = DEFAULT_MAX_JOBS_PER_RUN;
   try {
-    const jobs = await claimNextJobs(supabase, MAX_JOBS_PER_RUN);
+    if (req.method === 'POST') {
+      const body = await req.clone().json().catch(() => ({}));
+      const m = Number((body as any)?.max);
+      if (Number.isFinite(m) && m > 0) {
+        requestedMax = Math.min(Math.floor(m), HARD_CAP_JOBS_PER_RUN);
+      }
+    }
+  } catch { /* ignore */ }
+
+  try {
+    const jobs = await claimNextJobs(supabase, requestedMax);
     if (jobs.length === 0) {
       return j({ message: "No jobs to process", processed: 0 });
     }
