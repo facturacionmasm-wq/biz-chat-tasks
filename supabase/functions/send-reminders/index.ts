@@ -124,11 +124,13 @@ serve(async (req) => {
     // when the global TWILIO_PHONE_NUMBER isn't a registered WhatsApp channel.
     const tenantIdsR = [...new Set(reminders.map((r: any) => r.tenant_id))];
     const { data: tenantsR } = tenantIdsR.length > 0
-      ? await supabase.from('tenants').select('id, whatsapp_config').in('id', tenantIdsR)
+      ? await supabase.from('tenants').select('id, whatsapp_config, settings_json').in('id', tenantIdsR)
       : { data: [] };
     const tenantConfigMapR = new Map<string, any>();
+    const tenantSettingsMap = new Map<string, any>();
     for (const t of (tenantsR || [])) {
       tenantConfigMapR.set(t.id, t.whatsapp_config);
+      tenantSettingsMap.set(t.id, t.settings_json);
     }
 
     let sentCount = 0;
