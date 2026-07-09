@@ -142,6 +142,15 @@ verify_jwt = false
 [functions.background-job-worker]
 verify_jwt = false
 
+[functions.load-test-runner]
+verify_jwt = true
+
+[functions.load-test-seed]
+verify_jwt = true
+
+[functions.load-test-cleanup]
+verify_jwt = true
+
 
 
 
