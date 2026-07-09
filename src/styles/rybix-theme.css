@@ -59,6 +59,7 @@
    DAY TOKENS
 ════════════════════════════════════════ */
 body.day {
+  color-scheme: light;
   --rx-bg:      #f0f2f7;
   --rx-s1:      #ffffff;
   --rx-s2:      #f4f5fa;
