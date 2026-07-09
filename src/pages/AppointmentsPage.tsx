@@ -227,9 +227,9 @@ const AppointmentsPage = () => {
     }
     setSaving(true);
     try {
-      const startAt = new Date(`${form.date}T${form.startTime}:00`);
+      const startAt = zonedTimeToUtc(form.date, form.startTime, tenantTz);
       const endAt = form.endTime
-        ? new Date(`${form.date}T${form.endTime}:00`)
+        ? zonedTimeToUtc(form.date, form.endTime, tenantTz)
         : new Date(startAt.getTime() + 30 * 60000);
 
       if (endAt <= startAt) {
