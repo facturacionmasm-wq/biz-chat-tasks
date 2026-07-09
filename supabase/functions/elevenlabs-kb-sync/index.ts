@@ -155,8 +155,11 @@ serve(async (req) => {
           status: res.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
+      // KB changed — invalidate all cached RAG results for this tenant.
+      cacheInvalidate(`rag:${callerTenantId}:`).catch(() => {});
       return new Response(JSON.stringify({ ok: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
+
 
     return new Response(JSON.stringify({ error: 'Unknown action' }), {
       status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
