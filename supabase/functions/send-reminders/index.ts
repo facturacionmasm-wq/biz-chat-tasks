@@ -32,6 +32,19 @@ function resolveTenantLocation(settings: any, tenantId: string | null | undefine
   return '';
 }
 
+// Resolve the IANA timezone used to format appointment date/time for the client.
+// Priority: default branch timezone > first branch timezone > settings_json.timezone
+// > 'America/Mexico_City' (safe LATAM default).
+function resolveTenantTimezone(settings: any, _tenantId: string | null | undefined): string {
+  const branches = Array.isArray(settings?.branches) ? settings.branches : [];
+  const def = branches.find((b: any) => b && b.is_default) || branches[0] || null;
+  const branchTz = def && typeof def.timezone === 'string' ? def.timezone.trim() : '';
+  if (branchTz) return branchTz;
+  const legacyTz = typeof settings?.timezone === 'string' ? settings.timezone.trim() : '';
+  if (legacyTz) return legacyTz;
+  return 'America/Mexico_City';
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -249,11 +262,12 @@ serve(async (req) => {
         // Prefer approved template to bypass 24h freeform window (63016).
         if (WHATSAPP_REMINDER_CONTENT_SID && tFromR) {
           const remindAt = reminder.remind_at ? new Date(reminder.remind_at) : null;
-          const rDateStr = remindAt ? remindAt.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }) : '-';
-          const rTimeStr = remindAt ? remindAt.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }) : '-';
+          const tzR = resolveTenantTimezone(tenantSettingsMap.get(reminder.tenant_id), reminder.tenant_id);
+          const rDateStr = remindAt ? remindAt.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', timeZone: tzR }) : '-';
+          const rTimeStr = remindAt ? remindAt.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', timeZone: tzR }) : '-';
           const firstName = String((profile?.full_name || profile?.name || profile?.email || 'Hola')).split(' ')[0] || 'Hola';
           const tenantLocR = resolveTenantLocation(tenantSettingsMap.get(reminder.tenant_id), reminder.tenant_id);
-          const locationR = tenantLocR || 'https://rybixholding.com';
+          const locationR = `${(tenantLocR || 'https://rybixholding.com').trim()}\n`;
           const vars = {
             '1': firstName,
             '2': String(reminder.message || 'tu recordatorio'),
@@ -438,8 +452,8 @@ serve(async (req) => {
                 dynamic_variables: {
                   contact_name: appt?.contact_name || '',
                   service_type: appt?.service_type || '',
-                  appointment_date: startAt ? startAt.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }) : '',
-                  appointment_time: startAt ? startAt.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }) : '',
+                  appointment_date: startAt ? startAt.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', timeZone: resolveTenantTimezone(tenantSettingsMap.get(notif.tenant_id), notif.tenant_id) }) : '',
+                  appointment_time: startAt ? startAt.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', timeZone: resolveTenantTimezone(tenantSettingsMap.get(notif.tenant_id), notif.tenant_id) }) : '',
                   purpose: 'appointment_reminder_1h',
                 },
               }),
@@ -515,8 +529,9 @@ serve(async (req) => {
           if (WHATSAPP_REMINDER_CONTENT_SID && tFromN) {
             const appt = apptMap.get(notif.appointment_id);
             const startAt = appt?.start_at ? new Date(appt.start_at) : null;
-            const dateStr = startAt ? startAt.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }) : '-';
-            const timeStr = startAt ? startAt.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }) : '-';
+            const tzN = resolveTenantTimezone(tenantSettingsMap.get(notif.tenant_id), notif.tenant_id);
+            const dateStr = startAt ? startAt.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', timeZone: tzN }) : '-';
+            const timeStr = startAt ? startAt.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', timeZone: tzN }) : '-';
             const firstName = String(appt?.contact_name || 'Hola').split(' ')[0] || 'Hola';
             const serviceStr = String(appt?.service_type || 'tu cita');
             const tenantLocN = resolveTenantLocation(tenantSettingsMap.get(notif.tenant_id), notif.tenant_id);
@@ -526,7 +541,7 @@ serve(async (req) => {
               tenantLocN ||
               appt?.notes ||
               'Te contactaremos con los detalles';
-            const locationStr = String(rawLoc).trim() || 'Te contactaremos con los detalles';
+            const locationStr = `${(String(rawLoc).trim() || 'Te contactaremos con los detalles')}\n`;
             const vars = {
               '1': firstName,
               '2': serviceStr,

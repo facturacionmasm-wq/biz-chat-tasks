@@ -65,15 +65,16 @@ const SettingsPage = () => {
   const [companyWebsite, setCompanyWebsite] = useState('');
   const [companyPhone, setCompanyPhone] = useState('');
   const [companyAddress, setCompanyAddress] = useState('');
-  type Branch = { id: string; name: string; address: string; maps_url: string; is_default: boolean };
+  type Branch = { id: string; name: string; address: string; maps_url: string; is_default: boolean; timezone: string };
   const [branches, setBranches] = useState<Branch[]>([]);
   const [savingBranches, setSavingBranches] = useState(false);
   const [welcomeMessage, setWelcomeMessage] = useState('');
   const [voiceId, setVoiceId] = useState('');
   const [agentPersonality, setAgentPersonality] = useState('');
-  const [voices, setVoices] = useState<Array<{ voice_id: string; name: string; category: string | null; preview_url: string | null; labels: Record<string, string> }>>([]);
+  const [voices, setVoices] = useState<Array<{ voice_id: string; name: string; category: string | null; preview_url: string | null; labels: Record<string, string>; languages: string[] }>>([]);
   const [voicesLoading, setVoicesLoading] = useState(false);
   const [voiceSearch, setVoiceSearch] = useState('');
+  const [voiceLangFilter, setVoiceLangFilter] = useState<string>('');
   const [logoUrl, setLogoUrl] = useState('');
   const [faviconUrl, setFaviconUrl] = useState('');
   const [uploadingLogo, setUploadingLogo] = useState(false);
@@ -186,6 +187,7 @@ const SettingsPage = () => {
           address: String(b?.address || ''),
           maps_url: String(b?.maps_url || ''),
           is_default: !!b?.is_default,
+          timezone: String(b?.timezone || 'America/Mexico_City'),
         })));
 
         // Load calendar config from tenant (legacy) and always verify OAuth status
@@ -955,6 +957,7 @@ const SettingsPage = () => {
           address: (b.address || '').trim(),
           maps_url: (b.maps_url || '').trim(),
           is_default: isDef,
+          timezone: (b.timezone || 'America/Mexico_City').trim() || 'America/Mexico_City',
         };
       }).filter(b => b.name || b.address || b.maps_url);
       // If none marked default and there is at least one, promote the first.
@@ -983,6 +986,7 @@ const SettingsPage = () => {
       address: '',
       maps_url: '',
       is_default: prev.length === 0,
+      timezone: 'America/Mexico_City',
     }]);
   };
   const updateBranch = (id: string, patch: Partial<Branch>) => {
@@ -1461,6 +1465,19 @@ const SettingsPage = () => {
                       onChange={e => setVoiceSearch(e.target.value)}
                     />
                     <select
+                      className={`${inputClass} mb-2`}
+                      value={voiceLangFilter}
+                      onChange={e => setVoiceLangFilter(e.target.value)}
+                      disabled={voicesLoading}
+                    >
+                      <option value="">Todos los idiomas</option>
+                      {Array.from(new Set(voices.flatMap(v => v.languages || []))).sort().map(lang => (
+                        <option key={lang} value={lang}>
+                          {({ es: 'Español', en: 'Inglés', pt: 'Portugués', fr: 'Francés', de: 'Alemán', it: 'Italiano', ja: 'Japonés', zh: 'Chino' } as Record<string,string>)[lang] || lang.toUpperCase()}
+                        </option>
+                      ))}
+                    </select>
+                    <select
                       className={inputClass}
                       value={voiceId}
                       onChange={e => setVoiceId(e.target.value)}
@@ -1469,9 +1486,10 @@ const SettingsPage = () => {
                       <option value="">— Voz por defecto del agente —</option>
                       {voices
                         .filter(v => !voiceSearch || v.name.toLowerCase().includes(voiceSearch.toLowerCase()))
+                        .filter(v => !voiceLangFilter || (v.languages || []).includes(voiceLangFilter))
                         .map(v => (
                           <option key={v.voice_id} value={v.voice_id}>
-                            {v.name}{v.category ? ` (${v.category})` : ''}
+                            {v.name}{v.category ? ` (${v.category})` : ''}{v.languages?.length ? ` [${v.languages.join(',')}]` : ''}
                           </option>
                         ))}
                     </select>
@@ -1566,6 +1584,22 @@ const SettingsPage = () => {
                           onChange={e => updateBranch(b.id, { maps_url: e.target.value })}
                           placeholder="https://maps.app.goo.gl/..."
                         />
+                        <div className="flex items-center gap-2">
+                          <label className="text-[11px] text-[var(--rx-t2)] whitespace-nowrap">Zona horaria</label>
+                          <select
+                            className={`${inputClass} flex-1`}
+                            value={b.timezone || 'America/Mexico_City'}
+                            onChange={e => updateBranch(b.id, { timezone: e.target.value })}
+                          >
+                            {[
+                              'America/Mexico_City','America/Tijuana','America/Cancun','America/Monterrey','America/Hermosillo',
+                              'America/Bogota','America/Lima','America/Santiago','America/Buenos_Aires','America/Caracas',
+                              'America/New_York','America/Chicago','America/Denver','America/Los_Angeles','America/Phoenix',
+                              'America/Sao_Paulo','America/Guatemala','America/Costa_Rica','America/Panama',
+                              'Europe/Madrid','Europe/London','Europe/Berlin','UTC',
+                            ].map(tz => <option key={tz} value={tz}>{tz}</option>)}
+                          </select>
+                        </div>
                       </div>
                     ))}
                   </div>

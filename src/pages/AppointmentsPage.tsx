@@ -84,6 +84,27 @@ const sourceIcons: Record<string, { icon: any; label: string }> = {
 
 const HOURS = Array.from({ length: 12 }, (_, i) => i + 8);
 
+// Interpret a wall-clock date+time string ("YYYY-MM-DD","HH:mm") as if the
+// user typed it in `tz` and return the corresponding UTC Date. Uses Intl to
+// compute the tz offset at that instant (handles DST correctly).
+function zonedTimeToUtc(dateStr: string, timeStr: string, tz: string): Date {
+  const [Y, M, D] = dateStr.split('-').map(Number);
+  const [h, m] = timeStr.split(':').map(Number);
+  const utcGuess = Date.UTC(Y, (M || 1) - 1, D || 1, h || 0, m || 0);
+  const dtf = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz, hour12: false,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  });
+  const parts = dtf.formatToParts(new Date(utcGuess));
+  const map: Record<string, number> = {};
+  for (const p of parts) if (p.type !== 'literal') map[p.type] = Number(p.value);
+  const asUTC = Date.UTC(map.year, map.month - 1, map.day, map.hour === 24 ? 0 : map.hour, map.minute, map.second);
+  const offset = asUTC - utcGuess;
+  return new Date(utcGuess - offset);
+}
+
+
 const AppointmentsPage = () => {
   const [view, setView] = useState<'list' | 'calendar'>('calendar');
   const [currentWeek, setCurrentWeek] = useState(new Date());
@@ -101,6 +122,31 @@ const AppointmentsPage = () => {
   const [showHardDeleteDialog, setShowHardDeleteDialog] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [form, setForm] = useState<AppointmentForm>({ ...emptyForm });
+  const [tenantTz, setTenantTz] = useState<string>('America/Mexico_City');
+
+  // Resolve the tenant's default-branch timezone once. Falls back to
+  // America/Mexico_City (LATAM default) if there are no branches or no explicit
+  // tz. Kept outside loadData to avoid re-fetching on every week change.
+  useEffect(() => {
+    let cancel = false;
+    (async () => {
+      try {
+        const { data: userRes } = await supabase.auth.getUser();
+        const uid = userRes.user?.id;
+        if (!uid) return;
+        const { data: tid } = await supabase.rpc('get_user_tenant_id', { _user_id: uid });
+        if (!tid) return;
+        const { data: tenant } = await supabase.from('tenants').select('settings_json').eq('id', tid as string).maybeSingle();
+        const settings = ((tenant?.settings_json || {}) as Record<string, any>);
+        const branches = Array.isArray(settings?.branches) ? settings.branches : [];
+        const def = branches.find((b: any) => b?.is_default) || branches[0];
+        const tz = (def?.timezone || settings?.timezone || '').toString().trim() || 'America/Mexico_City';
+        if (!cancel) setTenantTz(tz);
+      } catch { /* keep default */ }
+    })();
+    return () => { cancel = true; };
+  }, []);
+
 
   const weekStart = startOfWeek(currentWeek, { weekStartsOn: 1 });
   const weekEnd = endOfWeek(currentWeek, { weekStartsOn: 1 });
@@ -181,9 +227,9 @@ const AppointmentsPage = () => {
     }
     setSaving(true);
     try {
-      const startAt = new Date(`${form.date}T${form.startTime}:00`);
+      const startAt = zonedTimeToUtc(form.date, form.startTime, tenantTz);
       const endAt = form.endTime
-        ? new Date(`${form.date}T${form.endTime}:00`)
+        ? zonedTimeToUtc(form.date, form.endTime, tenantTz)
         : new Date(startAt.getTime() + 30 * 60000);
 
       if (endAt <= startAt) {
@@ -255,9 +301,9 @@ const AppointmentsPage = () => {
     }
     setSaving(true);
     try {
-      const startAt = new Date(`${form.date}T${form.startTime}:00`);
+      const startAt = zonedTimeToUtc(form.date, form.startTime, tenantTz);
       const endAt = form.endTime
-        ? new Date(`${form.date}T${form.endTime}:00`)
+        ? zonedTimeToUtc(form.date, form.endTime, tenantTz)
         : new Date(startAt.getTime() + 30 * 60000);
 
       if (endAt <= startAt) {
