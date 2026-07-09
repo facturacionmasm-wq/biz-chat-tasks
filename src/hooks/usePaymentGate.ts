@@ -1,77 +1,65 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePlanFeatures } from '@/hooks/usePlanFeatures';
 import { toast } from 'sonner';
 
+const OWNER_TENANT_ID = '00000000-0000-0000-0000-000000000001';
+
 export const usePaymentGate = () => {
   const { hasFeature, isMaster: planIsMaster, loading: planLoading } = usePlanFeatures();
-  const { user } = useAuth();
-  const [hasPaymentMethod, setHasPaymentMethod] = useState<boolean | null>(null);
-  const [hasActivePackage, setHasActivePackage] = useState<Record<string, boolean>>({});
-  const [loading, setLoading] = useState(true);
+  const { user, tenantId } = useAuth();
   const [redirecting, setRedirecting] = useState(false);
 
-  // The platform owner tenant has free access to all services
-  const OWNER_TENANT_ID = '00000000-0000-0000-0000-000000000001';
-  const [isOwnerTenant, setIsOwnerTenant] = useState(false);
+  const isOwnerTenant = tenantId === OWNER_TENANT_ID;
 
-  const checkAccess = useCallback(async () => {
-    if (!user) { setLoading(false); return; }
-    try {
-      const { data: tenantId } = await supabase.rpc('get_user_tenant_id', { _user_id: user.id });
-      if (!tenantId) { setHasPaymentMethod(false); setLoading(false); return; }
-
-      // Owner tenant gets free access to everything
-      if (tenantId === OWNER_TENANT_ID) {
-        setIsOwnerTenant(true);
-        setHasPaymentMethod(true);
-        setHasActivePackage({ voice: true, whatsapp: true });
-        setLoading(false);
-        return;
-      }
-
-      // Check payment method
-      const { data: pmData } = await supabase.functions.invoke('stripe-billing', {
+  const paymentMethodQuery = useQuery({
+    queryKey: ['payment-method', tenantId],
+    enabled: !!user && !!tenantId && !isOwnerTenant,
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () => {
+      const { data } = await supabase.functions.invoke('stripe-billing', {
         body: { action: 'check_payment_method', tenant_id: tenantId },
       });
-      setHasPaymentMethod(pmData?.has_payment_method ?? false);
+      return !!data?.has_payment_method;
+    },
+  });
 
-      // Check active package balances
-      const { data: balances } = await supabase
+  const packageBalancesQuery = useQuery({
+    queryKey: ['tenant-package-balances', tenantId],
+    enabled: !!user && !!tenantId && !isOwnerTenant,
+    staleTime: 60 * 1000,
+    queryFn: async () => {
+      const { data } = await supabase
         .from('tenant_package_balances')
         .select('service_type, units_remaining')
-        .eq('tenant_id', tenantId)
+        .eq('tenant_id', tenantId!)
         .in('status', ['active', 'pending_payment']);
-
       const activeByType: Record<string, boolean> = {};
-      for (const b of (balances || []) as any[]) {
-        if (b.units_remaining > 0) {
-          activeByType[b.service_type] = true;
-        }
+      for (const b of (data || []) as any[]) {
+        if (b.units_remaining > 0) activeByType[b.service_type] = true;
       }
-      setHasActivePackage(activeByType);
-    } catch (err) {
-      console.error('Error checking payment access:', err);
-      setHasPaymentMethod(false);
-    } finally {
-      setLoading(false);
-    }
-  }, [user]);
+      return activeByType;
+    },
+  });
 
-  useEffect(() => { checkAccess(); }, [checkAccess]);
+  const hasPaymentMethod = isOwnerTenant ? true : (paymentMethodQuery.data ?? null);
+  const hasActivePackage = isOwnerTenant
+    ? { voice: true, whatsapp: true }
+    : (packageBalancesQuery.data ?? {});
+
+  // Loading: waiting for tenant to resolve, or for underlying queries
+  const loading = !user
+    ? false
+    : (!tenantId || (!isOwnerTenant && (paymentMethodQuery.isLoading || packageBalancesQuery.isLoading)));
 
   const canUseService = (serviceType: 'voice' | 'whatsapp'): boolean => {
-    // Master tenant: always allowed
     if (planIsMaster || isOwnerTenant) return true;
-
-    // Voice: plan must include voice_agent feature, even if there's a card/package
     if (serviceType === 'voice') {
       if (planLoading) return false;
       if (!hasFeature('voice_agent')) return false;
     }
-
-    // Payment gate: active package OR payment method on file
     return hasActivePackage[serviceType] === true || hasPaymentMethod === true;
   };
 
@@ -85,13 +73,10 @@ export const usePaymentGate = () => {
   }, [user]);
 
   const purchasePackage = useCallback(async (packageId: string) => {
-    if (!user) return;
+    if (!user || !tenantId) return;
     setRedirecting(true);
     try {
-      const { data: tenantId } = await supabase.rpc('get_user_tenant_id', { _user_id: user.id });
-      if (!tenantId) throw new Error('Tenant no encontrado');
       const displayName = await resolveDisplayName();
-
       const { data, error } = await supabase.functions.invoke('stripe-billing', {
         body: {
           action: 'purchase_package',
@@ -101,7 +86,6 @@ export const usePaymentGate = () => {
           name: displayName,
         },
       });
-
       if (error) throw error;
       if (data?.checkout_url) {
         window.location.href = data.checkout_url;
@@ -112,16 +96,13 @@ export const usePaymentGate = () => {
       toast.error(err.message || 'Error al iniciar compra');
       setRedirecting(false);
     }
-  }, [user, resolveDisplayName]);
+  }, [user, tenantId, resolveDisplayName]);
 
   const setupCard = useCallback(async (serviceType: 'voice' | 'whatsapp') => {
-    if (!user) return;
+    if (!user || !tenantId) return;
     setRedirecting(true);
     try {
-      const { data: tenantId } = await supabase.rpc('get_user_tenant_id', { _user_id: user.id });
-      if (!tenantId) throw new Error('Tenant no encontrado');
       const displayName = await resolveDisplayName();
-
       const { data, error } = await supabase.functions.invoke('stripe-billing', {
         body: {
           action: 'create_setup_session',
@@ -131,7 +112,6 @@ export const usePaymentGate = () => {
           service_type: serviceType,
         },
       });
-
       if (error) throw error;
       if (data?.checkout_url) {
         window.location.href = data.checkout_url;
@@ -142,10 +122,24 @@ export const usePaymentGate = () => {
       toast.error(err.message || 'Error al registrar tarjeta');
       setRedirecting(false);
     }
-  }, [user, resolveDisplayName]);
-
+  }, [user, tenantId, resolveDisplayName]);
 
   const voicePlanBlocked = !planIsMaster && !isOwnerTenant && !planLoading && !hasFeature('voice_agent');
 
-  return { hasPaymentMethod, hasActivePackage, loading, redirecting, canUseService, purchasePackage, setupCard, refresh: checkAccess, isOwnerTenant, voicePlanBlocked };
+  const refresh = useCallback(async () => {
+    await Promise.all([paymentMethodQuery.refetch(), packageBalancesQuery.refetch()]);
+  }, [paymentMethodQuery, packageBalancesQuery]);
+
+  return {
+    hasPaymentMethod,
+    hasActivePackage,
+    loading,
+    redirecting,
+    canUseService,
+    purchasePackage,
+    setupCard,
+    refresh,
+    isOwnerTenant,
+    voicePlanBlocked,
+  };
 };
