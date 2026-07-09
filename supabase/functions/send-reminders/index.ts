@@ -443,12 +443,19 @@ serve(async (req) => {
           if (WHATSAPP_REMINDER_CONTENT_SID && tFromN) {
             const appt = apptMap.get(notif.appointment_id);
             const startAt = appt?.start_at ? new Date(appt.start_at) : null;
-            const dateStr = startAt ? startAt.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }) : '';
-            const timeStr = startAt ? startAt.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }) : '';
+            const dateStr = startAt ? startAt.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }) : '-';
+            const timeStr = startAt ? startAt.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }) : '-';
+            const firstName = String(appt?.contact_name || 'Hola').split(' ')[0] || 'Hola';
+            const serviceStr = String(appt?.service_type || 'tu cita');
+            const locationStr = String(
+              (appt as any)?.location || (appt as any)?.meeting_url || appt?.notes || 'Te contactaremos con los detalles'
+            );
             const vars = {
-              '1': (appt?.contact_name || 'Hola').split(' ')[0],
-              '2': `tu cita${dateStr ? ` el ${dateStr}${timeStr ? ` a las ${timeStr}` : ''}` : ''}`,
-              '3': 'https://rybixholding.com',
+              '1': firstName,
+              '2': serviceStr,
+              '3': dateStr,
+              '4': timeStr,
+              '5': locationStr,
             };
             sendResult = await sendWhatsAppTemplate(basicAuth, TWILIO_ACCOUNT_SID!, effectiveFromN, phoneNormN, WHATSAPP_REMINDER_CONTENT_SID, vars);
             if (!sendResult.ok) {
