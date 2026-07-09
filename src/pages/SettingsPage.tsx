@@ -957,6 +957,7 @@ const SettingsPage = () => {
           address: (b.address || '').trim(),
           maps_url: (b.maps_url || '').trim(),
           is_default: isDef,
+          timezone: (b.timezone || 'America/Mexico_City').trim() || 'America/Mexico_City',
         };
       }).filter(b => b.name || b.address || b.maps_url);
       // If none marked default and there is at least one, promote the first.
