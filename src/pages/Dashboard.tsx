@@ -131,10 +131,8 @@ function FloatingOrb({ color, size, x, y, delay, blur }: {
 
 // ─── Main Dashboard ───────────────────────────────────────────
 export default function Dashboard() {
-  const { user } = useAuth();
-  const [stats, setStats] = useState<DashStats>(EMPTY);
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { user, tenantId } = useAuth();
+  const queryClient = useQueryClient();
   const [showPWA, setShowPWA] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [mousePos, setMousePos] = useState({ x: 0.5, y: 0.5 });
@@ -165,54 +163,62 @@ export default function Dashboard() {
     return () => hero.removeEventListener('mousemove', handler);
   }, []);
 
-  // Data
-  useEffect(() => {
-    if (!user) return;
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const { data: tid } = await supabase.rpc('get_user_tenant_id', { _user_id: user.id });
-        if (!tid || cancelled) return;
+  // Data — React Query, cached per-tenant with short stale, invalidated on realtime
+  const dashboardQuery = useQuery({
+    queryKey: ['dashboard-stats', tenantId],
+    enabled: !!user && !!tenantId,
+    staleTime: 30 * 1000,
+    queryFn: async () => {
+      const now = new Date();
+      const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
+      const todayEnd = new Date(now); todayEnd.setHours(23, 59, 59, 999);
 
-        const now = new Date();
-        const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
-        const todayEnd = new Date(now); todayEnd.setHours(23, 59, 59, 999);
+      const [callsRes, waRes, aptsRes, projRes, teamRes] = await Promise.all([
+        supabase.from('call_records').select('id,status').eq('tenant_id', tenantId!)
+          .gte('started_at', todayStart.toISOString())
+          .lte('started_at', todayEnd.toISOString())
+          .is('deleted_at', null),
+        supabase.from('whatsapp_conversations').select('id,status')
+          .eq('tenant_id', tenantId!).neq('status', 'closed'),
+        supabase.from('appointments').select('id,contact_name,start_at,service_type,status')
+          .eq('tenant_id', tenantId!).gte('start_at', now.toISOString())
+          .neq('status', 'cancelled').is('deleted_at', null)
+          .order('start_at', { ascending: true }).limit(4),
+        supabase.from('projects').select('id').eq('tenant_id', tenantId!).eq('status', 'active'),
+        supabase.from('profiles').select('user_id').eq('tenant_id', tenantId!).eq('status', 'active'),
+      ]);
 
-        const [callsRes, waRes, aptsRes, projRes, teamRes] = await Promise.all([
-          supabase.from('call_records').select('id,status').eq('tenant_id', tid)
-            .gte('started_at', todayStart.toISOString())
-            .lte('started_at', todayEnd.toISOString())
-            .is('deleted_at', null),
-          supabase.from('whatsapp_conversations').select('id,status')
-            .eq('tenant_id', tid).neq('status', 'closed'),
-          supabase.from('appointments').select('id,contact_name,start_at,service_type,status')
-            .eq('tenant_id', tid).gte('start_at', now.toISOString())
-            .neq('status', 'cancelled').is('deleted_at', null)
-            .order('start_at', { ascending: true }).limit(4),
-          supabase.from('projects').select('id').eq('tenant_id', tid).eq('status', 'active'),
-          supabase.from('profiles').select('user_id').eq('tenant_id', tid).eq('status', 'active'),
-        ]);
-
-        if (cancelled) return;
-        const calls = callsRes.data || [];
-        setStats({
+      const calls = callsRes.data || [];
+      return {
+        stats: {
           callsToday: calls.length,
           callsMissed: calls.filter(c => c.status === 'missed' || c.status === 'no-answer').length,
           openWA: (waRes.data || []).filter(c => c.status === 'open').length,
           upcomingApts: (aptsRes.data || []).length,
           activeProjects: projRes.data?.length || 0,
           teamMembers: teamRes.data?.length || 0,
-        });
-        setAppointments((aptsRes.data || []) as Appointment[]);
-      } catch (e) {
-        console.error('[Dashboard]', e);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-    load();
-    return () => { cancelled = true; };
-  }, [user]);
+        } as DashStats,
+        appointments: (aptsRes.data || []) as Appointment[],
+      };
+    },
+  });
+
+  const stats = dashboardQuery.data?.stats ?? EMPTY;
+  const appointments = dashboardQuery.data?.appointments ?? [];
+  const loading = !!user && !!tenantId && dashboardQuery.isLoading;
+
+  // Realtime invalidation — call_records + appointments (WhatsApp handled by useWhatsAppData)
+  useEffect(() => {
+    if (!tenantId) return;
+    const channel = supabase
+      .channel(`dashboard-realtime-${tenantId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'call_records', filter: `tenant_id=eq.${tenantId}` },
+        () => queryClient.invalidateQueries({ queryKey: ['dashboard-stats', tenantId] }))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments', filter: `tenant_id=eq.${tenantId}` },
+        () => queryClient.invalidateQueries({ queryKey: ['dashboard-stats', tenantId] }))
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [tenantId, queryClient]);
 
   const userName = user?.user_metadata?.name || user?.email?.split('@')[0] || 'equipo';
 
