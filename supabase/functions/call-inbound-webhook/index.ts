@@ -453,9 +453,10 @@ serve(async (req) => {
       console.warn(`[inbound] ElevenLabs not configured, using recording fallback`);
     }
 
-    // ═══════════ CREATE CALL SESSION (fire-and-forget) ═══════════
+    // ═══════════ CREATE / UPDATE CALL SESSION (fire-and-forget) ═══════════
+    // On re-entry we already bumped retry_count above; don't reset it.
     if (callRecordId) {
-      supabase.from('call_sessions').upsert({
+      const sessionPayload: Record<string, unknown> = {
         tenant_id: tenantId,
         call_record_id: callRecordId,
         call_sid: callSid,
@@ -464,8 +465,9 @@ serve(async (req) => {
         language: 'es',
         routing_method: routingMethod,
         state: sessionState,
-        retry_count: 0,
-      }, { onConflict: 'call_sid' }).then(({ error }) => {
+      };
+      if (!isReentry) sessionPayload.retry_count = 0;
+      supabase.from('call_sessions').upsert(sessionPayload, { onConflict: 'call_sid' }).then(({ error }) => {
         if (error) console.error('[inbound] Session upsert error:', error);
       });
 
