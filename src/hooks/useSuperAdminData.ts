@@ -200,19 +200,45 @@ export function useSuperAdminData() {
 
   const generateProjections = useMutation({
     mutationFn: async () => {
+      // Try async first — projections can take a while.
+      try {
+        const { data: userData } = await supabase.auth.getUser();
+        const uid = userData?.user?.id ?? null;
+        const { data: jobRow, error: enqErr } = await supabase
+          .from('background_jobs')
+          .insert({
+            tenant_id: null,
+            job_type: 'generate_report',
+            payload: { report: 'financial-projections' },
+            created_by: uid,
+          })
+          .select('id')
+          .single();
+        if (!enqErr && jobRow?.id) {
+          supabase.functions.invoke('background-job-worker', { body: {} }).catch(() => {});
+          return { queued: true, job_id: jobRow.id };
+        }
+      } catch (e) {
+        console.warn('[projections] enqueue failed, running inline:', e);
+      }
       const { data, error } = await supabase.functions.invoke('financial-projections');
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
       return data;
     },
-    onSuccess: (data) => {
-      toast.success('Proyecciones generadas exitosamente');
+    onSuccess: (data: any) => {
+      if (data?.queued) {
+        toast.success('Proyecciones encoladas. Se actualizarán en segundo plano.');
+      } else {
+        toast.success('Proyecciones generadas exitosamente');
+      }
       queryClient.invalidateQueries({ queryKey: ['sa-projections'] });
     },
     onError: (err: any) => {
       toast.error(`Error generando proyecciones: ${err.message}`);
     },
   });
+
 
   const totalRevenue = margins.data?.reduce((s, m) => s + Number(m.current_month_revenue), 0) ?? 0;
   const totalCost = margins.data?.reduce((s, m) => s + Number(m.current_month_cost), 0) ?? 0;

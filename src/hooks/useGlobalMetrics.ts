@@ -175,13 +175,38 @@ export function useGlobalMetrics() {
   // Generate metrics
   const generateMetrics = useMutation({
     mutationFn: async () => {
+      // Try async enqueue first — heavy aggregation.
+      try {
+        const { data: userData } = await supabase.auth.getUser();
+        const uid = userData?.user?.id ?? null;
+        const { data: jobRow, error: enqErr } = await supabase
+          .from('background_jobs')
+          .insert({
+            tenant_id: null,
+            job_type: 'generate_report',
+            payload: { report: 'global-metrics-daily' },
+            created_by: uid,
+          })
+          .select('id')
+          .single();
+        if (!enqErr && jobRow?.id) {
+          supabase.functions.invoke('background-job-worker', { body: {} }).catch(() => {});
+          return { queued: true, job_id: jobRow.id };
+        }
+      } catch (e) {
+        console.warn('[global-metrics] enqueue failed, running inline:', e);
+      }
       const { data, error } = await supabase.functions.invoke('global-metrics-daily');
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
       return data;
     },
-    onSuccess: () => {
-      toast.success('Métricas globales generadas');
+    onSuccess: (data: any) => {
+      if (data?.queued) {
+        toast.success('Métricas encoladas. Se actualizarán en segundo plano.');
+      } else {
+        toast.success('Métricas globales generadas');
+      }
       queryClient.invalidateQueries({ queryKey: ['global-metrics'] });
       queryClient.invalidateQueries({ queryKey: ['region-metrics'] });
       queryClient.invalidateQueries({ queryKey: ['country-metrics'] });
@@ -192,6 +217,7 @@ export function useGlobalMetrics() {
       toast.error(`Error generando métricas: ${err.message}`);
     },
   });
+
 
   // Latest global snapshot
   const latest = globalMetrics.data?.[0] ?? null;
