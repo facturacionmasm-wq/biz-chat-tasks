@@ -452,8 +452,8 @@ serve(async (req) => {
                 dynamic_variables: {
                   contact_name: appt?.contact_name || '',
                   service_type: appt?.service_type || '',
-                  appointment_date: startAt ? startAt.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }) : '',
-                  appointment_time: startAt ? startAt.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }) : '',
+                  appointment_date: startAt ? startAt.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', timeZone: resolveTenantTimezone(tenantSettingsMap.get(notif.tenant_id), notif.tenant_id) }) : '',
+                  appointment_time: startAt ? startAt.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', timeZone: resolveTenantTimezone(tenantSettingsMap.get(notif.tenant_id), notif.tenant_id) }) : '',
                   purpose: 'appointment_reminder_1h',
                 },
               }),
