@@ -14,9 +14,8 @@ const MASTER_TENANT_ID = '00000000-0000-0000-0000-000000000001';
  * Hidden for the master tenant and super_admin users, which never pay.
  */
 const TrialCardBanner = () => {
-  const { user, subscriptionStatus, userRole } = useAuth();
+  const { user, subscriptionStatus, userRole, tenantId } = useAuth();
   const [hasPaymentMethod, setHasPaymentMethod] = useState<boolean | null>(null);
-  const [tenantId, setTenantId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [dismissed, setDismissed] = useState<boolean>(() => {
     const at = typeof window !== 'undefined' ? window.localStorage.getItem(DISMISS_KEY) : null;
@@ -28,14 +27,10 @@ const TrialCardBanner = () => {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      if (!user || subscriptionStatus?.status !== 'trialing') return;
+      if (!user || subscriptionStatus?.status !== 'trialing' || !tenantId) return;
       try {
-        const { data: resolvedTenantId } = await supabase.rpc('get_user_tenant_id', { _user_id: user.id });
-        if (cancelled) return;
-        setTenantId(resolvedTenantId ?? null);
-        if (!resolvedTenantId) return;
         const { data } = await supabase.functions.invoke('stripe-billing', {
-          body: { action: 'check_payment_method', tenant_id: resolvedTenantId },
+          body: { action: 'check_payment_method', tenant_id: tenantId },
         });
         if (!cancelled) setHasPaymentMethod(!!data?.has_payment_method);
       } catch (err) {
@@ -43,14 +38,12 @@ const TrialCardBanner = () => {
       }
     })();
     return () => { cancelled = true; };
-  }, [user, subscriptionStatus?.status]);
+  }, [user, subscriptionStatus?.status, tenantId]);
 
   const handleAddCard = async () => {
-    if (!user) return;
+    if (!user || !tenantId) return;
     setBusy(true);
     try {
-      const { data: tenantId } = await supabase.rpc('get_user_tenant_id', { _user_id: user.id });
-      if (!tenantId) throw new Error('Tenant no encontrado');
       const { data: profile } = await supabase
         .from('profiles').select('name').eq('user_id', user.id).maybeSingle();
       const displayName = profile?.name || (user.email ? user.email.split('@')[0] : 'Cliente');

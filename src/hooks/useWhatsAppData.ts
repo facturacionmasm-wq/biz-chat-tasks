@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
@@ -28,27 +29,13 @@ export interface DBMessage {
 }
 
 export function useWhatsAppData() {
-  const { user } = useAuth();
+  const { tenantId } = useAuth();
+  const queryClient = useQueryClient();
   const [conversations, setConversations] = useState<DBConversation[]>([]);
   const [messages, setMessages] = useState<DBMessage[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tenantId, setTenantId] = useState<string | null>(null);
   const activeConvIdRef = useRef<string | null>(null);
 
-  // Resolve tenant once
-  useEffect(() => {
-    if (!user) { setTenantId(null); return; }
-    let cancelled = false;
-    (async () => {
-      try {
-        const { data } = await supabase.rpc('get_user_tenant_id', { _user_id: user.id });
-        if (!cancelled) setTenantId(data);
-      } catch (err) {
-        console.error('[WA] tenant resolve error:', err);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [user]);
 
   const fetchConversations = useCallback(async () => {
     if (!tenantId) return;
@@ -151,6 +138,9 @@ export function useWhatsAppData() {
         },
         () => {
           fetchConversations();
+          // Invalidate dashboards that count open conversations
+          queryClient.invalidateQueries({ queryKey: ['dashboard-stats', tenantId] });
+          queryClient.invalidateQueries({ queryKey: ['analytics', tenantId] });
         }
       )
       .on(
@@ -173,6 +163,8 @@ export function useWhatsAppData() {
 
           // Always refresh conversation list to update last_message_at
           fetchConversations();
+          // Invalidate analytics (message counts)
+          queryClient.invalidateQueries({ queryKey: ['analytics', tenantId] });
         }
       )
       .subscribe((status) => {
@@ -184,7 +176,7 @@ export function useWhatsAppData() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [tenantId, fetchConversations]);
+  }, [tenantId, fetchConversations, queryClient]);
 
   // Send a WhatsApp message via Edge Function
   const sendMessage = useCallback(async (

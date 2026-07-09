@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   BarChart3, Phone, MessageSquare, CalendarPlus, TrendingUp,
   TrendingDown, Users, Clock, CheckCircle2, XCircle,
@@ -113,33 +114,26 @@ const StatCard = ({
 );
 
 export default function AnalyticsPage() {
-  const { user } = useAuth();
+  const { user, tenantId } = useAuth();
+  const queryClient = useQueryClient();
   const [period, setPeriod] = useState<Period>('30d');
-  const [stats, setStats] = useState<Stats>(EMPTY_STATS);
-  const [dailyData, setDailyData] = useState<DailyPoint[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [tenantId, setTenantId] = useState<string | null>(null);
 
   const periodDays = { '7d': 7, '30d': 30, '90d': 90 }[period];
 
-  const fetchData = useCallback(async () => {
-    if (!user) return;
-    setLoading(true);
-    try {
-      const { data: tid } = await supabase.rpc('get_user_tenant_id', { _user_id: user.id });
-      if (!tid) return;
-      setTenantId(tid);
-
+  const analyticsQuery = useQuery({
+    queryKey: ['analytics', tenantId, periodDays],
+    enabled: !!user && !!tenantId,
+    staleTime: 60 * 1000,
+    queryFn: async () => {
       const since = subDays(new Date(), periodDays).toISOString();
-      const now = new Date().toISOString();
 
       const [callsRes, appointmentsRes, waMessagesRes, waConvsRes, contactsRes, newContactsRes] = await Promise.all([
-        supabase.from('call_records').select('id, status, duration, started_at').eq('tenant_id', tid).gte('started_at', since).is('deleted_at', null),
-        supabase.from('appointments').select('id, status, start_at').eq('tenant_id', tid).gte('created_at', since).is('deleted_at', null),
-        supabase.from('whatsapp_messages').select('id, created_at').eq('tenant_id', tid).gte('created_at', since),
-        supabase.from('whatsapp_conversations').select('id, status').eq('tenant_id', tid).neq('status', 'closed'),
-        supabase.from('contacts').select('id', { count: 'exact', head: true }).eq('tenant_id', tid),
-        supabase.from('contacts').select('id', { count: 'exact', head: true }).eq('tenant_id', tid).gte('created_at', since),
+        supabase.from('call_records').select('id, status, duration, started_at').eq('tenant_id', tenantId!).gte('started_at', since).is('deleted_at', null),
+        supabase.from('appointments').select('id, status, start_at').eq('tenant_id', tenantId!).gte('created_at', since).is('deleted_at', null),
+        supabase.from('whatsapp_messages').select('id, created_at').eq('tenant_id', tenantId!).gte('created_at', since),
+        supabase.from('whatsapp_conversations').select('id, status').eq('tenant_id', tenantId!).neq('status', 'closed'),
+        supabase.from('contacts').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId!),
+        supabase.from('contacts').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId!).gte('created_at', since),
       ]);
 
       const calls = callsRes.data || [];
@@ -151,7 +145,7 @@ export default function AnalyticsPage() {
       const durations = completedCalls.map(c => c.duration || 0).filter(Boolean);
       const avgDuration = durations.length ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length) : 0;
 
-      setStats({
+      const stats: Stats = {
         totalCalls: calls.length,
         completedCalls: completedCalls.length,
         missedCalls: calls.filter(c => c.status === 'missed' || c.status === 'no-answer').length,
@@ -163,19 +157,17 @@ export default function AnalyticsPage() {
         openConversations: waConvs.filter(c => c.status === 'open').length,
         totalContacts: contactsRes.count || 0,
         newContacts: newContactsRes.count || 0,
-      });
+      };
 
-      // Build daily breakdown
       const days = eachDayOfInterval({
         start: subDays(new Date(), periodDays - 1),
         end: new Date(),
       });
 
-      const points: DailyPoint[] = days.map(day => {
+      const dailyData: DailyPoint[] = days.map(day => {
         const dayStr = format(day, 'yyyy-MM-dd');
         const dayStart = startOfDay(day).toISOString();
         const dayEnd = new Date(day.setHours(23, 59, 59, 999)).toISOString();
-
         return {
           date: dayStr,
           calls: calls.filter(c => c.started_at >= dayStart && c.started_at <= dayEnd).length,
@@ -184,19 +176,31 @@ export default function AnalyticsPage() {
         };
       });
 
-      setDailyData(points);
-    } catch (err) {
-      console.error('[Analytics] error:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [user, periodDays]);
+      return { stats, dailyData };
+    },
+  });
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  const stats = analyticsQuery.data?.stats ?? EMPTY_STATS;
+  const dailyData = analyticsQuery.data?.dailyData ?? [];
+  const loading = !!user && !!tenantId && analyticsQuery.isLoading;
+
+  // Realtime invalidation — call_records + appointments (WhatsApp handled by useWhatsAppData)
+  useEffect(() => {
+    if (!tenantId) return;
+    const channel = supabase
+      .channel(`analytics-realtime-${tenantId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'call_records', filter: `tenant_id=eq.${tenantId}` },
+        () => queryClient.invalidateQueries({ queryKey: ['analytics', tenantId] }))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments', filter: `tenant_id=eq.${tenantId}` },
+        () => queryClient.invalidateQueries({ queryKey: ['analytics', tenantId] }))
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [tenantId, queryClient]);
 
   const callsChartData = dailyData.map(d => d.calls);
   const appointmentsChartData = dailyData.map(d => d.appointments);
   const waChartData = dailyData.map(d => d.whatsapp);
+
 
   const callCompletionRate = stats.totalCalls
     ? Math.round((stats.completedCalls / stats.totalCalls) * 100)
