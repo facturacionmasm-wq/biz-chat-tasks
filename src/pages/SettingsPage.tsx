@@ -179,6 +179,14 @@ const SettingsPage = () => {
         setAgentPersonality(settings.agent_personality || '');
         setLogoUrl(settings.logo_url || '');
         setFaviconUrl(settings.favicon_url || '');
+        const rawBranches = Array.isArray(settings.branches) ? settings.branches : [];
+        setBranches(rawBranches.map((b: any, i: number) => ({
+          id: String(b?.id || `br_${Date.now()}_${i}`),
+          name: String(b?.name || ''),
+          address: String(b?.address || ''),
+          maps_url: String(b?.maps_url || ''),
+          is_default: !!b?.is_default,
+        })));
 
         // Load calendar config from tenant (legacy) and always verify OAuth status
         const calConfig = (tenant.google_calendar_config || {}) as Record<string, any>;
