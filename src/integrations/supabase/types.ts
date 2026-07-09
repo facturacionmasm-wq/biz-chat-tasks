@@ -5114,6 +5114,17 @@ export type Database = {
       }
       cleanup_expired_nonces: { Args: never; Returns: undefined }
       ensure_tenant_for_current_user: { Args: never; Returns: Json }
+      get_slow_queries: {
+        Args: { _limit?: number }
+        Returns: {
+          calls: number
+          max_ms: number
+          mean_ms: number
+          query: string
+          rows_returned: number
+          total_ms: number
+        }[]
+      }
       get_tenant_branding: { Args: { _tenant_id: string }; Returns: Json }
       get_tenant_subscription_status: {
         Args: { _user_id: string }
