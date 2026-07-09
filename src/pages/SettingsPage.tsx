@@ -1507,6 +1507,84 @@ const SettingsPage = () => {
               </div>
 
               <div className="rx-panel">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <h4 className="text-sm font-semibold text-foreground">Sucursales</h4>
+                    <p className="text-[11px] text-[var(--rx-t2)]">Se usa la sucursal predeterminada como “lugar” en los recordatorios de WhatsApp.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={addBranch}
+                    className="text-xs px-3 py-1.5 rounded-lg border border-[var(--rx-b1)] hover:bg-[var(--rx-bg2)] text-foreground"
+                  >
+                    + Agregar sucursal
+                  </button>
+                </div>
+
+                {branches.length === 0 ? (
+                  <div className="text-xs text-[var(--rx-t2)] p-3 rounded-lg border border-dashed border-[var(--rx-b1)] text-center">
+                    Aún no tienes sucursales. Agrega al menos una con dirección y link de Google Maps.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {branches.map((b) => (
+                      <div key={b.id} className="p-3 rounded-lg border border-[var(--rx-b1)] space-y-2">
+                        <div className="flex items-center gap-2">
+                          <input
+                            className={`${inputClass} flex-1`}
+                            value={b.name}
+                            onChange={e => updateBranch(b.id, { name: e.target.value })}
+                            placeholder="Nombre (ej. Matriz, Sucursal Centro)"
+                          />
+                          <label className="flex items-center gap-1.5 text-[11px] text-[var(--rx-t2)] whitespace-nowrap">
+                            <input
+                              type="radio"
+                              name="default-branch"
+                              checked={!!b.is_default}
+                              onChange={() => setDefaultBranch(b.id)}
+                            />
+                            Predeterminada
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => removeBranch(b.id)}
+                            className="text-[11px] px-2 py-1 rounded-md border border-[var(--rx-b1)] hover:bg-[var(--rx-bg2)] text-red-500"
+                            aria-label="Eliminar sucursal"
+                          >
+                            Eliminar
+                          </button>
+                        </div>
+                        <input
+                          className={inputClass}
+                          value={b.address}
+                          onChange={e => updateBranch(b.id, { address: e.target.value })}
+                          placeholder="Dirección (Calle, Ciudad, País)"
+                        />
+                        <input
+                          className={inputClass}
+                          value={b.maps_url}
+                          onChange={e => updateBranch(b.id, { maps_url: e.target.value })}
+                          placeholder="https://maps.app.goo.gl/..."
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="mt-3 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={handleSaveBranches}
+                    disabled={savingBranches}
+                    className="text-xs px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-60"
+                  >
+                    {savingBranches ? 'Guardando…' : 'Guardar sucursales'}
+                  </button>
+                </div>
+              </div>
+
+
+              <div className="rx-panel">
                 <h4 className="text-sm font-semibold text-foreground mb-3">Vista previa</h4>
                 <div className="flex items-center gap-4 p-4 rounded-lg border border-[var(--rx-b1)]" style={{ background: `linear-gradient(135deg, ${primaryColor}15, ${secondaryColor}15)` }}>
                   {logoUrl ? (
