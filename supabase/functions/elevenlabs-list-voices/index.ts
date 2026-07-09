@@ -4,6 +4,7 @@
 // with audio previews. In-memory cached 5 min per isolate.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { cacheGet, cacheSet } from "../_shared/cache.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -11,6 +12,8 @@ const corsHeaders = {
 };
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
+const KV_TTL_SECONDS = 24 * 60 * 60; // 24h — voices are effectively immutable
+const KV_KEY = 'elevenlabs:voices';
 let cache: { ts: number; data: unknown } | null = null;
 
 function jsonRes(payload: unknown, status = 200) {
@@ -27,9 +30,18 @@ serve(async (req) => {
   if (!apiKey) return jsonRes({ ok: false, error: "ELEVENLABS_API_KEY not set" }, 500);
 
   try {
+    // L1: per-isolate memory
     if (cache && Date.now() - cache.ts < CACHE_TTL_MS) {
       return jsonRes({ ok: true, cached: true, ...(cache.data as object) });
     }
+
+    // L2: shared Deno KV (survives isolate rotation)
+    const kvHit = await cacheGet<{ voices: unknown[] }>(KV_KEY);
+    if (kvHit) {
+      cache = { ts: Date.now(), data: kvHit };
+      return jsonRes({ ok: true, cached: true, ...kvHit });
+    }
+
 
     const res = await fetch("https://api.elevenlabs.io/v1/voices", {
       headers: { "xi-api-key": apiKey },
