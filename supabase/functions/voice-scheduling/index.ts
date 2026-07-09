@@ -252,135 +252,159 @@ serve(async (req) => {
         return jsonResp({ error: 'Missing required fields' }, 400);
       }
 
-      // Get tenant timezone
-      const { data: tenantData } = await supabase
-        .from('tenants')
-        .select('timezone')
-        .eq('id', tenant_id)
-        .single();
-      const tz = tenantData?.timezone || 'America/Mexico_City';
+      // Resolve tenant timezone using the SAME source as reminders
+      // (settings_json.branches[default].timezone → tenants.timezone → default).
+      const tz = await resolveTenantTimezone(supabase, tenant_id);
 
-      // Parse start_at preserving local time intent
-      const naiveDateTime = start_at.replace(/Z$/, '').split('+')[0].split('-06:00')[0];
-      const tzOffset = getTzOffset(tz);
-      const startIso = `${naiveDateTime}${tzOffset}`;
-      const startDate = new Date(startIso);
+      // Parse start_at preserving local wall-clock intent, then convert to
+      // real UTC using DST-aware Intl-based offset math (matches date-fns-tz).
+      const naiveDateTime = String(start_at).replace(/Z$/i, '').replace(/([+-]\d{2}:?\d{2})$/, '');
+      let startDate: Date;
+      try {
+        startDate = zonedTimeToUtc(naiveDateTime, tz);
+        if (Number.isNaN(startDate.getTime())) throw new Error('bad date');
+      } catch {
+        return jsonResp({
+          success: false,
+          message: 'La fecha y hora recibidas no son válidas. ¿Podrías repetirlas?',
+        });
+      }
       const endDate = new Date(startDate.getTime() + 30 * 60 * 1000);
 
       // Auto-assign employee if not specified: find who has availability for this slot
       let resolvedEmployeeId = employee_id || null;
       if (!resolvedEmployeeId) {
-        const dayOfWeek = startDate.getDay();
-        const slotHour = startDate.getUTCHours() + (parseInt(tzOffset) || -6); // approximate local hour
-        // Better: reconstruct local time from naiveDateTime
-        const [datePart, timePart] = naiveDateTime.split('T');
+        // Local wall-clock is what the tenant's schedule is expressed in.
+        const [, timePart] = naiveDateTime.split('T');
         const [localH, localM] = (timePart || '00:00').split(':').map(Number);
-        const localMinutes = localH * 60 + localM;
+        const localMinutes = (localH || 0) * 60 + (localM || 0);
+        // Day-of-week in tenant timezone, computed via Intl.
+        const dow = Number(
+          new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short' })
+            .formatToParts(startDate)
+            .find((p) => p.type === 'weekday')?.value
+            ? ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].indexOf(
+                new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short' })
+                  .formatToParts(startDate).find((p) => p.type === 'weekday')!.value,
+              )
+            : startDate.getUTCDay(),
+        );
+        const dayOfWeek = Number.isFinite(dow) && dow >= 0 ? dow : startDate.getUTCDay();
 
-        const { data: matchingRules } = await supabase
-          .from('availability_rules')
-          .select('user_id, start_time, end_time')
-          .eq('tenant_id', tenant_id)
-          .eq('day_of_week', dayOfWeek)
-          .eq('active', true)
-          .not('user_id', 'is', null);
+        try {
+          const { data: matchingRules } = await supabase
+            .from('availability_rules')
+            .select('user_id, start_time, end_time')
+            .eq('tenant_id', tenant_id)
+            .eq('day_of_week', dayOfWeek)
+            .eq('active', true)
+            .not('user_id', 'is', null);
 
-        if (matchingRules && matchingRules.length > 0) {
-          // Pick the first employee whose schedule covers this time slot.
-          // Cal.com is the single source of truth for calendar sync (handled at tenant level),
-          // so we no longer prefer employees based on per-user Google Calendar tokens.
-          for (const rule of matchingRules) {
-            const [rStartH, rStartM] = rule.start_time.split(':').map(Number);
-            const [rEndH, rEndM] = rule.end_time.split(':').map(Number);
-            const ruleStart = rStartH * 60 + rStartM;
-            const ruleEnd = rEndH * 60 + rEndM;
-            if (localMinutes >= ruleStart && localMinutes < ruleEnd) {
-              resolvedEmployeeId = rule.user_id;
-              console.log(`[voice-scheduling] Assigned employee ${resolvedEmployeeId} matching availability rule`);
-              break;
+          if (matchingRules && matchingRules.length > 0) {
+            for (const rule of matchingRules) {
+              const [rStartH, rStartM] = rule.start_time.split(':').map(Number);
+              const [rEndH, rEndM] = rule.end_time.split(':').map(Number);
+              const ruleStart = rStartH * 60 + rStartM;
+              const ruleEnd = rEndH * 60 + rEndM;
+              if (localMinutes >= ruleStart && localMinutes < ruleEnd) {
+                resolvedEmployeeId = rule.user_id;
+                break;
+              }
             }
+            if (!resolvedEmployeeId) resolvedEmployeeId = matchingRules[0].user_id;
           }
-          if (!resolvedEmployeeId) {
-            resolvedEmployeeId = matchingRules[0].user_id;
-            console.log(`[voice-scheduling] Fallback: first available employee ${resolvedEmployeeId}`);
-          }
+        } catch (arErr) {
+          console.warn('[voice-scheduling] availability lookup failed:', arErr);
         }
       }
 
-      // Build idempotency key
       const idempotencyKey = `${tenant_id}:${contact_name}:${startDate.toISOString()}:${service_type || 'general'}:${resolvedEmployeeId || 'unassigned'}`;
 
-      const { data: appointment, error: insertErr } = await supabase
-        .from('appointments')
-        .insert({
-          tenant_id,
-          contact_name,
-          contact_phone: contact_phone || null,
-          contact_email: contact_email || null,
-          start_at: startDate.toISOString(),
-          end_at: endDate.toISOString(),
-          service_type: service_type || 'general',
-          user_id: resolvedEmployeeId,
-          notes: notes || null,
-          source: source || 'call',
-          call_record_id: call_record_id || null,
-          status: 'scheduled',
-          calendar_sync_status: 'PENDING_SYNC',
-          idempotency_key: idempotencyKey,
-        })
-        .select('id, start_at, end_at, contact_name, service_type, status')
-        .single();
-
-      if (insertErr) throw insertErr;
-
-      // Push to Cal.com (single source of truth for calendar sync).
-      // Google Calendar sync has been removed — Cal.com's own integration handles the owner's calendar.
-      if (appointment.id && contact_email && !/@wa\.local$/i.test(contact_email)) {
-        try {
-          const pushed = await pushToCalcom(supabase, tenant_id, {
-            appointment_id: appointment.id,
-            start_iso: startDate.toISOString(),
+      let appointment: any = null;
+      try {
+        const { data: aptRow, error: insertErr } = await supabase
+          .from('appointments')
+          .insert({
+            tenant_id,
             contact_name,
-            contact_email,
-            timezone: tz,
-            source: 'voice',
-          });
-          if (pushed?.calcom_uid) {
-            await supabase.from('appointments')
-              .update({ calendar_event_id: `calcom:${pushed.calcom_uid}`, calendar_sync_status: 'SYNCED' })
-              .eq('id', appointment.id);
-            // Best-effort mirror to Google Calendar (secondary; never rolls back).
-            try {
-              const mirrorRes = await fetch(`${SUPABASE_URL}/functions/v1/calendar-sync`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`, apikey: SUPABASE_SERVICE_ROLE_KEY },
-                body: JSON.stringify({ action: 'mirror_appointment', appointment_id: appointment.id, preferred_user_id: resolvedEmployeeId || employee_id || null }),
-              });
-              const mirrorJson = await mirrorRes.json().catch(() => ({}));
-              console.log('[voice-scheduling] Google mirror result:', mirrorJson);
-            } catch (mirrorErr) {
-              console.warn('[voice-scheduling] Google mirror error (ignored):', mirrorErr);
-            }
-          } else if (pushed?.conflict) {
-            // Roll back on Cal.com conflict so we don't keep a phantom booking.
-            await supabase.from('appointments').delete().eq('id', appointment.id);
-            return jsonResp({
-              success: false,
-              slot_taken: true,
-              do_not_confirm: true,
-              calcom_error_snippet: pushed.error || null,
-              message: 'Ese horario ya está ocupado en Cal.com. Ofrece otro slot.',
-            });
-          }
-        } catch (calErr) {
-          console.error('[voice-scheduling] Cal.com push error:', calErr);
-        }
+            contact_phone: contact_phone || null,
+            contact_email: contact_email || null,
+            start_at: startDate.toISOString(),
+            end_at: endDate.toISOString(),
+            service_type: service_type || 'general',
+            user_id: resolvedEmployeeId,
+            notes: notes || null,
+            source: source || 'call',
+            call_record_id: call_record_id || null,
+            status: 'scheduled',
+            calendar_sync_status: 'PENDING_SYNC',
+            idempotency_key: idempotencyKey,
+          })
+          .select('id, start_at, end_at, contact_name, service_type, status')
+          .maybeSingle();
+        if (insertErr) throw insertErr;
+        appointment = aptRow;
+      } catch (e) {
+        console.error('[voice-scheduling] appointment insert error:', e);
+        return jsonResp({
+          success: false,
+          message: 'No pude registrar la cita en este momento. ¿Podemos intentar con otro horario?',
+        });
+      }
+      if (!appointment?.id) {
+        return jsonResp({
+          success: false,
+          message: 'No pude registrar la cita en este momento. ¿Podemos intentar con otro horario?',
+        });
       }
 
+      // ── Fire-and-forget sync to Cal.com + Google Calendar ─────────────
+      // Responding immediately keeps the ElevenLabs tool call under its ~20s
+      // timeout so the agent never gets disconnected mid-booking.
+      if (appointment.id && contact_email && !/@wa\.local$/i.test(contact_email)) {
+        detach((async () => {
+          try {
+            const pushed = await pushToCalcom(supabase, tenant_id, {
+              appointment_id: appointment.id,
+              start_iso: startDate.toISOString(),
+              contact_name,
+              contact_email,
+              timezone: tz,
+              source: 'voice',
+            });
+            if (pushed?.calcom_uid) {
+              await supabase.from('appointments')
+                .update({ calendar_event_id: `calcom:${pushed.calcom_uid}`, calendar_sync_status: 'SYNCED' })
+                .eq('id', appointment.id);
+              try {
+                await fetch(`${SUPABASE_URL}/functions/v1/calendar-sync`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`, apikey: SUPABASE_SERVICE_ROLE_KEY },
+                  body: JSON.stringify({ action: 'mirror_appointment', appointment_id: appointment.id, preferred_user_id: resolvedEmployeeId || employee_id || null }),
+                });
+              } catch (mirrorErr) {
+                console.warn('[voice-scheduling] Google mirror error (ignored):', mirrorErr);
+              }
+            } else if (pushed?.conflict) {
+              // We already told the caller the slot was booked; if Cal.com reports
+              // a conflict AFTER the fact, mark the appointment as needing review
+              // instead of silently deleting it.
+              await supabase.from('appointments')
+                .update({ calendar_sync_status: 'CONFLICT' })
+                .eq('id', appointment.id);
+            }
+          } catch (calErr) {
+            console.error('[voice-scheduling] async Cal.com push error:', calErr);
+          }
+        })());
+      }
+
+      const dateStr = formatInTimezone(startDate, tz, { weekday: 'long', day: 'numeric', month: 'long' });
+      const timeStr = formatInTimezone(startDate, tz, { hour: '2-digit', minute: '2-digit', hour12: true });
       return jsonResp({
         success: true,
         appointment,
-        message: `Cita agendada para ${contact_name} el ${startDate.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' })} a las ${startDate.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}`,
+        message: `Cita agendada para ${contact_name} el ${dateStr} a las ${timeStr}`,
       });
     }
 
