@@ -180,12 +180,16 @@ serve(async (req) => {
         // Get employee name
         let employeeName = 'Sin asignar';
         if (rule.user_id) {
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('name')
-            .eq('user_id', rule.user_id)
-            .single();
-          if (profile) employeeName = profile.name;
+          try {
+            const { data: profile } = await supabase
+              .from('profiles')
+              .select('name')
+              .eq('user_id', rule.user_id)
+              .maybeSingle();
+            if (profile?.name) employeeName = profile.name;
+          } catch (pErr) {
+            console.warn('[voice-scheduling] profile lookup failed:', pErr);
+          }
         }
 
         while (cursor + slotDuration <= endMinutes) {
