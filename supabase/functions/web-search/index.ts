@@ -27,6 +27,18 @@ serve(async (req) => {
       });
     }
 
+    // Read-through cache — idempotent (query + model + context) for 6h.
+    const cacheKey = `websearch:${await sha256Hex(
+      normalizeQueryKey(query) + '|' + (model_preference || 'default') + '|' + normalizeQueryKey(context || '')
+    )}`;
+    const cachedHit = await cacheGet<Record<string, unknown>>(cacheKey);
+    if (cachedHit) {
+      return new Response(JSON.stringify({ ...cachedHit, cached: true }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     if (!LOVABLE_API_KEY) {
       return new Response(JSON.stringify({ error: 'LOVABLE_API_KEY not configured' }), {
