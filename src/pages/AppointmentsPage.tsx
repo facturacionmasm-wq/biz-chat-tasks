@@ -379,18 +379,19 @@ const AppointmentsPage = () => {
     }
   };
 
-  // ─── CALENDAR SYNC HELPER ───
-  const triggerCalendarSync = async (appointmentId: string, action: string) => {
+  // ─── CALENDAR SYNC HELPER (fire-and-forget) ───
+  // The appointment is already persisted to DB; Google Calendar sync runs in the
+  // background. Never blocks the UI, never bubbles errors.
+  const triggerCalendarSync = (appointmentId: string, action: string) => {
     try {
-      const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-      if (!projectId) return;
-      await supabase.functions.invoke('calendar-sync', {
-        body: { action, appointment_id: appointmentId },
-      });
+      supabase.functions
+        .invoke('calendar-sync', { body: { action, appointment_id: appointmentId } })
+        .catch((err) => console.error('Calendar sync trigger error:', err));
     } catch (err) {
       console.error('Calendar sync trigger error:', err);
     }
   };
+
 
   // ─── OPEN EDIT DIALOG ───
   const openEditDialog = (apt: Appointment) => {

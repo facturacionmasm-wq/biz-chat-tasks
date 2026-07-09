@@ -106,19 +106,52 @@ export default function SuperAdminTenantsTab() {
     }
     setDeleting(true);
     try {
-      const { data, error } = await supabase.functions.invoke('admin-delete-tenant', {
-        body: { tenant_id: deleteTarget.tenant_id, confirm_name: deleteTarget.tenant_name },
-      });
-      // Surface real backend error message when the function returns non-2xx.
-      const bodyErr = (data as any)?.error
-        || (error as any)?.context?.responseJson?.error
-        || (error as any)?.context?.body?.error;
-      if (bodyErr) throw new Error(bodyErr);
-      if (error) throw error;
-      toast.success(`Tenant "${deleteTarget.tenant_name}" eliminado`);
-      setDeleteTarget(null);
-      setDeleteConfirmName('');
-      await load();
+      // Get current super_admin user id so the worker can authenticate the delete.
+      const { data: userData } = await supabase.auth.getUser();
+      const callerId = userData?.user?.id ?? null;
+
+      // Try async enqueue first — deletes can take tens of seconds and hit gateway timeouts.
+      let enqueued = false;
+      try {
+        const { data: jobRow, error: enqErr } = await supabase
+          .from('background_jobs')
+          .insert({
+            tenant_id: null, // tenant is being deleted; keep NULL so hook doesn't show it after
+            job_type: 'delete_tenant',
+            payload: {
+              tenant_id: deleteTarget.tenant_id,
+              confirm_name: deleteTarget.tenant_name,
+            },
+            created_by: callerId,
+            max_attempts: 1, // deletion is destructive — do NOT auto-retry
+          })
+          .select('id')
+          .single();
+        if (!enqErr && jobRow?.id) {
+          enqueued = true;
+          supabase.functions.invoke('background-job-worker', { body: {} }).catch(() => {});
+          toast.success(`Borrado en proceso para "${deleteTarget.tenant_name}"`);
+          setDeleteTarget(null);
+          setDeleteConfirmName('');
+          await load();
+        }
+      } catch (e) {
+        console.warn('[admin-delete-tenant] enqueue failed, falling back to direct call:', e);
+      }
+      if (!enqueued) {
+        const { data, error } = await supabase.functions.invoke('admin-delete-tenant', {
+          body: { tenant_id: deleteTarget.tenant_id, confirm_name: deleteTarget.tenant_name },
+        });
+        const bodyErr = (data as any)?.error
+          || (error as any)?.context?.responseJson?.error
+          || (error as any)?.context?.body?.error;
+        if (bodyErr) throw new Error(bodyErr);
+        if (error) throw error;
+        toast.success(`Tenant "${deleteTarget.tenant_name}" eliminado`);
+        setDeleteTarget(null);
+        setDeleteConfirmName('');
+        await load();
+      }
     } catch (err: any) {
       console.error('[admin-delete-tenant] error:', err);
       toast.error(err?.message || 'Error al eliminar tenant');
@@ -126,6 +159,7 @@ export default function SuperAdminTenantsTab() {
       setDeleting(false);
     }
   }, [deleteTarget, deleteConfirmName, load]);
+
 
   const runAction = useCallback(async () => {
     if (!pending) return;
