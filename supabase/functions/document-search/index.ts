@@ -85,12 +85,25 @@ serve(async (req) => {
       const { error } = await supabase.from('document_chunks').insert(chunkRows);
       if (error) return jsonRes({ error: error.message }, 500);
 
+      // Invalidate all cached RAG results for this tenant — new chunks may match.
+      cacheInvalidate(`rag:${tenant_id}:`).catch(() => {});
+
       return jsonRes({ success: true, chunks: chunkRows.length, document_id });
     }
 
     // ─── RAG SEARCH ───
     if (action === 'search' || !action) {
       if (!query) return jsonRes({ error: 'query required' }, 400);
+
+      // Read-through cache — same (tenant, query, doc_type, limit) reused within 1h.
+      const ragKey = `rag:${tenant_id}:${await sha256Hex(
+        normalizeQueryKey(query) + '|' + (document_type || '') + '|' + (resultLimit || 10)
+      )}`;
+      const ragHit = await cacheGet<Record<string, unknown>>(ragKey);
+      if (ragHit) {
+        return jsonRes({ ...ragHit, cached: true });
+      }
+
 
       // 1. Full-text search via the database function
       const { data: ftsResults, error: ftsErr } = await supabase.rpc('search_document_chunks', {
