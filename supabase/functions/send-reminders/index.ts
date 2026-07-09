@@ -10,6 +10,27 @@ function getNextRetryDelay(retryCount: number, baseMinutes = 5): number {
   return baseMinutes * Math.pow(2, retryCount);
 }
 
+const MASTER_TENANT_ID = '00000000-0000-0000-0000-000000000001';
+const MASTER_MAPS_FALLBACK = 'https://maps.app.goo.gl/tp1nMuX6mkxxhRtS7';
+
+// Resolve the location string used as WhatsApp template var5.
+// Priority: default branch maps_url > default branch address > first branch >
+// legacy settings.address > master-tenant hard fallback > '' (caller decides final default).
+function resolveTenantLocation(settings: any, tenantId: string | null | undefined): string {
+  const branches = Array.isArray(settings?.branches) ? settings.branches : [];
+  const def = branches.find((b: any) => b && b.is_default) || branches[0] || null;
+  if (def) {
+    const url = String(def.maps_url || '').trim();
+    if (url) return url;
+    const addr = String(def.address || '').trim();
+    if (addr) return addr;
+  }
+  const legacyAddr = String(settings?.address || '').trim();
+  if (legacyAddr) return legacyAddr;
+  if (tenantId === MASTER_TENANT_ID) return MASTER_MAPS_FALLBACK;
+  return '';
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
