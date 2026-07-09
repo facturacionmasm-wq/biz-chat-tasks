@@ -199,6 +199,16 @@ serve(async (req) => {
 
         const now = new Date();
         const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+        const day = todayUTC(now);
+        const cacheKey = `usage:summary:${tenant_id}:${day}`;
+
+        // Read-through cache (300s TTL for current-day rollup). Safe fallback on miss/error.
+        const cached = await cacheGet<any>(cacheKey);
+        if (cached) {
+          return new Response(JSON.stringify(cached), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json', 'x-cache': 'HIT' },
+          });
+        }
 
         const [eventsRes, reconciledRes] = await Promise.all([
           supabase
@@ -222,10 +232,17 @@ serve(async (req) => {
           byType[ev.event_type] = (byType[ev.event_type] || 0) + Number(ev.units);
         }
 
-        return new Response(JSON.stringify({
+        const payload = {
           current_month: { total_units: totalUnits, by_type: byType, period_start: monthStart },
           reconciled_history: reconciledRes.data || [],
-        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        };
+
+        // Best-effort write; failure never breaks the response.
+        await cacheSet(cacheKey, payload, 300);
+
+        return new Response(JSON.stringify(payload), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json', 'x-cache': 'MISS' },
+        });
       }
 
       default:
