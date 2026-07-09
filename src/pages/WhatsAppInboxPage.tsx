@@ -233,6 +233,18 @@ const WhatsAppInboxPage = () => {
       <div className="flex-1 flex min-h-0">
         <div className="flex-1 flex flex-col min-w-0">
           <div className="flex-1 overflow-y-auto scrollbar-thin px-3 sm:px-5 py-4 space-y-3">
+            {hasMoreMessages && convMessages.length > 0 && (
+              <div className="flex justify-center">
+                <button
+                  onClick={() => selectedConvId && loadOlderMessages(selectedConvId)}
+                  disabled={loadingOlder}
+                  className="text-xs px-3 py-1.5 rounded-full bg-[var(--rx-s2)] text-[var(--rx-t2)] hover:text-foreground hover:bg-[var(--rx-s2)]/70 disabled:opacity-60 flex items-center gap-1.5"
+                >
+                  {loadingOlder ? <Loader2 size={12} className="animate-spin" /> : null}
+                  {loadingOlder ? 'Cargando…' : 'Cargar mensajes anteriores'}
+                </button>
+              </div>
+            )}
             {convMessages.length === 0 && <div className="text-center text-xs text-[var(--rx-t2)] py-8">No hay mensajes aún</div>}
             {convMessages.map(msg => (
               <div key={msg.id} className={`flex ${msg.direction === 'out' ? 'justify-end' : 'justify-start'}`}>
