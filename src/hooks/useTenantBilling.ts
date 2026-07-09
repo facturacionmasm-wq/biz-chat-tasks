@@ -84,8 +84,8 @@ export function useTenantBilling(tenantId: string | null) {
     },
   });
 
-  // Aggregate current month stats
-  const currentMonth = (() => {
+  // Aggregate current month stats (memoized on raw events)
+  const currentMonth = useMemo(() => {
     const events = usageEvents.data || [];
     let totalUnits = 0;
     const byType: Record<string, number> = {};
@@ -94,7 +94,7 @@ export function useTenantBilling(tenantId: string | null) {
       byType[ev.event_type] = (byType[ev.event_type] || 0) + Number(ev.units);
     }
     return { totalUnits, byType, eventCount: events.length };
-  })();
+  }, [usageEvents.data]);
 
   return {
     usageEvents,
