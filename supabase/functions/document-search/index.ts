@@ -7,6 +7,8 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
+import { cacheGet, cacheSet, cacheInvalidate, sha256Hex, normalizeQueryKey } from "../_shared/cache.ts";
+
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
