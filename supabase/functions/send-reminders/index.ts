@@ -32,6 +32,19 @@ function resolveTenantLocation(settings: any, tenantId: string | null | undefine
   return '';
 }
 
+// Resolve the IANA timezone used to format appointment date/time for the client.
+// Priority: default branch timezone > first branch timezone > settings_json.timezone
+// > 'America/Mexico_City' (safe LATAM default).
+function resolveTenantTimezone(settings: any, _tenantId: string | null | undefined): string {
+  const branches = Array.isArray(settings?.branches) ? settings.branches : [];
+  const def = branches.find((b: any) => b && b.is_default) || branches[0] || null;
+  const branchTz = def && typeof def.timezone === 'string' ? def.timezone.trim() : '';
+  if (branchTz) return branchTz;
+  const legacyTz = typeof settings?.timezone === 'string' ? settings.timezone.trim() : '';
+  if (legacyTz) return legacyTz;
+  return 'America/Mexico_City';
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
