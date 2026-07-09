@@ -1,8 +1,8 @@
 // Generic background job worker.
 // Processes public.background_jobs (NOT call_jobs — that queue has its own worker).
 //
-// Dispatches by job_type. In this phase we only wire the dispatcher skeleton;
-// no existing callers are migrated yet, so unknown types are marked as error.
+// Dispatches by job_type. Handlers invoke the SAME edge function that already
+// does the work (no duplicated logic). Errors bubble up so backoff/retries apply.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
@@ -75,23 +75,46 @@ serve(async (req) => {
   }
 });
 
-// Dispatch by job_type. Each case will be wired to real work in later phases.
-// Adding a case now returns `unknown job_type` for anything not listed so an
-// accidentally-enqueued job doesn't loop forever.
 async function dispatch(supabase: any, job: BackgroundJob): Promise<Record<string, unknown>> {
   switch (job.job_type) {
     case "send_email":
       return await handleSendEmail(job);
-
     case "generate_report":
+      return await handleGenerateReport(supabase, job);
     case "kb_sync_all":
+      return await handleKbSyncAll(supabase, job);
     case "calendar_sync":
+      return await handleCalendarSync(supabase, job);
+    case "delete_tenant":
+      return await handleDeleteTenant(supabase, job);
     case "cleanup":
       throw new Error(`Handler for '${job.job_type}' not implemented yet`);
-
     default:
       throw new Error(`unknown job_type: ${job.job_type}`);
   }
+}
+
+// ─── helper: invoke another edge function server-to-server with service role ───
+async function invokeFn(fnName: string, body: Record<string, unknown>): Promise<any> {
+  const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+  const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/${fnName}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${SERVICE_KEY}`,
+      apikey: SERVICE_KEY,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body ?? {}),
+  });
+  const txt = await res.text();
+  let parsed: any = null;
+  try { parsed = txt ? JSON.parse(txt) : null; } catch { parsed = txt; }
+  if (!res.ok) {
+    const msg = typeof parsed === "object" && parsed?.error ? parsed.error : `${res.status} ${txt}`;
+    throw new Error(`${fnName}: ${msg}`);
+  }
+  return parsed;
 }
 
 // send_email payload: { to, subject, html?, text?, from?, replyTo?, kind? }
@@ -128,12 +151,55 @@ async function handleSendEmail(job: BackgroundJob): Promise<Record<string, unkno
     },
     body: JSON.stringify(body),
   });
-
   const respText = await res.text();
-  if (!res.ok) {
-    throw new Error(`Resend ${res.status}: ${respText}`);
-  }
+  if (!res.ok) throw new Error(`Resend ${res.status}: ${respText}`);
   let parsed: any = null;
   try { parsed = JSON.parse(respText); } catch { /* ignore */ }
   return { resend_id: parsed?.id ?? null, status: res.status, kind: p.kind ?? null };
+}
+
+// generate_report payload: { report: 'financial-projections'|'churn-engine'|'global-metrics-daily'|'billing-monthly-report'|'fraud-detection', args?: {...} }
+const REPORT_FNS = new Set([
+  "financial-projections",
+  "churn-engine",
+  "global-metrics-daily",
+  "billing-monthly-report",
+  "fraud-detection",
+]);
+async function handleGenerateReport(_supabase: any, job: BackgroundJob): Promise<Record<string, unknown>> {
+  const p = (job.payload || {}) as Record<string, unknown>;
+  const report = p.report as string | undefined;
+  if (!report || !REPORT_FNS.has(report)) {
+    throw new Error(`generate_report: invalid report '${report}'`);
+  }
+  const args = (p.args as Record<string, unknown> | undefined) ?? {};
+  const out = await invokeFn(report, args);
+  return { report, output: out };
+}
+
+// kb_sync_all payload: { tenant_id }
+async function handleKbSyncAll(_supabase: any, job: BackgroundJob): Promise<Record<string, unknown>> {
+  const p = (job.payload || {}) as Record<string, unknown>;
+  const tenant_id = (p.tenant_id as string | undefined) || job.tenant_id || undefined;
+  if (!tenant_id) throw new Error("kb_sync_all: missing tenant_id");
+  const out = await invokeFn("elevenlabs-kb-sync", { action: "sync_all", tenant_id });
+  return { tenant_id, output: out };
+}
+
+// calendar_sync payload: { action, appointment_id, ...extra }
+async function handleCalendarSync(_supabase: any, job: BackgroundJob): Promise<Record<string, unknown>> {
+  const p = (job.payload || {}) as Record<string, unknown>;
+  if (!p.action) throw new Error("calendar_sync: missing action");
+  const out = await invokeFn("calendar-sync", p);
+  return { output: out };
+}
+
+// delete_tenant payload: { tenant_id, confirm_name }
+async function handleDeleteTenant(_supabase: any, job: BackgroundJob): Promise<Record<string, unknown>> {
+  const p = (job.payload || {}) as Record<string, unknown>;
+  const tenant_id = p.tenant_id as string | undefined;
+  const confirm_name = p.confirm_name as string | undefined;
+  if (!tenant_id || !confirm_name) throw new Error("delete_tenant: missing tenant_id or confirm_name");
+  const out = await invokeFn("admin-delete-tenant", { tenant_id, confirm_name });
+  return { tenant_id, output: out };
 }
