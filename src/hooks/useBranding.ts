@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
 export interface BrandingData {
@@ -13,64 +14,71 @@ export interface BrandingData {
 
 const TENANT_ID = '00000000-0000-0000-0000-000000000001';
 
-export const useBranding = () => {
-  const [branding, setBranding] = useState<BrandingData>({
-    orgName: 'OfficeHub',
-    logoUrl: '',
-    faviconUrl: '',
-    primaryColor: '#6366f1',
-    secondaryColor: '#8b5cf6',
-    slogan: '',
-    loading: true,
-  });
+const DEFAULT_BRANDING: BrandingData = {
+  orgName: 'OfficeHub',
+  logoUrl: '',
+  faviconUrl: '',
+  primaryColor: '#6366f1',
+  secondaryColor: '#8b5cf6',
+  slogan: '',
+  loading: true,
+};
 
-  useEffect(() => {
-    const load = async () => {
+export const useBranding = (): BrandingData => {
+  const { data, isLoading } = useQuery({
+    queryKey: ['tenant-branding', TENANT_ID],
+    staleTime: 30 * 60 * 1000, // 30 min
+    gcTime: 60 * 60 * 1000,
+    refetchOnMount: false,
+    queryFn: async () => {
       const { data: tenant } = await supabase
         .rpc('get_tenant_branding', { _tenant_id: TENANT_ID }) as { data: { id: string; name: string; settings_json: any } | null };
+      if (!tenant) return null;
+      const s = (tenant.settings_json || {}) as Record<string, any>;
+      return {
+        orgName: tenant.name || 'OfficeHub',
+        logoUrl: s.logo_url || '',
+        faviconUrl: s.favicon_url || '',
+        favicon32Url: s.favicon_32_url || '',
+        primaryColor: s.primary_color || '#6366f1',
+        secondaryColor: s.secondary_color || '#8b5cf6',
+        slogan: s.slogan || '',
+      };
+    },
+  });
 
-      if (tenant) {
-        const s = (tenant.settings_json || {}) as Record<string, any>;
-        const newBranding: BrandingData = {
-          orgName: tenant.name || 'OfficeHub',
-          logoUrl: s.logo_url || '',
-          faviconUrl: s.favicon_url || '',
-          primaryColor: s.primary_color || '#6366f1',
-          secondaryColor: s.secondary_color || '#8b5cf6',
-          slogan: s.slogan || '',
-          loading: false,
-        };
-        setBranding(newBranding);
+  // Apply favicon + title as side effect (same behavior as before)
+  useEffect(() => {
+    if (!data) return;
+    const faviconSrc = data.favicon32Url || data.faviconUrl;
+    if (faviconSrc) {
+      const link = document.querySelector("link[rel~='icon']") as HTMLLinkElement
+        || document.createElement('link');
+      link.rel = 'icon';
+      link.href = faviconSrc;
+      document.head.appendChild(link);
 
-        // Update favicon dynamically (use 32px version for browser tab)
-        const faviconSrc = s.favicon_32_url || s.favicon_url;
-        if (faviconSrc) {
-          const link = document.querySelector("link[rel~='icon']") as HTMLLinkElement
-            || document.createElement('link');
-          link.rel = 'icon';
-          link.href = faviconSrc;
-          document.head.appendChild(link);
-
-          // Update apple-touch-icon with 192px version
-          if (s.favicon_url) {
-            const appleLink = document.querySelector("link[rel='apple-touch-icon']") as HTMLLinkElement
-              || document.createElement('link');
-            appleLink.rel = 'apple-touch-icon';
-            appleLink.href = s.favicon_url;
-            document.head.appendChild(appleLink);
-          }
-        }
-
-        // Update page title
-        if (tenant.name) {
-          document.title = tenant.name;
-        }
-      } else {
-        setBranding(prev => ({ ...prev, loading: false }));
+      if (data.faviconUrl) {
+        const appleLink = document.querySelector("link[rel='apple-touch-icon']") as HTMLLinkElement
+          || document.createElement('link');
+        appleLink.rel = 'apple-touch-icon';
+        appleLink.href = data.faviconUrl;
+        document.head.appendChild(appleLink);
       }
-    };
-    load();
-  }, []);
+    }
+    if (data.orgName) document.title = data.orgName;
+  }, [data]);
 
-  return branding;
+  if (!data) {
+    return { ...DEFAULT_BRANDING, loading: isLoading };
+  }
+  return {
+    orgName: data.orgName,
+    logoUrl: data.logoUrl,
+    faviconUrl: data.faviconUrl,
+    primaryColor: data.primaryColor,
+    secondaryColor: data.secondaryColor,
+    slogan: data.slogan,
+    loading: false,
+  };
 };

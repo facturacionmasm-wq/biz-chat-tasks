@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -28,38 +28,33 @@ export interface PlanFeaturesState {
 }
 
 export const usePlanFeatures = (): PlanFeaturesState => {
-  const { user, subscriptionStatus } = useAuth();
-  const [features, setFeatures] = useState<Record<string, any>>({});
-  const [loading, setLoading] = useState(true);
-  const [isMaster, setIsMaster] = useState(false);
+  const { user, subscriptionStatus, tenantId } = useAuth();
+  const isMaster = tenantId === MASTER_TENANT_ID;
+  const slug = subscriptionStatus?.plan_slug ?? null;
 
-  const load = useCallback(async () => {
-    if (!user) { setLoading(false); return; }
-    try {
-      const { data: tenantId } = await supabase.rpc('get_user_tenant_id', { _user_id: user.id });
-      if (tenantId === MASTER_TENANT_ID) {
-        setIsMaster(true);
-        setFeatures(MASTER_FEATURES);
-        setLoading(false);
-        return;
-      }
-      const slug = subscriptionStatus?.plan_slug;
-      if (!slug) { setFeatures({}); setLoading(false); return; }
+  const query = useQuery({
+    queryKey: ['plan-features', tenantId, slug],
+    enabled: !!user && !isMaster && !!slug,
+    staleTime: 30 * 60 * 1000, // 30 min
+    gcTime: 60 * 60 * 1000,
+    refetchOnMount: false,
+    queryFn: async () => {
       const { data } = await supabase
         .from('subscription_plans')
         .select('features')
-        .eq('slug', slug)
+        .eq('slug', slug!)
         .maybeSingle();
-      setFeatures(((data?.features as any) || {}) as Record<string, any>);
-    } catch (e) {
-      console.error('[usePlanFeatures] load failed', e);
-      setFeatures({});
-    } finally {
-      setLoading(false);
-    }
-  }, [user, subscriptionStatus?.plan_slug]);
+      return ((data?.features as any) || {}) as Record<string, any>;
+    },
+  });
 
-  useEffect(() => { load(); }, [load]);
+  const features = isMaster ? MASTER_FEATURES : (query.data ?? {});
+
+  // Loading only when we actually need to fetch (not master, and either waiting
+  // for tenant/subscription resolution or for the plan-features query itself).
+  const loading = isMaster
+    ? false
+    : (!!user && (!tenantId || !slug || query.isLoading));
 
   const hasFeature = (key: string) => {
     if (isMaster) return true;
@@ -72,10 +67,10 @@ export const usePlanFeatures = (): PlanFeaturesState => {
     loading,
     planSlug: isMaster ? 'master' : (subscriptionStatus?.plan_slug ?? null),
     planName: isMaster ? 'Master' : (subscriptionStatus?.plan_name ?? null),
-    features: isMaster ? MASTER_FEATURES : features,
+    features,
     supportLevel,
     isMaster,
     hasFeature,
-    refresh: load,
+    refresh: async () => { await query.refetch(); },
   };
 };

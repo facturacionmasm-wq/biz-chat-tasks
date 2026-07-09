@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { User, Session } from '@supabase/supabase-js';
 
 interface SubscriptionStatus {
@@ -22,6 +23,7 @@ interface AuthContextType {
   profileStatus: string | null;
   onboardingCompleted: boolean | null;
   subscriptionStatus: SubscriptionStatus | null;
+  tenantId: string | null;
   signOut: () => Promise<void>;
 }
 
@@ -33,76 +35,65 @@ const AuthContext = createContext<AuthContextType>({
   profileStatus: null,
   onboardingCompleted: null,
   subscriptionStatus: null,
+  tenantId: null,
   signOut: async () => {},
 });
 
 export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
+  const queryClient = useQueryClient();
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState<string | null>(null);
   const [profileStatus, setProfileStatus] = useState<string | null>(null);
   const [onboardingCompleted, setOnboardingCompleted] = useState<boolean | null>(null);
-  const [subscriptionStatus, setSubscriptionStatus] = useState<SubscriptionStatus | null>(null);
+  const [tenantId, setTenantId] = useState<string | null>(null);
 
   /**
-   * Fetch user-specific data from Supabase after successful authentication.
-   * All errors are caught and logged — they must never propagate to React's render cycle.
+   * Fetch user-specific data (tenant, role, profile) after successful authentication.
+   * Subscription status is handled by a separate React Query below so it can be
+   * shared across the app with a 5-minute staleTime and invalidated on demand.
    */
   const fetchUserData = useCallback(async (userId: string) => {
     try {
       // Self-heal: if the signup trigger never created a tenant/profile
       // for this user, do it on the fly so onboarding can render.
-      // Idempotent — a no-op when the tenant already exists.
       try {
         await supabase.rpc('ensure_tenant_for_current_user');
       } catch (healErr) {
         console.warn('[RYBIX] ensure_tenant_for_current_user failed:', healErr);
       }
 
-      const { data: tenantId, error: tenantError } = await supabase.rpc('get_user_tenant_id', { _user_id: userId });
-
+      const { data: resolvedTenantId, error: tenantError } = await supabase.rpc('get_user_tenant_id', { _user_id: userId });
       if (tenantError) {
         console.warn('[RYBIX] get_user_tenant_id failed:', tenantError.message);
       }
 
-      const [rolesResult, profileResult, subResult] = await Promise.all([
-        tenantId
-          ? supabase.from('user_roles').select('role').eq('user_id', userId).eq('tenant_id', tenantId)
+      const [rolesResult, profileResult] = await Promise.all([
+        resolvedTenantId
+          ? supabase.from('user_roles').select('role').eq('user_id', userId).eq('tenant_id', resolvedTenantId)
           : Promise.resolve({ data: [] as Array<{ role: string }>, error: null }),
         supabase.from('profiles').select('onboarding_completed, status').eq('user_id', userId).maybeSingle(),
-        supabase.rpc('get_tenant_subscription_status', { _user_id: userId }),
       ]);
 
       const roles = (rolesResult.data || []) as Array<{ role: string }>;
       const rolePriority = ['super_admin', 'owner', 'admin', 'staff', 'moderator', 'user'];
       const resolvedRole = rolePriority.find(r => roles.some(row => row.role === r)) || roles[0]?.role || null;
 
+      setTenantId(resolvedTenantId ?? null);
       setUserRole(resolvedRole);
       setProfileStatus(profileResult.data?.status ?? null);
       setOnboardingCompleted(profileResult.data?.onboarding_completed ?? false);
-
-      if (subResult.data) {
-        setSubscriptionStatus(subResult.data as unknown as SubscriptionStatus);
-      }
     } catch (err) {
-      // Log but DO NOT re-throw — a fetch error should never crash the app
       console.error('[RYBIX] fetchUserData failed:', err);
     }
   }, []);
 
-
   useEffect(() => {
     let mounted = true;
 
-    /**
-     * onAuthStateChange fires an INITIAL_SESSION event immediately on mount
-     * (Supabase v2), so we don't need a separate getSession() call.
-     * Using only one listener avoids duplicate fetchUserData calls and
-     * the race condition they caused.
-     */
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
       if (!mounted) return;
 
@@ -110,15 +101,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setUser(newSession?.user ?? null);
 
       if (newSession?.user) {
-        // Defer to avoid blocking the auth state change callback
         setTimeout(() => {
           if (mounted) fetchUserData(newSession.user.id);
         }, 0);
       } else {
+        setTenantId(null);
         setUserRole(null);
         setProfileStatus(null);
         setOnboardingCompleted(null);
-        setSubscriptionStatus(null);
+        // Clear cached queries scoped to the previous user/tenant
+        queryClient.removeQueries({ queryKey: ['subscription-status'] });
+        queryClient.removeQueries({ queryKey: ['plan-features'] });
       }
 
       setLoading(false);
@@ -128,7 +121,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, [fetchUserData]);
+  }, [fetchUserData, queryClient]);
+
+  // Subscription status — cached 5 min, shared across the app
+  const subscriptionQuery = useQuery({
+    queryKey: ['subscription-status', user?.id ?? null],
+    enabled: !!user?.id,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('get_tenant_subscription_status', { _user_id: user!.id });
+      if (error) throw error;
+      return (data as unknown as SubscriptionStatus) ?? null;
+    },
+  });
 
   const signOut = async () => {
     try {
@@ -141,7 +147,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   return (
     <AuthContext.Provider value={{
       user, session, loading, userRole,
-      profileStatus, onboardingCompleted, subscriptionStatus, signOut,
+      profileStatus, onboardingCompleted,
+      subscriptionStatus: (subscriptionQuery.data as SubscriptionStatus | null) ?? null,
+      tenantId,
+      signOut,
     }}>
       {children}
     </AuthContext.Provider>
