@@ -200,6 +200,12 @@ async function handleDeleteTenant(_supabase: any, job: BackgroundJob): Promise<R
   const tenant_id = p.tenant_id as string | undefined;
   const confirm_name = p.confirm_name as string | undefined;
   if (!tenant_id || !confirm_name) throw new Error("delete_tenant: missing tenant_id or confirm_name");
-  const out = await invokeFn("admin-delete-tenant", { tenant_id, confirm_name });
+  if (!job.created_by) throw new Error("delete_tenant: missing created_by (super_admin caller)");
+  const out = await invokeFn("admin-delete-tenant", {
+    tenant_id,
+    confirm_name,
+    caller_user_id: job.created_by,
+  });
   return { tenant_id, output: out };
 }
+
