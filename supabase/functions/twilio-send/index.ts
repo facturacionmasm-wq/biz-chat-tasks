@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
+import { isDryRun, isLoadtestPhone, simulatedOk, LOADTEST_TENANT_ID } from "../_shared/loadtest.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -131,6 +132,15 @@ serve(async (req) => {
       return raw;
     })();
     const toWhatsApp = normalizedTo.startsWith("whatsapp:") ? normalizedTo : `whatsapp:${normalizedTo}`;
+
+    // Dry-run final guard: LOADTEST tenant, header, env, or reserved loadtest phone → simulate.
+    if (isDryRun(req) || effectiveTenantId === LOADTEST_TENANT_ID || isLoadtestPhone(normalizedTo)) {
+      return new Response(
+        JSON.stringify({ ok: true, dry_run: true, messageSid: `MM_DRYRUN_${crypto.randomUUID()}`, to: toWhatsApp }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
 
     const statusCallbackUrl = `${supabaseUrl}/functions/v1/whatsapp-webhook`;
 

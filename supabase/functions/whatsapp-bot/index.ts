@@ -11,6 +11,7 @@ import {
   checkAndHandleApprovalResponse,
   checkAndHandleReceiptUpload,
 } from "./expense-handler.ts";
+import { isDryRun, isLoadtestPhone, simulatedOk, LOADTEST_TENANT_ID } from "../_shared/loadtest.ts";
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -30,6 +31,19 @@ serve(async (req) => {
     const { conversationId, messageBody, contactPhone, tenantId, mediaUrl, mediaContentType, sandboxMode, sandboxState, sandboxContext, skipSend } = await req.json();
 
     console.log(`[BOT] Processing conv=${conversationId} tenant=${tenantId} body_len=${(messageBody || '').length}`);
+
+    // ==================== DRY-RUN GUARD (LOADTEST) ====================
+    // Echo without invoking twilio-send/AI when the request is a load test.
+    if (isDryRun(req) || tenantId === LOADTEST_TENANT_ID || isLoadtestPhone(contactPhone)) {
+      console.log(`[BOT] LOADTEST dry-run — echo only`);
+      return new Response(
+        JSON.stringify(simulatedOk('whatsapp_bot', {
+          conversationId, tenantId, echo: String(messageBody || '').slice(0, 200),
+        })),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+
 
     // ==================== SUBSCRIPTION GUARD ====================
     const MASTER_TENANT_ID = '00000000-0000-0000-0000-000000000001';

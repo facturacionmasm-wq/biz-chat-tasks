@@ -76,6 +76,11 @@ serve(async (req) => {
 });
 
 async function dispatch(supabase: any, job: BackgroundJob): Promise<Record<string, unknown>> {
+  // Dry-run guard: any job flagged as loadtest is a no-op. Never calls providers.
+  const payload = (job.payload || {}) as Record<string, unknown>;
+  if (payload.loadtest === true || job.job_type === 'loadtest_noop' || job.job_type.startsWith('loadtest_')) {
+    return { ok: true, dry_run: true, job_type: job.job_type, simulated_at: Date.now() };
+  }
   switch (job.job_type) {
     case "send_email":
       return await handleSendEmail(job);
