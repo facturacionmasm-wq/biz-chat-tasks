@@ -930,6 +930,8 @@ export type Database = {
           call_sid: string
           created_at: string
           elevenlabs_agent_id: string | null
+          ended_at: string | null
+          ended_intentionally: boolean
           error_message: string | null
           id: string
           language: string | null
@@ -947,6 +949,8 @@ export type Database = {
           call_sid: string
           created_at?: string
           elevenlabs_agent_id?: string | null
+          ended_at?: string | null
+          ended_intentionally?: boolean
           error_message?: string | null
           id?: string
           language?: string | null
@@ -964,6 +968,8 @@ export type Database = {
           call_sid?: string
           created_at?: string
           elevenlabs_agent_id?: string | null
+          ended_at?: string | null
+          ended_intentionally?: boolean
           error_message?: string | null
           id?: string
           language?: string | null
