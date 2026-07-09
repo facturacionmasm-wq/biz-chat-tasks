@@ -1570,6 +1570,22 @@ const SettingsPage = () => {
                           onChange={e => updateBranch(b.id, { maps_url: e.target.value })}
                           placeholder="https://maps.app.goo.gl/..."
                         />
+                        <div className="flex items-center gap-2">
+                          <label className="text-[11px] text-[var(--rx-t2)] whitespace-nowrap">Zona horaria</label>
+                          <select
+                            className={`${inputClass} flex-1`}
+                            value={b.timezone || 'America/Mexico_City'}
+                            onChange={e => updateBranch(b.id, { timezone: e.target.value })}
+                          >
+                            {[
+                              'America/Mexico_City','America/Tijuana','America/Cancun','America/Monterrey','America/Hermosillo',
+                              'America/Bogota','America/Lima','America/Santiago','America/Buenos_Aires','America/Caracas',
+                              'America/New_York','America/Chicago','America/Denver','America/Los_Angeles','America/Phoenix',
+                              'America/Sao_Paulo','America/Guatemala','America/Costa_Rica','America/Panama',
+                              'Europe/Madrid','Europe/London','Europe/Berlin','UTC',
+                            ].map(tz => <option key={tz} value={tz}>{tz}</option>)}
+                          </select>
+                        </div>
                       </div>
                     ))}
                   </div>
