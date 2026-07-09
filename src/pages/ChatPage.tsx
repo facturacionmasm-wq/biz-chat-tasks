@@ -44,7 +44,7 @@ const ChatPage = () => {
   useEffect(() => {
     const fetchProfiles = async () => {
       const [profilesRes, rolesRes] = await Promise.all([
-        supabase.from('profiles').select('user_id, name, avatar_url, status, email, phone, whatsapp_number').eq('status', 'active'),
+        supabase.from('profiles').select('user_id, name, avatar_url, status, email, phone, whatsapp_number').or('status.is.null,status.not.in.(inactive,suspended,rejected,deleted)'),
         supabase.from('user_roles').select('user_id, role'),
       ]);
 
