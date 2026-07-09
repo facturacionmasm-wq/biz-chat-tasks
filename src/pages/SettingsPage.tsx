@@ -1592,7 +1592,7 @@ const SettingsPage = () => {
                             onChange={e => updateBranch(b.id, { timezone: e.target.value })}
                           >
                             {[
-                              'America/Mexico_City','America/Tijuana','America/Cancun','America/Monterrey','America/Hermosillo',
+                              'America/Mexico_City','America/Merida','America/Cancun','America/Monterrey','America/Hermosillo','America/Tijuana',
                               'America/Bogota','America/Lima','America/Santiago','America/Buenos_Aires','America/Caracas',
                               'America/New_York','America/Chicago','America/Denver','America/Los_Angeles','America/Phoenix',
                               'America/Sao_Paulo','America/Guatemala','America/Costa_Rica','America/Panama',
