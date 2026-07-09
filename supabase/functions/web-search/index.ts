@@ -1,4 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { cacheGet, cacheSet, sha256Hex, normalizeQueryKey } from "../_shared/cache.ts";
+
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
