@@ -84,6 +84,27 @@ const sourceIcons: Record<string, { icon: any; label: string }> = {
 
 const HOURS = Array.from({ length: 12 }, (_, i) => i + 8);
 
+// Interpret a wall-clock date+time string ("YYYY-MM-DD","HH:mm") as if the
+// user typed it in `tz` and return the corresponding UTC Date. Uses Intl to
+// compute the tz offset at that instant (handles DST correctly).
+function zonedTimeToUtc(dateStr: string, timeStr: string, tz: string): Date {
+  const [Y, M, D] = dateStr.split('-').map(Number);
+  const [h, m] = timeStr.split(':').map(Number);
+  const utcGuess = Date.UTC(Y, (M || 1) - 1, D || 1, h || 0, m || 0);
+  const dtf = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz, hour12: false,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  });
+  const parts = dtf.formatToParts(new Date(utcGuess));
+  const map: Record<string, number> = {};
+  for (const p of parts) if (p.type !== 'literal') map[p.type] = Number(p.value);
+  const asUTC = Date.UTC(map.year, map.month - 1, map.day, map.hour === 24 ? 0 : map.hour, map.minute, map.second);
+  const offset = asUTC - utcGuess;
+  return new Date(utcGuess - offset);
+}
+
+
 const AppointmentsPage = () => {
   const [view, setView] = useState<'list' | 'calendar'>('calendar');
   const [currentWeek, setCurrentWeek] = useState(new Date());
