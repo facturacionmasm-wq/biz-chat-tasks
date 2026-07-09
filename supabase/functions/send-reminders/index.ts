@@ -529,8 +529,9 @@ serve(async (req) => {
           if (WHATSAPP_REMINDER_CONTENT_SID && tFromN) {
             const appt = apptMap.get(notif.appointment_id);
             const startAt = appt?.start_at ? new Date(appt.start_at) : null;
-            const dateStr = startAt ? startAt.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }) : '-';
-            const timeStr = startAt ? startAt.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }) : '-';
+            const tzN = resolveTenantTimezone(tenantSettingsMap.get(notif.tenant_id), notif.tenant_id);
+            const dateStr = startAt ? startAt.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', timeZone: tzN }) : '-';
+            const timeStr = startAt ? startAt.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', timeZone: tzN }) : '-';
             const firstName = String(appt?.contact_name || 'Hola').split(' ')[0] || 'Hola';
             const serviceStr = String(appt?.service_type || 'tu cita');
             const tenantLocN = resolveTenantLocation(tenantSettingsMap.get(notif.tenant_id), notif.tenant_id);
@@ -540,7 +541,7 @@ serve(async (req) => {
               tenantLocN ||
               appt?.notes ||
               'Te contactaremos con los detalles';
-            const locationStr = String(rawLoc).trim() || 'Te contactaremos con los detalles';
+            const locationStr = `${(String(rawLoc).trim() || 'Te contactaremos con los detalles')}\n`;
             const vars = {
               '1': firstName,
               '2': serviceStr,
