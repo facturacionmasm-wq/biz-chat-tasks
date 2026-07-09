@@ -1,4 +1,3 @@
-import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
@@ -10,16 +9,10 @@ import {
 import { toast } from 'sonner';
 
 const UsagePage = () => {
-  const { user, userRole } = useAuth();
-  const [tenantId, setTenantId] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!user) return;
-    supabase.from('profiles').select('tenant_id').eq('user_id', user.id).maybeSingle()
-      .then(({ data }) => setTenantId(data?.tenant_id || null));
-  }, [user]);
+  const { userRole, tenantId } = useAuth();
 
   const { currentMonth, costHistory, fxRate, isLoading: billingLoading } = useTenantBilling(tenantId);
+
 
   // Voice Agent metrics from realtime_margin_state
   const voiceMetrics = useQuery({
