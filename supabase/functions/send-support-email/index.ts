@@ -88,61 +88,91 @@ serve(async (req) => {
     const ticketId = ticket.id;
     const ticketShort = String(ticketId).slice(0, 8);
 
-    // 2. Send email via Resend (if configured) — non-blocking failure.
+    // 2. Enqueue email send (fallback to direct Resend POST if enqueue fails).
     const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
     let emailSent = false;
+    let emailQueued = false;
     let emailError: string | null = null;
 
-    if (RESEND_API_KEY) {
-      try {
-        const htmlBody = `
-          <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:20px">
-            <h2 style="color:#0f172a">Nuevo ticket de soporte #${ticketShort}</h2>
-            <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
-              <tr><td style="padding:6px 0;color:#64748b;width:120px"><b>Tenant</b></td><td>${escapeHtml(tenant?.name || "—")} (<code>${profile.tenant_id}</code>)</td></tr>
-              <tr><td style="padding:6px 0;color:#64748b"><b>Remitente</b></td><td>${escapeHtml(profile.name || user.email || "—")}</td></tr>
-              <tr><td style="padding:6px 0;color:#64748b"><b>Email contacto</b></td><td>${escapeHtml(contact_email || user.email || "—")}</td></tr>
-              <tr><td style="padding:6px 0;color:#64748b"><b>Prioridad</b></td><td><span style="text-transform:uppercase;padding:2px 8px;border-radius:6px;background:#f1f5f9">${pr}</span></td></tr>
-              <tr><td style="padding:6px 0;color:#64748b"><b>Ticket ID</b></td><td><code>${ticketId}</code></td></tr>
-            </table>
-            <h3 style="color:#0f172a;margin-top:24px">Asunto</h3>
-            <p style="background:#f8fafc;padding:12px;border-radius:8px">${escapeHtml(subject)}</p>
-            <h3 style="color:#0f172a">Mensaje</h3>
-            <div style="background:#f8fafc;padding:12px;border-radius:8px;white-space:pre-wrap">${escapeHtml(message)}</div>
-            <hr style="margin:24px 0;border:none;border-top:1px solid #e2e8f0" />
-            <p style="font-size:12px;color:#94a3b8">Este correo fue generado automáticamente desde el Centro de Soporte de OfficeHub.</p>
-          </div>
-        `;
+    const htmlBody = `
+      <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:20px">
+        <h2 style="color:#0f172a">Nuevo ticket de soporte #${ticketShort}</h2>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
+          <tr><td style="padding:6px 0;color:#64748b;width:120px"><b>Tenant</b></td><td>${escapeHtml(tenant?.name || "—")} (<code>${profile.tenant_id}</code>)</td></tr>
+          <tr><td style="padding:6px 0;color:#64748b"><b>Remitente</b></td><td>${escapeHtml(profile.name || user.email || "—")}</td></tr>
+          <tr><td style="padding:6px 0;color:#64748b"><b>Email contacto</b></td><td>${escapeHtml(contact_email || user.email || "—")}</td></tr>
+          <tr><td style="padding:6px 0;color:#64748b"><b>Prioridad</b></td><td><span style="text-transform:uppercase;padding:2px 8px;border-radius:6px;background:#f1f5f9">${pr}</span></td></tr>
+          <tr><td style="padding:6px 0;color:#64748b"><b>Ticket ID</b></td><td><code>${ticketId}</code></td></tr>
+        </table>
+        <h3 style="color:#0f172a;margin-top:24px">Asunto</h3>
+        <p style="background:#f8fafc;padding:12px;border-radius:8px">${escapeHtml(subject)}</p>
+        <h3 style="color:#0f172a">Mensaje</h3>
+        <div style="background:#f8fafc;padding:12px;border-radius:8px;white-space:pre-wrap">${escapeHtml(message)}</div>
+        <hr style="margin:24px 0;border:none;border-top:1px solid #e2e8f0" />
+        <p style="font-size:12px;color:#94a3b8">Este correo fue generado automáticamente desde el Centro de Soporte de OfficeHub.</p>
+      </div>
+    `;
 
-        const resendRes = await fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${RESEND_API_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            from: "Soporte OfficeHub <soporte@rybixholding.com>",
-            to: [SUPPORT_EMAIL],
-            reply_to: contact_email || user.email,
-            subject: `[${pr.toUpperCase()}] #${ticketShort} · ${subject}`,
-            html: htmlBody,
-          }),
-        });
+    const emailPayload = {
+      to: SUPPORT_EMAIL,
+      from: "Soporte OfficeHub <soporte@rybixholding.com>",
+      replyTo: contact_email || user.email,
+      subject: `[${pr.toUpperCase()}] #${ticketShort} · ${subject}`,
+      html: htmlBody,
+      kind: "support_ticket",
+    };
 
-        if (resendRes.ok) {
-          emailSent = true;
-        } else {
-          emailError = `Resend ${resendRes.status}: ${await resendRes.text()}`;
-          console.error(emailError);
-        }
-      } catch (e) {
-        emailError = (e as Error).message;
-        console.error("Resend send failed:", emailError);
-      }
-    } else {
+    if (!RESEND_API_KEY) {
       emailError = "RESEND_API_KEY not configured — ticket created but email not sent";
       console.warn(emailError);
+    } else {
+      const jobId = await enqueueJob(admin, {
+        jobType: "send_email",
+        payload: emailPayload,
+        tenantId: profile.tenant_id,
+        createdBy: user.id,
+      });
+
+      if (jobId) {
+        emailQueued = true;
+        // Fire-and-forget worker kick — never block or throw.
+        try {
+          fetch(`${supabaseUrl}/functions/v1/background-job-worker`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${serviceKey}`, "Content-Type": "application/json" },
+            body: "{}",
+          }).catch(() => {});
+        } catch { /* ignore */ }
+      } else {
+        // Fallback: direct POST to Resend, same as before.
+        try {
+          const resendRes = await fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${RESEND_API_KEY}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              from: emailPayload.from,
+              to: [emailPayload.to],
+              reply_to: emailPayload.replyTo,
+              subject: emailPayload.subject,
+              html: emailPayload.html,
+            }),
+          });
+          if (resendRes.ok) {
+            emailSent = true;
+          } else {
+            emailError = `Resend ${resendRes.status}: ${await resendRes.text()}`;
+            console.error(emailError);
+          }
+        } catch (e) {
+          emailError = (e as Error).message;
+          console.error("Resend fallback send failed:", emailError);
+        }
+      }
     }
+
 
     // Audit
     await admin.from("audit_events").insert({
