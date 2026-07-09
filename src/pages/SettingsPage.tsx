@@ -986,6 +986,7 @@ const SettingsPage = () => {
       address: '',
       maps_url: '',
       is_default: prev.length === 0,
+      timezone: 'America/Mexico_City',
     }]);
   };
   const updateBranch = (id: string, patch: Partial<Branch>) => {
