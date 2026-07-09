@@ -475,9 +475,14 @@ serve(async (req) => {
             const timeStr = startAt ? startAt.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }) : '-';
             const firstName = String(appt?.contact_name || 'Hola').split(' ')[0] || 'Hola';
             const serviceStr = String(appt?.service_type || 'tu cita');
-            const locationStr = String(
-              (appt as any)?.location || (appt as any)?.meeting_url || appt?.notes || 'Te contactaremos con los detalles'
-            );
+            const tenantLocN = resolveTenantLocation(tenantSettingsMap.get(notif.tenant_id), notif.tenant_id);
+            const rawLoc =
+              (appt as any)?.location ||
+              (appt as any)?.meeting_url ||
+              tenantLocN ||
+              appt?.notes ||
+              'Te contactaremos con los detalles';
+            const locationStr = String(rawLoc).trim() || 'Te contactaremos con los detalles';
             const vars = {
               '1': firstName,
               '2': serviceStr,
