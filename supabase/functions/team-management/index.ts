@@ -249,21 +249,45 @@ Deno.serve(async (req) => {
         return json({ error: "No se pudo generar el enlace de acceso" }, 500);
       }
 
-      try {
-        const sendResult = await sendInviteEmail({
-          to: email,
-          name: memberProfile.name || existingUser.user_metadata?.name || null,
-          actionLink,
-        });
-        console.log(`[team-management] resend_invite ok existing_user_magiclink user=${user_id} email=${email} tenant=${memberProfile.tenant_id} resend_status=${sendResult.status}`);
-      } catch (sendError) {
-        const msg = sendError instanceof Error ? sendError.message : "No se pudo enviar el correo";
-        console.error(`[team-management] resend_invite email_send failed user=${user_id} email=${email}: ${msg}`);
-        return json({ error: msg }, 502);
+      const emailPayload = buildInviteEmailPayload({
+        to: email,
+        name: memberProfile.name || existingUser.user_metadata?.name || null,
+        actionLink,
+      });
+
+      const jobId = await enqueueJob(adminClient, {
+        jobType: "send_email",
+        payload: emailPayload,
+        tenantId: memberProfile.tenant_id,
+        createdBy: caller.id,
+      });
+
+      let queued = false;
+      if (jobId) {
+        queued = true;
+        // Fire-and-forget worker kick.
+        try {
+          fetch(`${supabaseUrl}/functions/v1/background-job-worker`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${serviceRoleKey}`, "Content-Type": "application/json" },
+            body: "{}",
+          }).catch(() => {});
+        } catch { /* ignore */ }
+        console.log(`[team-management] resend_invite queued user=${user_id} email=${email} tenant=${memberProfile.tenant_id} job=${jobId}`);
+      } else {
+        // Fallback: direct send preserving previous behavior.
+        try {
+          const sendResult = await sendInviteEmailDirect(emailPayload);
+          console.log(`[team-management] resend_invite direct_send_fallback ok user=${user_id} email=${email} tenant=${memberProfile.tenant_id} resend_status=${sendResult.status}`);
+        } catch (sendError) {
+          const msg = sendError instanceof Error ? sendError.message : "No se pudo enviar el correo";
+          console.error(`[team-management] resend_invite email_send failed user=${user_id} email=${email}: ${msg}`);
+          return json({ error: msg }, 502);
+        }
       }
 
       return new Response(
-        JSON.stringify({ success: true, message: "Invitación reenviada al correo del miembro" }),
+        JSON.stringify({ success: true, queued, message: "Invitación reenviada al correo del miembro" }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
