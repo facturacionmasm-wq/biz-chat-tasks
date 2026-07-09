@@ -208,12 +208,14 @@ serve(async (req) => {
           const rDateStr = remindAt ? remindAt.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }) : '-';
           const rTimeStr = remindAt ? remindAt.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }) : '-';
           const firstName = String((profile?.full_name || profile?.name || profile?.email || 'Hola')).split(' ')[0] || 'Hola';
+          const tenantLocR = resolveTenantLocation(tenantSettingsMap.get(reminder.tenant_id), reminder.tenant_id);
+          const locationR = tenantLocR || 'https://rybixholding.com';
           const vars = {
             '1': firstName,
             '2': String(reminder.message || 'tu recordatorio'),
             '3': rDateStr,
             '4': rTimeStr,
-            '5': 'https://rybixholding.com',
+            '5': locationR,
           };
           sendResult = await sendWhatsAppTemplate(basicAuth, TWILIO_ACCOUNT_SID!, effectiveFromR, phoneNorm, WHATSAPP_REMINDER_CONTENT_SID, vars);
           if (!sendResult.ok) {
