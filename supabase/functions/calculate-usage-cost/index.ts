@@ -219,6 +219,15 @@ serve(async (req) => {
       });
     }
 
+    // Invalidate cached aggregates for this tenant + global for today's day-scoped key.
+    const _day = todayUTC();
+    await Promise.all([
+      cacheInvalidate(`usage:agg:${tenant_id}:`),
+      cacheInvalidate(`usage:summary:${tenant_id}:`),
+      cacheInvalidate(`usage:agg:global:${_day}`),
+      cacheInvalidate(`margin:state:${tenant_id}`),
+    ]);
+
     console.log(`Cost calculated for call ${call_record_id}: $${costTotal} cost, $${revenueCharged} revenue, ${marginPct}% margin`);
 
     return new Response(JSON.stringify({
