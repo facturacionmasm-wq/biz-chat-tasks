@@ -661,6 +661,16 @@ serve(async (req) => {
           });
         }
 
+        // Read-through cache — dashboard read only, 120s TTL. Invalidated by
+        // stripe-webhook after any subscription/invoice/setup_intent event.
+        const subsKey = `stripe:subs:${tenant_id}`;
+        const subsCached = await cacheGet<Record<string, unknown>>(subsKey);
+        if (subsCached) {
+          return new Response(JSON.stringify({ ...subsCached, cached: true }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
         const now = new Date();
         const periodStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01T00:00:00`;
 
@@ -679,12 +689,17 @@ serve(async (req) => {
           byType[ev.event_type] = (byType[ev.event_type] || 0) + Number(ev.units);
         }
 
-        return new Response(JSON.stringify({
+        const payload = {
           customer: customerRes.data,
           current_month_usage: { total_units: totalUnits, by_type: byType, event_count: usageEvents.length },
           margin_state: marginRes.data,
-        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        };
+        cacheSet(subsKey, payload, 120).catch(() => {});
+        return new Response(JSON.stringify(payload), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
       }
+
 
       // ============================================
       // 7. CREATE TRIAL SUBSCRIPTION (Stripe-side)
