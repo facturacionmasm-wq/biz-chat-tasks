@@ -1,0 +1,1 @@
+CREATE INDEX IF NOT EXISTS idx_wa_usage_events_occurred_at ON public.whatsapp_usage_events (occurred_at DESC);
