@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Phone, PhoneMissed, MessageSquare, CalendarPlus,
@@ -227,7 +227,7 @@ export default function Dashboard() {
   const py = (mousePos.y - 0.5) * 20;
 
   // ── Stat cards config (colores desde tokens semánticos) ──
-  const mainStats = [
+  const mainStats = useMemo(() => [
     {
       label: 'Llamadas hoy',
       value: stats.callsToday,
@@ -264,12 +264,12 @@ export default function Dashboard() {
       glow: 'rgba(255,91,122,0.32)',
       bg: 'rgba(255,91,122,0.10)',
     },
-  ];
+  ], [stats.callsToday, stats.openWA, stats.upcomingApts, stats.callsMissed]);
 
-  const secondaryStats = [
+  const secondaryStats = useMemo(() => [
     { label: 'Proyectos activos', value: stats.activeProjects, icon: FolderKanban, link: '/projects' },
     { label: 'Miembros del equipo', value: stats.teamMembers, icon: Users, link: '/settings' },
-  ];
+  ], [stats.activeProjects, stats.teamMembers]);
 
   return (
     <>

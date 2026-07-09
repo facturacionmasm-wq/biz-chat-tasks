@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   BarChart3, Phone, MessageSquare, CalendarPlus, TrendingUp,
@@ -197,18 +197,19 @@ export default function AnalyticsPage() {
     return () => { supabase.removeChannel(channel); };
   }, [tenantId, queryClient]);
 
-  const callsChartData = dailyData.map(d => d.calls);
-  const appointmentsChartData = dailyData.map(d => d.appointments);
-  const waChartData = dailyData.map(d => d.whatsapp);
+  const callsChartData = useMemo(() => dailyData.map(d => d.calls), [dailyData]);
+  const appointmentsChartData = useMemo(() => dailyData.map(d => d.appointments), [dailyData]);
+  const waChartData = useMemo(() => dailyData.map(d => d.whatsapp), [dailyData]);
 
+  const callCompletionRate = useMemo(
+    () => (stats.totalCalls ? Math.round((stats.completedCalls / stats.totalCalls) * 100) : 0),
+    [stats.totalCalls, stats.completedCalls],
+  );
 
-  const callCompletionRate = stats.totalCalls
-    ? Math.round((stats.completedCalls / stats.totalCalls) * 100)
-    : 0;
-
-  const appointmentSuccessRate = stats.totalAppointments
-    ? Math.round((stats.confirmedAppointments / stats.totalAppointments) * 100)
-    : 0;
+  const appointmentSuccessRate = useMemo(
+    () => (stats.totalAppointments ? Math.round((stats.confirmedAppointments / stats.totalAppointments) * 100) : 0),
+    [stats.totalAppointments, stats.confirmedAppointments],
+  );
 
   // Simple bar chart component
   const BarChartSection = ({ data, label }: { data: DailyPoint[]; label: string }) => {
