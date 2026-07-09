@@ -24,7 +24,7 @@ const statusLabels: Record<string, string> = {
 };
 
 const WhatsAppInboxPage = () => {
-  const { conversations, messages, loading, fetchMessages, tenantId } = useWhatsAppData();
+  const { conversations, messages, loading, fetchMessages, loadOlderMessages, hasMoreMessages, loadingOlder, tenantId } = useWhatsAppData();
   const { canUseService, loading: paymentLoading, redirecting, purchasePackage, setupCard } = usePaymentGate();
   const [selectedConvId, setSelectedConvId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
