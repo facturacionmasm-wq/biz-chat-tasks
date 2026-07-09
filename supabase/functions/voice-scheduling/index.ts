@@ -1,6 +1,22 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
 import { assertVoicePlan } from "../_shared/plan-guard.ts";
+import { resolveTenantTimezone, zonedTimeToUtc, formatInTimezone } from "../_shared/timezone.ts";
+
+// Fire-and-forget helper — schedules `p` on the edge runtime without blocking
+// the tool response. Uses EdgeRuntime.waitUntil when available (Supabase edge),
+// falls back to a floating promise so the caller returns immediately either way.
+function detach(p: Promise<unknown>) {
+  try {
+    // deno-lint-ignore no-explicit-any
+    const rt: any = (globalThis as any).EdgeRuntime;
+    if (rt && typeof rt.waitUntil === 'function') {
+      rt.waitUntil(p);
+      return;
+    }
+  } catch { /* ignore */ }
+  p.catch((e) => console.error('[voice-scheduling] detached task error:', e));
+}
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
