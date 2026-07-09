@@ -186,6 +186,7 @@ serve(async (req) => {
         agent_id: agentId,
         analysis,
         direction: 'inbound',
+        conversation_ended: 'intentional',
       };
       await supabase.from('call_records').update(updateData).eq('id', callRecord.id);
       console.log(`[el-post-call] Updated record ${callRecord.id}`);
@@ -215,6 +216,7 @@ serve(async (req) => {
             agent_id: agentId,
             analysis,
             direction: 'inbound',
+            conversation_ended: 'intentional',
           },
         })
         .select('id')
@@ -226,6 +228,24 @@ serve(async (req) => {
       }
       callRecord = newRecord;
       console.log(`[el-post-call] Created new record ${newRecord.id}`);
+    }
+
+    // ═══════════ MARK SESSION AS ENDED INTENTIONALLY ═══════════
+    // Signal to call-inbound-webhook re-entry (post <Redirect>) that a subsequent
+    // Twilio re-fetch should hang up instead of re-registering the ElevenLabs stream.
+    try {
+      const sessionUpdate = {
+        state: 'completed',
+        ended_intentionally: true,
+        ended_at: new Date().toISOString(),
+      };
+      if (callSid) {
+        await supabase.from('call_sessions').update(sessionUpdate).eq('call_sid', callSid);
+      } else if (callRecord?.id) {
+        await supabase.from('call_sessions').update(sessionUpdate).eq('call_record_id', callRecord.id);
+      }
+    } catch (e) {
+      console.warn('[el-post-call] session end-flag update failed:', e);
     }
 
     // ═══════════ POST-PROCESSING PIPELINE ═══════════
