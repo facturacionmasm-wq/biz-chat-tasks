@@ -7,6 +7,8 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
+import { cacheGet, cacheSet, cacheInvalidate, sha256Hex, normalizeQueryKey } from "../_shared/cache.ts";
+
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -83,12 +85,25 @@ serve(async (req) => {
       const { error } = await supabase.from('document_chunks').insert(chunkRows);
       if (error) return jsonRes({ error: error.message }, 500);
 
+      // Invalidate all cached RAG results for this tenant — new chunks may match.
+      cacheInvalidate(`rag:${tenant_id}:`).catch(() => {});
+
       return jsonRes({ success: true, chunks: chunkRows.length, document_id });
     }
 
     // ─── RAG SEARCH ───
     if (action === 'search' || !action) {
       if (!query) return jsonRes({ error: 'query required' }, 400);
+
+      // Read-through cache — same (tenant, query, doc_type, limit) reused within 1h.
+      const ragKey = `rag:${tenant_id}:${await sha256Hex(
+        normalizeQueryKey(query) + '|' + (document_type || '') + '|' + (resultLimit || 10)
+      )}`;
+      const ragHit = await cacheGet<Record<string, unknown>>(ragKey);
+      if (ragHit) {
+        return jsonRes({ ...ragHit, cached: true });
+      }
+
 
       // 1. Full-text search via the database function
       const { data: ftsResults, error: ftsErr } = await supabase.rpc('search_document_chunks', {
@@ -130,8 +145,11 @@ serve(async (req) => {
       const allResults = [...(ftsResults || []), ...directResults];
 
       if (allResults.length === 0) {
-        return jsonRes({ results: [], answer: null, query });
+        const emptyPayload = { results: [], answer: null, query };
+        cacheSet(ragKey, emptyPayload, 60 * 60).catch(() => {});
+        return jsonRes(emptyPayload);
       }
+
 
       // 3. AI Reranking + Answer Generation
       let answer: string | null = null;
@@ -176,7 +194,7 @@ REGLAS:
         }
       }
 
-      return jsonRes({
+      const payload = {
         results: allResults.slice(0, resultLimit || 10).map((r: any) => ({
           document_id: r.document_id,
           chunk_id: r.chunk_id,
@@ -189,8 +207,11 @@ REGLAS:
         answer,
         query,
         total_results: allResults.length,
-      });
+      };
+      cacheSet(ragKey, payload, 60 * 60).catch(() => {});
+      return jsonRes(payload);
     }
+
 
     return jsonRes({ error: 'Unknown action' }, 400);
   } catch (error) {

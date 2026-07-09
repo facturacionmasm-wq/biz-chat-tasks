@@ -1,4 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { cacheGet, cacheSet, sha256Hex, normalizeQueryKey } from "../_shared/cache.ts";
+
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -24,6 +26,18 @@ serve(async (req) => {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+
+    // Read-through cache — idempotent (query + model + context) for 6h.
+    const cacheKey = `websearch:${await sha256Hex(
+      normalizeQueryKey(query) + '|' + (model_preference || 'default') + '|' + normalizeQueryKey(context || '')
+    )}`;
+    const cachedHit = await cacheGet<Record<string, unknown>>(cacheKey);
+    if (cachedHit) {
+      return new Response(JSON.stringify({ ...cachedHit, cached: true }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
 
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     if (!LOVABLE_API_KEY) {
@@ -155,16 +169,22 @@ ${context ? `CONTEXTO ADICIONAL: ${context}` : ''}`;
 
     console.log(`Web search response (${modelUsed}, sources: ${sources.length}): ${answer.substring(0, 100)}...`);
 
-    return new Response(JSON.stringify({
+    const payload = {
       success: true,
       answer,
       model_used: modelUsed,
       sources: sources.slice(0, 3),
       has_web_results: hasWebResults,
       query,
-    }), {
+    };
+
+    // Only cache successful synthesized answers.
+    cacheSet(cacheKey, payload, 6 * 60 * 60).catch(() => {});
+
+    return new Response(JSON.stringify(payload), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
+
   } catch (error) {
     console.error('Web search error:', error);
     return new Response(JSON.stringify({ error: 'Error en búsqueda web' }), {

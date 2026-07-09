@@ -109,3 +109,26 @@ export function secondsUntilEndOfDayUTC(d: Date = new Date()): number {
   const end = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 23, 59, 59, 999));
   return Math.max(60, Math.floor((end.getTime() - d.getTime()) / 1000));
 }
+
+/**
+ * SHA-256 hex digest of a string. Used to build stable, safe cache keys
+ * from user-controlled inputs (URLs, queries, secret keys).
+ */
+export async function sha256Hex(input: string): Promise<string> {
+  try {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));
+    return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, '0')).join('');
+  } catch {
+    // Extremely defensive: never let cache-key computation break the caller.
+    return `fallback_${input.length}_${input.slice(0, 16).replace(/[^a-z0-9]/gi, '_')}`;
+  }
+}
+
+/**
+ * Normalize a free-text query for cache-key parity: trim, collapse whitespace,
+ * lowercase. Preserves semantics for RAG/web-search lookups.
+ */
+export function normalizeQueryKey(q: string): string {
+  return (q || '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+

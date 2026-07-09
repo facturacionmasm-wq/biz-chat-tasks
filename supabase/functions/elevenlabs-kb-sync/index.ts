@@ -1,6 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
 import { resolveTenantAgentId, MASTER_TENANT } from "../_shared/elevenlabs-agent.ts";
+import { cacheInvalidate } from "../_shared/cache.ts";
+
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -129,8 +131,12 @@ serve(async (req) => {
         });
       } catch { /* audit best-effort */ }
 
+      // KB changed — invalidate all cached RAG results for this tenant.
+      cacheInvalidate(`rag:${callerTenantId}:`).catch(() => {});
+
       return new Response(body, { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
+
 
     if (action === 'delete') {
       const docId = data?.document_id || data?.id;
@@ -149,8 +155,11 @@ serve(async (req) => {
           status: res.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
+      // KB changed — invalidate all cached RAG results for this tenant.
+      cacheInvalidate(`rag:${callerTenantId}:`).catch(() => {});
       return new Response(JSON.stringify({ ok: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
+
 
     return new Response(JSON.stringify({ error: 'Unknown action' }), {
       status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },

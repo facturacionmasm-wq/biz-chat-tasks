@@ -1,5 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
+import { cacheInvalidate } from "../_shared/cache.ts";
+
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -488,9 +490,33 @@ serve(async (req) => {
         console.log(`Unhandled event type: ${event.type}`);
     }
 
+    // ─── Cache invalidation (best-effort, non-blocking) ───
+    // Any subscription/invoice/setup_intent event may have mutated the
+    // per-tenant billing snapshot; drop the cached `stripe:subs:{tenantId}`
+    // entry so the next dashboard fetch rebuilds fresh. `stripe:balance` is
+    // scoped per API key, so a workspace-wide sweep is safe here.
+    try {
+      const obj: any = event.data?.object || {};
+      const eventTenantId: string | undefined =
+        obj?.metadata?.tenant_id ||
+        (obj?.subscription
+          ? (await resolveTenantBySubscription(client, obj.subscription))?.tenant_id
+          : undefined) ||
+        (obj?.customer
+          ? (await resolveTenantByCustomer(client, obj.customer))?.tenant_id
+          : undefined);
+      if (eventTenantId) {
+        cacheInvalidate(`stripe:subs:${eventTenantId}`).catch(() => {});
+      }
+      cacheInvalidate('stripe:balance:').catch(() => {});
+    } catch (e) {
+      console.warn('[stripe-webhook] cache invalidation skipped:', (e as Error).message);
+    }
+
     return new Response(JSON.stringify({ received: true }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
+
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Unknown error';
     console.error('Webhook processing error:', msg);

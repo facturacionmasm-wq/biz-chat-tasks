@@ -1,5 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
+import { cacheGet, cacheSet, sha256Hex } from "../_shared/cache.ts";
+
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -155,18 +157,31 @@ serve(async (req) => {
           }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
         }
 
+        // Read-through cache — /balance is a pure GET, safe to cache 120s per key.
+        const keyHash = await sha256Hex(providedKey);
+        const balCacheKey = `stripe:balance:${keyHash}`;
+        const balCached = await cacheGet<Record<string, unknown>>(balCacheKey);
+        if (balCached) {
+          return new Response(JSON.stringify({ ...balCached, cached: true }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
         // Real reachability check against Stripe: GET /v1/balance
         const res = await fetch(`${STRIPE_API}/balance`, {
           headers: { 'Authorization': `Bearer ${providedKey}` },
         });
         const bodyText = await res.text();
-        return new Response(JSON.stringify({
+        const payload = {
           success: res.ok,
           key_type: providedKey.startsWith('rk_') ? 'restricted' : 'secret',
           status: res.status,
           message: res.ok ? 'Key verified against Stripe' : `Stripe rejected key: ${bodyText.substring(0, 200)}`,
-        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        };
+        if (res.ok) cacheSet(balCacheKey, payload, 120).catch(() => {});
+        return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
+
 
 
       // ============================================
@@ -646,6 +661,16 @@ serve(async (req) => {
           });
         }
 
+        // Read-through cache — dashboard read only, 120s TTL. Invalidated by
+        // stripe-webhook after any subscription/invoice/setup_intent event.
+        const subsKey = `stripe:subs:${tenant_id}`;
+        const subsCached = await cacheGet<Record<string, unknown>>(subsKey);
+        if (subsCached) {
+          return new Response(JSON.stringify({ ...subsCached, cached: true }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
         const now = new Date();
         const periodStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01T00:00:00`;
 
@@ -664,12 +689,17 @@ serve(async (req) => {
           byType[ev.event_type] = (byType[ev.event_type] || 0) + Number(ev.units);
         }
 
-        return new Response(JSON.stringify({
+        const payload = {
           customer: customerRes.data,
           current_month_usage: { total_units: totalUnits, by_type: byType, event_count: usageEvents.length },
           margin_state: marginRes.data,
-        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        };
+        cacheSet(subsKey, payload, 120).catch(() => {});
+        return new Response(JSON.stringify(payload), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
       }
+
 
       // ============================================
       // 7. CREATE TRIAL SUBSCRIPTION (Stripe-side)
