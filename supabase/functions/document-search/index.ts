@@ -194,7 +194,7 @@ REGLAS:
         }
       }
 
-      return jsonRes({
+      const payload = {
         results: allResults.slice(0, resultLimit || 10).map((r: any) => ({
           document_id: r.document_id,
           chunk_id: r.chunk_id,
@@ -207,8 +207,11 @@ REGLAS:
         answer,
         query,
         total_results: allResults.length,
-      });
+      };
+      cacheSet(ragKey, payload, 60 * 60).catch(() => {});
+      return jsonRes(payload);
     }
+
 
     return jsonRes({ error: 'Unknown action' }, 400);
   } catch (error) {
