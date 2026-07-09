@@ -169,16 +169,22 @@ ${context ? `CONTEXTO ADICIONAL: ${context}` : ''}`;
 
     console.log(`Web search response (${modelUsed}, sources: ${sources.length}): ${answer.substring(0, 100)}...`);
 
-    return new Response(JSON.stringify({
+    const payload = {
       success: true,
       answer,
       model_used: modelUsed,
       sources: sources.slice(0, 3),
       has_web_results: hasWebResults,
       query,
-    }), {
+    };
+
+    // Only cache successful synthesized answers.
+    cacheSet(cacheKey, payload, 6 * 60 * 60).catch(() => {});
+
+    return new Response(JSON.stringify(payload), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
+
   } catch (error) {
     console.error('Web search error:', error);
     return new Response(JSON.stringify({ error: 'Error en búsqueda web' }), {
