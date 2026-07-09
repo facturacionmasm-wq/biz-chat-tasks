@@ -82,6 +82,10 @@ body.day {
   --rx-shadow-lg:  0 8px 32px rgba(0,0,50,.12);
 }
 
+body.night {
+  color-scheme: dark;
+}
+
 /* ════════════════════════════════════════
    MAP CSS VARIABLES TO SHADCN VARS
    (so existing components automatically theme)
