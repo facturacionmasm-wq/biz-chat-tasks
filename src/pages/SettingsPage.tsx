@@ -1465,6 +1465,19 @@ const SettingsPage = () => {
                       onChange={e => setVoiceSearch(e.target.value)}
                     />
                     <select
+                      className={`${inputClass} mb-2`}
+                      value={voiceLangFilter}
+                      onChange={e => setVoiceLangFilter(e.target.value)}
+                      disabled={voicesLoading}
+                    >
+                      <option value="">Todos los idiomas</option>
+                      {Array.from(new Set(voices.flatMap(v => v.languages || []))).sort().map(lang => (
+                        <option key={lang} value={lang}>
+                          {({ es: 'Español', en: 'Inglés', pt: 'Portugués', fr: 'Francés', de: 'Alemán', it: 'Italiano', ja: 'Japonés', zh: 'Chino' } as Record<string,string>)[lang] || lang.toUpperCase()}
+                        </option>
+                      ))}
+                    </select>
+                    <select
                       className={inputClass}
                       value={voiceId}
                       onChange={e => setVoiceId(e.target.value)}
@@ -1473,9 +1486,10 @@ const SettingsPage = () => {
                       <option value="">— Voz por defecto del agente —</option>
                       {voices
                         .filter(v => !voiceSearch || v.name.toLowerCase().includes(voiceSearch.toLowerCase()))
+                        .filter(v => !voiceLangFilter || (v.languages || []).includes(voiceLangFilter))
                         .map(v => (
                           <option key={v.voice_id} value={v.voice_id}>
-                            {v.name}{v.category ? ` (${v.category})` : ''}
+                            {v.name}{v.category ? ` (${v.category})` : ''}{v.languages?.length ? ` [${v.languages.join(',')}]` : ''}
                           </option>
                         ))}
                     </select>
