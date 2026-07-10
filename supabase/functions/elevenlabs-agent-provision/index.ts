@@ -148,23 +148,25 @@ serve(async (req) => {
     // Idempotent best-effort PATCH so ElevenLabs delivers transcripts/summaries
     // to our elevenlabs-post-call function.
     try {
-      const webhookUrl = `${SUPABASE_URL}/functions/v1/elevenlabs-post-call`;
-      await fetch(`${ELEVENLABS_API_URL}/convai/agents/${newAgentId}`, {
-        method: 'PATCH',
-        headers: { 'xi-api-key': ELEVENLABS_API_KEY, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          platform_settings: {
-            workspace_overrides: {
-              webhooks: {
-                post_call_webhook_url: webhookUrl,
-                send_audio: false,
+      const webhookId = Deno.env.get('ELEVENLABS_POST_CALL_WEBHOOK_ID');
+      if (webhookId) {
+        await fetch(`${ELEVENLABS_API_URL}/convai/agents/${newAgentId}`, {
+          method: 'PATCH',
+          headers: { 'xi-api-key': ELEVENLABS_API_KEY, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            platform_settings: {
+              workspace_overrides: {
+                webhooks: {
+                  post_call_webhook_id: webhookId,
+                  send_audio: false,
+                },
               },
             },
-            // Some API revisions accept these at the platform_settings root.
-            post_call_webhook_url: webhookUrl,
-          },
-        }),
-      });
+          }),
+        });
+      } else {
+        console.warn('[agent-provision] ELEVENLABS_POST_CALL_WEBHOOK_ID not set; skipping webhook assignment');
+      }
     } catch (whErr) {
       console.warn('[agent-provision] post-call webhook PATCH failed (non-blocking):', (whErr as Error).message);
     }
