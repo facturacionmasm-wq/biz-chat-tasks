@@ -390,6 +390,20 @@ const CallsPage = () => {
     }
   };
 
+  const retryReconcile = async () => {
+    if (!selectedCall) return;
+    toast.info('Reintentando transcripción…');
+    const { data, error } = await supabase.functions.invoke('reconcile-stuck-calls', {
+      body: { call_id: selectedCall.id, trigger: 'ui_retry' },
+    });
+    if (error) { toast.error('No se pudo reintentar'); return; }
+    const outcome = data?.details?.[0]?.outcome;
+    if (outcome === 'backfilled') toast.success('Transcripción recuperada');
+    else if (outcome === 'failed_terminal') toast.error('ElevenLabs no tiene esta conversación');
+    else toast('Aún procesando — reintenta en unos minutos');
+    loadDbCalls();
+  };
+
   const regenerateSummary = async () => {
     if (!selectedCall?.transcript) return;
     toast.info('Regenerando resumen con IA...');
