@@ -4,7 +4,7 @@ import {
   LayoutDashboard, MessageSquare, FolderKanban, CalendarDays,
   Target, BookOpen, Plug, Settings, ChevronLeft, ChevronRight,
   Building2, Search, MessageCircle, Phone, CalendarPlus, Shield,
-  GraduationCap, Receipt, LogOut, KeyRound, Bot, AlarmClock, Voicemail,
+  GraduationCap, Receipt, LogOut, KeyRound, Bot, AlarmClock, Voicemail, Inbox,
   Crown, BarChart3, Users, Sun, Moon, TrendingUp, LifeBuoy, HeadphonesIcon,
 } from 'lucide-react';
 import AIAssistantWidget from '@/components/AIAssistantWidget';
