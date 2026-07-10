@@ -417,14 +417,18 @@ serve(async (req) => {
         });
       } catch (e) { console.error('[status] Fraud detection error:', e); }
 
-      // Enqueue async jobs — re-check transcript after ElevenLabs fetch
+      // Enqueue async jobs — re-check transcript after ElevenLabs fetch.
+      // If the transcript is still empty (post-call webhook may have failed to
+      // deliver), ALWAYS enqueue BOTH transcribe_call and summarize_call so the
+      // pipeline recovers via the fallback worker.
       const { data: fullRecord } = await supabase.from('call_records').select('transcript').eq('id', callRecord.id).single();
-      const jobTypes = ['fetch_recording'];
+      const jobTypes: string[] = ['fetch_recording'];
       if (fullRecord?.transcript?.trim()) {
         jobTypes.push('summarize_call');
         await supabase.from('call_records').update({ transcript_status: 'ready', summary_status: 'pending' }).eq('id', callRecord.id);
       } else {
         jobTypes.push('transcribe_call');
+        jobTypes.push('summarize_call');
       }
       await supabase.from('call_records').update({ recording_status: recordingUrl ? 'ready' : 'pending' }).eq('id', callRecord.id);
 
@@ -437,12 +441,25 @@ serve(async (req) => {
         });
       }
 
-      // Trigger job worker (fire and forget)
-      fetch(`${SUPABASE_URL}/functions/v1/call-job-worker`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
-        body: JSON.stringify({ trigger: 'call-status-webhook' }),
-      }).catch(() => {});
+      // Trigger job worker with backoff retries (fire-and-forget).
+      // Auto-invoke may get rate-limited; retry up to 3 times with exp backoff
+      // so the fallback pipeline actually runs even under bursty load.
+      (async () => {
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            const r = await fetch(`${SUPABASE_URL}/functions/v1/call-job-worker`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+              body: JSON.stringify({ trigger: 'call-status-webhook', attempt }),
+            });
+            if (r.ok) return;
+            console.warn(`[status] call-job-worker attempt ${attempt} → ${r.status}`);
+          } catch (e) {
+            console.warn(`[status] call-job-worker attempt ${attempt} failed:`, (e as Error).message);
+          }
+          await new Promise((resolve) => setTimeout(resolve, 500 * Math.pow(2, attempt)));
+        }
+      })();
     }
 
     return new Response('<Response></Response>', {
