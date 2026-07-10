@@ -36,6 +36,7 @@ const navItems = [
   { to: '/expenses', icon: Receipt, label: 'Gastos' },
   { to: '/credentials', icon: KeyRound, label: 'Credenciales' },
   { to: '/reminders', icon: AlarmClock, label: 'Recordatorios' },
+  { to: '/absence-messages', icon: Voicemail, label: 'Mensajes por Ausencia' },
   { to: '/usage', icon: BarChart3, label: 'Consumo' },
 ];
 
