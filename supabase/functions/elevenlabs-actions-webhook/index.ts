@@ -255,6 +255,96 @@ serve(async (req) => {
         }
       }
 
+      case 'leave_absence_message':
+      case 'dejar_mensaje_ausencia': {
+        // Persist an "absence message" left by the caller because the staff
+        // member did not answer the transfer, then notify that staff member
+        // via WhatsApp + in-app using notify-transfer.
+        const message = String(toolParams.message || toolParams.mensaje || '').trim();
+        const callerName = String(toolParams.caller_name || toolParams.nombre || '').trim() || null;
+
+        if (!message) {
+          return jsonResp({
+            success: false,
+            message: 'Necesito el mensaje que quiere dejar el cliente.',
+          });
+        }
+
+        const targetName = firstString(dynamicVars.absence_target_name, toolParams.target_name) || 'Personal';
+        const targetPhoneAbs = firstString(dynamicVars.absence_target_phone, toolParams.target_phone) || null;
+        const targetUserId = firstString(dynamicVars.absence_target_user_id, toolParams.target_user_id) || null;
+        const callerPhoneAbs = firstString(dynamicVars.absence_caller_phone, callerPhoneFromContext) || null;
+
+        // Try to link to an existing contact for this tenant
+        let contactId: string | null = null;
+        if (callerPhoneAbs) {
+          const { data: c } = await supabase
+            .from('contacts')
+            .select('id')
+            .eq('tenant_id', resolvedTenantId)
+            .eq('phone', callerPhoneAbs)
+            .maybeSingle();
+          contactId = c?.id ?? null;
+        }
+
+        const { data: inserted, error: insErr } = await supabase
+          .from('absence_messages')
+          .insert({
+            tenant_id: resolvedTenantId,
+            call_record_id: callRecordId || null,
+            call_sid: callSid || null,
+            target_user_id: targetUserId,
+            target_name: targetName,
+            target_phone: targetPhoneAbs,
+            caller_phone: callerPhoneAbs,
+            caller_name: callerName,
+            contact_id: contactId,
+            message,
+            callback_requested: true,
+          })
+          .select('id')
+          .single();
+
+        if (insErr) {
+          console.error('[el-actions] absence_messages insert error:', insErr);
+          return jsonResp({
+            success: false,
+            message: 'No pude guardar el mensaje. Intenta de nuevo.',
+          }, 500);
+        }
+
+        // Fire-and-forget notification to the staff member (WhatsApp + in-app)
+        try {
+          const summary =
+            `Mensaje por ausencia de ${callerName || callerPhoneAbs || 'un cliente'}: ${message}` +
+            (callerPhoneAbs ? `\nDevolver llamada: ${callerPhoneAbs}` : '');
+          await fetch(`${SUPABASE_URL}/functions/v1/notify-transfer`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+            },
+            body: JSON.stringify({
+              tenant_id: resolvedTenantId,
+              target_user_id: targetUserId,
+              target_phone: targetPhoneAbs,
+              target_name: targetName,
+              caller_phone: callerPhoneAbs,
+              summary,
+              kind: 'absence_message',
+              absence_message_id: inserted?.id,
+            }),
+          });
+        } catch (e) {
+          console.warn('[el-actions] notify-transfer (absence) failed:', e);
+        }
+
+        return jsonResp({
+          success: true,
+          message: `Perfecto, ya le hice llegar tu mensaje a ${targetName}. Se comunicarán contigo lo antes posible. ¡Que tengas un excelente día!`,
+        });
+      }
+
       default:
         console.warn(`[el-actions] Unknown tool: ${toolName}`);
         return jsonResp({ success: false, message: `Acción no reconocida: ${toolName}` }, 400);
