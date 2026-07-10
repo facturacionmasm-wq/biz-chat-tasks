@@ -73,23 +73,58 @@ serve(async (req) => {
     const params = new URLSearchParams(rawFormData);
     const paramsObj = Object.fromEntries(params.entries());
 
-    // Signature validation (same pattern as whatsapp-webhook).
+    // Signature validation (same HMAC-SHA1 algorithm as whatsapp-webhook).
+    // Defensive URL reconstruction: try multiple candidate URLs (proxy-aware)
+    // and accept if ANY candidate produces a matching signature. This tolerates
+    // Twilio signing against the exact URL configured in the console, which
+    // may differ from ${SUPABASE_URL}/... when routed through Lovable proxies.
     if (TWILIO_AUTH_TOKEN) {
       const twilioSignature = req.headers.get('X-Twilio-Signature') || '';
       if (twilioSignature) {
-        const webhookUrl = `${SUPABASE_URL}/functions/v1/sms-inbound`;
-        const isValid = await validateTwilioSignature(TWILIO_AUTH_TOKEN, twilioSignature, webhookUrl, paramsObj);
-        if (!isValid) {
+        const reqUrl = new URL(req.url);
+        const xfProto = (req.headers.get('x-forwarded-proto') || '').split(',')[0].trim();
+        const xfHost = (req.headers.get('x-forwarded-host') || '').split(',')[0].trim();
+        const hostHeader = req.headers.get('host') || '';
+        const path = '/functions/v1/sms-inbound';
+
+        const candidateSet = new Set<string>();
+        candidateSet.add(`${SUPABASE_URL}${path}`);
+        candidateSet.add(reqUrl.origin + reqUrl.pathname);
+        candidateSet.add(reqUrl.toString());
+        if (xfHost) {
+          const proto = xfProto || 'https';
+          candidateSet.add(`${proto}://${xfHost}${path}`);
+        }
+        if (hostHeader) {
+          const proto = xfProto || 'https';
+          candidateSet.add(`${proto}://${hostHeader}${path}`);
+        }
+
+        const candidates = Array.from(candidateSet);
+        let matchedUrl: string | null = null;
+        for (const cand of candidates) {
+          const ok = await validateTwilioSignature(TWILIO_AUTH_TOKEN, twilioSignature, cand, paramsObj);
+          if (ok) { matchedUrl = cand; break; }
+        }
+
+        if (!matchedUrl) {
           await logWebhook({
             stage: 'twilio_signature_validation',
             status: 'error',
             error: 'invalid_signature',
-            payload: { has_signature: true },
+            payload: { has_signature: true, tried_candidates: candidates },
           });
           return xml(403);
         }
+
+        await logWebhook({
+          stage: 'twilio_signature_validation',
+          status: 'ok',
+          payload: { matched_url: matchedUrl, candidate_count: candidates.length },
+        });
       }
     }
+
 
     const from = params.get('From') || '';
     const to = params.get('To') || '';
