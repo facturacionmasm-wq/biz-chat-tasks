@@ -60,6 +60,9 @@ serve(async (req) => {
           case 'extract_appointment':
             resultData = await jobExtractAppointment(supabase, job, LOVABLE_API_KEY, SUPABASE_URL, SERVICE_KEY);
             break;
+          case 'reconcile_stuck_call':
+            resultData = await jobReconcileStuckCall(job, SUPABASE_URL, SERVICE_KEY);
+            break;
           default:
             throw new Error(`Unknown job type: ${job.job_type}`);
         }
@@ -582,6 +585,26 @@ async function jobExtractAppointment(
   });
 
   return { status: 'appointment_created', appointment: bookData.appointment };
+}
+
+// ═══════════════════════════════════════════════
+// JOB: reconcile_stuck_call
+// Watchdog fallback in case the ElevenLabs post-call webhook never lands.
+// Invokes reconcile-stuck-calls for this specific call. No-op if the call
+// was already reconciled or completed by the regular post-call flow.
+// ═══════════════════════════════════════════════
+async function jobReconcileStuckCall(job: any, supabaseUrl: string, serviceKey: string) {
+  const res = await fetch(`${supabaseUrl}/functions/v1/reconcile-stuck-calls`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${serviceKey}` },
+    body: JSON.stringify({ call_id: job.call_id, trigger: 'call_jobs_watchdog' }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`reconcile-stuck-calls returned ${res.status}: ${text.slice(0, 200)}`);
+  }
+  const json = await res.json().catch(() => ({}));
+  return { reconcile: json };
 }
 
 function jsonResp(body: any, status = 200) {
