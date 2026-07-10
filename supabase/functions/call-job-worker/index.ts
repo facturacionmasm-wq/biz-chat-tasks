@@ -60,6 +60,9 @@ serve(async (req) => {
           case 'extract_appointment':
             resultData = await jobExtractAppointment(supabase, job, LOVABLE_API_KEY, SUPABASE_URL, SERVICE_KEY);
             break;
+          case 'reconcile_stuck_call':
+            resultData = await jobReconcileStuckCall(job, SUPABASE_URL, SERVICE_KEY);
+            break;
           default:
             throw new Error(`Unknown job type: ${job.job_type}`);
         }
