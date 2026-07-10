@@ -166,6 +166,7 @@ const AppRoutes = () => (
     <Route path="/credentials" element={<P><CredentialsPage /></P>} />
     <Route path="/assistant-admin" element={<P><AssistantAdminPage /></P>} />
     <Route path="/reminders" element={<P><RemindersPage /></P>} />
+    <Route path="/absence-messages" element={<P><AbsenceMessagesPage /></P>} />
     <Route path="/integrations" element={<P><IntegrationsPage /></P>} />
     <Route path="/audit" element={<P><AuditLogPage /></P>} />
     <Route path="/usage" element={<P><UsagePage /></P>} />
