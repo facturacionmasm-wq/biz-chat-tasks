@@ -104,10 +104,24 @@ serve(async (req) => {
   if (!authOk) {
     const reason = authReason || (sigHeader || legacyHeader ? 'invalid' : 'missing');
     console.warn(`[el-post-call] 401 ${reason} — request rejected`);
+
+    // Defensive pre-parse: even though auth failed, try to surface which
+    // conversation/agent this 401 refers to so the reconcile job can act.
+    let peekedAgent = '';
+    let peekedConv = '';
+    let peekedCallSid = '';
+    try {
+      const peek = JSON.parse(rawBody);
+      peekedAgent = peek?.agent_id || '';
+      peekedConv = peek?.conversation_id || peek?.id || '';
+      const meta = peek?.metadata || peek?.call_metadata || {};
+      peekedCallSid = peek?.call_sid || meta?.call_sid || meta?.twilio_call_sid || '';
+    } catch { /* rawBody was not JSON — ignore */ }
+
     try {
       const MASTER_TENANT = '00000000-0000-0000-0000-000000000001';
       await supabase.from('voice_call_logs').insert({
-        call_sid: 'unknown',
+        call_sid: peekedCallSid || 'unknown',
         tenant_id: MASTER_TENANT,
         stage: 'post_call_unauthorized',
         error_code: 'AUTH_401',
@@ -115,6 +129,9 @@ serve(async (req) => {
         metadata: {
           has_hmac_header: !!sigHeader,
           has_legacy_header: !!legacyHeader,
+          agent_id: peekedAgent || null,
+          conversation_id: peekedConv || null,
+          call_sid: peekedCallSid || null,
           sender_ip: req.headers.get('x-forwarded-for') || null,
           user_agent: req.headers.get('user-agent') || null,
         },
@@ -123,9 +140,36 @@ serve(async (req) => {
         tenant_id: MASTER_TENANT,
         event_type: 'call.elevenlabs_post_call_unauthorized',
         resource_type: 'elevenlabs_webhook',
-        resource_id: null,
-        payload: { reason, has_hmac_header: !!sigHeader, has_legacy_header: !!legacyHeader },
+        resource_id: peekedCallSid || peekedConv || null,
+        payload: {
+          reason,
+          has_hmac_header: !!sigHeader,
+          has_legacy_header: !!legacyHeader,
+          agent_id: peekedAgent || null,
+          conversation_id: peekedConv || null,
+        },
       });
+
+      // Burst alarm: >=5 401s within the last 15 min => secret drift or attack.
+      try {
+        const since = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+        const { count } = await supabase
+          .from('voice_call_logs')
+          .select('id', { count: 'exact', head: true })
+          .eq('stage', 'post_call_unauthorized')
+          .gte('created_at', since);
+        if ((count ?? 0) >= 5) {
+          await supabase.from('audit_events').insert({
+            tenant_id: MASTER_TENANT,
+            event_type: 'call.elevenlabs_post_call_401_burst',
+            resource_type: 'elevenlabs_webhook',
+            resource_id: null,
+            payload: { window_minutes: 15, count_401: count, hint: 'ElevenLabs HMAC secret may be out of sync' },
+          });
+        }
+      } catch (e) {
+        console.error('[el-post-call] 401 burst check failed:', e);
+      }
     } catch (e) {
       console.error('[el-post-call] failed to log 401:', e);
     }
