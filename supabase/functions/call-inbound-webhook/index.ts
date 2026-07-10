@@ -120,6 +120,21 @@ serve(async (req) => {
   };
 
   try {
+    // ═══════════ 0. ABSENCE-MESSAGE MODE (query-string driven) ═══════════
+    // When call-transfer-status <Redirect>s a caller back here because the
+    // staff member did not answer, it appends ?mode=absence_message&... .
+    // We surface those hints to ElevenLabs via dynamic_variables and a
+    // per-conversation prompt override so the agent asks the caller if they
+    // want to leave a voice message for the missed staff member.
+    const reqUrl = new URL(req.url);
+    const absenceMode = reqUrl.searchParams.get('mode') === 'absence_message';
+    const absenceTargetName = reqUrl.searchParams.get('target_name') || '';
+    const absenceTargetPhone = reqUrl.searchParams.get('target_phone') || '';
+    const absenceTargetUserId = reqUrl.searchParams.get('target_user_id') || '';
+    const absenceCallerPhoneHint = reqUrl.searchParams.get('caller_phone') || '';
+    const absenceCallRecordIdHint = reqUrl.searchParams.get('call_record_id') || '';
+    const absenceTenantHint = reqUrl.searchParams.get('tenant_id') || '';
+
     // ═══════════ 1. PARSE TWILIO PARAMS ═══════════
     const contentType = req.headers.get('content-type') || '';
     const rawBody = await req.text();
@@ -134,7 +149,7 @@ serve(async (req) => {
     const callerCountry = params.CallerCountry || '';
     const accountSid = params.AccountSid || '';
 
-    console.log(`[inbound] CallSid=${callSid} From=${from} To=${to} Dir=${direction}`);
+    console.log(`[inbound] CallSid=${callSid} From=${from} To=${to} Dir=${direction} absenceMode=${absenceMode}`);
 
     // ═══════════ 2. TWILIO SIGNATURE VALIDATION ═══════════
     if (TWILIO_AUTH_TOKEN) {
