@@ -114,7 +114,9 @@ serve(async (req) => {
     }
 
     // Build create payload
-    const promptWithClosing = upsertAgentClosingBlock(basePrompt);
+    let promptWithClosing = upsertAgentClosingBlock(basePrompt);
+    promptWithClosing = upsertAgentConfirmationBlock(promptWithClosing);
+    const audioCfg = buildAudioRobustnessConfig(tenant?.name ? [tenant.name as string] : []);
     const conversationConfig: any = {
       agent: {
         prompt: { prompt: promptWithClosing },
@@ -122,6 +124,8 @@ serve(async (req) => {
         language: baseLanguage,
       },
       conversation: { max_duration_seconds: MAX_CALL_DURATION_SECONDS },
+      asr: audioCfg.asr,
+      turn: audioCfg.turn,
     };
     if (baseVoiceId) conversationConfig.tts = { voice_id: baseVoiceId };
     if (baseLlm) conversationConfig.agent.prompt.llm = baseLlm;
