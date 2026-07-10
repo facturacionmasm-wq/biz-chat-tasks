@@ -35,6 +35,47 @@ serve(async (req) => {
   const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
+  // ═══════════ SECRET VALIDATION (with observability on 401) ═══════════
+  const WEBHOOK_SECRET = Deno.env.get('ELEVENLABS_WEBHOOK_SECRET') || '';
+  if (WEBHOOK_SECRET) {
+    const sentSecret =
+      req.headers.get('x-elevenlabs-secret') ||
+      req.headers.get('elevenlabs-secret') ||
+      req.headers.get('x-webhook-secret') ||
+      '';
+    if (sentSecret !== WEBHOOK_SECRET) {
+      const reason = sentSecret ? 'secret_mismatch' : 'secret_missing';
+      console.warn(`[el-post-call] 401 ${reason} — request rejected`);
+      // Fire-and-forget observability so future silent failures are visible.
+      try {
+        await supabase.from('voice_call_logs').insert({
+          call_sid: 'unknown',
+          tenant_id: null,
+          stage: 'post_call_unauthorized',
+          error_code: 'AUTH_401',
+          error_message: reason,
+          metadata: {
+            has_header: !!sentSecret,
+            sender_ip: req.headers.get('x-forwarded-for') || null,
+            user_agent: req.headers.get('user-agent') || null,
+          },
+        });
+        await supabase.from('audit_events').insert({
+          tenant_id: null,
+          event_type: 'call.elevenlabs_post_call_unauthorized',
+          resource_type: 'elevenlabs_webhook',
+          resource_id: null,
+          payload: { reason, has_header: !!sentSecret },
+        });
+      } catch (e) {
+        console.error('[el-post-call] failed to log 401:', e);
+      }
+      return new Response(JSON.stringify({ error: 'unauthorized' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+  }
+
   try {
     const body = await req.json();
     console.log('[el-post-call] Received payload:', JSON.stringify(body).substring(0, 500));
