@@ -147,6 +147,28 @@ serve(async (req) => {
         }
       }
 
+      // ============ SMS ROUTER (Opción A) ============
+      // El Messaging Service "NEW RYBIX" apunta todos los inbounds (SMS y WhatsApp)
+      // a esta URL. Firma HMAC ya validada arriba contra la URL de whatsapp-webhook.
+      // Si no trae prefijo whatsapp:, es SMS: delegar al core compartido sin re-validar.
+      {
+        const routerFrom = params.get('From') || '';
+        const routerTo = params.get('To') || '';
+        const isWhatsApp = routerFrom.startsWith('whatsapp:') || routerTo.startsWith('whatsapp:');
+        if (!isWhatsApp) {
+          await handleInboundSms({
+            supabase,
+            paramsObj,
+            sourceFunction: 'whatsapp-webhook-router',
+          });
+          return new Response('<Response></Response>', {
+            status: 200,
+            headers: { ...corsHeaders, 'Content-Type': 'text/xml' },
+          });
+        }
+      }
+      // ============ /SMS ROUTER ============
+
       const from = params.get('From') || '';
       const to = params.get('To') || '';
       const body = params.get('Body') || '';
