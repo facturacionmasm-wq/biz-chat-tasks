@@ -14,6 +14,91 @@ export type Database = {
   }
   public: {
     Tables: {
+      absence_messages: {
+        Row: {
+          call_record_id: string | null
+          call_sid: string | null
+          callback_requested: boolean
+          caller_name: string | null
+          caller_phone: string | null
+          contact_id: string | null
+          created_at: string
+          deleted_at: string | null
+          expires_at: string
+          handled_at: string | null
+          handled_by: string | null
+          id: string
+          message: string
+          target_name: string | null
+          target_phone: string | null
+          target_user_id: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          call_record_id?: string | null
+          call_sid?: string | null
+          callback_requested?: boolean
+          caller_name?: string | null
+          caller_phone?: string | null
+          contact_id?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          expires_at?: string
+          handled_at?: string | null
+          handled_by?: string | null
+          id?: string
+          message: string
+          target_name?: string | null
+          target_phone?: string | null
+          target_user_id?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          call_record_id?: string | null
+          call_sid?: string | null
+          callback_requested?: boolean
+          caller_name?: string | null
+          caller_phone?: string | null
+          contact_id?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          expires_at?: string
+          handled_at?: string | null
+          handled_by?: string | null
+          id?: string
+          message?: string
+          target_name?: string | null
+          target_phone?: string | null
+          target_user_id?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "absence_messages_call_record_id_fkey"
+            columns: ["call_record_id"]
+            isOneToOne: false
+            referencedRelation: "call_records"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "absence_messages_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "absence_messages_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       appointment_notifications: {
         Row: {
           appointment_id: string
