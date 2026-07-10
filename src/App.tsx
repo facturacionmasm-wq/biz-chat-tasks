@@ -28,6 +28,7 @@ import InstallPage from "./pages/InstallPage";
 import PendingApprovalPage from "./pages/PendingApprovalPage";
 import AssistantAdminPage from "./pages/AssistantAdminPage";
 import RemindersPage from "./pages/RemindersPage";
+import AbsenceMessagesPage from "./pages/AbsenceMessagesPage";
 import SuperAdminPage from "./pages/SuperAdminPage";
 import UsagePage from "./pages/UsagePage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
