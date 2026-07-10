@@ -182,8 +182,7 @@ serve(async (req) => {
           headers: { 'xi-api-key': ELEVENLABS_API_KEY, 'Content-Type': 'application/json' },
           body: JSON.stringify({ platform_settings: { audio: AUDIO_PLATFORM_AUDIO } }),
         });
-      } else {
-        console.warn('[agent-provision] ELEVENLABS_POST_CALL_WEBHOOK_ID not set; skipping webhook assignment');
+        console.warn('[agent-provision] ELEVENLABS_POST_CALL_WEBHOOK_ID not set; audio-only PATCH applied');
       }
     } catch (whErr) {
       console.warn('[agent-provision] post-call webhook PATCH failed (non-blocking):', (whErr as Error).message);
