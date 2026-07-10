@@ -413,12 +413,15 @@ serve(async (req) => {
     let welcomeMessage: string | null = null;
     let voiceId: string | null = null;
     let agentPersonality: string | null = null;
+    let tenantName: string | null = null;
+    let asrKeywordsExtra: string[] = [];
     try {
       const { data: t } = await admin
         .from("tenants")
-        .select("settings_json")
+        .select("name, settings_json")
         .eq("id", tenantId)
         .maybeSingle();
+      tenantName = (t?.name as string | null) ?? null;
       const raw = (t?.settings_json as any)?.elevenlabs_agent_id;
       if (raw && typeof raw === "string" && raw.trim().length > 0) {
         override = raw.trim();
@@ -435,9 +438,14 @@ serve(async (req) => {
       if (ap && typeof ap === "string" && ap.trim().length > 0) {
         agentPersonality = ap.trim();
       }
+      const kw = (t?.settings_json as any)?.asr_keywords;
+      if (Array.isArray(kw)) {
+        asrKeywordsExtra = kw.filter((k: unknown): k is string => typeof k === "string");
+      }
     } catch (e) {
       warn("tenant settings_json fetch failed:", (e as Error).message);
     }
+
 
     let agentId: string;
     if (override) {
