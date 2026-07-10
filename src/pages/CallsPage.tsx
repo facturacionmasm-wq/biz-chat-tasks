@@ -51,7 +51,10 @@ const dbRowToCallRecord = (row: any): CallRecord => ({
   audioUrl: row.audio_url || null,
   costTotal: row.cost_total !== null && row.cost_total !== undefined ? Number(row.cost_total) : null,
   aiTokensUsed: row.ai_tokens_used !== null && row.ai_tokens_used !== undefined ? Number(row.ai_tokens_used) : null,
-});
+  // Extended pipeline state (used by the UI to avoid infinite spinners).
+  transcriptStatus: (row.transcript_status || 'pending') as string,
+  summaryStatusRaw: (row.summary_status || 'pending') as string,
+} as CallRecord & { transcriptStatus: string; summaryStatusRaw: string });
 
 const dbRowToCallEvent = (row: any): CallEvent => ({
   id: row.id,
