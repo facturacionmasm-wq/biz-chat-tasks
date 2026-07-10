@@ -12,7 +12,13 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
-import { MAX_CALL_DURATION_SECONDS, upsertAgentClosingBlock } from "../_shared/elevenlabs-agent.ts";
+import {
+  MAX_CALL_DURATION_SECONDS,
+  upsertAgentClosingBlock,
+  upsertAgentConfirmationBlock,
+  buildAudioRobustnessConfig,
+  AUDIO_PLATFORM_AUDIO,
+} from "../_shared/elevenlabs-agent.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -407,12 +413,15 @@ serve(async (req) => {
     let welcomeMessage: string | null = null;
     let voiceId: string | null = null;
     let agentPersonality: string | null = null;
+    let tenantName: string | null = null;
+    let asrKeywordsExtra: string[] = [];
     try {
       const { data: t } = await admin
         .from("tenants")
-        .select("settings_json")
+        .select("name, settings_json")
         .eq("id", tenantId)
         .maybeSingle();
+      tenantName = (t?.name as string | null) ?? null;
       const raw = (t?.settings_json as any)?.elevenlabs_agent_id;
       if (raw && typeof raw === "string" && raw.trim().length > 0) {
         override = raw.trim();
@@ -429,9 +438,14 @@ serve(async (req) => {
       if (ap && typeof ap === "string" && ap.trim().length > 0) {
         agentPersonality = ap.trim();
       }
+      const kw = (t?.settings_json as any)?.asr_keywords;
+      if (Array.isArray(kw)) {
+        asrKeywordsExtra = kw.filter((k: unknown): k is string => typeof k === "string");
+      }
     } catch (e) {
       warn("tenant settings_json fetch failed:", (e as Error).message);
     }
+
 
     let agentId: string;
     if (override) {
@@ -493,6 +507,8 @@ serve(async (req) => {
     // Always enforce the closing/farewell instruction block so the agent asks
     // "¿algo más?" and delivers a proper farewell before hanging up.
     newPrompt = upsertAgentClosingBlock(newPrompt);
+    // Reinforce audio-noise / cross-talk resilience via prompt instructions.
+    newPrompt = upsertAgentConfirmationBlock(newPrompt);
     const webhookSecret = Deno.env.get("ELEVENLABS_WEBHOOK_SECRET") || null;
     const transferTool = buildTransferTool(supabaseUrl, members, webhookSecret);
     const checkAvailTool = buildCheckAvailabilityTool(supabaseUrl, webhookSecret);
@@ -548,11 +564,29 @@ serve(async (req) => {
     if (welcomeMessage) {
       agentPatch.first_message = welcomeMessage;
     }
+    // Audio robustness — inject ASR keywords + turn-detection thresholds.
+    const asrKeywords = [
+      ...(tenantName ? [tenantName] : []),
+      ...members.map((m) => m.name).filter(Boolean),
+      ...Array.from(
+        new Set(
+          members
+            .map((m) => m.department?.trim())
+            .filter((d): d is string => !!d && d.length > 0),
+        ),
+      ),
+      ...asrKeywordsExtra,
+    ];
+    const audioCfg = buildAudioRobustnessConfig(asrKeywords);
+
     const patchBody: Record<string, any> = {
       conversation_config: {
         agent: agentPatch,
+        asr: audioCfg.asr,
+        turn: audioCfg.turn,
       },
       platform_settings: {
+        audio: AUDIO_PLATFORM_AUDIO,
         workspace_overrides: {
           webhooks: {
             ...(Deno.env.get("ELEVENLABS_POST_CALL_WEBHOOK_ID")
@@ -568,6 +602,7 @@ serve(async (req) => {
     }
     // Enforce max call duration across all tenant agents.
     patchBody.conversation_config.conversation = { max_duration_seconds: MAX_CALL_DURATION_SECONDS };
+
 
 
     const patchRes = await fetch(`${ELEVENLABS_API_URL}/convai/agents/${agentId}`, {
