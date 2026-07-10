@@ -161,3 +161,6 @@ verify_jwt = true
 
 
 
+
+[functions.reconcile-stuck-calls]
+verify_jwt = false
