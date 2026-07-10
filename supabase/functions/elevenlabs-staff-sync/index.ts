@@ -507,6 +507,8 @@ serve(async (req) => {
     // Always enforce the closing/farewell instruction block so the agent asks
     // "¿algo más?" and delivers a proper farewell before hanging up.
     newPrompt = upsertAgentClosingBlock(newPrompt);
+    // Reinforce audio-noise / cross-talk resilience via prompt instructions.
+    newPrompt = upsertAgentConfirmationBlock(newPrompt);
     const webhookSecret = Deno.env.get("ELEVENLABS_WEBHOOK_SECRET") || null;
     const transferTool = buildTransferTool(supabaseUrl, members, webhookSecret);
     const checkAvailTool = buildCheckAvailabilityTool(supabaseUrl, webhookSecret);
