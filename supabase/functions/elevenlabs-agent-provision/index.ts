@@ -1,7 +1,13 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
 import { resolveTenantAgentId } from "../_shared/elevenlabs-agent.ts";
-import { MAX_CALL_DURATION_SECONDS, upsertAgentClosingBlock } from "../_shared/elevenlabs-agent.ts";
+import {
+  MAX_CALL_DURATION_SECONDS,
+  upsertAgentClosingBlock,
+  upsertAgentConfirmationBlock,
+  buildAudioRobustnessConfig,
+  AUDIO_PLATFORM_AUDIO,
+} from "../_shared/elevenlabs-agent.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
