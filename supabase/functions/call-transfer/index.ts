@@ -211,6 +211,10 @@ Deno.serve(async (req) => {
         twilioAccountSid: TWILIO_ACCOUNT_SID,
         twilioAuthToken: TWILIO_AUTH_TOKEN,
         twilioCallerId: TWILIO_PHONE_NUMBER,
+        tenantId: tenant_id,
+        callRecordId: call_record_id,
+        callerPhone: caller_phone,
+        targetName: target_name,
       });
 
       if (!twilioRes.ok) {
