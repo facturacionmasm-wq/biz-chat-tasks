@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
+import { handleInboundSms } from "../_shared/sms-inbound-core.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -145,6 +146,28 @@ serve(async (req) => {
           }
         }
       }
+
+      // ============ SMS ROUTER (Opción A) ============
+      // El Messaging Service "NEW RYBIX" apunta todos los inbounds (SMS y WhatsApp)
+      // a esta URL. Firma HMAC ya validada arriba contra la URL de whatsapp-webhook.
+      // Si no trae prefijo whatsapp:, es SMS: delegar al core compartido sin re-validar.
+      {
+        const routerFrom = params.get('From') || '';
+        const routerTo = params.get('To') || '';
+        const isWhatsApp = routerFrom.startsWith('whatsapp:') || routerTo.startsWith('whatsapp:');
+        if (!isWhatsApp) {
+          await handleInboundSms({
+            supabase,
+            paramsObj,
+            sourceFunction: 'whatsapp-webhook-router',
+          });
+          return new Response('<Response></Response>', {
+            status: 200,
+            headers: { ...corsHeaders, 'Content-Type': 'text/xml' },
+          });
+        }
+      }
+      // ============ /SMS ROUTER ============
 
       const from = params.get('From') || '';
       const to = params.get('To') || '';
