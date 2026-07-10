@@ -282,7 +282,7 @@ serve(async (req) => {
 
       const loopGuardTripped = nextRetryCount > 2;
 
-      if (endedIntentionally || loopGuardTripped) {
+      if (!absenceMode && (endedIntentionally || loopGuardTripped)) {
         const stage = endedIntentionally ? 'redirect_hangup_intentional' : 'redirect_hangup_loop_guard';
         console.log(`[inbound] Re-entry → HANGUP callSid=${callSid} reason=${stage} retry=${nextRetryCount} endedIntentionally=${endedIntentionally}`);
         voiceLog(callSid, tenantId, stage, undefined, undefined, {
