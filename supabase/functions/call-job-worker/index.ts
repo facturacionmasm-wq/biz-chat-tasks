@@ -605,6 +605,7 @@ async function jobReconcileStuckCall(job: any, supabaseUrl: string, serviceKey: 
   }
   const json = await res.json().catch(() => ({}));
   return { reconcile: json };
+}
 
 function jsonResp(body: any, status = 200) {
   return new Response(JSON.stringify(body), {
