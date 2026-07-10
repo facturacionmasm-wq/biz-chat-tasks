@@ -601,19 +601,48 @@ const CallsPage = () => {
                       );
                     })}
                   </div>
-                ) : (
-                  <div className="text-center py-8 text-[var(--rx-t2)]">
-                    <Phone size={28} className="mx-auto mb-2 opacity-20" />
-                    <p className="text-sm font-medium">Sin transcripción disponible</p>
-                    <p className="text-xs mt-1">La transcripción aparecerá aquí automáticamente una vez que la llamada finalice y se procese el audio.</p>
-                    {selectedCall.status === 'completed' && (
-                      <div className="mt-3 flex items-center justify-center gap-1.5 text-xs text-[var(--rx-amber)]">
-                        <Loader2 size={12} className="animate-spin" />
-                        <span>Procesando transcripción...</span>
-                      </div>
-                    )}
-                  </div>
-                )}
+                ) : (() => {
+                  const ts = (selectedCall as any).transcriptStatus as string | undefined;
+                  const isProcessing = ts === 'pending' || ts === 'processing';
+                  const isFailed = ts === 'failed_transcription' || ts === 'error';
+                  const isNotRequested = ts === 'not_requested';
+                  return (
+                    <div className="text-center py-8 text-[var(--rx-t2)]">
+                      <Phone size={28} className="mx-auto mb-2 opacity-20" />
+                      {isNotRequested ? (
+                        <>
+                          <p className="text-sm font-medium">Sin transcripción para esta llamada</p>
+                          <p className="text-xs mt-1">No se solicitó transcripción para esta llamada.</p>
+                        </>
+                      ) : isFailed ? (
+                        <>
+                          <p className="text-sm font-medium">No se pudo obtener la transcripción</p>
+                          <p className="text-xs mt-1">Puedes intentar recuperarla desde ElevenLabs.</p>
+                          <button
+                            onClick={retryReconcile}
+                            className="mt-3 inline-flex items-center gap-1.5 bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground text-xs px-3 py-1.5 rounded-lg hover:opacity-90"
+                          >
+                            <RefreshCw size={12} /> Reintentar transcripción
+                          </button>
+                        </>
+                      ) : isProcessing ? (
+                        <>
+                          <p className="text-sm font-medium">Sin transcripción disponible</p>
+                          <p className="text-xs mt-1">La transcripción aparecerá aquí automáticamente una vez procesado el audio.</p>
+                          <div className="mt-3 flex items-center justify-center gap-1.5 text-xs text-[var(--rx-amber)]">
+                            <Loader2 size={12} className="animate-spin" />
+                            <span>Procesando transcripción...</span>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-sm font-medium">Sin transcripción disponible</p>
+                          <p className="text-xs mt-1">La transcripción aparecerá aquí automáticamente una vez que la llamada finalice.</p>
+                        </>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             </div>
 
