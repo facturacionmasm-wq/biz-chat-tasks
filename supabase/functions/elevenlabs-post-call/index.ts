@@ -35,49 +35,108 @@ serve(async (req) => {
   const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-  // ═══════════ SECRET VALIDATION (with observability on 401) ═══════════
-  const WEBHOOK_SECRET = Deno.env.get('ELEVENLABS_WEBHOOK_SECRET') || '';
-  if (WEBHOOK_SECRET) {
-    const sentSecret =
-      req.headers.get('x-elevenlabs-secret') ||
-      req.headers.get('elevenlabs-secret') ||
-      req.headers.get('x-webhook-secret') ||
-      '';
-    if (sentSecret !== WEBHOOK_SECRET) {
-      const reason = sentSecret ? 'secret_mismatch' : 'secret_missing';
-      console.warn(`[el-post-call] 401 ${reason} — request rejected`);
-      // Fire-and-forget observability so future silent failures are visible.
-      try {
-        await supabase.from('voice_call_logs').insert({
-          call_sid: 'unknown',
-          tenant_id: null,
-          stage: 'post_call_unauthorized',
-          error_code: 'AUTH_401',
-          error_message: reason,
-          metadata: {
-            has_header: !!sentSecret,
-            sender_ip: req.headers.get('x-forwarded-for') || null,
-            user_agent: req.headers.get('user-agent') || null,
-          },
-        });
-        await supabase.from('audit_events').insert({
-          tenant_id: null,
-          event_type: 'call.elevenlabs_post_call_unauthorized',
-          resource_type: 'elevenlabs_webhook',
-          resource_id: null,
-          payload: { reason, has_header: !!sentSecret },
-        });
-      } catch (e) {
-        console.error('[el-post-call] failed to log 401:', e);
-      }
-      return new Response(JSON.stringify({ error: 'unauthorized' }), {
-        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+  // ═══════════ AUTH VALIDATION: HMAC (preferred) or legacy shared-secret ═══════════
+  // Read the raw body ONCE (needed unmodified for HMAC verification).
+  const rawBody = await req.text();
+
+  const HMAC_SECRET = Deno.env.get('ELEVENLABS_POST_CALL_HMAC_SECRET') || '';
+  const LEGACY_SECRET = Deno.env.get('ELEVENLABS_WEBHOOK_SECRET') || '';
+  const TOLERANCE_SECS = 30 * 60; // 30 min replay window
+
+  const sigHeader =
+    req.headers.get('elevenlabs-signature') ||
+    req.headers.get('ElevenLabs-Signature') ||
+    '';
+  const legacyHeader =
+    req.headers.get('x-elevenlabs-secret') ||
+    req.headers.get('elevenlabs-secret') ||
+    req.headers.get('x-webhook-secret') ||
+    '';
+
+  async function verifyHmac(header: string, secret: string, body: string): Promise<{ ok: boolean; reason?: string }> {
+    if (!header || !secret) return { ok: false, reason: 'missing_signature_or_secret' };
+    // Parse "t=timestamp,v0=hash" (order-independent).
+    const parts = header.split(',').map((p) => p.trim());
+    let t = '';
+    let v0 = '';
+    for (const p of parts) {
+      if (p.startsWith('t=')) t = p.slice(2);
+      else if (p.startsWith('v0=')) v0 = p.slice(3);
     }
+    if (!t || !v0) return { ok: false, reason: 'malformed_signature' };
+    const ts = Number(t);
+    if (!Number.isFinite(ts)) return { ok: false, reason: 'bad_timestamp' };
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (Math.abs(nowSec - ts) > TOLERANCE_SECS) return { ok: false, reason: 'timestamp_out_of_tolerance' };
+
+    // Strip optional "wsec_" prefix from secret for the raw HMAC key.
+    const keyMaterial = secret.startsWith('wsec_') ? secret.slice(5) : secret;
+    const enc = new TextEncoder();
+    const key = await crypto.subtle.importKey(
+      'raw', enc.encode(keyMaterial),
+      { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+    );
+    const sigBuf = await crypto.subtle.sign('HMAC', key, enc.encode(`${t}.${body}`));
+    const computed = Array.from(new Uint8Array(sigBuf)).map((b) => b.toString(16).padStart(2, '0')).join('');
+    // Constant-time-ish comparison
+    if (computed.length !== v0.length) return { ok: false, reason: 'signature_mismatch' };
+    let diff = 0;
+    for (let i = 0; i < computed.length; i++) diff |= computed.charCodeAt(i) ^ v0.charCodeAt(i);
+    return diff === 0 ? { ok: true } : { ok: false, reason: 'signature_mismatch' };
   }
 
+  let authOk = false;
+  let authMode = 'none';
+  let authReason = '';
+
+  if (HMAC_SECRET && sigHeader) {
+    const res = await verifyHmac(sigHeader, HMAC_SECRET, rawBody);
+    if (res.ok) { authOk = true; authMode = 'hmac'; }
+    else authReason = `hmac:${res.reason}`;
+  }
+  if (!authOk && LEGACY_SECRET && legacyHeader) {
+    if (legacyHeader === LEGACY_SECRET) { authOk = true; authMode = 'legacy'; }
+    else authReason = authReason || 'legacy:secret_mismatch';
+  }
+  // If neither secret is configured at all, allow through (dev fallback) — preserves prior behavior when no secret set.
+  if (!HMAC_SECRET && !LEGACY_SECRET) { authOk = true; authMode = 'unconfigured'; }
+
+  if (!authOk) {
+    const reason = authReason || (sigHeader || legacyHeader ? 'invalid' : 'missing');
+    console.warn(`[el-post-call] 401 ${reason} — request rejected`);
+    try {
+      const MASTER_TENANT = '00000000-0000-0000-0000-000000000001';
+      await supabase.from('voice_call_logs').insert({
+        call_sid: 'unknown',
+        tenant_id: MASTER_TENANT,
+        stage: 'post_call_unauthorized',
+        error_code: 'AUTH_401',
+        error_message: reason,
+        metadata: {
+          has_hmac_header: !!sigHeader,
+          has_legacy_header: !!legacyHeader,
+          sender_ip: req.headers.get('x-forwarded-for') || null,
+          user_agent: req.headers.get('user-agent') || null,
+        },
+      });
+      await supabase.from('audit_events').insert({
+        tenant_id: MASTER_TENANT,
+        event_type: 'call.elevenlabs_post_call_unauthorized',
+        resource_type: 'elevenlabs_webhook',
+        resource_id: null,
+        payload: { reason, has_hmac_header: !!sigHeader, has_legacy_header: !!legacyHeader },
+      });
+    } catch (e) {
+      console.error('[el-post-call] failed to log 401:', e);
+    }
+    return new Response(JSON.stringify({ error: 'unauthorized' }), {
+      status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+  console.log(`[el-post-call] auth ok via ${authMode}`);
+
   try {
-    const body = await req.json();
+    const body = JSON.parse(rawBody);
     console.log('[el-post-call] Received payload:', JSON.stringify(body).substring(0, 500));
 
     // Extract fields from ElevenLabs payload (handle various formats)
