@@ -552,6 +552,16 @@ serve(async (req) => {
       conversation_config: {
         agent: agentPatch,
       },
+      platform_settings: {
+        workspace_overrides: {
+          webhooks: {
+            post_call_webhook_url: `${supabaseUrl}/functions/v1/elevenlabs-post-call`,
+            send_audio: false,
+          },
+        },
+        // Some API revisions accept the field at platform_settings root.
+        post_call_webhook_url: `${supabaseUrl}/functions/v1/elevenlabs-post-call`,
+      },
     };
     if (voiceId) {
       patchBody.conversation_config.tts = { voice_id: voiceId };

@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
 import { resolveTenantAgentId, MASTER_TENANT } from "../_shared/elevenlabs-agent.ts";
+import { resolveTenantTimezone, formatInTimezone } from "../_shared/timezone.ts";
 
 
 const corsHeaders = {
@@ -371,6 +372,20 @@ serve(async (req) => {
     if (ELEVENLABS_API_KEY && tenantAgentId) {
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
+          // Anchor the LLM to the tenant's local calendar date so it never
+          // hallucinates a past year when the caller doesn't say one.
+          const _tenantTz = await resolveTenantTimezone(supabase, tenantId);
+          const _nowInTz = formatInTimezone(new Date(), _tenantTz, {
+            year: 'numeric', month: '2-digit', day: '2-digit',
+          });
+          // es-MX renders as "10/07/2026" (DD/MM/YYYY); reformat to YYYY-MM-DD.
+          const _dParts = _nowInTz.split(/[\/\-]/).map(s => s.trim());
+          const _todayISO = _dParts.length === 3
+            ? `${_dParts[2]}-${_dParts[1].padStart(2,'0')}-${_dParts[0].padStart(2,'0')}`
+            : new Date().toISOString().slice(0, 10);
+          const _currentYear = _todayISO.slice(0, 4);
+          const _weekday = formatInTimezone(new Date(), _tenantTz, { weekday: 'long' });
+
           const registerBody = {
             agent_id: tenantAgentId,
 
@@ -383,6 +398,11 @@ serve(async (req) => {
                 call_record_id: callRecordId || '',
                 call_sid: callSid,
                 company_name: companyName || 'la empresa',
+                current_date: _todayISO,
+                today: _todayISO,
+                current_year: _currentYear,
+                current_weekday: _weekday,
+                tenant_timezone: _tenantTz,
               },
             },
           };

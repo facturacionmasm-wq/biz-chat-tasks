@@ -144,6 +144,31 @@ serve(async (req) => {
       });
     }
 
+    // ═══ Ensure post-call webhook is configured on this new agent ═══
+    // Idempotent best-effort PATCH so ElevenLabs delivers transcripts/summaries
+    // to our elevenlabs-post-call function.
+    try {
+      const webhookUrl = `${SUPABASE_URL}/functions/v1/elevenlabs-post-call`;
+      await fetch(`${ELEVENLABS_API_URL}/convai/agents/${newAgentId}`, {
+        method: 'PATCH',
+        headers: { 'xi-api-key': ELEVENLABS_API_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          platform_settings: {
+            workspace_overrides: {
+              webhooks: {
+                post_call_webhook_url: webhookUrl,
+                send_audio: false,
+              },
+            },
+            // Some API revisions accept these at the platform_settings root.
+            post_call_webhook_url: webhookUrl,
+          },
+        }),
+      });
+    } catch (whErr) {
+      console.warn('[agent-provision] post-call webhook PATCH failed (non-blocking):', (whErr as Error).message);
+    }
+
     // Persist in tenants.elevenlabs_config
     const prevCfg = (tenant?.elevenlabs_config ?? {}) as Record<string, unknown>;
     const nextCfg = { ...prevCfg, agent_id: newAgentId, provisioned_at: new Date().toISOString() };

@@ -260,9 +260,32 @@ serve(async (req) => {
       // (settings_json.branches[default].timezone → tenants.timezone → default).
       const tz = await resolveTenantTimezone(supabase, tenant_id);
 
+      // ─── Year sanity: if the LLM sends a date without an explicit 4-digit
+      // year, or with a year in the past, substitute with the tenant's current
+      // year so we never book into 2024/2025 by hallucination.
+      const _todayLocal = formatInTimezone(new Date(), tz, {
+        year: 'numeric', month: '2-digit', day: '2-digit',
+      });
+      const _dp = _todayLocal.split(/[\/\-]/).map(s => s.trim());
+      const _tenantToday = _dp.length === 3
+        ? `${_dp[2]}-${_dp[1].padStart(2,'0')}-${_dp[0].padStart(2,'0')}`
+        : new Date().toISOString().slice(0, 10);
+      const _tenantCurrentYear = Number(_tenantToday.slice(0, 4));
+
+      let _startRaw = String(start_at);
+      const _datePart = _startRaw.split('T')[0] || '';
+      const _yearMatch = _datePart.match(/^(\d{4})-/);
+      if (!_yearMatch) {
+        // No explicit 4-digit year → prepend current tenant year.
+        _startRaw = `${_tenantCurrentYear}-${_startRaw.replace(/^-?/, '')}`;
+      } else if (Number(_yearMatch[1]) < _tenantCurrentYear) {
+        // Past year (e.g. 2024/2025) → substitute with current tenant year.
+        _startRaw = _startRaw.replace(/^\d{4}/, String(_tenantCurrentYear));
+      }
+
       // Parse start_at preserving local wall-clock intent, then convert to
       // real UTC using DST-aware Intl-based offset math (matches date-fns-tz).
-      const naiveDateTime = String(start_at).replace(/Z$/i, '').replace(/([+-]\d{2}:?\d{2})$/, '');
+      const naiveDateTime = _startRaw.replace(/Z$/i, '').replace(/([+-]\d{2}:?\d{2})$/, '');
       let startDate: Date;
       try {
         startDate = zonedTimeToUtc(naiveDateTime, tz);
@@ -271,6 +294,15 @@ serve(async (req) => {
         return jsonResp({
           success: false,
           message: 'La fecha y hora recibidas no son válidas. ¿Podrías repetirlas?',
+        });
+      }
+
+      // Reject anything in the past (allow 5 min grace for near-real-time bookings).
+      if (startDate.getTime() < Date.now() - 5 * 60 * 1000) {
+        console.warn(`[voice-scheduling] Rejected past date: raw=${start_at} normalized=${naiveDateTime} tz=${tz}`);
+        return jsonResp({
+          success: false,
+          message: 'Esa fecha ya pasó. ¿Me confirmas el año, por favor?',
         });
       }
       const endDate = new Date(startDate.getTime() + 30 * 60 * 1000);
