@@ -441,6 +441,18 @@ serve(async (req) => {
         });
       }
 
+      // Watchdog: if the ElevenLabs post-call webhook doesn't land within 3 min,
+      // reconcile-stuck-calls picks up this call_id and backfills from the
+      // ElevenLabs API. Idempotent — no-op if the post-call already completed.
+      await supabase.from('call_jobs').upsert({
+        tenant_id: effectiveTenantId, call_id: callRecord.id,
+        job_type: 'reconcile_stuck_call',
+        status: 'queued',
+        run_after: new Date(Date.now() + 3 * 60 * 1000).toISOString(),
+      }, { onConflict: 'call_id,job_type' }).then(({ error }) => {
+        if (error) console.error('[status] watchdog enqueue error:', error.message);
+      });
+
       // Trigger job worker with backoff retries (fire-and-forget).
       // Auto-invoke may get rate-limited; retry up to 3 times with exp backoff
       // so the fallback pipeline actually runs even under bursty load.
