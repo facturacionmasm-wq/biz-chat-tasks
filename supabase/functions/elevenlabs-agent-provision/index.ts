@@ -165,6 +165,7 @@ serve(async (req) => {
           headers: { 'xi-api-key': ELEVENLABS_API_KEY, 'Content-Type': 'application/json' },
           body: JSON.stringify({
             platform_settings: {
+              audio: AUDIO_PLATFORM_AUDIO,
               workspace_overrides: {
                 webhooks: {
                   post_call_webhook_id: webhookId,
@@ -173,6 +174,13 @@ serve(async (req) => {
               },
             },
           }),
+        });
+      } else {
+        // Even without a post-call webhook, still apply audio hardening.
+        await fetch(`${ELEVENLABS_API_URL}/convai/agents/${newAgentId}`, {
+          method: 'PATCH',
+          headers: { 'xi-api-key': ELEVENLABS_API_KEY, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ platform_settings: { audio: AUDIO_PLATFORM_AUDIO } }),
         });
       } else {
         console.warn('[agent-provision] ELEVENLABS_POST_CALL_WEBHOOK_ID not set; skipping webhook assignment');
