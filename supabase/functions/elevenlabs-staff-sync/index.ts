@@ -555,12 +555,12 @@ serve(async (req) => {
       platform_settings: {
         workspace_overrides: {
           webhooks: {
-            post_call_webhook_url: `${supabaseUrl}/functions/v1/elevenlabs-post-call`,
+            ...(Deno.env.get("ELEVENLABS_POST_CALL_WEBHOOK_ID")
+              ? { post_call_webhook_id: Deno.env.get("ELEVENLABS_POST_CALL_WEBHOOK_ID") }
+              : {}),
             send_audio: false,
           },
         },
-        // Some API revisions accept the field at platform_settings root.
-        post_call_webhook_url: `${supabaseUrl}/functions/v1/elevenlabs-post-call`,
       },
     };
     if (voiceId) {
