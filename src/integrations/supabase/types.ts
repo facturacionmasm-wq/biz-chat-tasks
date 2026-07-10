@@ -3619,6 +3619,54 @@ export type Database = {
           },
         ]
       }
+      sms_inbound_messages: {
+        Row: {
+          body: string | null
+          created_at: string
+          deleted_at: string | null
+          from_e164: string
+          id: string
+          message_sid: string
+          num_media: number
+          raw: Json | null
+          read_at: string | null
+          received_at: string
+          tenant_id: string
+          to_e164: string
+          updated_at: string
+        }
+        Insert: {
+          body?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          from_e164: string
+          id?: string
+          message_sid: string
+          num_media?: number
+          raw?: Json | null
+          read_at?: string | null
+          received_at?: string
+          tenant_id: string
+          to_e164: string
+          updated_at?: string
+        }
+        Update: {
+          body?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          from_e164?: string
+          id?: string
+          message_sid?: string
+          num_media?: number
+          raw?: Json | null
+          read_at?: string | null
+          received_at?: string
+          tenant_id?: string
+          to_e164?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       stripe_customers: {
         Row: {
           created_at: string
