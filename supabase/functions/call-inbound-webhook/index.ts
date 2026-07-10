@@ -120,6 +120,21 @@ serve(async (req) => {
   };
 
   try {
+    // ═══════════ 0. ABSENCE-MESSAGE MODE (query-string driven) ═══════════
+    // When call-transfer-status <Redirect>s a caller back here because the
+    // staff member did not answer, it appends ?mode=absence_message&... .
+    // We surface those hints to ElevenLabs via dynamic_variables and a
+    // per-conversation prompt override so the agent asks the caller if they
+    // want to leave a voice message for the missed staff member.
+    const reqUrl = new URL(req.url);
+    const absenceMode = reqUrl.searchParams.get('mode') === 'absence_message';
+    const absenceTargetName = reqUrl.searchParams.get('target_name') || '';
+    const absenceTargetPhone = reqUrl.searchParams.get('target_phone') || '';
+    const absenceTargetUserId = reqUrl.searchParams.get('target_user_id') || '';
+    const absenceCallerPhoneHint = reqUrl.searchParams.get('caller_phone') || '';
+    const absenceCallRecordIdHint = reqUrl.searchParams.get('call_record_id') || '';
+    const absenceTenantHint = reqUrl.searchParams.get('tenant_id') || '';
+
     // ═══════════ 1. PARSE TWILIO PARAMS ═══════════
     const contentType = req.headers.get('content-type') || '';
     const rawBody = await req.text();
@@ -134,7 +149,7 @@ serve(async (req) => {
     const callerCountry = params.CallerCountry || '';
     const accountSid = params.AccountSid || '';
 
-    console.log(`[inbound] CallSid=${callSid} From=${from} To=${to} Dir=${direction}`);
+    console.log(`[inbound] CallSid=${callSid} From=${from} To=${to} Dir=${direction} absenceMode=${absenceMode}`);
 
     // ═══════════ 2. TWILIO SIGNATURE VALIDATION ═══════════
     if (TWILIO_AUTH_TOKEN) {
@@ -267,7 +282,7 @@ serve(async (req) => {
 
       const loopGuardTripped = nextRetryCount > 2;
 
-      if (endedIntentionally || loopGuardTripped) {
+      if (!absenceMode && (endedIntentionally || loopGuardTripped)) {
         const stage = endedIntentionally ? 'redirect_hangup_intentional' : 'redirect_hangup_loop_guard';
         console.log(`[inbound] Re-entry → HANGUP callSid=${callSid} reason=${stage} retry=${nextRetryCount} endedIntentionally=${endedIntentionally}`);
         voiceLog(callSid, tenantId, stage, undefined, undefined, {
@@ -386,24 +401,49 @@ serve(async (req) => {
           const _currentYear = _todayISO.slice(0, 4);
           const _weekday = formatInTimezone(new Date(), _tenantTz, { weekday: 'long' });
 
-          const registerBody = {
+          const _dynVars: Record<string, string> = {
+            tenant_id: tenantId,
+            call_record_id: callRecordId || '',
+            call_sid: callSid,
+            company_name: companyName || 'la empresa',
+            current_date: _todayISO,
+            today: _todayISO,
+            current_year: _currentYear,
+            current_weekday: _weekday,
+            tenant_timezone: _tenantTz,
+          };
+
+          if (absenceMode) {
+            _dynVars.absence_mode = 'true';
+            _dynVars.absence_target_name = absenceTargetName || 'la persona solicitada';
+            _dynVars.absence_target_phone = absenceTargetPhone || '';
+            _dynVars.absence_target_user_id = absenceTargetUserId || '';
+            _dynVars.absence_caller_phone = absenceCallerPhoneHint || from || '';
+          }
+
+          const _absencePrompt = absenceMode
+            ? `IMPORTANTE: Estás retomando una llamada porque ${absenceTargetName || 'la persona solicitada'} no pudo atender la transferencia. ` +
+              `Discúlpate brevemente con el cliente, dile que ${absenceTargetName || 'la persona'} está ocupada en este momento, ` +
+              `y ofrécele dejar un mensaje o sus datos de contacto para que le devuelvan la llamada. ` +
+              `Cuando el cliente dicte su mensaje, invoca la herramienta "leave_absence_message" con el texto del mensaje ` +
+              `y opcionalmente el nombre del cliente. Después despídete de forma cordial.`
+            : '';
+
+          const registerBody: Record<string, unknown> = {
             agent_id: tenantAgentId,
 
             from_number: from,
             to_number: to,
             direction: 'inbound',
             conversation_initiation_client_data: {
-              dynamic_variables: {
-                tenant_id: tenantId,
-                call_record_id: callRecordId || '',
-                call_sid: callSid,
-                company_name: companyName || 'la empresa',
-                current_date: _todayISO,
-                today: _todayISO,
-                current_year: _currentYear,
-                current_weekday: _weekday,
-                tenant_timezone: _tenantTz,
-              },
+              dynamic_variables: _dynVars,
+              ...(absenceMode
+                ? {
+                    conversation_config_override: {
+                      agent: { prompt: { prompt: _absencePrompt } },
+                    },
+                  }
+                : {}),
             },
           };
 

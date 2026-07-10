@@ -78,24 +78,48 @@ async function redirectLiveCallToTarget(params: {
   twilioAccountSid: string;
   twilioAuthToken: string;
   twilioCallerId: string;
+  // Context propagated to call-transfer-status so, if the target does not
+  // answer, the caller can be reopened with the ElevenLabs agent in
+  // "absence message" mode.
+  tenantId?: string;
+  callRecordId?: string;
+  callerPhone?: string;
+  targetUserId?: string;
+  targetName?: string;
 }): Promise<{ ok: boolean; status: number; data: unknown }> {
   const whisperOnlyUrl = `${params.supabaseUrl}/functions/v1/call-transfer-twiml?` +
     `action=whisper_only&whisper=${encodeURIComponent(params.whisperText)}`;
 
-  // Escape XML special chars in the URL for safe embedding as an attribute.
-  const escapedUrl = whisperOnlyUrl
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+  // Build the Dial action callback URL that Twilio hits when the outbound
+  // <Number> leg finishes (answered, no-answer, busy, failed, canceled).
+  const actionQs = new URLSearchParams({
+    tenant_id: params.tenantId || "",
+    call_record_id: params.callRecordId || "",
+    caller_phone: params.callerPhone || "",
+    target_user_id: params.targetUserId || "",
+    target_name: params.targetName || "",
+    target_phone: params.targetPhone || "",
+  }).toString();
+  const actionUrl =
+    `${params.supabaseUrl}/functions/v1/call-transfer-status?${actionQs}`;
+
+  const escape = (s: string) =>
+    s
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+
+  const escapedWhisperUrl = escape(whisperOnlyUrl);
+  const escapedActionUrl = escape(actionUrl);
 
   const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say voice="Polly.Mia-Neural" language="es-MX">
     Lo estamos conectando con un agente. Por favor espere un momento.
   </Say>
-  <Dial callerId="${params.twilioCallerId}" answerOnBridge="true" timeout="30">
-    <Number url="${escapedUrl}">${params.targetPhone}</Number>
+  <Dial callerId="${params.twilioCallerId}" answerOnBridge="true" timeout="30" action="${escapedActionUrl}" method="POST">
+    <Number url="${escapedWhisperUrl}">${params.targetPhone}</Number>
   </Dial>
 </Response>`;
 
@@ -187,6 +211,10 @@ Deno.serve(async (req) => {
         twilioAccountSid: TWILIO_ACCOUNT_SID,
         twilioAuthToken: TWILIO_AUTH_TOKEN,
         twilioCallerId: TWILIO_PHONE_NUMBER,
+        tenantId: tenant_id,
+        callRecordId: call_record_id,
+        callerPhone: caller_phone,
+        targetName: target_name,
       });
 
       if (!twilioRes.ok) {
