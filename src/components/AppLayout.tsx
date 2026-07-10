@@ -22,6 +22,7 @@ const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard', exact: true },
   { to: '/calls', icon: Phone, label: 'Llamadas' },
   { to: '/whatsapp', icon: MessageSquare, label: 'WhatsApp' },
+  { to: '/sms-inbox', icon: Inbox, label: 'SMS' },
   { to: '/appointments', icon: CalendarPlus, label: 'Agenda' },
   { to: '/contacts', icon: Users, label: 'Contactos' },
   { to: '/support', icon: LifeBuoy, label: 'Soporte' },
