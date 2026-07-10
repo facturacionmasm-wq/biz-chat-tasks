@@ -564,11 +564,29 @@ serve(async (req) => {
     if (welcomeMessage) {
       agentPatch.first_message = welcomeMessage;
     }
+    // Audio robustness — inject ASR keywords + turn-detection thresholds.
+    const asrKeywords = [
+      ...(tenantName ? [tenantName] : []),
+      ...members.map((m) => m.name).filter(Boolean),
+      ...Array.from(
+        new Set(
+          members
+            .map((m) => m.department?.trim())
+            .filter((d): d is string => !!d && d.length > 0),
+        ),
+      ),
+      ...asrKeywordsExtra,
+    ];
+    const audioCfg = buildAudioRobustnessConfig(asrKeywords);
+
     const patchBody: Record<string, any> = {
       conversation_config: {
         agent: agentPatch,
+        asr: audioCfg.asr,
+        turn: audioCfg.turn,
       },
       platform_settings: {
+        audio: AUDIO_PLATFORM_AUDIO,
         workspace_overrides: {
           webhooks: {
             ...(Deno.env.get("ELEVENLABS_POST_CALL_WEBHOOK_ID")
@@ -584,6 +602,7 @@ serve(async (req) => {
     }
     // Enforce max call duration across all tenant agents.
     patchBody.conversation_config.conversation = { max_duration_seconds: MAX_CALL_DURATION_SECONDS };
+
 
 
     const patchRes = await fetch(`${ELEVENLABS_API_URL}/convai/agents/${agentId}`, {
