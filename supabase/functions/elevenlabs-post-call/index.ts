@@ -105,9 +105,10 @@ serve(async (req) => {
     const reason = authReason || (sigHeader || legacyHeader ? 'invalid' : 'missing');
     console.warn(`[el-post-call] 401 ${reason} — request rejected`);
     try {
+      const MASTER_TENANT = '00000000-0000-0000-0000-000000000001';
       await supabase.from('voice_call_logs').insert({
         call_sid: 'unknown',
-        tenant_id: null,
+        tenant_id: MASTER_TENANT,
         stage: 'post_call_unauthorized',
         error_code: 'AUTH_401',
         error_message: reason,
@@ -119,7 +120,7 @@ serve(async (req) => {
         },
       });
       await supabase.from('audit_events').insert({
-        tenant_id: null,
+        tenant_id: MASTER_TENANT,
         event_type: 'call.elevenlabs_post_call_unauthorized',
         resource_type: 'elevenlabs_webhook',
         resource_id: null,
