@@ -4,7 +4,7 @@ import {
   LayoutDashboard, MessageSquare, FolderKanban, CalendarDays,
   Target, BookOpen, Plug, Settings, ChevronLeft, ChevronRight,
   Building2, Search, MessageCircle, Phone, CalendarPlus, Shield,
-  GraduationCap, Receipt, LogOut, KeyRound, Bot, AlarmClock, Voicemail,
+  GraduationCap, Receipt, LogOut, KeyRound, Bot, AlarmClock, Voicemail, Inbox,
   Crown, BarChart3, Users, Sun, Moon, TrendingUp, LifeBuoy, HeadphonesIcon,
 } from 'lucide-react';
 import AIAssistantWidget from '@/components/AIAssistantWidget';
@@ -22,6 +22,7 @@ const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard', exact: true },
   { to: '/calls', icon: Phone, label: 'Llamadas' },
   { to: '/whatsapp', icon: MessageSquare, label: 'WhatsApp' },
+  { to: '/sms-inbox', icon: Inbox, label: 'SMS' },
   { to: '/appointments', icon: CalendarPlus, label: 'Agenda' },
   { to: '/contacts', icon: Users, label: 'Contactos' },
   { to: '/support', icon: LifeBuoy, label: 'Soporte' },
