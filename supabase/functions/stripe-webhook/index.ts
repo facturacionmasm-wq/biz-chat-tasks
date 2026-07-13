@@ -65,6 +65,41 @@ async function resolveTenantByCustomer(client: any, customerId: string) {
   return data;
 }
 
+// ---- API-version-resilient helpers ----
+// Stripe API 2024-09-30+ moved several fields: invoice.subscription can be
+// null and invoice.period_start/end migrated into invoice.lines.data[].period;
+// subscription.current_period_* migrated into subscription.items.data[].
+// These helpers read both shapes and guard against non-finite epoch values
+// that would otherwise crash `new Date(x*1000).toISOString()` with RangeError.
+function unixToIso(sec: unknown): string | undefined {
+  const n = typeof sec === 'number' ? sec : Number(sec);
+  if (!Number.isFinite(n)) return undefined;
+  return new Date(n * 1000).toISOString();
+}
+
+function extractInvoiceSubscriptionId(invoice: any): string | null {
+  return invoice?.subscription
+    || invoice?.lines?.data?.[0]?.subscription
+    || invoice?.parent?.subscription_details?.subscription
+    || null;
+}
+
+function extractInvoicePeriod(invoice: any): { start?: string; end?: string } {
+  const linePeriod = invoice?.lines?.data?.[0]?.period;
+  const start = unixToIso(invoice?.period_start) ?? unixToIso(linePeriod?.start);
+  const end = unixToIso(invoice?.period_end) ?? unixToIso(linePeriod?.end);
+  return { start, end };
+}
+
+function extractSubscriptionPeriod(subscription: any): { start?: string; end?: string } {
+  const itemPeriod = subscription?.items?.data?.[0];
+  const start = unixToIso(subscription?.current_period_start)
+    ?? unixToIso(itemPeriod?.current_period_start);
+  const end = unixToIso(subscription?.current_period_end)
+    ?? unixToIso(itemPeriod?.current_period_end);
+  return { start, end };
+}
+
 // ---- Event Handlers ----
 async function handleCheckoutCompleted(client: any, session: any) {
   const tenantId = session.metadata?.tenant_id;
@@ -126,21 +161,26 @@ async function handleCheckoutCompleted(client: any, session: any) {
 
   // ===== CARD SETUP ONLY (mode: setup, pay-as-you-go) =====
   if (session.mode === 'setup') {
-    if (tenantId) {
-      await client.from('stripe_customers').upsert({
-        tenant_id: tenantId,
-        stripe_customer_id: session.customer,
-        email: session.customer_email || null,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'tenant_id' });
-
-      await logAudit(client, tenantId, 'billing.card_registered', {
-        mode: session.metadata?.mode || 'setup',
-        session_id: session.id,
-        stripe_customer_id: session.customer,
-      });
-      console.log(`Card registered for tenant ${tenantId} (pay-as-you-go)`);
+    if (!tenantId) {
+      // Guard: avoid NOT NULL violation on stripe_customers.tenant_id when
+      // metadata is missing (e.g. session created manually from dashboard).
+      // Return 200 upstream so Stripe does not retry indefinitely.
+      console.warn('[stripe-webhook] setup session without tenant_id metadata — skipping upsert', session.id);
+      return;
     }
+    await client.from('stripe_customers').upsert({
+      tenant_id: tenantId,
+      stripe_customer_id: session.customer,
+      email: session.customer_email || null,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'tenant_id' });
+
+    await logAudit(client, tenantId, 'billing.card_registered', {
+      mode: session.metadata?.mode || 'setup',
+      session_id: session.id,
+      stripe_customer_id: session.customer,
+    });
+    console.log(`Card registered for tenant ${tenantId} (pay-as-you-go)`);
     return;
   }
 
@@ -206,18 +246,20 @@ async function handleCheckoutCompleted(client: any, session: any) {
 }
 
 async function handleInvoicePaid(client: any, invoice: any) {
-  const subscriptionId = invoice.subscription;
+  const subscriptionId = extractInvoiceSubscriptionId(invoice);
   if (!subscriptionId) return;
 
   const sub = await resolveTenantBySubscription(client, subscriptionId);
   if (!sub) return;
 
-  await client.from('tenant_subscriptions').update({
+  const { start, end } = extractInvoicePeriod(invoice);
+  const patch: Record<string, any> = {
     status: 'active',
-    current_period_start: new Date(invoice.period_start * 1000).toISOString(),
-    current_period_end: new Date(invoice.period_end * 1000).toISOString(),
     updated_at: new Date().toISOString(),
-  }).eq('id', sub.id);
+  };
+  if (start) patch.current_period_start = start;
+  if (end) patch.current_period_end = end;
+  await client.from('tenant_subscriptions').update(patch).eq('id', sub.id);
 
   console.log(`Invoice paid for subscription ${subscriptionId}`);
   await logAudit(client, sub.tenant_id, 'subscription.invoice_paid', {
@@ -237,7 +279,7 @@ async function handleInvoicePaid(client: any, invoice: any) {
 }
 
 async function handleInvoicePaymentFailed(client: any, invoice: any) {
-  const subscriptionId = invoice.subscription;
+  const subscriptionId = extractInvoiceSubscriptionId(invoice);
   if (!subscriptionId) return;
 
   const sub = await resolveTenantBySubscription(client, subscriptionId);
@@ -285,30 +327,33 @@ async function handleSubscriptionUpdated(client: any, subscription: any) {
       .maybeSingle();
 
     if (plan) {
-      await client.from('tenant_subscriptions').upsert({
+      const { start, end } = extractSubscriptionPeriod(subscription);
+      const row: Record<string, any> = {
         tenant_id: customer.tenant_id,
         plan_id: plan.id,
         stripe_customer_id: subscription.customer,
         stripe_subscription_id: subscription.id,
         status: mapStripeStatus(subscription.status),
-        current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-        current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
         updated_at: new Date().toISOString(),
-      }, { onConflict: 'tenant_id' });
+      };
+      if (start) row.current_period_start = start;
+      if (end) row.current_period_end = end;
+      await client.from('tenant_subscriptions').upsert(row, { onConflict: 'tenant_id' });
     }
     return;
   }
 
   const newStatus = mapStripeStatus(subscription.status);
-  await client.from('tenant_subscriptions').update({
+  const { start, end } = extractSubscriptionPeriod(subscription);
+  const canceledAt = unixToIso(subscription.canceled_at);
+  const patch: Record<string, any> = {
     status: newStatus,
-    current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-    current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
-    canceled_at: subscription.canceled_at
-      ? new Date(subscription.canceled_at * 1000).toISOString()
-      : null,
+    canceled_at: canceledAt ?? null,
     updated_at: new Date().toISOString(),
-  }).eq('id', sub.id);
+  };
+  if (start) patch.current_period_start = start;
+  if (end) patch.current_period_end = end;
+  await client.from('tenant_subscriptions').update(patch).eq('id', sub.id);
 
   // Update stripe_customers with latest item IDs
   const meteredItem = subscription.items?.data?.find((i: any) =>
