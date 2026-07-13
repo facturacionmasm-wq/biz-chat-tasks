@@ -65,6 +65,41 @@ async function resolveTenantByCustomer(client: any, customerId: string) {
   return data;
 }
 
+// ---- API-version-resilient helpers ----
+// Stripe API 2024-09-30+ moved several fields: invoice.subscription can be
+// null and invoice.period_start/end migrated into invoice.lines.data[].period;
+// subscription.current_period_* migrated into subscription.items.data[].
+// These helpers read both shapes and guard against non-finite epoch values
+// that would otherwise crash `new Date(x*1000).toISOString()` with RangeError.
+function unixToIso(sec: unknown): string | undefined {
+  const n = typeof sec === 'number' ? sec : Number(sec);
+  if (!Number.isFinite(n)) return undefined;
+  return new Date(n * 1000).toISOString();
+}
+
+function extractInvoiceSubscriptionId(invoice: any): string | null {
+  return invoice?.subscription
+    || invoice?.lines?.data?.[0]?.subscription
+    || invoice?.parent?.subscription_details?.subscription
+    || null;
+}
+
+function extractInvoicePeriod(invoice: any): { start?: string; end?: string } {
+  const linePeriod = invoice?.lines?.data?.[0]?.period;
+  const start = unixToIso(invoice?.period_start) ?? unixToIso(linePeriod?.start);
+  const end = unixToIso(invoice?.period_end) ?? unixToIso(linePeriod?.end);
+  return { start, end };
+}
+
+function extractSubscriptionPeriod(subscription: any): { start?: string; end?: string } {
+  const itemPeriod = subscription?.items?.data?.[0];
+  const start = unixToIso(subscription?.current_period_start)
+    ?? unixToIso(itemPeriod?.current_period_start);
+  const end = unixToIso(subscription?.current_period_end)
+    ?? unixToIso(itemPeriod?.current_period_end);
+  return { start, end };
+}
+
 // ---- Event Handlers ----
 async function handleCheckoutCompleted(client: any, session: any) {
   const tenantId = session.metadata?.tenant_id;
