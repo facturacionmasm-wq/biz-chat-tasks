@@ -161,21 +161,26 @@ async function handleCheckoutCompleted(client: any, session: any) {
 
   // ===== CARD SETUP ONLY (mode: setup, pay-as-you-go) =====
   if (session.mode === 'setup') {
-    if (tenantId) {
-      await client.from('stripe_customers').upsert({
-        tenant_id: tenantId,
-        stripe_customer_id: session.customer,
-        email: session.customer_email || null,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'tenant_id' });
-
-      await logAudit(client, tenantId, 'billing.card_registered', {
-        mode: session.metadata?.mode || 'setup',
-        session_id: session.id,
-        stripe_customer_id: session.customer,
-      });
-      console.log(`Card registered for tenant ${tenantId} (pay-as-you-go)`);
+    if (!tenantId) {
+      // Guard: avoid NOT NULL violation on stripe_customers.tenant_id when
+      // metadata is missing (e.g. session created manually from dashboard).
+      // Return 200 upstream so Stripe does not retry indefinitely.
+      console.warn('[stripe-webhook] setup session without tenant_id metadata — skipping upsert', session.id);
+      return;
     }
+    await client.from('stripe_customers').upsert({
+      tenant_id: tenantId,
+      stripe_customer_id: session.customer,
+      email: session.customer_email || null,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'tenant_id' });
+
+    await logAudit(client, tenantId, 'billing.card_registered', {
+      mode: session.metadata?.mode || 'setup',
+      session_id: session.id,
+      stripe_customer_id: session.customer,
+    });
+    console.log(`Card registered for tenant ${tenantId} (pay-as-you-go)`);
     return;
   }
 
