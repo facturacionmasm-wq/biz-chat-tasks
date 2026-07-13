@@ -327,30 +327,33 @@ async function handleSubscriptionUpdated(client: any, subscription: any) {
       .maybeSingle();
 
     if (plan) {
-      await client.from('tenant_subscriptions').upsert({
+      const { start, end } = extractSubscriptionPeriod(subscription);
+      const row: Record<string, any> = {
         tenant_id: customer.tenant_id,
         plan_id: plan.id,
         stripe_customer_id: subscription.customer,
         stripe_subscription_id: subscription.id,
         status: mapStripeStatus(subscription.status),
-        current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-        current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
         updated_at: new Date().toISOString(),
-      }, { onConflict: 'tenant_id' });
+      };
+      if (start) row.current_period_start = start;
+      if (end) row.current_period_end = end;
+      await client.from('tenant_subscriptions').upsert(row, { onConflict: 'tenant_id' });
     }
     return;
   }
 
   const newStatus = mapStripeStatus(subscription.status);
-  await client.from('tenant_subscriptions').update({
+  const { start, end } = extractSubscriptionPeriod(subscription);
+  const canceledAt = unixToIso(subscription.canceled_at);
+  const patch: Record<string, any> = {
     status: newStatus,
-    current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-    current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
-    canceled_at: subscription.canceled_at
-      ? new Date(subscription.canceled_at * 1000).toISOString()
-      : null,
+    canceled_at: canceledAt ?? null,
     updated_at: new Date().toISOString(),
-  }).eq('id', sub.id);
+  };
+  if (start) patch.current_period_start = start;
+  if (end) patch.current_period_end = end;
+  await client.from('tenant_subscriptions').update(patch).eq('id', sub.id);
 
   // Update stripe_customers with latest item IDs
   const meteredItem = subscription.items?.data?.find((i: any) =>
