@@ -279,7 +279,7 @@ async function handleInvoicePaid(client: any, invoice: any) {
 }
 
 async function handleInvoicePaymentFailed(client: any, invoice: any) {
-  const subscriptionId = invoice.subscription;
+  const subscriptionId = extractInvoiceSubscriptionId(invoice);
   if (!subscriptionId) return;
 
   const sub = await resolveTenantBySubscription(client, subscriptionId);
