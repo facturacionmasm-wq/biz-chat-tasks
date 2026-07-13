@@ -246,18 +246,20 @@ async function handleCheckoutCompleted(client: any, session: any) {
 }
 
 async function handleInvoicePaid(client: any, invoice: any) {
-  const subscriptionId = invoice.subscription;
+  const subscriptionId = extractInvoiceSubscriptionId(invoice);
   if (!subscriptionId) return;
 
   const sub = await resolveTenantBySubscription(client, subscriptionId);
   if (!sub) return;
 
-  await client.from('tenant_subscriptions').update({
+  const { start, end } = extractInvoicePeriod(invoice);
+  const patch: Record<string, any> = {
     status: 'active',
-    current_period_start: new Date(invoice.period_start * 1000).toISOString(),
-    current_period_end: new Date(invoice.period_end * 1000).toISOString(),
     updated_at: new Date().toISOString(),
-  }).eq('id', sub.id);
+  };
+  if (start) patch.current_period_start = start;
+  if (end) patch.current_period_end = end;
+  await client.from('tenant_subscriptions').update(patch).eq('id', sub.id);
 
   console.log(`Invoice paid for subscription ${subscriptionId}`);
   await logAudit(client, sub.tenant_id, 'subscription.invoice_paid', {
