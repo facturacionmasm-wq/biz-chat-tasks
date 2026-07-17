@@ -3038,6 +3038,68 @@ export type Database = {
           },
         ]
       }
+      project_costs: {
+        Row: {
+          amount: number
+          attachment_name: string | null
+          attachment_path: string | null
+          category: string
+          cost_date: string
+          cost_type: string
+          created_at: string
+          created_by: string
+          created_by_name: string | null
+          currency: string
+          description: string | null
+          id: string
+          project_id: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          attachment_name?: string | null
+          attachment_path?: string | null
+          category: string
+          cost_date?: string
+          cost_type: string
+          created_at?: string
+          created_by: string
+          created_by_name?: string | null
+          currency?: string
+          description?: string | null
+          id?: string
+          project_id: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          attachment_name?: string | null
+          attachment_path?: string | null
+          category?: string
+          cost_date?: string
+          cost_type?: string
+          created_at?: string
+          created_by?: string
+          created_by_name?: string | null
+          currency?: string
+          description?: string | null
+          id?: string
+          project_id?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_costs_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       project_documents: {
         Row: {
           created_at: string
@@ -3097,6 +3159,80 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      project_financial_snapshots: {
+        Row: {
+          ai_summary: string | null
+          alerts: Json
+          break_even_amount: number | null
+          break_even_progress_pct: number | null
+          contract_amount: number | null
+          cost_performance_index: number | null
+          id: string
+          physical_progress_pct: number | null
+          project_id: string
+          projected_overrun: number | null
+          projected_profit: number | null
+          projected_total_cost: number | null
+          recommended_min_price: number | null
+          snapshot_at: string
+          tenant_id: string
+          total_cost: number
+          total_fixed: number
+          total_variable: number
+          trigger_source: string | null
+        }
+        Insert: {
+          ai_summary?: string | null
+          alerts?: Json
+          break_even_amount?: number | null
+          break_even_progress_pct?: number | null
+          contract_amount?: number | null
+          cost_performance_index?: number | null
+          id?: string
+          physical_progress_pct?: number | null
+          project_id: string
+          projected_overrun?: number | null
+          projected_profit?: number | null
+          projected_total_cost?: number | null
+          recommended_min_price?: number | null
+          snapshot_at?: string
+          tenant_id: string
+          total_cost?: number
+          total_fixed?: number
+          total_variable?: number
+          trigger_source?: string | null
+        }
+        Update: {
+          ai_summary?: string | null
+          alerts?: Json
+          break_even_amount?: number | null
+          break_even_progress_pct?: number | null
+          contract_amount?: number | null
+          cost_performance_index?: number | null
+          id?: string
+          physical_progress_pct?: number | null
+          project_id?: string
+          projected_overrun?: number | null
+          projected_profit?: number | null
+          projected_total_cost?: number | null
+          recommended_min_price?: number | null
+          snapshot_at?: string
+          tenant_id?: string
+          total_cost?: number
+          total_fixed?: number
+          total_variable?: number
+          trigger_source?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_financial_snapshots_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
             referencedColumns: ["id"]
           },
         ]
@@ -3175,6 +3311,107 @@ export type Database = {
           },
         ]
       }
+      project_progress_entries: {
+        Row: {
+          attachment_mime: string | null
+          attachment_name: string | null
+          attachment_path: string | null
+          author_name: string | null
+          author_user_id: string
+          comment: string
+          created_at: string
+          entry_date: string
+          id: string
+          project_id: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          attachment_mime?: string | null
+          attachment_name?: string | null
+          attachment_path?: string | null
+          author_name?: string | null
+          author_user_id: string
+          comment: string
+          created_at?: string
+          entry_date?: string
+          id?: string
+          project_id: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          attachment_mime?: string | null
+          attachment_name?: string | null
+          attachment_path?: string | null
+          author_name?: string | null
+          author_user_id?: string
+          comment?: string
+          created_at?: string
+          entry_date?: string
+          id?: string
+          project_id?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_progress_entries_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      project_progress_observations: {
+        Row: {
+          created_at: string
+          entry_id: string
+          id: string
+          observation: string
+          project_id: string
+          supervisor_name: string | null
+          supervisor_user_id: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          entry_id: string
+          id?: string
+          observation: string
+          project_id: string
+          supervisor_name?: string | null
+          supervisor_user_id: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          entry_id?: string
+          id?: string
+          observation?: string
+          project_id?: string
+          supervisor_name?: string | null
+          supervisor_user_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_progress_observations_entry_id_fkey"
+            columns: ["entry_id"]
+            isOneToOne: false
+            referencedRelation: "project_progress_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_progress_observations_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       project_tasks: {
         Row: {
           assignee_name: string | null
@@ -3246,38 +3483,53 @@ export type Database = {
       }
       projects: {
         Row: {
+          contract_amount: number | null
+          contract_currency: string
           created_at: string
           created_by: string | null
           description: string | null
           end_date: string
+          estimated_duration_days: number | null
           id: string
           name: string
+          physical_progress_pct: number
           start_date: string
           status: string
+          target_margin_pct: number
           tenant_id: string
           updated_at: string
         }
         Insert: {
+          contract_amount?: number | null
+          contract_currency?: string
           created_at?: string
           created_by?: string | null
           description?: string | null
           end_date?: string
+          estimated_duration_days?: number | null
           id?: string
           name: string
+          physical_progress_pct?: number
           start_date?: string
           status?: string
+          target_margin_pct?: number
           tenant_id: string
           updated_at?: string
         }
         Update: {
+          contract_amount?: number | null
+          contract_currency?: string
           created_at?: string
           created_by?: string | null
           description?: string | null
           end_date?: string
+          estimated_duration_days?: number | null
           id?: string
           name?: string
+          physical_progress_pct?: number
           start_date?: string
           status?: string
+          target_margin_pct?: number
           tenant_id?: string
           updated_at?: string
         }
@@ -5342,6 +5594,10 @@ export type Database = {
         Returns: boolean
       }
       cleanup_expired_nonces: { Args: never; Returns: undefined }
+      compute_project_financials: {
+        Args: { _project_id: string }
+        Returns: Json
+      }
       ensure_tenant_for_current_user: { Args: never; Returns: Json }
       get_slow_queries: {
         Args: { _limit?: number }
@@ -5373,6 +5629,10 @@ export type Database = {
           _tenant_id: string
           _user_id: string
         }
+        Returns: boolean
+      }
+      is_project_member: {
+        Args: { _project_id: string; _user_id: string }
         Returns: boolean
       }
       search_document_chunks: {

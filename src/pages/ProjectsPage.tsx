@@ -2,8 +2,10 @@ import { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   Plus, FolderKanban, Calendar, Users, ArrowUpCircle, ArrowRightCircle, ArrowDownCircle,
   Circle, Clock, CheckCircle2, AlertOctagon, ArrowLeft, ChevronRight, X, BarChart3,
-  Target, Milestone as MilestoneIcon, Edit3, Trash2, Timer, User, FileText
+  Target, Milestone as MilestoneIcon, Edit3, Trash2, Timer, User, FileText, ClipboardList, LineChart
 } from 'lucide-react';
+import ProjectProgressTab from '@/components/projects/ProjectProgressTab';
+import ProjectFinancialsTab from '@/components/projects/ProjectFinancialsTab';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Task } from '@/types/app';
@@ -76,7 +78,7 @@ const ProjectsPage = () => {
 
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [view, setView] = useState<'list' | 'board'>('list');
-  const [activeDetailTab, setActiveDetailTab] = useState<'tasks' | 'documents'>('tasks');
+  const [activeDetailTab, setActiveDetailTab] = useState<'tasks' | 'documents' | 'progress' | 'financials'>('tasks');
   const [selectedTask, setSelectedTask] = useState<TaskWithMeta | null>(null);
   const [deleteProjectTarget, setDeleteProjectTarget] = useState<{ id: string; name: string } | null>(null);
 
@@ -505,12 +507,18 @@ const ProjectsPage = () => {
 
           {/* Tab toggle: Tareas | Documentos */}
           <div className="flex items-center justify-between mt-4">
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 flex-wrap">
               <button onClick={() => setActiveDetailTab('tasks')} className={`text-xs px-3.5 py-1.5 rounded-xl font-medium transition-all ${activeDetailTab === 'tasks' ? 'bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground shadow-soft' : 'text-[var(--rx-t2)] hover:bg-[var(--rx-s2)]'}`}>
                 <span className="flex items-center gap-1.5"><FolderKanban size={13} /> Tareas</span>
               </button>
               <button onClick={() => setActiveDetailTab('documents')} className={`text-xs px-3.5 py-1.5 rounded-xl font-medium transition-all ${activeDetailTab === 'documents' ? 'bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground shadow-soft' : 'text-[var(--rx-t2)] hover:bg-[var(--rx-s2)]'}`}>
                 <span className="flex items-center gap-1.5"><FileText size={13} /> Documentos</span>
+              </button>
+              <button onClick={() => setActiveDetailTab('progress')} className={`text-xs px-3.5 py-1.5 rounded-xl font-medium transition-all ${activeDetailTab === 'progress' ? 'bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground shadow-soft' : 'text-[var(--rx-t2)] hover:bg-[var(--rx-s2)]'}`}>
+                <span className="flex items-center gap-1.5"><ClipboardList size={13} /> Avance de obra</span>
+              </button>
+              <button onClick={() => setActiveDetailTab('financials')} className={`text-xs px-3.5 py-1.5 rounded-xl font-medium transition-all ${activeDetailTab === 'financials' ? 'bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground shadow-soft' : 'text-[var(--rx-t2)] hover:bg-[var(--rx-s2)]'}`}>
+                <span className="flex items-center gap-1.5"><LineChart size={13} /> Análisis financiero</span>
               </button>
             </div>
             {activeDetailTab === 'tasks' && (
@@ -531,6 +539,10 @@ const ProjectsPage = () => {
         <div className="flex-1 overflow-auto p-4">
           {activeDetailTab === 'documents' ? (
             <ProjectDocumentsTab projectId={selectedProject.id} projectName={selectedProject.name} />
+          ) : activeDetailTab === 'progress' ? (
+            <ProjectProgressTab projectId={selectedProject.id} />
+          ) : activeDetailTab === 'financials' ? (
+            <ProjectFinancialsTab projectId={selectedProject.id} />
           ) : projectTasks.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <FolderKanban size={40} className="text-[var(--rx-t2)]/30 mb-3" />
