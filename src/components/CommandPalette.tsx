@@ -5,6 +5,7 @@ import {
   Users, FolderKanban, BookOpen, Target, TrendingUp, Settings,
   Receipt, AlarmClock, BarChart3, LogOut, Sun, Moon,
   ArrowRight, Hash, Zap,
+  Wallet, Bot as BotIcon, Activity, PiggyBank, Landmark, // [finance-fase1]
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRybixTheme } from '@/hooks/useRybixTheme';
@@ -54,6 +55,14 @@ export default function CommandPalette({ open, onClose }: CommandPaletteProps) {
     { id: 'reminders', label: 'Recordatorios', description: 'Alertas y notificaciones', icon: AlarmClock, iconColor: 'var(--rx-rose)', action: () => nav('/reminders'), group: 'Navegación' },
     { id: 'usage', label: 'Consumo', description: 'Uso y facturación', icon: BarChart3, iconColor: 'var(--rx-sky)', action: () => nav('/usage'), group: 'Navegación' },
     { id: 'settings', label: 'Configuración', description: 'Perfil y empresa', icon: Settings, iconColor: 'var(--rx-t2)', action: () => nav('/settings'), group: 'Navegación' },
+    // [finance-fase1]
+    { id: 'finance', label: 'Finanzas Inteligentes', description: 'Dashboard financiero de empresa', icon: Wallet, iconColor: 'var(--rx-brand)', action: () => nav('/finance'), group: 'Finanzas', keywords: ['finanzas','cfo','financiero'] },
+    { id: 'finance-accounts', label: 'Cuentas financieras', description: 'Bancos, tarjetas, procesadores', icon: Landmark, iconColor: 'var(--rx-sky)', action: () => nav('/finance/accounts'), group: 'Finanzas' },
+    { id: 'finance-tx', label: 'Transacciones', description: 'Movimientos y conciliación', icon: TrendingUp, iconColor: 'var(--rx-emerald)', action: () => nav('/finance/transactions'), group: 'Finanzas' },
+    { id: 'finance-cf', label: 'Flujo de efectivo', description: 'Forecast 7/30/60/90d', icon: Wallet, iconColor: 'var(--rx-amber)', action: () => nav('/finance/cashflow'), group: 'Finanzas' },
+    { id: 'finance-budgets', label: 'Presupuestos', description: 'Real vs presupuestado', icon: PiggyBank, iconColor: 'var(--rx-violet)', action: () => nav('/finance/budgets'), group: 'Finanzas' },
+    { id: 'finance-health', label: 'Health Score', description: 'Puntaje financiero 0-100', icon: Activity, iconColor: 'var(--rx-emerald)', action: () => nav('/finance/health'), group: 'Finanzas' },
+    { id: 'finance-cfo', label: 'CFO AI', description: 'Preguntas financieras al asistente', icon: BotIcon, iconColor: 'var(--rx-brand)', action: () => nav('/finance/cfo-ai'), group: 'Finanzas', keywords: ['cfo','ai','asistente'] },
     // Actions
     {
       id: 'theme',

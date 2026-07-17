@@ -1220,9 +1220,12 @@ export type Database = {
           created_at: string
           email: string | null
           id: string
+          is_customer: boolean
+          is_supplier: boolean
           is_vip: boolean
           name: string | null
           notes: string | null
+          payment_terms_days: number | null
           phone: string
           source: string | null
           starred: boolean
@@ -1237,9 +1240,12 @@ export type Database = {
           created_at?: string
           email?: string | null
           id?: string
+          is_customer?: boolean
+          is_supplier?: boolean
           is_vip?: boolean
           name?: string | null
           notes?: string | null
+          payment_terms_days?: number | null
           phone: string
           source?: string | null
           starred?: boolean
@@ -1254,9 +1260,12 @@ export type Database = {
           created_at?: string
           email?: string | null
           id?: string
+          is_customer?: boolean
+          is_supplier?: boolean
           is_vip?: boolean
           name?: string | null
           notes?: string | null
+          payment_terms_days?: number | null
           phone?: string
           source?: string | null
           starred?: boolean
@@ -1933,6 +1942,369 @@ export type Database = {
           },
         ]
       }
+      financial_accounts: {
+        Row: {
+          account_type: string
+          available_balance: number | null
+          connection_id: string | null
+          created_at: string
+          currency: string
+          current_balance: number
+          external_id: string | null
+          id: string
+          institution: string | null
+          is_hidden: boolean
+          last_synced_at: string | null
+          metadata: Json
+          name: string
+          provider: string
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          account_type?: string
+          available_balance?: number | null
+          connection_id?: string | null
+          created_at?: string
+          currency?: string
+          current_balance?: number
+          external_id?: string | null
+          id?: string
+          institution?: string | null
+          is_hidden?: boolean
+          last_synced_at?: string | null
+          metadata?: Json
+          name: string
+          provider?: string
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          account_type?: string
+          available_balance?: number | null
+          connection_id?: string | null
+          created_at?: string
+          currency?: string
+          current_balance?: number
+          external_id?: string | null
+          id?: string
+          institution?: string | null
+          is_hidden?: boolean
+          last_synced_at?: string | null
+          metadata?: Json
+          name?: string
+          provider?: string
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      financial_alerts: {
+        Row: {
+          account_id: string | null
+          acknowledged_at: string | null
+          alert_type: string
+          budget_id: string | null
+          created_at: string
+          data: Json
+          id: string
+          message: string
+          resolved_at: string | null
+          severity: string
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          account_id?: string | null
+          acknowledged_at?: string | null
+          alert_type: string
+          budget_id?: string | null
+          created_at?: string
+          data?: Json
+          id?: string
+          message: string
+          resolved_at?: string | null
+          severity?: string
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string | null
+          acknowledged_at?: string | null
+          alert_type?: string
+          budget_id?: string | null
+          created_at?: string
+          data?: Json
+          id?: string
+          message?: string
+          resolved_at?: string | null
+          severity?: string
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      financial_budget_lines: {
+        Row: {
+          budget_id: string
+          category_id: string | null
+          category_name: string
+          created_at: string
+          id: string
+          notes: string | null
+          planned_amount: number
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          budget_id: string
+          category_id?: string | null
+          category_name: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          planned_amount?: number
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          budget_id?: string
+          category_id?: string | null
+          category_name?: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          planned_amount?: number
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "financial_budget_lines_budget_id_fkey"
+            columns: ["budget_id"]
+            isOneToOne: false
+            referencedRelation: "financial_budgets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_budget_lines_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "financial_categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      financial_budgets: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          currency: string
+          id: string
+          name: string
+          notes: string | null
+          period_end: string
+          period_start: string
+          tenant_id: string
+          total_planned: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          id?: string
+          name: string
+          notes?: string | null
+          period_end: string
+          period_start: string
+          tenant_id: string
+          total_planned?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          id?: string
+          name?: string
+          notes?: string | null
+          period_end?: string
+          period_start?: string
+          tenant_id?: string
+          total_planned?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      financial_cashflow_forecasts: {
+        Row: {
+          created_at: string
+          currency: string
+          daily_series: Json
+          expected_inflows: number
+          expected_outflows: number
+          horizon_days: number
+          id: string
+          opening_balance: number
+          projected_balance: number
+          snapshot_at: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          currency?: string
+          daily_series?: Json
+          expected_inflows?: number
+          expected_outflows?: number
+          horizon_days: number
+          id?: string
+          opening_balance?: number
+          projected_balance?: number
+          snapshot_at?: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          currency?: string
+          daily_series?: Json
+          expected_inflows?: number
+          expected_outflows?: number
+          horizon_days?: number
+          id?: string
+          opening_balance?: number
+          projected_balance?: number
+          snapshot_at?: string
+          tenant_id?: string
+        }
+        Relationships: []
+      }
+      financial_categories: {
+        Row: {
+          color: string | null
+          created_at: string
+          icon: string | null
+          id: string
+          is_system: boolean
+          kind: string
+          name: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string
+          icon?: string | null
+          id?: string
+          is_system?: boolean
+          kind?: string
+          name: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          color?: string | null
+          created_at?: string
+          icon?: string | null
+          id?: string
+          is_system?: boolean
+          kind?: string
+          name?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      financial_connections: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          credentials_encrypted: string | null
+          id: string
+          institution: string | null
+          last_error: string | null
+          last_sync_at: string | null
+          metadata: Json
+          provider: string
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          credentials_encrypted?: string | null
+          id?: string
+          institution?: string | null
+          last_error?: string | null
+          last_sync_at?: string | null
+          metadata?: Json
+          provider?: string
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          credentials_encrypted?: string | null
+          id?: string
+          institution?: string | null
+          last_error?: string | null
+          last_sync_at?: string | null
+          metadata?: Json
+          provider?: string
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      financial_health_scores: {
+        Row: {
+          breakdown: Json
+          budget_score: number
+          cashflow_score: number
+          created_at: string
+          delinquency_score: number
+          id: string
+          liquidity_score: number
+          score: number
+          snapshot_at: string
+          tenant_id: string
+        }
+        Insert: {
+          breakdown?: Json
+          budget_score?: number
+          cashflow_score?: number
+          created_at?: string
+          delinquency_score?: number
+          id?: string
+          liquidity_score?: number
+          score?: number
+          snapshot_at?: string
+          tenant_id: string
+        }
+        Update: {
+          breakdown?: Json
+          budget_score?: number
+          cashflow_score?: number
+          created_at?: string
+          delinquency_score?: number
+          id?: string
+          liquidity_score?: number
+          score?: number
+          snapshot_at?: string
+          tenant_id?: string
+        }
+        Relationships: []
+      }
       financial_projections: {
         Row: {
           ai_narrative: string | null
@@ -1989,6 +2361,81 @@ export type Database = {
           risk_factors?: Json
         }
         Relationships: []
+      }
+      financial_transactions: {
+        Row: {
+          account_id: string
+          amount: number
+          attachment_path: string | null
+          category_id: string | null
+          counterparty_contact_id: string | null
+          created_at: string
+          currency: string
+          description: string
+          direction: string
+          external_id: string | null
+          id: string
+          metadata: Json
+          posted_at: string
+          reconciled_expense_id: string | null
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          amount: number
+          attachment_path?: string | null
+          category_id?: string | null
+          counterparty_contact_id?: string | null
+          created_at?: string
+          currency?: string
+          description: string
+          direction?: string
+          external_id?: string | null
+          id?: string
+          metadata?: Json
+          posted_at?: string
+          reconciled_expense_id?: string | null
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          amount?: number
+          attachment_path?: string | null
+          category_id?: string | null
+          counterparty_contact_id?: string | null
+          created_at?: string
+          currency?: string
+          description?: string
+          direction?: string
+          external_id?: string | null
+          id?: string
+          metadata?: Json
+          posted_at?: string
+          reconciled_expense_id?: string | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "financial_transactions_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "financial_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_transactions_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "financial_categories"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       fraud_detection_logs: {
         Row: {
@@ -5596,6 +6043,19 @@ export type Database = {
       cleanup_expired_nonces: { Args: never; Returns: undefined }
       compute_project_financials: {
         Args: { _project_id: string }
+        Returns: Json
+      }
+      compute_tenant_financial_summary: {
+        Args: {
+          _currency?: string
+          _period_end?: string
+          _period_start?: string
+          _tenant_id: string
+        }
+        Returns: Json
+      }
+      compute_tenant_health_score: {
+        Args: { _tenant_id: string }
         Returns: Json
       }
       ensure_tenant_for_current_user: { Args: never; Returns: Json }
