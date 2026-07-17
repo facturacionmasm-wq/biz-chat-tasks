@@ -11,6 +11,112 @@ function getNextRetryDelay(retryCount: number, baseMinutes = 5): number {
   return baseMinutes * Math.pow(2, retryCount);
 }
 
+// Structured JSON log for reminder outcomes (parseable in Edge logs)
+function logReminderOutcome(evt: {
+  scope: 'reminder' | 'appt_notif';
+  outcome: 'sent' | 'failed' | 'retry_scheduled' | 'indeterminate' | 'no_channel' | 'no_phone' | 'no_email' | 'cancelled_appt';
+  id: string;
+  tenant_id?: string | null;
+  channel?: string | null;
+  notification_type?: string | null;
+  retry_count?: number | null;
+  max_retries?: number | null;
+  next_retry_at?: string | null;
+  error?: string | null;
+  final?: boolean;
+}) {
+  try { console.log('[reminder-outcome]', JSON.stringify({ ts: new Date().toISOString(), ...evt })); } catch { /* noop */ }
+}
+
+// Fire-and-forget: email tenant admin/owner when a reminder ends in final failure.
+// Never throws. Idempotent per notification row via admin_notified_at.
+async function notifyTenantAdminFinalFailure(
+  supabase: any,
+  resendApiKey: string | undefined,
+  params: {
+    scope: 'reminder' | 'appt_notif';
+    row_id: string;
+    tenant_id: string | null | undefined;
+    channel_or_type: string;
+    target: string | null | undefined;
+    error: string | null | undefined;
+    appointment_id?: string | null;
+  },
+): Promise<void> {
+  try {
+    if (!params.tenant_id) return;
+    const [{ data: tenant }, { data: adminRoles }] = await Promise.all([
+      supabase.from('tenants').select('name').eq('id', params.tenant_id).maybeSingle(),
+      supabase.from('user_roles').select('user_id, role').eq('tenant_id', params.tenant_id).in('role', ['owner', 'admin']),
+    ]);
+    const userIds = [...new Set((adminRoles || []).map((r: any) => r.user_id))];
+    if (userIds.length === 0) return;
+    const { data: adminProfiles } = await supabase
+      .from('profiles').select('email, name').in('user_id', userIds);
+    const recipients = [...new Set((adminProfiles || []).map((p: any) => (p.email || '').trim()).filter(Boolean))];
+
+    const tenantName = tenant?.name || 'tu organización';
+    const subject = `⚠️ Falla definitiva de recordatorio (${params.channel_or_type})`;
+    const bodyLines = [
+      `Un recordatorio no pudo entregarse después de todos los reintentos disponibles.`,
+      ``,
+      `Organización: ${tenantName}`,
+      `Canal / tipo: ${params.channel_or_type}`,
+      `Destino: ${params.target || 'desconocido'}`,
+      params.appointment_id ? `Cita: ${params.appointment_id}` : null,
+      `ID interno: ${params.row_id}`,
+      `Error: ${params.error || 'sin detalle'}`,
+      ``,
+      `Revisa la configuración del canal (WhatsApp / Voz / Email) o contacta al cliente manualmente.`,
+    ].filter(Boolean).join('\n');
+
+    if (resendApiKey && recipients.length > 0) {
+      try {
+        await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${resendApiKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            from: 'Alertas Aria <no-reply@rybixholding.com>',
+            to: recipients,
+            subject,
+            html: `<pre style="font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;font-size:14px;color:#111;white-space:pre-wrap;">${bodyLines.replace(/</g,'&lt;')}</pre>`,
+          }),
+        });
+      } catch (e) {
+        console.error('[notifyTenantAdmin] email send failed:', (e as Error).message);
+      }
+    }
+
+    // Best-effort in-app notification (schema may vary; ignore errors)
+    try {
+      const rows = userIds.map((uid: string) => ({
+        tenant_id: params.tenant_id,
+        user_id: uid,
+        type: 'reminder_failed',
+        title: subject,
+        body: bodyLines,
+        metadata: {
+          scope: params.scope,
+          row_id: params.row_id,
+          channel_or_type: params.channel_or_type,
+          error: params.error,
+          appointment_id: params.appointment_id ?? null,
+        },
+      }));
+      await supabase.from('transfer_notifications').insert(rows);
+    } catch {/* best-effort */}
+
+    if (params.scope === 'appt_notif') {
+      try {
+        await supabase.from('appointment_notifications')
+          .update({ admin_notified_at: new Date().toISOString() }).eq('id', params.row_id);
+      } catch {/* noop */}
+    }
+  } catch (e) {
+    console.error('[notifyTenantAdmin] fatal:', (e as Error).message);
+  }
+}
+
 const MASTER_TENANT_ID = '00000000-0000-0000-0000-000000000001';
 const MASTER_MAPS_FALLBACK = 'https://maps.app.goo.gl/tp1nMuX6mkxxhRtS7';
 
@@ -314,6 +420,7 @@ serve(async (req) => {
         console.log(`✅ Reminder sent (${channel}) id=${reminder.id}`);
         await supabase.from('reminders').update({ status: 'sent', sent_at: now, error_message: null }).eq('id', reminder.id);
         results.push({ id: reminder.id, status: 'sent', channel, sid: sendResult.sid });
+        logReminderOutcome({ scope: 'reminder', outcome: 'sent', id: reminder.id, tenant_id: reminder.tenant_id, channel });
       } else {
         const newRetryCount = (reminder.retry_count || 0) + 1;
         const maxRetries = reminder.max_retries || 3;
@@ -326,6 +433,21 @@ serve(async (req) => {
           ...(nextRetryAt ? { remind_at: nextRetryAt } : {}),
         }).eq('id', reminder.id);
         results.push({ id: reminder.id, status: isFinalFailure ? 'failed' : 'retry_scheduled', error: sendResult.error });
+        logReminderOutcome({
+          scope: 'reminder',
+          outcome: isFinalFailure ? 'failed' : 'retry_scheduled',
+          id: reminder.id, tenant_id: reminder.tenant_id, channel,
+          retry_count: newRetryCount, max_retries: maxRetries,
+          next_retry_at: nextRetryAt ?? null, error: sendResult.error, final: isFinalFailure,
+        });
+        if (isFinalFailure) {
+          await notifyTenantAdminFinalFailure(supabase, RESEND_API_KEY, {
+            scope: 'reminder', row_id: reminder.id, tenant_id: reminder.tenant_id,
+            channel_or_type: channel,
+            target: channel === 'email' ? (reminder.contact_email || profile?.email) : (reminder.contact_phone || profile?.whatsapp_number),
+            error: sendResult.error,
+          });
+        }
       }
     }
 
@@ -334,7 +456,7 @@ serve(async (req) => {
     // ============================================================
     const { data: apptNotifs, error: apptErr } = await supabase
       .from('appointment_notifications')
-      .select('id, appointment_id, tenant_id, target_phone, target_email, target_user_id, notification_type, message_body, status')
+      .select('id, appointment_id, tenant_id, target_phone, target_email, target_user_id, notification_type, message_body, status, retry_count, max_retries')
       .in('status', ['pending'])
       .lte('scheduled_at', now)
       .order('scheduled_at')
@@ -581,16 +703,54 @@ serve(async (req) => {
         if (sendResult.ok) {
           sentCount++;
           await supabase.from('appointment_notifications').update({
-            status: 'sent', sent_at: now,
+            status: 'sent', sent_at: now, error_message: null,
           }).eq('id', notif.id);
           console.log(`✅ Appt notification sent: type=${notif.notification_type} to=${targetPhone || targetEmail}`);
           results.push({ id: notif.id, type: 'appt_notif', status: 'sent' });
+          logReminderOutcome({
+            scope: 'appt_notif', outcome: 'sent', id: notif.id, tenant_id: notif.tenant_id,
+            notification_type: notif.notification_type,
+          });
         } else {
-          await supabase.from('appointment_notifications').update({
-            status: 'failed', error_message: sendResult.error,
-          }).eq('id', notif.id);
-          console.error(`❌ Appt notification failed: ${sendResult.error}`);
-          results.push({ id: notif.id, type: 'appt_notif', status: 'failed', error: sendResult.error });
+          const attempts = (notif.retry_count || 0) + 1;
+          const maxA = (notif.max_retries ?? 2);
+          const isFinal = attempts >= maxA;
+          // Voice reminders (reminder_1h) are time-sensitive → no automatic retry
+          const isRetryable = (notifType === 'reminder_whatsapp' || notifType === 'staff_whatsapp' || notifType === 'reminder_24h' || notifType === 'staff_update');
+          const nextAt = (!isFinal && isRetryable)
+            ? new Date(Date.now() + getNextRetryDelay(attempts, 3) * 60000).toISOString()
+            : null;
+          if (nextAt) {
+            await supabase.from('appointment_notifications').update({
+              status: 'pending',
+              retry_count: attempts,
+              scheduled_at: nextAt,
+              error_message: sendResult.error,
+            }).eq('id', notif.id);
+            results.push({ id: notif.id, type: 'appt_notif', status: 'retry_scheduled', error: sendResult.error, next_retry_at: nextAt });
+            logReminderOutcome({
+              scope: 'appt_notif', outcome: 'retry_scheduled', id: notif.id, tenant_id: notif.tenant_id,
+              notification_type: notif.notification_type, retry_count: attempts, max_retries: maxA,
+              next_retry_at: nextAt, error: sendResult.error, final: false,
+            });
+          } else {
+            await supabase.from('appointment_notifications').update({
+              status: 'failed', retry_count: attempts, error_message: sendResult.error,
+            }).eq('id', notif.id);
+            console.error(`❌ Appt notification failed (final): ${sendResult.error}`);
+            results.push({ id: notif.id, type: 'appt_notif', status: 'failed', error: sendResult.error });
+            logReminderOutcome({
+              scope: 'appt_notif', outcome: 'failed', id: notif.id, tenant_id: notif.tenant_id,
+              notification_type: notif.notification_type, retry_count: attempts, max_retries: maxA,
+              error: sendResult.error, final: true,
+            });
+            await notifyTenantAdminFinalFailure(supabase, RESEND_API_KEY, {
+              scope: 'appt_notif', row_id: notif.id, tenant_id: notif.tenant_id,
+              channel_or_type: String(notif.notification_type || 'unknown'),
+              target: targetPhone || targetEmail || null,
+              error: sendResult.error, appointment_id: notif.appointment_id,
+            });
+          }
         }
       }
     }

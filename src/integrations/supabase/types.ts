@@ -101,14 +101,17 @@ export type Database = {
       }
       appointment_notifications: {
         Row: {
+          admin_notified_at: string | null
           appointment_id: string
           created_at: string
           error_message: string | null
           id: string
+          max_retries: number
           message_body: string | null
           notification_type: string
           responded_at: string | null
           response: string | null
+          retry_count: number
           scheduled_at: string
           sent_at: string | null
           status: string
@@ -118,14 +121,17 @@ export type Database = {
           tenant_id: string
         }
         Insert: {
+          admin_notified_at?: string | null
           appointment_id: string
           created_at?: string
           error_message?: string | null
           id?: string
+          max_retries?: number
           message_body?: string | null
           notification_type: string
           responded_at?: string | null
           response?: string | null
+          retry_count?: number
           scheduled_at: string
           sent_at?: string | null
           status?: string
@@ -135,14 +141,17 @@ export type Database = {
           tenant_id: string
         }
         Update: {
+          admin_notified_at?: string | null
           appointment_id?: string
           created_at?: string
           error_message?: string | null
           id?: string
+          max_retries?: number
           message_body?: string | null
           notification_type?: string
           responded_at?: string | null
           response?: string | null
+          retry_count?: number
           scheduled_at?: string
           sent_at?: string | null
           status?: string
