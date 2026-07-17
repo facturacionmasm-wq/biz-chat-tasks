@@ -420,6 +420,7 @@ serve(async (req) => {
         console.log(`✅ Reminder sent (${channel}) id=${reminder.id}`);
         await supabase.from('reminders').update({ status: 'sent', sent_at: now, error_message: null }).eq('id', reminder.id);
         results.push({ id: reminder.id, status: 'sent', channel, sid: sendResult.sid });
+        logReminderOutcome({ scope: 'reminder', outcome: 'sent', id: reminder.id, tenant_id: reminder.tenant_id, channel });
       } else {
         const newRetryCount = (reminder.retry_count || 0) + 1;
         const maxRetries = reminder.max_retries || 3;
@@ -432,6 +433,21 @@ serve(async (req) => {
           ...(nextRetryAt ? { remind_at: nextRetryAt } : {}),
         }).eq('id', reminder.id);
         results.push({ id: reminder.id, status: isFinalFailure ? 'failed' : 'retry_scheduled', error: sendResult.error });
+        logReminderOutcome({
+          scope: 'reminder',
+          outcome: isFinalFailure ? 'failed' : 'retry_scheduled',
+          id: reminder.id, tenant_id: reminder.tenant_id, channel,
+          retry_count: newRetryCount, max_retries: maxRetries,
+          next_retry_at: nextRetryAt ?? null, error: sendResult.error, final: isFinalFailure,
+        });
+        if (isFinalFailure) {
+          await notifyTenantAdminFinalFailure(supabase, RESEND_API_KEY, {
+            scope: 'reminder', row_id: reminder.id, tenant_id: reminder.tenant_id,
+            channel_or_type: channel,
+            target: channel === 'email' ? (reminder.contact_email || profile?.email) : (reminder.contact_phone || profile?.whatsapp_number),
+            error: sendResult.error,
+          });
+        }
       }
     }
 
