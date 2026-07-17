@@ -4,7 +4,8 @@ import {
   LayoutDashboard, Phone, MessageSquare, CalendarPlus, MoreHorizontal,
   FolderKanban, CalendarDays, Target, BookOpen, MessageCircle,
   GraduationCap, Receipt, KeyRound, AlarmClock, BarChart3,
-  Plug, Shield, Bot, Settings, Crown, LogOut, X, LifeBuoy, HeadphonesIcon
+  Plug, Shield, Bot, Settings, Crown, LogOut, X, LifeBuoy, HeadphonesIcon,
+  Wallet, // [finance-fase1]
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { useAuth } from '@/contexts/AuthContext';
@@ -26,6 +27,7 @@ const baseMoreItems = [
   { to: '/okrs', icon: Target, label: 'OKRs' },
   { to: '/ai-training', icon: GraduationCap, label: 'Entrenamiento IA' },
   { to: '/expenses', icon: Receipt, label: 'Gastos' },
+  { to: '/finance', icon: Wallet, label: 'Finanzas' }, // [finance-fase1]
   { to: '/credentials', icon: KeyRound, label: 'Credenciales' },
   { to: '/reminders', icon: AlarmClock, label: 'Recordatorios' },
   { to: '/usage', icon: BarChart3, label: 'Consumo' },

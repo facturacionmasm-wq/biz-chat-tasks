@@ -40,6 +40,17 @@ import AnalyticsPage from "./pages/AnalyticsPage";
 import SupportPage from "./pages/SupportPage";
 import PlatformSupportPage from "./pages/PlatformSupportPage";
 import SuperAdminSupportPage from "./pages/SuperAdminSupportPage";
+// [finance-fase1]
+import FinanceLayout from "./pages/finance/FinanceLayout";
+import FinanceDashboardPage from "./pages/finance/FinanceDashboardPage";
+import FinanceAccountsPage from "./pages/finance/FinanceAccountsPage";
+import FinanceTransactionsPage from "./pages/finance/FinanceTransactionsPage";
+import FinanceCashflowPage from "./pages/finance/FinanceCashflowPage";
+import { ReceivablesPage, PayablesPage } from "./pages/finance/AgingPages";
+import FinanceBudgetsPage from "./pages/finance/FinanceBudgetsPage";
+import FinanceHealthPage from "./pages/finance/FinanceHealthPage";
+import CFOAssistantPage from "./pages/finance/CFOAssistantPage";
+import FinanceIntegrationsPage from "./pages/finance/FinanceIntegrationsPage";
 import { Loader2 } from "lucide-react";
 import CommandPalette from "./components/CommandPalette";
 
@@ -177,6 +188,19 @@ const AppRoutes = () => (
     <Route path="/super-admin" element={<AdminRoute><AppLayout><SuperAdminPage /></AppLayout></AdminRoute>} />
     <Route path="/super-admin/support" element={<AdminRoute><AppLayout><SuperAdminSupportPage /></AppLayout></AdminRoute>} />
     <Route path="/schema-docs" element={<AdminRoute><AppLayout><SchemaDocsPage /></AppLayout></AdminRoute>} />
+    {/* [finance-fase1] */}
+    <Route path="/finance" element={<P><FinanceLayout /></P>}>
+      <Route index element={<FinanceDashboardPage />} />
+      <Route path="accounts" element={<FinanceAccountsPage />} />
+      <Route path="transactions" element={<FinanceTransactionsPage />} />
+      <Route path="cashflow" element={<FinanceCashflowPage />} />
+      <Route path="receivables" element={<ReceivablesPage />} />
+      <Route path="payables" element={<PayablesPage />} />
+      <Route path="budgets" element={<FinanceBudgetsPage />} />
+      <Route path="health" element={<FinanceHealthPage />} />
+      <Route path="cfo-ai" element={<CFOAssistantPage />} />
+      <Route path="integrations" element={<FinanceIntegrationsPage />} />
+    </Route>
     <Route path="*" element={<NotFound />} />
   </Routes>
 );
