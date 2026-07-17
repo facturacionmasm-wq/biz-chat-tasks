@@ -3175,6 +3175,107 @@ export type Database = {
           },
         ]
       }
+      project_progress_entries: {
+        Row: {
+          attachment_mime: string | null
+          attachment_name: string | null
+          attachment_path: string | null
+          author_name: string | null
+          author_user_id: string
+          comment: string
+          created_at: string
+          entry_date: string
+          id: string
+          project_id: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          attachment_mime?: string | null
+          attachment_name?: string | null
+          attachment_path?: string | null
+          author_name?: string | null
+          author_user_id: string
+          comment: string
+          created_at?: string
+          entry_date?: string
+          id?: string
+          project_id: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          attachment_mime?: string | null
+          attachment_name?: string | null
+          attachment_path?: string | null
+          author_name?: string | null
+          author_user_id?: string
+          comment?: string
+          created_at?: string
+          entry_date?: string
+          id?: string
+          project_id?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_progress_entries_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      project_progress_observations: {
+        Row: {
+          created_at: string
+          entry_id: string
+          id: string
+          observation: string
+          project_id: string
+          supervisor_name: string | null
+          supervisor_user_id: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          entry_id: string
+          id?: string
+          observation: string
+          project_id: string
+          supervisor_name?: string | null
+          supervisor_user_id: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          entry_id?: string
+          id?: string
+          observation?: string
+          project_id?: string
+          supervisor_name?: string | null
+          supervisor_user_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_progress_observations_entry_id_fkey"
+            columns: ["entry_id"]
+            isOneToOne: false
+            referencedRelation: "project_progress_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_progress_observations_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       project_tasks: {
         Row: {
           assignee_name: string | null
@@ -5373,6 +5474,10 @@ export type Database = {
           _tenant_id: string
           _user_id: string
         }
+        Returns: boolean
+      }
+      is_project_member: {
+        Args: { _project_id: string; _user_id: string }
         Returns: boolean
       }
       search_document_chunks: {
