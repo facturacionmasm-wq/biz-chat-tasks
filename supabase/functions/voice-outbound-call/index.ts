@@ -155,13 +155,16 @@ serve(async (req) => {
       });
     }
 
-    // Resolve tenant sender number
+    // Resolve tenant sender number + name (for outbound framing)
     const { data: tenant } = await supabase
       .from('tenants')
-      .select('whatsapp_config')
+      .select('name, whatsapp_config')
       .eq('id', tenantId)
       .maybeSingle();
     const wa = (tenant?.whatsapp_config || {}) as Record<string, unknown>;
+    const tenantName = typeof tenant?.name === 'string' && tenant.name.length > 0
+      ? String(tenant.name)
+      : 'nuestro negocio';
     const fromNumber = typeof wa.phone_number === 'string' && wa.phone_number.length > 0
       ? String(wa.phone_number).replace(/^whatsapp:/i, '')
       : (Deno.env.get('TWILIO_PHONE_NUMBER') || '');
@@ -190,9 +193,55 @@ serve(async (req) => {
     }
     if (appointmentId) stringDynVars.appointment_id = appointmentId;
     stringDynVars.tenant_id = tenantId;
+    if (!stringDynVars.tenant_name) stringDynVars.tenant_name = tenantName;
+
+    // ────────── Outbound reminder framing (per-call override) ──────────
+    // Only applied for reminder-style purposes so we never override inbound
+    // reception calls or other outbound flows.
+    const purpose = String(stringDynVars.purpose || '');
+    const isReminder = purpose.startsWith('appointment_reminder');
+    const contactName = String(stringDynVars.contact_name || '').trim();
+    const apptDate = String(stringDynVars.appointment_date || '').trim();
+    const apptTime = String(stringDynVars.appointment_time || '').trim();
+    const serviceType = String(stringDynVars.service_type || '').trim();
+
+    const firstNameSpoken = contactName ? contactName.split(' ')[0] : '';
+    const outboundFirstMessage = isReminder
+      ? `Hola${firstNameSpoken ? ' ' + firstNameSpoken : ''}, le hablamos de ${tenantName}` +
+        ` para recordarle su cita${serviceType ? ' de ' + serviceType : ''}` +
+        `${apptDate ? ' el ' + apptDate : ''}${apptTime ? ' a las ' + apptTime : ''}.` +
+        ` ¿Sigue en pie o necesita reagendar o cancelar?`
+      : null;
+
+    const outboundSystemPrompt = isReminder
+      ? [
+          `Estás realizando una LLAMADA SALIENTE PROACTIVA en nombre de ${tenantName}.`,
+          `NO eres recepcionista: TÚ iniciaste la llamada al cliente${firstNameSpoken ? ' ' + firstNameSpoken : ''} para recordarle su cita.`,
+          `Detalles de la cita: fecha=${apptDate || 'sin fecha'}, hora=${apptTime || 'sin hora'}, servicio=${serviceType || 'general'}.`,
+          `Objetivo único: confirmar, reagendar o cancelar esa cita.`,
+          `Nunca digas "¿en qué puedo ayudarle?" ni te presentes como recepción. Nunca preguntes el motivo de la llamada: el motivo es el recordatorio.`,
+          `Si el cliente confirma, agradécele y despídete brevemente.`,
+          `Si pide reagendar o cancelar, usa las herramientas disponibles para hacerlo antes de colgar.`,
+          `Habla en español neutro, cálido y breve.`,
+        ].join(' ')
+      : null;
+
+    const conversationInitiationClientData: Record<string, unknown> = {
+      dynamic_variables: stringDynVars,
+    };
+    if (outboundFirstMessage || outboundSystemPrompt) {
+      conversationInitiationClientData.conversation_config_override = {
+        agent: {
+          ...(outboundFirstMessage ? { first_message: outboundFirstMessage } : {}),
+          ...(outboundSystemPrompt
+            ? { prompt: { prompt: outboundSystemPrompt } }
+            : {}),
+        },
+      };
+    }
 
     // Call ElevenLabs Twilio outbound endpoint
-    console.log(`[voice-outbound-call] agent=${agentId} phoneId=${agentPhoneNumberId} to=${toNumber} appt=${appointmentId}`);
+    console.log(`[voice-outbound-call] agent=${agentId} phoneId=${agentPhoneNumberId} to=${toNumber} appt=${appointmentId} reminder=${isReminder}`);
     const elRes = await fetch('https://api.elevenlabs.io/v1/convai/twilio/outbound-call', {
       method: 'POST',
       headers: {
@@ -203,9 +252,7 @@ serve(async (req) => {
         agent_id: agentId,
         agent_phone_number_id: agentPhoneNumberId,
         to_number: toNumber,
-        conversation_initiation_client_data: {
-          dynamic_variables: stringDynVars,
-        },
+        conversation_initiation_client_data: conversationInitiationClientData,
       }),
     });
 

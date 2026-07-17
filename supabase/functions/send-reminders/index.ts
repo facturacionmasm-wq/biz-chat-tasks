@@ -699,7 +699,7 @@ async function sendEmail(apiKey: string, to: string, subject: string, body: stri
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: 'Recordatorios <onboarding@resend.dev>',
+        from: 'Recordatorios <no-reply@rybixholding.com>',
         to: [to],
         subject,
         html: `<div style="font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; font-size: 15px; color: #111; line-height: 1.5;">${html}</div>`,
