@@ -507,12 +507,18 @@ const ProjectsPage = () => {
 
           {/* Tab toggle: Tareas | Documentos */}
           <div className="flex items-center justify-between mt-4">
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 flex-wrap">
               <button onClick={() => setActiveDetailTab('tasks')} className={`text-xs px-3.5 py-1.5 rounded-xl font-medium transition-all ${activeDetailTab === 'tasks' ? 'bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground shadow-soft' : 'text-[var(--rx-t2)] hover:bg-[var(--rx-s2)]'}`}>
                 <span className="flex items-center gap-1.5"><FolderKanban size={13} /> Tareas</span>
               </button>
               <button onClick={() => setActiveDetailTab('documents')} className={`text-xs px-3.5 py-1.5 rounded-xl font-medium transition-all ${activeDetailTab === 'documents' ? 'bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground shadow-soft' : 'text-[var(--rx-t2)] hover:bg-[var(--rx-s2)]'}`}>
                 <span className="flex items-center gap-1.5"><FileText size={13} /> Documentos</span>
+              </button>
+              <button onClick={() => setActiveDetailTab('progress')} className={`text-xs px-3.5 py-1.5 rounded-xl font-medium transition-all ${activeDetailTab === 'progress' ? 'bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground shadow-soft' : 'text-[var(--rx-t2)] hover:bg-[var(--rx-s2)]'}`}>
+                <span className="flex items-center gap-1.5"><ClipboardList size={13} /> Avance de obra</span>
+              </button>
+              <button onClick={() => setActiveDetailTab('financials')} className={`text-xs px-3.5 py-1.5 rounded-xl font-medium transition-all ${activeDetailTab === 'financials' ? 'bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground shadow-soft' : 'text-[var(--rx-t2)] hover:bg-[var(--rx-s2)]'}`}>
+                <span className="flex items-center gap-1.5"><LineChart size={13} /> Análisis financiero</span>
               </button>
             </div>
             {activeDetailTab === 'tasks' && (
