@@ -456,7 +456,7 @@ serve(async (req) => {
     // ============================================================
     const { data: apptNotifs, error: apptErr } = await supabase
       .from('appointment_notifications')
-      .select('id, appointment_id, tenant_id, target_phone, target_email, target_user_id, notification_type, message_body, status')
+      .select('id, appointment_id, tenant_id, target_phone, target_email, target_user_id, notification_type, message_body, status, retry_count, max_retries')
       .in('status', ['pending'])
       .lte('scheduled_at', now)
       .order('scheduled_at')
