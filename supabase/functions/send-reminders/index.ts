@@ -703,16 +703,54 @@ serve(async (req) => {
         if (sendResult.ok) {
           sentCount++;
           await supabase.from('appointment_notifications').update({
-            status: 'sent', sent_at: now,
+            status: 'sent', sent_at: now, error_message: null,
           }).eq('id', notif.id);
           console.log(`✅ Appt notification sent: type=${notif.notification_type} to=${targetPhone || targetEmail}`);
           results.push({ id: notif.id, type: 'appt_notif', status: 'sent' });
+          logReminderOutcome({
+            scope: 'appt_notif', outcome: 'sent', id: notif.id, tenant_id: notif.tenant_id,
+            notification_type: notif.notification_type,
+          });
         } else {
-          await supabase.from('appointment_notifications').update({
-            status: 'failed', error_message: sendResult.error,
-          }).eq('id', notif.id);
-          console.error(`❌ Appt notification failed: ${sendResult.error}`);
-          results.push({ id: notif.id, type: 'appt_notif', status: 'failed', error: sendResult.error });
+          const attempts = (notif.retry_count || 0) + 1;
+          const maxA = (notif.max_retries ?? 2);
+          const isFinal = attempts >= maxA;
+          // Voice reminders (reminder_1h) are time-sensitive → no automatic retry
+          const isRetryable = (notifType === 'reminder_whatsapp' || notifType === 'staff_whatsapp' || notifType === 'reminder_24h' || notifType === 'staff_update');
+          const nextAt = (!isFinal && isRetryable)
+            ? new Date(Date.now() + getNextRetryDelay(attempts, 3) * 60000).toISOString()
+            : null;
+          if (nextAt) {
+            await supabase.from('appointment_notifications').update({
+              status: 'pending',
+              retry_count: attempts,
+              scheduled_at: nextAt,
+              error_message: sendResult.error,
+            }).eq('id', notif.id);
+            results.push({ id: notif.id, type: 'appt_notif', status: 'retry_scheduled', error: sendResult.error, next_retry_at: nextAt });
+            logReminderOutcome({
+              scope: 'appt_notif', outcome: 'retry_scheduled', id: notif.id, tenant_id: notif.tenant_id,
+              notification_type: notif.notification_type, retry_count: attempts, max_retries: maxA,
+              next_retry_at: nextAt, error: sendResult.error, final: false,
+            });
+          } else {
+            await supabase.from('appointment_notifications').update({
+              status: 'failed', retry_count: attempts, error_message: sendResult.error,
+            }).eq('id', notif.id);
+            console.error(`❌ Appt notification failed (final): ${sendResult.error}`);
+            results.push({ id: notif.id, type: 'appt_notif', status: 'failed', error: sendResult.error });
+            logReminderOutcome({
+              scope: 'appt_notif', outcome: 'failed', id: notif.id, tenant_id: notif.tenant_id,
+              notification_type: notif.notification_type, retry_count: attempts, max_retries: maxA,
+              error: sendResult.error, final: true,
+            });
+            await notifyTenantAdminFinalFailure(supabase, RESEND_API_KEY, {
+              scope: 'appt_notif', row_id: notif.id, tenant_id: notif.tenant_id,
+              channel_or_type: String(notif.notification_type || 'unknown'),
+              target: targetPhone || targetEmail || null,
+              error: sendResult.error, appointment_id: notif.appointment_id,
+            });
+          }
         }
       }
     }
