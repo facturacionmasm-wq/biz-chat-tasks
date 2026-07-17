@@ -539,6 +539,10 @@ const ProjectsPage = () => {
         <div className="flex-1 overflow-auto p-4">
           {activeDetailTab === 'documents' ? (
             <ProjectDocumentsTab projectId={selectedProject.id} projectName={selectedProject.name} />
+          ) : activeDetailTab === 'progress' ? (
+            <ProjectProgressTab projectId={selectedProject.id} />
+          ) : activeDetailTab === 'financials' ? (
+            <ProjectFinancialsTab projectId={selectedProject.id} />
           ) : projectTasks.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <FolderKanban size={40} className="text-[var(--rx-t2)]/30 mb-3" />
