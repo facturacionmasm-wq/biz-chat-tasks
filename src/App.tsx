@@ -190,6 +190,7 @@ const AppRoutes = () => (
     <Route path="/super-admin" element={<AdminRoute><AppLayout><SuperAdminPage /></AppLayout></AdminRoute>} />
     <Route path="/super-admin/support" element={<AdminRoute><AppLayout><SuperAdminSupportPage /></AppLayout></AdminRoute>} />
     <Route path="/schema-docs" element={<AdminRoute><AppLayout><SchemaDocsPage /></AppLayout></AdminRoute>} />
+    <Route path="/admin/finance-overview" element={<AdminRoute><AppLayout><FinanceOverviewPage /></AppLayout></AdminRoute>} />
     {/* [finance-fase1] */}
     <Route path="/finance" element={<P><FinanceLayout /></P>}>
       <Route index element={<FinanceDashboardPage />} />
