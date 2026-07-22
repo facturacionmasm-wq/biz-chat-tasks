@@ -1789,15 +1789,25 @@ const SettingsPage = () => {
                             </button>
                           )}
                           {!isSelf && (isSuperAdmin || userRole === 'owner' || userRole === 'admin') && (
-                            <button
-                              onClick={() => handleDeleteMember(m.user_id)}
-                              disabled={deletingUserId === m.user_id}
-                              className="text-[var(--rx-rose)] hover:text-[var(--rx-rose)]/80 disabled:opacity-40 p-1.5 rounded hover:bg-destructive/10 transition-colors"
-                              title="Eliminar miembro"
-                            >
-                              {deletingUserId === m.user_id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                            </button>
+                            <>
+                              <button
+                                onClick={() => handleResetPin(m.user_id, m.name || m.email)}
+                                className="p-1.5 rounded hover:bg-[var(--rx-s2)] text-[var(--rx-amber)] hover:opacity-80 transition-colors"
+                                title="Resetear PIN"
+                              >
+                                <KeyRound size={14} />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteMember(m.user_id)}
+                                disabled={deletingUserId === m.user_id}
+                                className="text-[var(--rx-rose)] hover:text-[var(--rx-rose)]/80 disabled:opacity-40 p-1.5 rounded hover:bg-destructive/10 transition-colors"
+                                title="Eliminar miembro"
+                              >
+                                {deletingUserId === m.user_id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                              </button>
+                            </>
                           )}
+
                           {isSelf && <span className="text-[10px] text-[var(--rx-t2)] bg-[var(--rx-s2)] px-2 py-0.5 rounded-full">Tú</span>}
                         </div>
                       </div>
