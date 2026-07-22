@@ -91,16 +91,21 @@ const SuperAdminDashboard = () => {
           </h1>
           <p className="text-[var(--rx-t2)] text-sm mt-1">Métricas financieras, KPIs unicornio, fraude, churn y proyecciones.</p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => globalData.generateMetrics.mutate()}
-          disabled={globalData.generateMetrics.isPending}
-          className="gap-2"
-        >
-          {globalData.generateMetrics.isPending ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-          Calcular métricas
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button asChild variant="outline" size="sm" className="gap-2">
+            <a href="/admin/finance-overview"><ShieldAlert size={14} /> Vista financiera consolidada</a>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => globalData.generateMetrics.mutate()}
+            disabled={globalData.generateMetrics.isPending}
+            className="gap-2"
+          >
+            {globalData.generateMetrics.isPending ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+            Calcular métricas
+          </Button>
+        </div>
       </div>
 
       <Tabs defaultValue="global" className="space-y-4">
