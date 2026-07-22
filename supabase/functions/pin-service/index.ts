@@ -83,7 +83,12 @@ serve(async (req) => {
       const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
       const { error } = await adminClient
         .from('profiles')
-        .update({ pin_hash: pinHash })
+        .update({
+          pin_hash: pinHash,
+          pin_must_change: false,
+          pin_temp_expires_at: null,
+          pin_updated_at: new Date().toISOString(),
+        })
         .eq('user_id', userId);
 
       if (error) throw error;
@@ -92,6 +97,62 @@ serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+
+    // Action: admin_reset_pin — owner/admin resets another user's PIN → generates 6-digit temp PIN
+    if (action === 'admin_reset_pin') {
+      const authHeader = req.headers.get('Authorization');
+      if (!authHeader?.startsWith('Bearer ')) {
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+          status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      if (!user_id) {
+        return new Response(JSON.stringify({ error: 'user_id required' }), {
+          status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // RPC validates caller role; also sets pin_must_change=true + expiry
+      const callerClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data: rpcData, error: rpcErr } = await callerClient.rpc('admin_reset_user_pin', {
+        _target_user: user_id,
+      });
+      if (rpcErr) {
+        return new Response(JSON.stringify({ error: rpcErr.message }), {
+          status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      const pinPlain = (rpcData as any)?.pin_plaintext as string;
+      const expiresAt = (rpcData as any)?.expires_at as string;
+      if (!pinPlain) {
+        return new Response(JSON.stringify({ error: 'RPC did not return PIN' }), {
+          status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // Hash the temp PIN with PBKDF2 and persist
+      const salt = generateSalt();
+      const hash = await hashPinWithSalt(pinPlain, salt);
+      const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+      const { error: updErr } = await admin
+        .from('profiles')
+        .update({ pin_hash: `${salt}:${hash}` })
+        .eq('user_id', user_id);
+      if (updErr) throw updErr;
+
+      return new Response(JSON.stringify({
+        success: true,
+        pin_temp: pinPlain,
+        expires_at: expiresAt,
+        must_change: true,
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
 
     // Action: verify_pin — called from whatsapp-bot (service-to-service)
     if (action === 'verify_pin') {
