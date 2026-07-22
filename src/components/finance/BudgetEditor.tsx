@@ -41,7 +41,9 @@ const monthEndISO = () => {
 
 export default function BudgetEditor({ open, onClose, budget }: Props) {
   const cats = useFinancialCategories();
+  const products = useProducts();
   const upsert = useUpsertBudget();
+
 
   const [name, setName] = useState('');
   const [periodStart, setPeriodStart] = useState(todayISO());
