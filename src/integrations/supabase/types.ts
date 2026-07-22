@@ -1092,6 +1092,41 @@ export type Database = {
           },
         ]
       }
+      cfo_ai_briefings: {
+        Row: {
+          context_snapshot: Json
+          created_at: string
+          id: string
+          summary: string
+          tenant_id: string
+          week_start: string
+        }
+        Insert: {
+          context_snapshot?: Json
+          created_at?: string
+          id?: string
+          summary: string
+          tenant_id: string
+          week_start: string
+        }
+        Update: {
+          context_snapshot?: Json
+          created_at?: string
+          id?: string
+          summary?: string
+          tenant_id?: string
+          week_start?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cfo_ai_briefings_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       chat_channels: {
         Row: {
           created_at: string
@@ -6026,6 +6061,22 @@ export type Database = {
       activate_trial_for_current_user: {
         Args: { _plan_id?: string }
         Returns: Json
+      }
+      admin_finance_overview: {
+        Args: never
+        Returns: {
+          active_alerts_count: number
+          critical_alerts_count: number
+          currency: string
+          health_score: number
+          last_activity_at: string
+          net_flow_30d: number
+          payables: number
+          receivables: number
+          tenant_id: string
+          tenant_name: string
+          total_balance: number
+        }[]
       }
       admin_list_tenants_with_subscription: {
         Args: never
