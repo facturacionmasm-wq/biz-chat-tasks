@@ -48,7 +48,7 @@ export function useProducts(opts?: { includeInactive?: boolean }) {
     queryKey: ['products', tenantId, includeInactive],
     enabled: !!tenantId,
     queryFn: async () => {
-      let q = supabase.from('products' as never).select('*').eq('tenant_id', tenantId!);
+      let q = supabase.from('products').select('*').eq('tenant_id', tenantId!);
       if (!includeInactive) q = q.eq('is_active', true);
       const { data, error } = await q.order('name', { ascending: true });
       if (error) throw error;
@@ -86,7 +86,7 @@ export function useUpsertProduct() {
       };
       if (input.id) {
         const { data, error } = await supabase
-          .from('products' as never)
+          .from('products')
           .update(row)
           .eq('id', input.id)
           .select()
@@ -95,7 +95,7 @@ export function useUpsertProduct() {
         return data;
       } else {
         const { data, error } = await supabase
-          .from('products' as never)
+          .from('products')
           .insert(row)
           .select()
           .single();
@@ -116,7 +116,7 @@ export function useDeleteProduct() {
   return useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase
-        .from('products' as never)
+        .from('products')
         .update({ is_active: false })
         .eq('id', id);
       if (error) throw error;
