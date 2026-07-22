@@ -1,5 +1,6 @@
 import { useHealthScore } from '@/hooks/useFinance';
 import { Activity } from 'lucide-react';
+import ReportExportMenu from '@/components/finance/ReportExportMenu';
 
 function Bar({ label, value, max = 25 }: { label: string; value: number; max?: number }) {
   const pct = Math.max(0, Math.min(100, (value / max) * 100));

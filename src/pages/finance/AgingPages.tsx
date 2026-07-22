@@ -1,5 +1,6 @@
 import { useReceivables, usePayables } from '@/hooks/useFinance';
 import type { AgingBucket, AgingResult } from '@/lib/finance/aging';
+import ReportExportMenu from '@/components/finance/ReportExportMenu';
 
 const BUCKETS: { key: AgingBucket; label: string; color: string }[] = [
   { key: 'current', label: 'Vigente', color: 'var(--rx-emerald)' },
