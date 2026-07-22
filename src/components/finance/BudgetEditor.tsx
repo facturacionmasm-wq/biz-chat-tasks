@@ -17,7 +17,10 @@ type ExistingBudget = {
     category_name: string;
     planned_amount: number | string;
     notes: string | null;
+    product_id?: string | null;
+    quantity?: number | string | null;
   }>;
+
 };
 
 interface Props {
@@ -66,9 +69,12 @@ export default function BudgetEditor({ open, onClose, budget }: Props) {
           category_name: l.category_name,
           planned_amount: Number(l.planned_amount) || 0,
           notes: l.notes,
+          product_id: l.product_id ?? null,
+          quantity: l.quantity != null ? Number(l.quantity) : null,
         })),
       );
       if ((budget.financial_budget_lines ?? []).length === 0) setLines([emptyLine()]);
+
     } else {
       setName('');
       setPeriodStart(todayISO());
@@ -109,10 +115,13 @@ export default function BudgetEditor({ open, onClose, budget }: Props) {
         category_name: l.category_name.trim(),
         planned_amount: Number(l.planned_amount) || 0,
         notes: l.notes ?? null,
+        product_id: l.product_id ?? null,
+        quantity: l.quantity != null ? Number(l.quantity) : null,
       })),
     });
     onClose();
   };
+
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4">
