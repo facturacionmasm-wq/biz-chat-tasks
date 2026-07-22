@@ -2229,6 +2229,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           credentials_encrypted: string | null
+          external_item_id: string | null
           id: string
           institution: string | null
           last_error: string | null
@@ -2243,6 +2244,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           credentials_encrypted?: string | null
+          external_item_id?: string | null
           id?: string
           institution?: string | null
           last_error?: string | null
@@ -2257,6 +2259,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           credentials_encrypted?: string | null
+          external_item_id?: string | null
           id?: string
           institution?: string | null
           last_error?: string | null
