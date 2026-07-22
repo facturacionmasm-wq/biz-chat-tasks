@@ -1,7 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase as supabaseTyped } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
+
+// Types haven't regenerated for new tables yet.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const supabase = supabaseTyped as any;
+
 
 export type Product = {
   id: string;
