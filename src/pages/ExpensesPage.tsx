@@ -97,12 +97,7 @@ const ExpensesPage = ({ enableApproval = false }: Props) => {
         project_name: e.project_id ? (projMap.get(e.project_id) as string) || null : null,
       })) as unknown as Expense[]);
 
-        ...e,
-        user_name: nameMap.get(e.user_id) || 'Desconocido',
-        approver_name: e.approver_user_id ? nameMap.get(e.approver_user_id) || null : null,
-        category_name: e.category_id ? catMap.get(e.category_id) || null : null,
-        project_name: e.project_id ? projMap.get(e.project_id) || null : null,
-      })));
+
     }
     setLoading(false);
   };
