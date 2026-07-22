@@ -265,9 +265,12 @@ Deno.serve(async (req) => {
         user_id: newUserId,
         method,
         message: `Miembro ${name} invitado. Pendiente de aprobación.`,
+        temp_pin: tempPin,
+        temp_pin_expires_at: pinExpiresAt,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
+
   } catch (err) {
     return new Response(JSON.stringify({ error: err.message }), {
       status: 500,
