@@ -186,7 +186,9 @@ const AppLayout = ({ children }: AppLayoutProps) => {
           </header>
           <main className={`flex-1 min-h-0 overflow-auto ${isMobile ? 'pb-[var(--bottom-nav-height)]' : ''}`}>
             <TrialCardBanner />
+            <PinChangeBanner />
             {children}
+
           </main>
 
         </div>
