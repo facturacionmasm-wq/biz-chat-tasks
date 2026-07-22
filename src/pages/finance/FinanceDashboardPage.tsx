@@ -2,6 +2,7 @@ import { useFinancialSummary, useHealthScore, useFinancialAlerts } from '@/hooks
 import { AlertTriangle, Wallet, TrendingUp, TrendingDown, Activity, Clock } from 'lucide-react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { useCashflowForecast } from '@/hooks/useFinance';
+import ReportExportMenu from '@/components/finance/ReportExportMenu';
 
 const fmt = (n: number | string | null | undefined, currency = 'MXN') =>
   n == null ? 'N/D' : new Intl.NumberFormat('es-MX', { style: 'currency', currency, maximumFractionDigits: 0 }).format(Number(n));
