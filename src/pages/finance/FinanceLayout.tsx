@@ -1,13 +1,14 @@
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Landmark, ArrowLeftRight, TrendingUp, TrendingDown,
-  Wallet, PiggyBank, Activity, Bot, Plug, GitCompare,
+  Wallet, PiggyBank, Activity, Bot, Plug, GitCompare, Receipt,
 } from 'lucide-react';
 
 const tabs = [
   { to: '/finance', end: true, icon: LayoutDashboard, label: 'Resumen' },
   { to: '/finance/accounts', icon: Landmark, label: 'Cuentas' },
   { to: '/finance/transactions', icon: ArrowLeftRight, label: 'Transacciones' },
+  { to: '/finance/expenses', icon: Receipt, label: 'Gastos' },
   { to: '/finance/reconciliation', icon: GitCompare, label: 'Conciliación' },
   { to: '/finance/cashflow', icon: Wallet, label: 'Flujo de efectivo' },
   { to: '/finance/receivables', icon: TrendingUp, label: 'Por cobrar' },
@@ -17,6 +18,7 @@ const tabs = [
   { to: '/finance/cfo-ai', icon: Bot, label: 'CFO AI' },
   { to: '/finance/integrations', icon: Plug, label: 'Integraciones' },
 ];
+
 
 export default function FinanceLayout() {
   const { pathname } = useLocation();
