@@ -1092,6 +1092,144 @@ export type Database = {
           },
         ]
       }
+      cfdi_concepts: {
+        Row: {
+          cantidad: number
+          cfdi_document_id: string
+          clave_prod_serv: string | null
+          clave_unidad: string | null
+          created_at: string
+          descripcion: string
+          id: string
+          importe: number
+          iva_tasa: number
+          product_id: string | null
+          valor_unitario: number
+        }
+        Insert: {
+          cantidad?: number
+          cfdi_document_id: string
+          clave_prod_serv?: string | null
+          clave_unidad?: string | null
+          created_at?: string
+          descripcion: string
+          id?: string
+          importe?: number
+          iva_tasa?: number
+          product_id?: string | null
+          valor_unitario?: number
+        }
+        Update: {
+          cantidad?: number
+          cfdi_document_id?: string
+          clave_prod_serv?: string | null
+          clave_unidad?: string | null
+          created_at?: string
+          descripcion?: string
+          id?: string
+          importe?: number
+          iva_tasa?: number
+          product_id?: string | null
+          valor_unitario?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cfdi_concepts_cfdi_document_id_fkey"
+            columns: ["cfdi_document_id"]
+            isOneToOne: false
+            referencedRelation: "cfdi_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cfdi_concepts_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cfdi_documents: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          error_message: string | null
+          estado: string
+          folio: string | null
+          forma_pago: string | null
+          id: string
+          iva: number
+          metodo_pago: string | null
+          moneda: string
+          pdf_url: string | null
+          provider: string | null
+          receptor_nombre: string
+          receptor_rfc: string
+          receptor_uso_cfdi: string | null
+          series: string | null
+          subtotal: number
+          tenant_id: string
+          tipo_comprobante: string
+          total: number
+          updated_at: string
+          uso_cfdi: string | null
+          uuid_fiscal: string | null
+          xml_url: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          error_message?: string | null
+          estado?: string
+          folio?: string | null
+          forma_pago?: string | null
+          id?: string
+          iva?: number
+          metodo_pago?: string | null
+          moneda?: string
+          pdf_url?: string | null
+          provider?: string | null
+          receptor_nombre: string
+          receptor_rfc: string
+          receptor_uso_cfdi?: string | null
+          series?: string | null
+          subtotal?: number
+          tenant_id: string
+          tipo_comprobante?: string
+          total?: number
+          updated_at?: string
+          uso_cfdi?: string | null
+          uuid_fiscal?: string | null
+          xml_url?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          error_message?: string | null
+          estado?: string
+          folio?: string | null
+          forma_pago?: string | null
+          id?: string
+          iva?: number
+          metodo_pago?: string | null
+          moneda?: string
+          pdf_url?: string | null
+          provider?: string | null
+          receptor_nombre?: string
+          receptor_rfc?: string
+          receptor_uso_cfdi?: string | null
+          series?: string | null
+          subtotal?: number
+          tenant_id?: string
+          tipo_comprobante?: string
+          total?: number
+          updated_at?: string
+          uso_cfdi?: string | null
+          uuid_fiscal?: string | null
+          xml_url?: string | null
+        }
+        Relationships: []
+      }
       cfo_ai_briefings: {
         Row: {
           context_snapshot: Json
@@ -2114,6 +2252,8 @@ export type Database = {
           id: string
           notes: string | null
           planned_amount: number
+          product_id: string | null
+          quantity: number | null
           tenant_id: string
           updated_at: string
         }
@@ -2125,6 +2265,8 @@ export type Database = {
           id?: string
           notes?: string | null
           planned_amount?: number
+          product_id?: string | null
+          quantity?: number | null
           tenant_id: string
           updated_at?: string
         }
@@ -2136,6 +2278,8 @@ export type Database = {
           id?: string
           notes?: string | null
           planned_amount?: number
+          product_id?: string | null
+          quantity?: number | null
           tenant_id?: string
           updated_at?: string
         }
@@ -2152,6 +2296,13 @@ export type Database = {
             columns: ["category_id"]
             isOneToOne: false
             referencedRelation: "financial_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_budget_lines_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
             referencedColumns: ["id"]
           },
         ]
@@ -3508,6 +3659,71 @@ export type Database = {
           volume_tiers?: Json | null
         }
         Relationships: []
+      }
+      products: {
+        Row: {
+          category_id: string | null
+          created_at: string
+          created_by: string | null
+          currency: string
+          description: string | null
+          id: string
+          is_active: boolean
+          name: string
+          sat_clave_prod_serv: string | null
+          sat_clave_unidad: string | null
+          sku: string | null
+          stock_quantity: number
+          tenant_id: string
+          unit_of_measure: string | null
+          unit_price: number
+          updated_at: string
+        }
+        Insert: {
+          category_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          sat_clave_prod_serv?: string | null
+          sat_clave_unidad?: string | null
+          sku?: string | null
+          stock_quantity?: number
+          tenant_id: string
+          unit_of_measure?: string | null
+          unit_price?: number
+          updated_at?: string
+        }
+        Update: {
+          category_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          sat_clave_prod_serv?: string | null
+          sat_clave_unidad?: string | null
+          sku?: string | null
+          stock_quantity?: number
+          tenant_id?: string
+          unit_of_measure?: string | null
+          unit_price?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "products_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "financial_categories"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
