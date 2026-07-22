@@ -237,10 +237,19 @@ serve(async (req) => {
 
   // Validate caller — accept both user JWT and service-role calls
   let userId: string;
-  const isServiceCall = req.headers.get('X-Service-Call') === 'true';
-  
-  if (isServiceCall) {
-    // Called internally from ai-assistant edge function
+  const bearerToken = authHeader.replace('Bearer ', '').trim();
+  const isServiceCallHeader = req.headers.get('X-Service-Call') === 'true';
+  const isServiceRoleBearer =
+    (!!serviceKey && bearerToken === serviceKey) || isServiceRoleJwt(bearerToken);
+
+  if (isServiceCallHeader) {
+    // Called internally from another edge function — REQUIRE a valid service-role bearer,
+    // not just a spoofable header.
+    if (!isServiceRoleBearer) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
     const body = await req.json();
     userId = body.user_id;
     if (!userId) {
@@ -302,5 +311,16 @@ async function handleAction(supabase: any, userId: string, body: any): Promise<R
     return new Response(JSON.stringify({ error: err instanceof Error ? err.message : 'Unknown error' }), {
       status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
+  }
+}
+
+function isServiceRoleJwt(token: string): boolean {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return false;
+    const payload = JSON.parse(atob(parts[1]));
+    return payload?.role === 'service_role';
+  } catch {
+    return false;
   }
 }

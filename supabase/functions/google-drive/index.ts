@@ -91,6 +91,21 @@ serve(async (req) => {
       return jsonResponse({ error: 'tenant_id required' }, 400);
     }
 
+    // Cross-tenant guard: for end-user calls (not internal service calls), the caller MUST
+    // belong to the tenant they're operating on. Internal callers already validated above.
+    if (body.internal_caller !== true && callerUserId) {
+      const { data: membership } = await supabase
+        .from('profiles')
+        .select('tenant_id')
+        .eq('user_id', callerUserId)
+        .maybeSingle();
+      if (!membership || membership.tenant_id !== tenantId) {
+        console.error(`[google-drive] cross-tenant blocked user=${callerUserId} req_tenant=${tenantId} user_tenant=${membership?.tenant_id}`);
+        return jsonResponse({ error: 'Forbidden' }, 403);
+      }
+    }
+
+
     // ─── GET STATUS ───
     if (action === 'get_status') {
       const { data: settings } = await supabase

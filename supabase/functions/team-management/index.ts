@@ -300,6 +300,24 @@ Deno.serve(async (req) => {
         });
       }
 
+      // Cross-tenant guard: verify the target user belongs to the caller's tenant,
+      // unless the caller is a super_admin (which can reset across tenants).
+      const isSuperAdmin = allowed.some((r: any) => r.role === "super_admin");
+      if (!isSuperAdmin) {
+        const { data: targetProfile, error: targetErr } = await adminClient
+          .from("profiles")
+          .select("tenant_id")
+          .eq("user_id", user_id)
+          .maybeSingle();
+        if (targetErr) {
+          return json({ error: targetErr.message }, 400);
+        }
+        if (!targetProfile || targetProfile.tenant_id !== callerRole.tenant_id) {
+          console.error(`[team-management] reset_password forbidden caller=${caller.id} target=${user_id} target_tenant=${targetProfile?.tenant_id}`);
+          return json({ error: "No autorizado" }, 403);
+        }
+      }
+
       const { error: updateError } = await adminClient.auth.admin.updateUserById(user_id, { password });
 
       if (updateError) {
