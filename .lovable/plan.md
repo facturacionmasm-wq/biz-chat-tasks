@@ -1,125 +1,90 @@
+# Plan — Productos/Inventario + CFDI-SAT
 
-# Plan · 2 pendientes (auditado, sin duplicar)
-
-## Auditoría previa (hechos)
-
-### PIN hoy
-- Columna única: `profiles.pin_hash` (formato `salt:hash`, PBKDF2 100k SHA-256).
-- Edge function `pin-service` con acciones `hash_pin`, `verify_pin`. Sin `reset_pin`, sin PIN temporal, sin flag de "cambio obligatorio".
-- Se usa en: WhatsApp bot (auth de empleados), voz (confirmaciones), `SettingsPage` (cambio propio). No hay UI de admin para resetear.
-- Invitaciones: `invite-member` crea el usuario con `password` (Supabase Auth) — nunca genera PIN. No hay canal de "envío de PIN" hoy; el canal de invitación existente es **email** (Supabase invita o el owner comparte password) y opcionalmente WhatsApp si el owner captura `whatsapp_number` al invitar.
-
-### Gastos hoy
-- Tabla `expenses` completa: `status` (`pending`/`pending_approval`/`approved`/`rejected`/`paid`), `approval_required`, `approver_user_id`, `paid_at`, `receipt_url`, `document_*_drive_url`, `folio`, `vendor_name`, `concept`, `type` (expense|budget), `source`.
-- `category` es **text libre**, NO hay FK a `financial_categories` (que sí existe con `kind='expense'`).
-- NO existe `project_id` en `expenses`.
-- Pantalla `src/pages/ExpensesPage.tsx` (312 líneas) en ruta `/expenses` (fuera de /finance): listado con filtros por período/tipo/estado, vista por usuario, sin formulario de alta/edición ni acción de aprobar/rechazar/pagar desde UI (solo lectura). Se alimenta hoy vía WhatsApp bot (OCR) y app externa.
-- Módulo obra: `project_costs` es tabla separada; no hay pantalla de expenses en obra que reutilizar.
-- `expenses` ya alimenta AR/AP (`compute_tenant_financial_summary`), conciliación (`suggest_transaction_matches` vía `financial_transactions.reconciled_with_expense_id`) y health score (overdue payables). Se preserva íntegro.
-
-**Anti-duplicación**: se **extiende** `ExpensesPage.tsx` reutilizándolo dentro de `/finance/expenses` (no se crea segunda pantalla). Se **agregan** FK a `financial_categories` y `project_id` como columnas opcionales, sin romper el text libre existente.
+## Verificación anti-duplicación
+- `service_packages` y `package_catalog` existen pero son **paquetes prepagados de uso SaaS** (WhatsApp/Voz), no productos comerciales. No hay tabla de productos/servicios en Proyectos ni en Avance de Obra. **No hay duplicación** — se crea `public.products` nueva.
+- No existe módulo CFDI actual. Nada de tablas `cfdi_*`, ni proveedores PAC.
 
 ---
 
-## PENDIENTE 1 · Reset de PIN + PIN temporal en invitación
+## Parte A — Productos / Inventario
 
-### Migración (una sola)
-- `profiles`: agregar `pin_must_change boolean DEFAULT false`, `pin_temp_expires_at timestamptz`, `pin_updated_at timestamptz`, `pin_set_by uuid` (quién lo asignó, para audit).
-- Función `admin_reset_user_pin(_target_user uuid)` SECURITY DEFINER: valida caller es `owner`/`admin`/`super_admin` del tenant del target; genera PIN de 6 dígitos aleatorio server-side, lo hashea (PBKDF2 con el mismo esquema), guarda `pin_hash`, `pin_must_change=true`, `pin_temp_expires_at = now()+72h`, escribe `audit_events`, y **devuelve el PIN en claro solo en el retorno** (nunca se persiste en claro).
-- Trigger: al hacer `UPDATE` de `pin_hash` desde `pin-service` con `action='hash_pin'` (usuario cambiando), el edge fuerza `pin_must_change=false`, `pin_temp_expires_at=null`, `pin_updated_at=now()`.
+### Migración
+- `CREATE TABLE public.products`: `id, tenant_id, sku, name, description, unit_price numeric(14,4), currency text default 'MXN', unit_of_measure text, sat_clave_prod_serv text, sat_clave_unidad text, stock_quantity numeric(14,4) default 0, category_id uuid FK financial_categories, is_active bool default true, created_at, updated_at`.
+- Índice `(tenant_id, is_active)`, único `(tenant_id, sku)` cuando sku not null.
+- GRANT `authenticated` (SELECT/INSERT/UPDATE/DELETE) + `service_role` ALL. RLS: `tenant_id = get_user_tenant_id(auth.uid())`, mutaciones limitadas a `owner/admin/staff` (mismo patrón que `expenses`).
+- Trigger `update_updated_at_column`.
+- Trigger de auditoría → `audit_events` (`product_created/updated/deleted`) mismo patrón que `expenses`.
+- Validación SAT vía CHECK: `sat_clave_prod_serv ~ '^[0-9]{8}$'` y `sat_clave_unidad ~ '^[A-Z0-9]{2,3}$'` (permitir NULL).
 
-### Edge functions
-- **Extender** `pin-service/index.ts`:
-  - Nueva acción `admin_reset_pin` → llama `admin_reset_user_pin` y opcionalmente envía por WhatsApp (si el target tiene `whatsapp_number` y hay Twilio configurado) o email (Resend `no-reply@rybixholding.com`). Retorna `{ pin_temp, expires_at, sent_via }`.
-  - Nueva acción `verify_pin` (si no existe con este contrato): ya devuelve además `must_change` y `expired`.
-  - En `hash_pin` (cambio propio): limpiar flags temporales.
-- **Extender** `invite-member/index.ts`:
-  - Si `payload.generate_temp_pin=true` (default true), después de crear el user llama a `admin_reset_user_pin` para ese user y adjunta el PIN al mismo email/mensaje de invitación existente. Sin nueva función de correo — se reutiliza el helper de email ya presente en el flujo de invitación.
+### Frontend (nuevo)
+| Archivo | Tipo |
+|---|---|
+| `src/hooks/useProducts.ts` | Nuevo — `useProducts`, `useUpsertProduct`, `useDeleteProduct` (soft delete `is_active=false`) |
+| `src/pages/ProductsPage.tsx` | Nuevo — tabla + buscador + modal alta/edición con validación Zod (formato SAT) |
+| Ruta `/products` en `App.tsx` + entrada en menú | Extensión |
+
+---
+
+## Parte B — Adjuntar productos a Presupuestos
+
+### Migración
+- `ALTER TABLE financial_budget_lines ADD COLUMN product_id uuid REFERENCES products(id) ON DELETE SET NULL`.
+- `ALTER TABLE financial_budget_lines ADD COLUMN quantity numeric(14,4)` (opcional; cálculo `planned_amount = quantity * unit_price` en cliente, campo sigue editable).
+- RPC `upsert_budget` extendida para aceptar `product_id` y `quantity` por línea (backward compatible).
 
 ### Frontend
-- **Extender** `src/pages/SettingsPage.tsx` (sección PIN): si `pin_must_change=true` al montar → forzar modal "Cambia tu PIN temporal" bloqueando cierre; al guardar llama `hash_pin` y limpia flags.
-- **Extender** `src/components/AppLayout.tsx` (o guard equivalente): banner global "Tu PIN temporal expira en Xh — cámbialo ahora" con link a Settings, si `pin_must_change=true`.
-- **Nuevo** `src/components/team/ResetPinDialog.tsx`: botón "Resetear PIN" en la lista de miembros (ubicación existente: `src/pages/SettingsPage.tsx` sección equipo, o donde ya se listan miembros) → llama `pin-service` acción `admin_reset_pin`, muestra el PIN una sola vez con botón copiar y aviso "válido 72h, debe cambiarse en primer uso".
-- **Extender** WhatsApp bot verify (`whatsapp-bot/*` autenticación con PIN): si `must_change=true` o `expired`, responder "Debes actualizar tu PIN desde la app antes de continuar" — no bloquea funciones de solo lectura ya definidas.
-
-### Archivos pendiente 1
-
-| Tipo | Ruta |
-|---|---|
-| Migración | `profiles` (+4 cols) + `admin_reset_user_pin()` + índice |
-| Extensión | `supabase/functions/pin-service/index.ts` |
-| Extensión | `supabase/functions/invite-member/index.ts` |
-| Extensión | `src/pages/SettingsPage.tsx` |
-| Extensión | `src/components/AppLayout.tsx` (banner) |
-| Nuevo | `src/components/team/ResetPinDialog.tsx` |
-| Extensión mínima | `supabase/functions/whatsapp-bot/*` (mensaje si must_change) — solo si el helper de auth centraliza; si no, se omite |
+- `src/components/finance/BudgetEditor.tsx` — extensión: selector opcional "Producto" que autocompleta `category_name`, `unit_price*quantity → planned_amount`. Si no hay producto: comportamiento actual sin cambios.
+- `src/hooks/useFinance.ts` — extender `BudgetLineInput` con `product_id?`, `quantity?`.
 
 ---
 
-## PENDIENTE 2 · Módulo Gastos en Finanzas Inteligentes
+## Parte C — CFDI-SAT
 
-### Migración (una sola, aditiva)
-- `expenses`: agregar `category_id uuid REFERENCES financial_categories(id) ON DELETE SET NULL` y `project_id uuid REFERENCES projects(id) ON DELETE SET NULL`. Se mantiene `category` text por compatibilidad. Índices `(tenant_id, category_id)` y `(tenant_id, project_id)`.
-- Backfill idempotente: para cada expense sin `category_id`, intentar match por `name ILIKE category` dentro de `financial_categories` mismo tenant + `kind='expense'`. Deja el text como fallback.
-- Nueva RPC `approve_expense(_id uuid, _action text, _reason text)` SECURITY DEFINER: valida rol y transiciona `pending_approval → approved | rejected`, setea `approved_at`/`rejected_at`/`rejection_reason`, escribe `audit_events`. **No** toca `paid_at` (eso queda para conciliación existente).
+### Migración
+- `CREATE TABLE public.cfdi_documents`: `id, tenant_id, series, folio, tipo_comprobante text, uso_cfdi text, forma_pago text, metodo_pago text, moneda text default 'MXN', receptor_rfc text, receptor_nombre text, receptor_uso_cfdi text, subtotal numeric(14,2), iva numeric(14,2), total numeric(14,2), estado text default 'borrador' check in ('borrador','timbrado','cancelado','error'), uuid_fiscal text, xml_url text, pdf_url text, provider text, error_message text, created_at, updated_at`.
+- `CREATE TABLE public.cfdi_concepts`: `id, cfdi_document_id uuid FK ON DELETE CASCADE, product_id uuid FK products NULL, clave_prod_serv text, clave_unidad text, descripcion text, cantidad numeric(14,4), valor_unitario numeric(14,4), importe numeric(14,2), iva_tasa numeric(5,4) default 0.16`.
+- GRANTs + RLS por tenant (mismo patrón). Mutaciones `owner/admin`.
+- Trigger auditoría `cfdi_issued/cfdi_cancelled` (disparado por cambio de `estado`).
+
+### Backend edge functions
+| Función | Rol |
+|---|---|
+| `supabase/functions/_shared/cfdi-providers.ts` | Nuevo — registro `getCfdiAdapter(id)`, interfaz `issue/cancel/status`, adaptadores `facturama` (real, sandbox), `sw` (stub), `finkok` (stub) |
+| `supabase/functions/cfdi-issue/index.ts` | Nuevo — arma payload desde `cfdi_documents`+`cfdi_concepts`, llama adaptador, guarda `uuid_fiscal/xml_url/pdf_url`, actualiza estado |
+| `supabase/functions/cfdi-cancel/index.ts` | Nuevo — recibe `motivo` SAT (01/02/03/04) |
+| `supabase/functions/cfdi-status/index.ts` | Nuevo — consulta status por UUID |
+
+Secrets requeridos: `FACTURAMA_API_KEY`, `FACTURAMA_API_SECRET`, `FACTURAMA_ENV` (sandbox por defecto). Se solicitan solo cuando el usuario aprieta "Timbrar" por primera vez, o los añade en Integraciones. Adapter devuelve `configured:false, missing_secrets:[...]` si faltan; UI muestra badge **"Requiere credenciales"**.
 
 ### Frontend
-- **Nuevo** `src/pages/finance/FinanceExpensesPage.tsx`: **wrapper** que reutiliza los mismos hooks/queries de `ExpensesPage.tsx` extraídos a un componente compartido `src/components/expenses/ExpensesList.tsx` (refactor no-op de la lista actual) + agrega:
-  - Filtros extra: categoría (`financial_categories`), proyecto (`projects`), rango de fecha.
-  - Formulario alta/edición (`ExpenseFormDialog.tsx`): monto, moneda, fecha, categoría (select FK), proyecto (opcional), vendor, concept, notas, `approval_required`, subir comprobante a bucket Storage (`expenses-receipts`, RLS por tenant) → guarda `receipt_url`.
-  - Acciones inline: Aprobar / Rechazar (para admins/owners cuando `status='pending_approval'`) → llama `approve_expense`. Marcar pagado (setea `paid_at`) — solo si el usuario tiene rol admin/owner.
-- **Extensión** `src/pages/finance/FinanceLayout.tsx`: agregar pestaña "Gastos" apuntando a `/finance/expenses`.
-- **Extensión** `src/App.tsx`: ruta `/finance/expenses` → `FinanceExpensesPage` bajo el mismo guard que las otras finance pages.
-- La ruta actual `/expenses` sigue viva (compat), pero internamente renderiza el mismo `ExpensesList` compartido.
-- **Nuevo** `src/components/expenses/ExpensesList.tsx` y `ExpenseFormDialog.tsx`.
-- **Extensión** `src/hooks/useFinance.ts`: agregar `useExpenses`, `useExpenseMutations`, `useApproveExpense` reutilizando patrón existente.
-
-### Storage
-- Bucket `expenses-receipts` (privado) + policies: authenticated puede leer/escribir sólo dentro de `tenant_id/…`; `service_role` full.
-
-### Impacto en resto de finanzas
-- Cero cambios en `compute_tenant_financial_summary`, `compute_tenant_health_score`, `suggest_transaction_matches`, `financial_alerts` scan. Todo sigue leyendo `expenses` igual (payables por `paid_at IS NULL`, overdue >30d).
-- La conciliación existente `suggest_transaction_matches` sigue funcionando por description/amount; ahora se puede además reforzar por `category_id` en fase futura (fuera de alcance).
-
-### Archivos pendiente 2
-
-| Tipo | Ruta |
+| Archivo | Tipo |
 |---|---|
-| Migración | `expenses` (+2 cols FK) + backfill + `approve_expense()` + bucket + policies |
-| Nuevo | `src/pages/finance/FinanceExpensesPage.tsx` |
-| Nuevo | `src/components/expenses/ExpensesList.tsx` |
-| Nuevo | `src/components/expenses/ExpenseFormDialog.tsx` |
-| Extensión | `src/pages/finance/FinanceLayout.tsx` (tab) |
-| Extensión | `src/App.tsx` (ruta) |
-| Extensión | `src/pages/ExpensesPage.tsx` (usar `ExpensesList`) |
-| Extensión | `src/hooks/useFinance.ts` |
+| `src/pages/finance/CFDIPage.tsx` | Nuevo — listado con filtros (estado/fecha/receptor), botón Nuevo CFDI |
+| `src/components/finance/CFDIEditor.tsx` | Nuevo — receptor (RFC/nombre/uso), catálogo básico de usos CFDI (G01/G02/G03/P01/S01…), conceptos (selector producto o libre), cálculo automático subtotal/iva/total, botón Timbrar/Cancelar |
+| `src/hooks/useCFDI.ts` | Nuevo — `useCfdiList`, `useUpsertCfdi`, `useIssueCfdi`, `useCancelCfdi` |
+| `src/pages/finance/FinanceLayout.tsx` | Extensión — tab "CFDI" con ícono `FileText` |
 
 ---
 
-## Fuera de alcance (explícito)
-Voz, WhatsApp de citas, recordatorios de citas, Stripe SaaS, RLS existente, adaptadores bancarios, obra (excepto FK opcional `project_id` en expenses).
+## Resumen de archivos
 
-## Rollback exacto
+**Migración única** (una sola pasada, reversible):
+1. `products` + índices + RLS + trigger + audit
+2. `financial_budget_lines`: `product_id`, `quantity` + `upsert_budget` extendida
+3. `cfdi_documents` + `cfdi_concepts` + RLS + audit
 
-**Pendiente 1**
-```sql
-ALTER TABLE public.profiles
-  DROP COLUMN pin_must_change,
-  DROP COLUMN pin_temp_expires_at,
-  DROP COLUMN pin_updated_at,
-  DROP COLUMN pin_set_by;
-DROP FUNCTION public.admin_reset_user_pin(uuid);
-```
-Revertir cambios en `pin-service`, `invite-member`, `SettingsPage`, `AppLayout`. Borrar `ResetPinDialog.tsx`.
+**Nuevos edge functions**: `cfdi-issue`, `cfdi-cancel`, `cfdi-status`, `_shared/cfdi-providers.ts`.
 
-**Pendiente 2**
-```sql
-ALTER TABLE public.expenses DROP COLUMN category_id, DROP COLUMN project_id;
-DROP FUNCTION public.approve_expense(uuid, text, text);
--- storage: eliminar bucket expenses-receipts si se creó
-```
-Revertir `FinanceLayout`, `App.tsx`, `ExpensesPage`, `useFinance`. Borrar `FinanceExpensesPage.tsx`, `ExpensesList.tsx`, `ExpenseFormDialog.tsx`.
+**Nuevos frontend**: `useProducts.ts`, `ProductsPage.tsx`, `useCFDI.ts`, `CFDIPage.tsx`, `CFDIEditor.tsx`.
 
----
+**Extensiones**: `BudgetEditor.tsx`, `useFinance.ts`, `FinanceLayout.tsx`, `App.tsx` (rutas `/products`, `/finance/cfdi`).
 
-Confirma para ejecutar ambos en orden (1 → 2), migración por pendiente, veredicto item por item al final.
+**No se toca**: Voz, WhatsApp, Recordatorios, Stripe SaaS, RLS existente de otros módulos.
+
+## Rollback
+- `DROP TABLE cfdi_concepts, cfdi_documents, products CASCADE;`
+- `ALTER TABLE financial_budget_lines DROP COLUMN product_id, DROP COLUMN quantity;`
+- Restaurar `upsert_budget` previa (guardo versión anterior en el DO block de migración).
+- Eliminar edge functions y archivos frontend nuevos (git revert).
+
+¿Apruebo y ejecuto?
