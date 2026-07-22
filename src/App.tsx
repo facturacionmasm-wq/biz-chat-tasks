@@ -198,6 +198,8 @@ const AppRoutes = () => (
       <Route index element={<FinanceDashboardPage />} />
       <Route path="accounts" element={<FinanceAccountsPage />} />
       <Route path="transactions" element={<FinanceTransactionsPage />} />
+      <Route path="expenses" element={<FinanceExpensesPage />} />
+
       <Route path="reconciliation" element={<FinanceReconciliationPage />} />
       <Route path="cashflow" element={<FinanceCashflowPage />} />
       <Route path="receivables" element={<ReceivablesPage />} />
