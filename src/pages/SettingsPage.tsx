@@ -390,6 +390,11 @@ const SettingsPage = () => {
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
       toast.success(data?.message || 'Miembro invitado exitosamente');
+      if (data?.temp_pin) {
+        // Show the PIN in a persistent toast; admin should share it if email fails.
+        toast.info(`PIN temporal: ${data.temp_pin} (válido 72h, debe cambiarse en primer uso)`, { duration: 20000 });
+      }
+
       setShowInviteModal(false);
       setInviteStep(0);
       setInviteName('');
