@@ -24,8 +24,36 @@ export default function FinanceHealthPage() {
   const score = h?.score ?? 0;
   const color = score >= 75 ? 'var(--rx-emerald)' : score >= 50 ? 'var(--rx-amber)' : 'var(--rx-rose)';
 
+  const buildExport = () => ({
+    title: 'Financial Health Score',
+    period: 'Snapshot actual',
+    currency: 'MXN',
+    csvFilename: `health-score-${new Date().toISOString().slice(0, 10)}.csv`,
+    pdfFilename: `health-score-${new Date().toISOString().slice(0, 10)}.pdf`,
+    csvRows: [
+      { indicador: 'Score total', valor: score },
+      { indicador: 'Liquidez', valor: h?.liquidity_score ?? 0 },
+      { indicador: 'Flujo de caja', valor: h?.cashflow_score ?? 0 },
+      { indicador: 'Morosidad', valor: h?.delinquency_score ?? 0 },
+      { indicador: 'Cumplimiento presupuesto', valor: h?.budget_score ?? 0 },
+    ],
+    sections: [{
+      title: `Score: ${score}/100`,
+      columns: ['Indicador', 'Valor'],
+      rows: [
+        ['Liquidez', `${h?.liquidity_score ?? 0}/25`],
+        ['Flujo de caja', `${h?.cashflow_score ?? 0}/25`],
+        ['Morosidad', `${h?.delinquency_score ?? 0}/25`],
+        ['Cumplimiento presupuesto', `${h?.budget_score ?? 0}/25`],
+      ],
+    }],
+  });
+
   return (
     <div className="space-y-4">
+      <div className="flex justify-end">
+        <ReportExportMenu build={buildExport} disabled={!h} />
+      </div>
       <div className="rounded-2xl bg-card border border-border p-6 shadow-soft text-center">
         <div className="flex items-center justify-center gap-2 text-muted-foreground mb-3">
           <Activity size={16} />
