@@ -3,8 +3,16 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { getFinancialProvider } from '@/lib/finance/providers';
-import { projectCashflow } from '@/lib/finance/cashflow';
+import { projectCashflow, type ScenarioAssumptions } from '@/lib/finance/cashflow';
 import { buildAging, type AgingItem } from '@/lib/finance/aging';
+import {
+  fetchSuggestions,
+  confirmMatch,
+  rejectSuggestion,
+  markDuplicate,
+  resetReconciliation,
+  type MatchSuggestion,
+} from '@/lib/finance/reconciliation';
 
 // ── Cuentas ────────────────────────────────────────────────
 export function useFinancialAccounts() {
