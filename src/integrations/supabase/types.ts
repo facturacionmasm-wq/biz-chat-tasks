@@ -3500,6 +3500,10 @@ export type Database = {
           onboarding_completed: boolean | null
           phone: string | null
           pin_hash: string | null
+          pin_must_change: boolean
+          pin_set_by: string | null
+          pin_temp_expires_at: string | null
+          pin_updated_at: string | null
           status: string
           tenant_id: string
           updated_at: string
@@ -3516,6 +3520,10 @@ export type Database = {
           onboarding_completed?: boolean | null
           phone?: string | null
           pin_hash?: string | null
+          pin_must_change?: boolean
+          pin_set_by?: string | null
+          pin_temp_expires_at?: string | null
+          pin_updated_at?: string | null
           status?: string
           tenant_id: string
           updated_at?: string
@@ -3532,6 +3540,10 @@ export type Database = {
           onboarding_completed?: boolean | null
           phone?: string | null
           pin_hash?: string | null
+          pin_must_change?: boolean
+          pin_set_by?: string | null
+          pin_temp_expires_at?: string | null
+          pin_updated_at?: string | null
           status?: string
           tenant_id?: string
           updated_at?: string
@@ -6106,6 +6118,7 @@ export type Database = {
             }
             Returns: Json
           }
+      admin_reset_user_pin: { Args: { _target_user: string }; Returns: Json }
       block_expired_trials: { Args: never; Returns: undefined }
       calculate_next_retry: {
         Args: { _base_delay_minutes?: number; _retry_count: number }
