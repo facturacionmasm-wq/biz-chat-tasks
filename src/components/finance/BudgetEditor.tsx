@@ -181,51 +181,102 @@ export default function BudgetEditor({ open, onClose, budget }: Props) {
             </div>
             <div className="space-y-2">
               {lines.map((l, idx) => (
-                <div key={idx} className="grid grid-cols-[1fr_auto_auto] gap-2 items-center">
-                  <select
-                    value={l.category_id ?? ''}
-                    onChange={(e) => {
-                      const id = e.target.value || null;
-                      const cat = (cats.data ?? []).find((c: { id: string; name: string }) => c.id === id);
-                      updateLine(idx, {
-                        category_id: id,
-                        category_name: cat?.name ?? l.category_name,
-                      });
-                    }}
-                    className="bg-secondary rounded-lg px-2 py-2 text-xs outline-none border border-border focus:border-primary text-foreground"
-                  >
-                    <option value="">— Categoría personalizada —</option>
-                    {(cats.data ?? []).map((c: { id: string; name: string }) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-                  {!l.category_id && (
+                <div key={idx} className="space-y-2 border border-border rounded-xl p-2">
+                  <div className="grid grid-cols-[1fr_auto] gap-2 items-center">
+                    <select
+                      value={l.product_id ?? ''}
+                      onChange={(e) => {
+                        const pid = e.target.value || null;
+                        const prod = (products.data ?? []).find((p) => p.id === pid);
+                        if (prod) {
+                          const qty = Number(l.quantity ?? 1) || 1;
+                          updateLine(idx, {
+                            product_id: prod.id,
+                            category_name: l.category_name || prod.name,
+                            planned_amount: Math.round(Number(prod.unit_price) * qty * 100) / 100,
+                            quantity: qty,
+                          });
+                        } else {
+                          updateLine(idx, { product_id: null });
+                        }
+                      }}
+                      className="bg-secondary rounded-lg px-2 py-2 text-xs outline-none border border-border focus:border-primary text-foreground"
+                    >
+                      <option value="">— Sin producto (línea libre) —</option>
+                      {(products.data ?? []).map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}{p.sku ? ` (${p.sku})` : ''} · {new Intl.NumberFormat('es-MX', { style: 'currency', currency: p.currency }).format(Number(p.unit_price))}
+                        </option>
+                      ))}
+                    </select>
+                    {l.product_id && (
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={l.quantity ?? 1}
+                        onChange={(e) => {
+                          const qty = Number(e.target.value) || 0;
+                          const prod = (products.data ?? []).find((p) => p.id === l.product_id);
+                          updateLine(idx, {
+                            quantity: qty,
+                            planned_amount: prod
+                              ? Math.round(Number(prod.unit_price) * qty * 100) / 100
+                              : l.planned_amount,
+                          });
+                        }}
+                        className="w-20 bg-secondary rounded-lg px-2 py-2 text-xs text-right outline-none border border-border focus:border-primary text-foreground"
+                        title="Cantidad"
+                      />
+                    )}
+                  </div>
+                  <div className="grid grid-cols-[1fr_auto_auto] gap-2 items-center">
+                    <select
+                      value={l.category_id ?? ''}
+                      onChange={(e) => {
+                        const id = e.target.value || null;
+                        const cat = (cats.data ?? []).find((c: { id: string; name: string }) => c.id === id);
+                        updateLine(idx, {
+                          category_id: id,
+                          category_name: cat?.name ?? l.category_name,
+                        });
+                      }}
+                      className="bg-secondary rounded-lg px-2 py-2 text-xs outline-none border border-border focus:border-primary text-foreground"
+                    >
+                      <option value="">— Categoría personalizada —</option>
+                      {(cats.data ?? []).map((c: { id: string; name: string }) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                    {!l.category_id && (
+                      <input
+                        value={l.category_name}
+                        onChange={(e) => updateLine(idx, { category_name: e.target.value })}
+                        placeholder="Nombre"
+                        className="w-32 bg-secondary rounded-lg px-2 py-2 text-xs outline-none border border-border focus:border-primary text-foreground"
+                      />
+                    )}
                     <input
-                      value={l.category_name}
-                      onChange={(e) => updateLine(idx, { category_name: e.target.value })}
-                      placeholder="Nombre"
-                      className="w-32 bg-secondary rounded-lg px-2 py-2 text-xs outline-none border border-border focus:border-primary text-foreground"
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={l.planned_amount}
+                      onChange={(e) => updateLine(idx, { planned_amount: Number(e.target.value) })}
+                      className="w-28 bg-secondary rounded-lg px-2 py-2 text-xs text-right outline-none border border-border focus:border-primary text-foreground"
                     />
-                  )}
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={l.planned_amount}
-                    onChange={(e) => updateLine(idx, { planned_amount: Number(e.target.value) })}
-                    className="w-28 bg-secondary rounded-lg px-2 py-2 text-xs text-right outline-none border border-border focus:border-primary text-foreground"
-                  />
-                  <button
-                    onClick={() => removeLine(idx)}
-                    disabled={lines.length === 1}
-                    className="p-2 rounded-lg text-destructive hover:bg-destructive/10 disabled:opacity-40"
-                  >
-                    <Trash2 size={14} />
-                  </button>
+                    <button
+                      onClick={() => removeLine(idx)}
+                      disabled={lines.length === 1}
+                      className="p-2 rounded-lg text-destructive hover:bg-destructive/10 disabled:opacity-40"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                 </div>
               ))}
+
             </div>
             <div className="flex items-center justify-between mt-3 pt-3 border-t border-border">
               <span className="text-xs text-muted-foreground">Total planeado</span>
