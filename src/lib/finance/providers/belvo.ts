@@ -4,7 +4,7 @@ export const BelvoProvider: FinancialDataProvider & { requiredSecrets: string[];
   id: 'belvo',
   label: 'Belvo',
   available: false,
-  requiredSecrets: ['BELVO_SECRET_ID', 'BELVO_SECRET_PASSWORD'],
+  requiredSecrets: ['BELVO_SECRET_ID', 'BELVO_SECRET_PASSWORD', 'BELVO_ENV'],
   docsUrl: 'https://developers.belvo.com/',
   async connectInstitution() { throw new Error('Belvo: provider_not_configured — solicitar credenciales'); },
   async exchangeConnectionToken() { throw new Error('Belvo: provider_not_configured'); },
