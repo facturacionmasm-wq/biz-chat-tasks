@@ -1872,6 +1872,7 @@ export type Database = {
           approver_phone: string | null
           approver_user_id: string | null
           category: string | null
+          category_id: string | null
           concept: string | null
           created_at: string
           currency: string
@@ -1888,6 +1889,7 @@ export type Database = {
           ocr_data: Json | null
           paid_at: string | null
           payment_method: string | null
+          project_id: string | null
           receipt_url: string | null
           rejected_at: string | null
           rejection_reason: string | null
@@ -1906,6 +1908,7 @@ export type Database = {
           approver_phone?: string | null
           approver_user_id?: string | null
           category?: string | null
+          category_id?: string | null
           concept?: string | null
           created_at?: string
           currency?: string
@@ -1922,6 +1925,7 @@ export type Database = {
           ocr_data?: Json | null
           paid_at?: string | null
           payment_method?: string | null
+          project_id?: string | null
           receipt_url?: string | null
           rejected_at?: string | null
           rejection_reason?: string | null
@@ -1940,6 +1944,7 @@ export type Database = {
           approver_phone?: string | null
           approver_user_id?: string | null
           category?: string | null
+          category_id?: string | null
           concept?: string | null
           created_at?: string
           currency?: string
@@ -1956,6 +1961,7 @@ export type Database = {
           ocr_data?: Json | null
           paid_at?: string | null
           payment_method?: string | null
+          project_id?: string | null
           receipt_url?: string | null
           rejected_at?: string | null
           rejection_reason?: string | null
@@ -1968,6 +1974,20 @@ export type Database = {
           vendor_name?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "expenses_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "financial_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expenses_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "expenses_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -6119,6 +6139,10 @@ export type Database = {
             Returns: Json
           }
       admin_reset_user_pin: { Args: { _target_user: string }; Returns: Json }
+      approve_expense: {
+        Args: { _decision: string; _expense_id: string; _reason?: string }
+        Returns: Json
+      }
       block_expired_trials: { Args: never; Returns: undefined }
       calculate_next_retry: {
         Args: { _base_delay_minutes?: number; _retry_count: number }
