@@ -16,6 +16,8 @@ import { PresenceProvider } from '@/contexts/PresenceContext';
 import BottomNav from '@/components/BottomNav';
 import { useRybixTheme } from '@/hooks/useRybixTheme';
 import TrialCardBanner from '@/components/TrialCardBanner';
+import PinChangeBanner from '@/components/PinChangeBanner';
+
 
 
 const navItems = [
