@@ -237,10 +237,19 @@ serve(async (req) => {
 
   // Validate caller — accept both user JWT and service-role calls
   let userId: string;
-  const isServiceCall = req.headers.get('X-Service-Call') === 'true';
-  
-  if (isServiceCall) {
-    // Called internally from ai-assistant edge function
+  const bearerToken = authHeader.replace('Bearer ', '').trim();
+  const isServiceCallHeader = req.headers.get('X-Service-Call') === 'true';
+  const isServiceRoleBearer =
+    (!!serviceKey && bearerToken === serviceKey) || isServiceRoleJwt(bearerToken);
+
+  if (isServiceCallHeader) {
+    // Called internally from another edge function — REQUIRE a valid service-role bearer,
+    // not just a spoofable header.
+    if (!isServiceRoleBearer) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
     const body = await req.json();
     userId = body.user_id;
     if (!userId) {
