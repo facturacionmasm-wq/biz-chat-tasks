@@ -157,6 +157,68 @@ Deno.serve(async (req) => {
     }
     console.log(`[invite-member] profile upsert ok user=${newUserId} tenant=${targetTenantId} dept=${department ?? 'null'}`);
 
+    // Generate temporary PIN (6 digits, 72h expiry, must change on first use)
+    let tempPin: string | null = null;
+    let pinExpiresAt: string | null = null;
+    if (payload.generate_temp_pin !== false) {
+      try {
+        // Generate + hash via pin-service so PBKDF2 format matches
+        const pinRes = await fetch(`${supabaseUrl}/functions/v1/pin-service`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: authHeader,
+          },
+          body: JSON.stringify({ action: "admin_reset_pin", user_id: newUserId }),
+        });
+        if (pinRes.ok) {
+          const pinBody = await pinRes.json();
+          tempPin = pinBody.pin_temp ?? null;
+          pinExpiresAt = pinBody.expires_at ?? null;
+          console.log(`[invite-member] temp PIN generated for user=${newUserId}`);
+        } else {
+          console.error("[invite-member] temp PIN generation failed:", await pinRes.text());
+        }
+      } catch (e) {
+        console.error("[invite-member] temp PIN error:", (e as Error).message);
+      }
+    }
+
+    // Send temp PIN via email (Resend), same channel as the invitation
+    if (tempPin) {
+      const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
+      if (RESEND_API_KEY) {
+        try {
+          const html = `
+            <div style="font-family:system-ui,sans-serif;max-width:520px;margin:auto;padding:24px">
+              <h2>Bienvenido a Rybix</h2>
+              <p>Hola ${name}, se te ha invitado a colaborar.</p>
+              <p><strong>Tu PIN temporal es:</strong></p>
+              <div style="font-size:32px;letter-spacing:8px;font-weight:700;background:#f3f4f6;padding:16px;text-align:center;border-radius:12px;margin:16px 0">${tempPin}</div>
+              <p>Este PIN es válido por 72 horas y <strong>deberás cambiarlo en tu primer uso</strong> desde Configuración → PIN.</p>
+              <p style="color:#6b7280;font-size:13px">Si no esperabas esta invitación, ignora este correo.</p>
+            </div>`;
+          await fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${RESEND_API_KEY}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              from: "Rybix <no-reply@rybixholding.com>",
+              to: [email],
+              subject: "Tu PIN temporal para acceder",
+              html,
+            }),
+          });
+        } catch (e) {
+          console.error("[invite-member] resend PIN email failed:", (e as Error).message);
+        }
+      }
+    }
+
+
+
 
     // Create availability rules if provided
     if (availability && Array.isArray(availability) && availability.length > 0) {
