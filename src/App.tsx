@@ -52,6 +52,7 @@ import FinanceBudgetsPage from "./pages/finance/FinanceBudgetsPage";
 import FinanceHealthPage from "./pages/finance/FinanceHealthPage";
 import CFOAssistantPage from "./pages/finance/CFOAssistantPage";
 import FinanceIntegrationsPage from "./pages/finance/FinanceIntegrationsPage";
+import FinanceOverviewPage from "./pages/admin/FinanceOverviewPage";
 import { Loader2 } from "lucide-react";
 import CommandPalette from "./components/CommandPalette";
 
