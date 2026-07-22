@@ -234,10 +234,14 @@ export function useBudgets() {
 }
 
 // ── Forecast ──────────────────────────────────────────────
-export function useCashflowForecast(horizonDays: 7 | 30 | 60 | 90 = 30) {
+export function useCashflowForecast(
+  horizonDays: 7 | 30 | 60 | 90 = 30,
+  assumptions?: ScenarioAssumptions,
+) {
   const summary = useFinancialSummary(30);
+  const assumptionsKey = JSON.stringify(assumptions ?? {});
   return useQuery({
-    queryKey: ['fin-cashflow', horizonDays, summary.data],
+    queryKey: ['fin-cashflow', horizonDays, assumptionsKey, summary.data],
     enabled: !!summary.data,
     queryFn: async () => {
       const s = summary.data as Record<string, number>;
@@ -249,7 +253,81 @@ export function useCashflowForecast(horizonDays: 7 | 30 | 60 | 90 = 30) {
         dailyInflow: dailyIn,
         dailyOutflow: dailyOut,
         horizonDays,
+        ...(assumptions ?? {}),
       });
+    },
+  });
+}
+
+// ── Conciliación (Fase 2) ─────────────────────────────────
+export function useReconciliationSuggestions(lookbackDays = 60) {
+  const { tenantId } = useAuth();
+  return useQuery({
+    queryKey: ['fin-reconciliation', tenantId, lookbackDays],
+    enabled: !!tenantId,
+    queryFn: () => fetchSuggestions(tenantId!, lookbackDays),
+  });
+}
+
+export function useConfirmMatch() {
+  const { user, tenantId } = useAuth();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (s: MatchSuggestion & { mode: 'auto_matched' | 'manual_matched' }) => {
+      await confirmMatch({
+        transactionId: s.transaction_id,
+        expenseId: s.expense_id,
+        userId: user!.id,
+        confidence: s.score,
+        mode: s.mode,
+      });
+      await supabase.from('audit_events').insert({
+        tenant_id: tenantId, event_type: 'finance_reconciliation_match',
+        actor_id: user?.id ?? null, resource_type: 'financial_transactions',
+        resource_id: s.transaction_id,
+        payload: { expense_id: s.expense_id, mode: s.mode, score: s.score },
+      });
+    },
+    onSuccess: () => {
+      toast.success('Conciliación confirmada');
+      qc.invalidateQueries({ queryKey: ['fin-reconciliation'] });
+      qc.invalidateQueries({ queryKey: ['fin-transactions'] });
+    },
+    onError: (e: unknown) => toast.error(`Error: ${(e as Error).message}`),
+  });
+}
+
+export function useRejectMatch() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (txId: string) => rejectSuggestion(txId),
+    onSuccess: () => {
+      toast.success('Sugerencia rechazada');
+      qc.invalidateQueries({ queryKey: ['fin-reconciliation'] });
+      qc.invalidateQueries({ queryKey: ['fin-transactions'] });
+    },
+  });
+}
+
+export function useMarkDuplicate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (txId: string) => markDuplicate(txId),
+    onSuccess: () => {
+      toast.success('Marcada como duplicada');
+      qc.invalidateQueries({ queryKey: ['fin-reconciliation'] });
+      qc.invalidateQueries({ queryKey: ['fin-transactions'] });
+    },
+  });
+}
+
+export function useResetReconciliation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (txId: string) => resetReconciliation(txId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['fin-reconciliation'] });
+      qc.invalidateQueries({ queryKey: ['fin-transactions'] });
     },
   });
 }
