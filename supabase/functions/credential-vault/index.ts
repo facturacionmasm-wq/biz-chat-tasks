@@ -143,6 +143,24 @@ serve(async (req) => {
   }
 });
 
+const ELEVATED_ROLES = ['staff', 'admin', 'owner', 'super_admin'];
+
+async function callerHasElevatedRole(
+  adminClient: any,
+  userId: string | null,
+  tenantId: string,
+): Promise<boolean> {
+  if (!userId) return true; // service-role call from a trusted worker (no end-user)
+  const { data } = await adminClient
+    .from('user_roles')
+    .select('role')
+    .eq('user_id', userId)
+    .eq('tenant_id', tenantId)
+    .in('role', ELEVATED_ROLES)
+    .limit(1);
+  return Array.isArray(data) && data.length > 0;
+}
+
 async function processAction(
   body: any,
   tenantId: string,
@@ -151,6 +169,17 @@ async function processAction(
   corsHeaders: Record<string, string>
 ): Promise<Response> {
   const { action, id, platform_name, username, password, notes } = body;
+
+  // Enforce role parity with RLS: only elevated roles may read/write shared credentials.
+  if (action === 'encrypt_save' || action === 'decrypt') {
+    const allowed = await callerHasElevatedRole(adminClient, userId, tenantId);
+    if (!allowed) {
+      return new Response(JSON.stringify({ error: 'Forbidden' }), {
+        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+  }
+
 
   if (action === 'encrypt_save') {
     const encryptedPassword = await encrypt(password);
