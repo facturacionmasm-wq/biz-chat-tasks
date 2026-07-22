@@ -1,25 +1,16 @@
 import type { FinancialDataProvider } from './types';
 import { MockFinancialProvider } from './mock';
-
-// Stubs para fases futuras — throw explícito.
-const notImplemented = (id: string, label: string): FinancialDataProvider => ({
-  id, label, available: false,
-  async connectInstitution() { throw new Error(`${label}: pendiente para fase futura`); },
-  async exchangeConnectionToken() { throw new Error(`${label}: pendiente`); },
-  async refreshConnection() { throw new Error(`${label}: pendiente`); },
-  async getAccounts() { throw new Error(`${label}: pendiente`); },
-  async getBalances() { throw new Error(`${label}: pendiente`); },
-  async getTransactions() { throw new Error(`${label}: pendiente`); },
-  async getConnectionStatus() { throw new Error(`${label}: pendiente`); },
-  async disconnectConnection() { throw new Error(`${label}: pendiente`); },
-});
+import { BelvoProvider } from './belvo';
+import { PlaidProvider } from './plaid';
+import { FinerioProvider } from './finerio';
+import { PrometeoProvider } from './prometeo';
 
 const registry: Record<string, FinancialDataProvider> = {
   mock: MockFinancialProvider,
-  belvo: notImplemented('belvo', 'Belvo'),
-  plaid: notImplemented('plaid', 'Plaid'),
-  finerio: notImplemented('finerio', 'Finerio'),
-  prometeo: notImplemented('prometeo', 'Prometeo'),
+  belvo: BelvoProvider,
+  plaid: PlaidProvider,
+  finerio: FinerioProvider,
+  prometeo: PrometeoProvider,
 };
 
 export function getFinancialProvider(id: string): FinancialDataProvider {
@@ -28,6 +19,19 @@ export function getFinancialProvider(id: string): FinancialDataProvider {
 
 export function listFinancialProviders(): FinancialDataProvider[] {
   return Object.values(registry);
+}
+
+// Metadatos de cada provider real (para UI de integraciones)
+export interface ProviderMetadata {
+  id: string;
+  requiredSecrets: string[];
+  docsUrl: string;
+}
+
+export function getProviderMetadata(id: string): ProviderMetadata | null {
+  const p = registry[id] as unknown as (FinancialDataProvider & Partial<ProviderMetadata>);
+  if (!p || !p.requiredSecrets) return null;
+  return { id: p.id, requiredSecrets: p.requiredSecrets, docsUrl: p.docsUrl ?? '' };
 }
 
 export { MockFinancialProvider };
