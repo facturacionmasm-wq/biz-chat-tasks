@@ -275,7 +275,10 @@ export type BudgetLineInput = {
   category_name: string;
   planned_amount: number;
   notes?: string | null;
+  product_id?: string | null;
+  quantity?: number | null;
 };
+
 
 export function useUpsertBudget() {
   const qc = useQueryClient();
