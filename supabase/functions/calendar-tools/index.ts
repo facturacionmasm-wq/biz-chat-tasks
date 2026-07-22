@@ -313,3 +313,14 @@ async function handleAction(supabase: any, userId: string, body: any): Promise<R
     });
   }
 }
+
+function isServiceRoleJwt(token: string): boolean {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return false;
+    const payload = JSON.parse(atob(parts[1]));
+    return payload?.role === 'service_role';
+  } catch {
+    return false;
+  }
+}
