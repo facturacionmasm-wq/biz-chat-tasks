@@ -79,10 +79,11 @@ const ExpensesPage = ({ enableApproval = false }: Props) => {
       const projectIds = [...new Set(data.map(e => e.project_id).filter(Boolean) as string[])];
 
       const [{ data: profiles }, { data: cats }, { data: projs }] = await Promise.all([
-        supabase.from('profiles_safe' as any).select('user_id, name').in('user_id', userIds) as Promise<{ data: any[] | null }>,
-        categoryIds.length ? supabase.from('financial_categories').select('id, name').in('id', categoryIds) : Promise.resolve({ data: [] as any[] }),
-        projectIds.length ? supabase.from('projects').select('id, name').in('id', projectIds) : Promise.resolve({ data: [] as any[] }),
+        supabase.from('profiles_safe' as any).select('user_id, name').in('user_id', userIds).then(r => r as any),
+        categoryIds.length ? supabase.from('financial_categories').select('id, name').in('id', categoryIds).then(r => r as any) : Promise.resolve({ data: [] as any[] }),
+        projectIds.length ? supabase.from('projects').select('id, name').in('id', projectIds).then(r => r as any) : Promise.resolve({ data: [] as any[] }),
       ]);
+
 
       const nameMap = new Map(profiles?.map(p => [p.user_id, p.name]) || []);
       const catMap = new Map((cats || []).map((c: any) => [c.id, c.name]));
