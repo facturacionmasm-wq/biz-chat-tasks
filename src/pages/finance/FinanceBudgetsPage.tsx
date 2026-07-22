@@ -1,5 +1,6 @@
 import { useBudgets } from '@/hooks/useFinance';
 import { PiggyBank } from 'lucide-react';
+import ReportExportMenu from '@/components/finance/ReportExportMenu';
 
 const fmt = (n: number, currency = 'MXN') =>
   new Intl.NumberFormat('es-MX', { style: 'currency', currency, maximumFractionDigits: 0 }).format(n);
@@ -12,8 +13,37 @@ export default function FinanceBudgetsPage() {
     financial_budget_lines?: Array<{ id: string; category_name: string; planned_amount: number }>;
   }>;
 
+  const buildExport = () => {
+    const rows: Array<Record<string, unknown>> = [];
+    for (const b of data) {
+      for (const l of b.financial_budget_lines ?? []) {
+        rows.push({
+          presupuesto: b.name, periodo: `${b.period_start}→${b.period_end}`,
+          categoria: l.category_name, monto_planeado: Number(l.planned_amount), moneda: b.currency,
+        });
+      }
+    }
+    return {
+      title: 'Presupuestos',
+      period: 'Todos los periodos',
+      currency: data[0]?.currency ?? 'MXN',
+      csvFilename: `presupuestos-${new Date().toISOString().slice(0, 10)}.csv`,
+      pdfFilename: `presupuestos-${new Date().toISOString().slice(0, 10)}.pdf`,
+      csvRows: rows,
+      sections: data.map((b) => ({
+        title: `${b.name} · ${b.period_start} → ${b.period_end}`,
+        columns: ['Categoría', 'Planeado'],
+        rows: (b.financial_budget_lines ?? []).map((l) => [l.category_name, fmt(Number(l.planned_amount), b.currency)]),
+        summary: [{ label: 'Total planeado', value: fmt(Number(b.total_planned), b.currency) }],
+      })),
+    };
+  };
+
   return (
     <div className="space-y-3">
+      <div className="flex justify-end">
+        <ReportExportMenu build={buildExport} disabled={data.length === 0} />
+      </div>
       <div className="rounded-2xl bg-card border border-border p-4 shadow-soft">
         <h3 className="text-sm font-semibold mb-1">Presupuestos</h3>
         <p className="text-xs text-muted-foreground">

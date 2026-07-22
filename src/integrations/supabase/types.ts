@@ -2145,6 +2145,7 @@ export type Database = {
       }
       financial_cashflow_forecasts: {
         Row: {
+          assumptions: Json
           created_at: string
           currency: string
           daily_series: Json
@@ -2158,6 +2159,7 @@ export type Database = {
           tenant_id: string
         }
         Insert: {
+          assumptions?: Json
           created_at?: string
           currency?: string
           daily_series?: Json
@@ -2171,6 +2173,7 @@ export type Database = {
           tenant_id: string
         }
         Update: {
+          assumptions?: Json
           created_at?: string
           currency?: string
           daily_series?: Json
@@ -2375,9 +2378,14 @@ export type Database = {
           direction: string
           external_id: string | null
           id: string
+          match_confidence: number | null
           metadata: Json
           posted_at: string
+          reconciled_at: string | null
+          reconciled_by: string | null
           reconciled_expense_id: string | null
+          reconciled_with_expense_id: string | null
+          reconciliation_status: string
           status: string
           tenant_id: string
           updated_at: string
@@ -2394,9 +2402,14 @@ export type Database = {
           direction?: string
           external_id?: string | null
           id?: string
+          match_confidence?: number | null
           metadata?: Json
           posted_at?: string
+          reconciled_at?: string | null
+          reconciled_by?: string | null
           reconciled_expense_id?: string | null
+          reconciled_with_expense_id?: string | null
+          reconciliation_status?: string
           status?: string
           tenant_id: string
           updated_at?: string
@@ -2413,9 +2426,14 @@ export type Database = {
           direction?: string
           external_id?: string | null
           id?: string
+          match_confidence?: number | null
           metadata?: Json
           posted_at?: string
+          reconciled_at?: string | null
+          reconciled_by?: string | null
           reconciled_expense_id?: string | null
+          reconciled_with_expense_id?: string | null
+          reconciliation_status?: string
           status?: string
           tenant_id?: string
           updated_at?: string
@@ -2433,6 +2451,13 @@ export type Database = {
             columns: ["category_id"]
             isOneToOne: false
             referencedRelation: "financial_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_transactions_reconciled_with_expense_id_fkey"
+            columns: ["reconciled_with_expense_id"]
+            isOneToOne: false
+            referencedRelation: "expenses"
             referencedColumns: ["id"]
           },
         ]
@@ -6112,6 +6137,26 @@ export type Database = {
           document_id: string
           metadata: Json
           rank: number
+        }[]
+      }
+      show_limit: { Args: never; Returns: number }
+      show_trgm: { Args: { "": string }; Returns: string[] }
+      suggest_transaction_matches: {
+        Args: { _lookback_days?: number; _tenant_id: string }
+        Returns: {
+          amount_delta: number
+          day_delta: number
+          desc_similarity: number
+          exp_amount: number
+          exp_date: string
+          exp_description: string
+          expense_id: string
+          score: number
+          suggested_status: string
+          transaction_id: string
+          tx_amount: number
+          tx_date: string
+          tx_description: string
         }[]
       }
     }

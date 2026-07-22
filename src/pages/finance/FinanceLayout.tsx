@@ -1,13 +1,14 @@
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Landmark, ArrowLeftRight, TrendingUp, TrendingDown,
-  Wallet, PiggyBank, Activity, Bot, Plug,
+  Wallet, PiggyBank, Activity, Bot, Plug, GitCompare,
 } from 'lucide-react';
 
 const tabs = [
   { to: '/finance', end: true, icon: LayoutDashboard, label: 'Resumen' },
   { to: '/finance/accounts', icon: Landmark, label: 'Cuentas' },
   { to: '/finance/transactions', icon: ArrowLeftRight, label: 'Transacciones' },
+  { to: '/finance/reconciliation', icon: GitCompare, label: 'Conciliación' },
   { to: '/finance/cashflow', icon: Wallet, label: 'Flujo de efectivo' },
   { to: '/finance/receivables', icon: TrendingUp, label: 'Por cobrar' },
   { to: '/finance/payables', icon: TrendingDown, label: 'Por pagar' },

@@ -1,5 +1,6 @@
 import { useReceivables, usePayables } from '@/hooks/useFinance';
 import type { AgingBucket, AgingResult } from '@/lib/finance/aging';
+import ReportExportMenu from '@/components/finance/ReportExportMenu';
 
 const BUCKETS: { key: AgingBucket; label: string; color: string }[] = [
   { key: 'current', label: 'Vigente', color: 'var(--rx-emerald)' },
@@ -12,9 +13,43 @@ const BUCKETS: { key: AgingBucket; label: string; color: string }[] = [
 const fmt = (n: number, currency = 'MXN') =>
   new Intl.NumberFormat('es-MX', { style: 'currency', currency, maximumFractionDigits: 0 }).format(n);
 
+function buildAgingExport(title: string, data: AgingResult | undefined) {
+  const rows: Array<Record<string, unknown>> = [];
+  if (data) {
+    for (const b of BUCKETS) {
+      for (const it of data.buckets[b.key].items) {
+        rows.push({
+          bucket: b.label, contacto: it.contactName, monto: it.amount,
+          moneda: it.currency, vencimiento: it.dueDate ?? '',
+        });
+      }
+    }
+  }
+  return {
+    title,
+    period: 'Aging actual',
+    currency: 'MXN',
+    csvFilename: `${title.toLowerCase().replace(/[^a-z]+/g, '-')}-${new Date().toISOString().slice(0, 10)}.csv`,
+    pdfFilename: `${title.toLowerCase().replace(/[^a-z]+/g, '-')}-${new Date().toISOString().slice(0, 10)}.pdf`,
+    csvRows: rows,
+    sections: [{
+      title,
+      columns: ['Bucket', 'Contacto', 'Monto', 'Vencimiento'],
+      rows: rows.map((r) => [String(r.bucket), String(r.contacto), fmt(Number(r.monto), String(r.moneda)), String(r.vencimiento)]),
+      summary: BUCKETS.map((b) => ({
+        label: b.label,
+        value: `${fmt(data?.buckets[b.key].total ?? 0)} (${data?.buckets[b.key].count ?? 0})`,
+      })).concat([{ label: 'Total', value: fmt(data?.grandTotal ?? 0) }]),
+    }],
+  };
+}
+
 export function AgingReport({ title, data, empty }: { title: string; data?: AgingResult; empty: string }) {
   return (
     <div className="space-y-3">
+      <div className="flex justify-end">
+        <ReportExportMenu build={() => buildAgingExport(title, data)} disabled={!data || data.grandTotal === 0} />
+      </div>
       <div className="rounded-2xl bg-card border border-border p-4 shadow-soft">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-semibold">{title}</h3>
@@ -64,3 +99,4 @@ export function PayablesPage() {
   const q = usePayables();
   return <AgingReport title="Cuentas por pagar (Aging)" data={q.data} empty="Sin cuentas por pagar pendientes. Fuente: módulo Gastos." />;
 }
+

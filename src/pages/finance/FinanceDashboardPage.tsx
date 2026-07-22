@@ -2,6 +2,7 @@ import { useFinancialSummary, useHealthScore, useFinancialAlerts } from '@/hooks
 import { AlertTriangle, Wallet, TrendingUp, TrendingDown, Activity, Clock } from 'lucide-react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { useCashflowForecast } from '@/hooks/useFinance';
+import ReportExportMenu from '@/components/finance/ReportExportMenu';
 
 const fmt = (n: number | string | null | undefined, currency = 'MXN') =>
   n == null ? 'N/D' : new Intl.NumberFormat('es-MX', { style: 'currency', currency, maximumFractionDigits: 0 }).format(Number(n));
@@ -30,8 +31,42 @@ export default function FinanceDashboardPage() {
   const s = (summary.data ?? {}) as Record<string, number | string | null>;
   const currency = (s.currency as string) ?? 'MXN';
 
+  const buildExport = () => {
+    const rows = [
+      { concepto: 'Saldo consolidado', valor: Number(s.total_balance ?? 0) },
+      { concepto: 'Ingresos 30d', valor: Number(s.inflows ?? 0) },
+      { concepto: 'Egresos 30d', valor: Number(s.outflows ?? 0) },
+      { concepto: 'Flujo neto 30d', valor: Number(s.net_flow ?? 0) },
+      { concepto: 'Cuentas por cobrar', valor: Number(s.receivables ?? 0) },
+      { concepto: 'Cuentas por pagar', valor: Number(s.payables ?? 0) },
+      { concepto: 'Runway (días)', valor: Number(s.runway_days ?? 0) },
+      { concepto: 'Health Score', valor: health.data?.score ?? 0 },
+    ];
+    return {
+      title: 'Resumen financiero',
+      period: 'Últimos 30 días',
+      currency,
+      csvFilename: `resumen-financiero-${new Date().toISOString().slice(0, 10)}.csv`,
+      pdfFilename: `resumen-financiero-${new Date().toISOString().slice(0, 10)}.pdf`,
+      csvRows: rows,
+      sections: [{
+        title: 'Indicadores clave',
+        columns: ['Concepto', 'Valor'],
+        rows: rows.map((r) => [r.concepto, fmt(r.valor, currency)]),
+      }, {
+        title: 'Alertas activas',
+        columns: ['Tipo', 'Severidad', 'Mensaje'],
+        rows: ((alerts.data ?? []) as { alert_type: string; severity: string; message: string }[])
+          .map((a) => [a.alert_type, a.severity, a.message]),
+      }],
+    };
+  };
+
   return (
     <div className="space-y-4">
+      <div className="flex justify-end -mt-2">
+        <ReportExportMenu build={buildExport} />
+      </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card icon={Wallet} label="Saldo consolidado" value={fmt(s.total_balance, currency)} />
         <Card icon={TrendingUp} label="Ingresos 30d" value={fmt(s.inflows, currency)} color="var(--rx-emerald)" />
