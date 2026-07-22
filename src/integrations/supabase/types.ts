@@ -6157,6 +6157,7 @@ export type Database = {
         Returns: boolean
       }
       cleanup_expired_nonces: { Args: never; Returns: undefined }
+      compute_budget_actuals: { Args: { _budget_id: string }; Returns: Json }
       compute_project_financials: {
         Args: { _project_id: string }
         Returns: Json
@@ -6174,6 +6175,7 @@ export type Database = {
         Args: { _tenant_id: string }
         Returns: Json
       }
+      delete_budget: { Args: { _id: string }; Returns: Json }
       ensure_tenant_for_current_user: { Args: never; Returns: Json }
       get_slow_queries: {
         Args: { _limit?: number }
@@ -6249,6 +6251,18 @@ export type Database = {
           tx_date: string
           tx_description: string
         }[]
+      }
+      upsert_budget: {
+        Args: {
+          _currency: string
+          _id: string
+          _lines: Json
+          _name: string
+          _notes: string
+          _period_end: string
+          _period_start: string
+        }
+        Returns: Json
       }
     }
     Enums: {
