@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { X, Plus, Trash2, Loader2 } from 'lucide-react';
 import { useFinancialCategories, useUpsertBudget, type BudgetLineInput } from '@/hooks/useFinance';
+import { useProducts } from '@/hooks/useProducts';
+
 
 type ExistingBudget = {
   id: string;
