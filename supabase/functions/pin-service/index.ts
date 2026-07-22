@@ -167,7 +167,7 @@ serve(async (req) => {
       // Find all profiles with a pin_hash in this tenant
       const { data: profiles } = await adminClient
         .from('profiles')
-        .select('id, user_id, name, tenant_id, pin_hash')
+        .select('id, user_id, name, tenant_id, pin_hash, pin_must_change, pin_temp_expires_at')
         .eq('tenant_id', tenant_id)
         .not('pin_hash', 'is', null);
 
@@ -177,33 +177,39 @@ serve(async (req) => {
         });
       }
 
-      // Try to match against each profile
+      const buildMatch = (profile: any) => {
+        const mustChange = !!profile.pin_must_change;
+        const expiresAt = profile.pin_temp_expires_at ? new Date(profile.pin_temp_expires_at) : null;
+        const expired = mustChange && expiresAt ? expiresAt.getTime() < Date.now() : false;
+        return {
+          match: true,
+          user_id: profile.user_id,
+          name: profile.name,
+          profile_id: profile.id,
+          must_change: mustChange,
+          expired,
+          expires_at: profile.pin_temp_expires_at,
+        };
+      };
+
       for (const profile of profiles) {
         const storedHash = profile.pin_hash;
         if (!storedHash) continue;
 
-        // Support both new format (salt:hash) and legacy (plain SHA-256)
         if (storedHash.includes(':')) {
           const [salt, hash] = storedHash.split(':');
           const computed = await hashPinWithSalt(pin, salt);
           if (computed === hash) {
-            return new Response(JSON.stringify({
-              match: true,
-              user_id: profile.user_id,
-              name: profile.name,
-              profile_id: profile.id,
-            }), {
+            return new Response(JSON.stringify(buildMatch(profile)), {
               headers: { ...corsHeaders, 'Content-Type': 'application/json' },
             });
           }
         } else {
-          // Legacy: plain SHA-256 (backwards compatibility)
           const encoder = new TextEncoder();
           const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(pin));
           const hashArray = Array.from(new Uint8Array(hashBuffer));
           const legacyHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
           if (legacyHash === storedHash) {
-            // Upgrade to new format
             const newSalt = generateSalt();
             const newHash = await hashPinWithSalt(pin, newSalt);
             await adminClient
@@ -211,17 +217,13 @@ serve(async (req) => {
               .update({ pin_hash: `${newSalt}:${newHash}` })
               .eq('user_id', profile.user_id);
 
-            return new Response(JSON.stringify({
-              match: true,
-              user_id: profile.user_id,
-              name: profile.name,
-              profile_id: profile.id,
-            }), {
+            return new Response(JSON.stringify(buildMatch(profile)), {
               headers: { ...corsHeaders, 'Content-Type': 'application/json' },
             });
           }
         }
       }
+
 
       return new Response(JSON.stringify({ match: false }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
