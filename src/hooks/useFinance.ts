@@ -233,6 +233,99 @@ export function useBudgets() {
   });
 }
 
+export type BudgetActualLine = {
+  line_id: string;
+  category_id: string | null;
+  category_name: string;
+  planned_amount: number;
+  actual_amount: number;
+  variance: number;
+  variance_pct: number | null;
+  status: 'ok' | 'watch' | 'warning' | 'over';
+};
+
+export type BudgetActuals = {
+  budget_id: string;
+  name: string;
+  currency: string;
+  period_start: string;
+  period_end: string;
+  total_planned: number;
+  total_actual: number;
+  total_variance: number;
+  total_variance_pct: number | null;
+  overall_status: 'ok' | 'watch' | 'warning' | 'over';
+  lines: BudgetActualLine[];
+};
+
+export function useBudgetActuals(budgetId: string | null) {
+  return useQuery({
+    queryKey: ['fin-budget-actuals', budgetId],
+    enabled: !!budgetId,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('compute_budget_actuals', { _budget_id: budgetId! });
+      if (error) throw error;
+      return data as unknown as BudgetActuals;
+    },
+  });
+}
+
+export type BudgetLineInput = {
+  category_id?: string | null;
+  category_name: string;
+  planned_amount: number;
+  notes?: string | null;
+};
+
+export function useUpsertBudget() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      id?: string | null;
+      name: string;
+      period_start: string;
+      period_end: string;
+      currency?: string;
+      notes?: string | null;
+      lines: BudgetLineInput[];
+    }) => {
+      const { data, error } = await supabase.rpc('upsert_budget', {
+        _id: input.id ?? null,
+        _name: input.name,
+        _period_start: input.period_start,
+        _period_end: input.period_end,
+        _currency: input.currency ?? 'MXN',
+        _notes: input.notes ?? null,
+        _lines: input.lines as unknown as never,
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['fin-budgets'] });
+      qc.invalidateQueries({ queryKey: ['fin-budget-actuals'] });
+      toast.success('Presupuesto guardado');
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+
+export function useDeleteBudget() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { data, error } = await supabase.rpc('delete_budget', { _id: id });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['fin-budgets'] });
+      toast.success('Presupuesto eliminado');
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+
 // ── Forecast ──────────────────────────────────────────────
 export function useCashflowForecast(
   horizonDays: 7 | 30 | 60 | 90 = 30,
