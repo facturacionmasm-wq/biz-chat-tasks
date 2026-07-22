@@ -54,7 +54,10 @@ import FinanceBudgetsPage from "./pages/finance/FinanceBudgetsPage";
 import FinanceHealthPage from "./pages/finance/FinanceHealthPage";
 import CFOAssistantPage from "./pages/finance/CFOAssistantPage";
 import FinanceIntegrationsPage from "./pages/finance/FinanceIntegrationsPage";
+import CFDIPage from "./pages/finance/CFDIPage";
+import ProductsPage from "./pages/ProductsPage";
 import FinanceOverviewPage from "./pages/admin/FinanceOverviewPage";
+
 import { Loader2 } from "lucide-react";
 import CommandPalette from "./components/CommandPalette";
 
@@ -205,10 +208,13 @@ const AppRoutes = () => (
       <Route path="receivables" element={<ReceivablesPage />} />
       <Route path="payables" element={<PayablesPage />} />
       <Route path="budgets" element={<FinanceBudgetsPage />} />
+      <Route path="cfdi" element={<CFDIPage />} />
       <Route path="health" element={<FinanceHealthPage />} />
       <Route path="cfo-ai" element={<CFOAssistantPage />} />
       <Route path="integrations" element={<FinanceIntegrationsPage />} />
     </Route>
+    <Route path="/products" element={<P><ProductsPage /></P>} />
+
     <Route path="*" element={<NotFound />} />
   </Routes>
 );

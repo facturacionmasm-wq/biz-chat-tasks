@@ -1,7 +1,7 @@
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Landmark, ArrowLeftRight, TrendingUp, TrendingDown,
-  Wallet, PiggyBank, Activity, Bot, Plug, GitCompare, Receipt,
+  Wallet, PiggyBank, Activity, Bot, Plug, GitCompare, Receipt, FileText,
 } from 'lucide-react';
 
 const tabs = [
@@ -14,10 +14,12 @@ const tabs = [
   { to: '/finance/receivables', icon: TrendingUp, label: 'Por cobrar' },
   { to: '/finance/payables', icon: TrendingDown, label: 'Por pagar' },
   { to: '/finance/budgets', icon: PiggyBank, label: 'Presupuestos' },
+  { to: '/finance/cfdi', icon: FileText, label: 'CFDI' },
   { to: '/finance/health', icon: Activity, label: 'Health Score' },
   { to: '/finance/cfo-ai', icon: Bot, label: 'CFO AI' },
   { to: '/finance/integrations', icon: Plug, label: 'Integraciones' },
 ];
+
 
 
 export default function FinanceLayout() {
