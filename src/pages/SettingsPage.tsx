@@ -371,6 +371,28 @@ const SettingsPage = () => {
     }
   };
 
+  const handleResetPin = async (targetUserId: string, targetName: string) => {
+    if (!confirm(`¿Resetear el PIN de ${targetName}? Se generará un PIN temporal que deberá cambiar en el primer uso.`)) return;
+    try {
+      const { data, error } = await supabase.functions.invoke('pin-service', {
+        body: { action: 'admin_reset_pin', user_id: targetUserId },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      if (data?.pin_temp) {
+        // Long-lived toast so the admin can copy it
+        toast.success(`PIN temporal de ${targetName}: ${data.pin_temp} (válido 72h)`, { duration: 30000 });
+        try { await navigator.clipboard?.writeText(data.pin_temp); } catch {}
+      } else {
+        toast.info('PIN reseteado');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Error al resetear PIN');
+    }
+  };
+
+
+
   const handleInviteMember = async () => {
     if (!inviteName.trim() || !inviteEmail.trim()) {
       toast.error('Nombre y email son requeridos');
