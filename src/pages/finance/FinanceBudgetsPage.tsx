@@ -1,5 +1,6 @@
 import { useBudgets } from '@/hooks/useFinance';
 import { PiggyBank } from 'lucide-react';
+import ReportExportMenu from '@/components/finance/ReportExportMenu';
 
 const fmt = (n: number, currency = 'MXN') =>
   new Intl.NumberFormat('es-MX', { style: 'currency', currency, maximumFractionDigits: 0 }).format(n);
