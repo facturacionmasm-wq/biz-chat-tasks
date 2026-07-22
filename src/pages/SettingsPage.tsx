@@ -371,6 +371,28 @@ const SettingsPage = () => {
     }
   };
 
+  const handleResetPin = async (targetUserId: string, targetName: string) => {
+    if (!confirm(`¿Resetear el PIN de ${targetName}? Se generará un PIN temporal que deberá cambiar en el primer uso.`)) return;
+    try {
+      const { data, error } = await supabase.functions.invoke('pin-service', {
+        body: { action: 'admin_reset_pin', user_id: targetUserId },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      if (data?.pin_temp) {
+        // Long-lived toast so the admin can copy it
+        toast.success(`PIN temporal de ${targetName}: ${data.pin_temp} (válido 72h)`, { duration: 30000 });
+        try { await navigator.clipboard?.writeText(data.pin_temp); } catch {}
+      } else {
+        toast.info('PIN reseteado');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Error al resetear PIN');
+    }
+  };
+
+
+
   const handleInviteMember = async () => {
     if (!inviteName.trim() || !inviteEmail.trim()) {
       toast.error('Nombre y email son requeridos');
@@ -390,6 +412,11 @@ const SettingsPage = () => {
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
       toast.success(data?.message || 'Miembro invitado exitosamente');
+      if (data?.temp_pin) {
+        // Show the PIN in a persistent toast; admin should share it if email fails.
+        toast.info(`PIN temporal: ${data.temp_pin} (válido 72h, debe cambiarse en primer uso)`, { duration: 20000 });
+      }
+
       setShowInviteModal(false);
       setInviteStep(0);
       setInviteName('');
@@ -1762,15 +1789,25 @@ const SettingsPage = () => {
                             </button>
                           )}
                           {!isSelf && (isSuperAdmin || userRole === 'owner' || userRole === 'admin') && (
-                            <button
-                              onClick={() => handleDeleteMember(m.user_id)}
-                              disabled={deletingUserId === m.user_id}
-                              className="text-[var(--rx-rose)] hover:text-[var(--rx-rose)]/80 disabled:opacity-40 p-1.5 rounded hover:bg-destructive/10 transition-colors"
-                              title="Eliminar miembro"
-                            >
-                              {deletingUserId === m.user_id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                            </button>
+                            <>
+                              <button
+                                onClick={() => handleResetPin(m.user_id, m.name || m.email)}
+                                className="p-1.5 rounded hover:bg-[var(--rx-s2)] text-[var(--rx-amber)] hover:opacity-80 transition-colors"
+                                title="Resetear PIN"
+                              >
+                                <KeyRound size={14} />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteMember(m.user_id)}
+                                disabled={deletingUserId === m.user_id}
+                                className="text-[var(--rx-rose)] hover:text-[var(--rx-rose)]/80 disabled:opacity-40 p-1.5 rounded hover:bg-destructive/10 transition-colors"
+                                title="Eliminar miembro"
+                              >
+                                {deletingUserId === m.user_id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                              </button>
+                            </>
                           )}
+
                           {isSelf && <span className="text-[10px] text-[var(--rx-t2)] bg-[var(--rx-s2)] px-2 py-0.5 rounded-full">Tú</span>}
                         </div>
                       </div>

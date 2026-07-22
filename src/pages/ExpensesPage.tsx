@@ -1,14 +1,18 @@
 import { useState, useEffect } from 'react';
-import { Receipt, DollarSign, Calendar, TrendingUp, Loader2, FileText, ExternalLink, CheckCircle, XCircle, Clock, AlertCircle } from 'lucide-react';
+import { Receipt, DollarSign, Loader2, FileText, ExternalLink, CheckCircle, XCircle, Clock, AlertCircle, Check, X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { toast } from 'sonner';
 
 interface Expense {
   id: string;
   user_id: string;
   type: string;
   category: string | null;
+  category_id: string | null;
+  project_id: string | null;
   description: string | null;
   vendor_name: string | null;
   concept: string | null;
@@ -30,6 +34,8 @@ interface Expense {
   created_at: string;
   user_name?: string;
   approver_name?: string;
+  category_name?: string;
+  project_name?: string;
 }
 
 const STATUS_CONFIG: Record<string, { label: string; class: string; icon: React.ElementType }> = {
@@ -40,41 +46,83 @@ const STATUS_CONFIG: Record<string, { label: string; class: string; icon: React.
   rejected: { label: 'Rechazado', class: 'rx-badge rx-badge-rose', icon: XCircle },
 };
 
-const ExpensesPage = () => {
+interface Props {
+  /** When true, shows approve/reject actions for owner/admin/super_admin. */
+  enableApproval?: boolean;
+}
+
+const ExpensesPage = ({ enableApproval = false }: Props) => {
+  const { userRole } = useAuth();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'by_user'>('list');
   const [periodFilter, setPeriodFilter] = useState<'day' | 'month' | 'year' | 'all'>('all');
   const [typeFilter, setTypeFilter] = useState<'all' | 'expense' | 'budget'>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'paid' | 'pending_approval' | 'approved' | 'rejected'>('all');
 
-  useEffect(() => {
-    fetchExpenses();
-  }, []);
+  const canApprove = enableApproval && ['owner', 'admin', 'super_admin'].includes(userRole || '');
+
+  useEffect(() => { fetchExpenses(); }, []);
 
   const fetchExpenses = async () => {
     setLoading(true);
     const { data, error } = await supabase
       .from('expenses')
-      .select('id, user_id, type, category, description, vendor_name, concept, amount, currency, expense_date, status, approval_required, approver_user_id, approved_at, rejected_at, rejection_reason, paid_at, folio, payment_method, document_budget_drive_url, document_payment_drive_url, source, created_at')
+      .select('id, user_id, type, category, category_id, project_id, description, vendor_name, concept, amount, currency, expense_date, status, approval_required, approver_user_id, approved_at, rejected_at, rejection_reason, paid_at, folio, payment_method, document_budget_drive_url, document_payment_drive_url, source, created_at')
       .order('expense_date', { ascending: false })
       .limit(300);
 
     if (!error && data) {
       const userIds = [...new Set(data.map(e => e.user_id).concat(data.filter(e => e.approver_user_id).map(e => e.approver_user_id!)))];
-      const { data: profiles } = await supabase
-        .from('profiles_safe' as any)
-        .select('user_id, name')
-        .in('user_id', userIds) as { data: any[] | null };
+      const categoryIds = [...new Set(data.map(e => e.category_id).filter(Boolean) as string[])];
+      const projectIds = [...new Set(data.map(e => e.project_id).filter(Boolean) as string[])];
+
+      const [{ data: profiles }, { data: cats }, { data: projs }] = await Promise.all([
+        supabase.from('profiles_safe' as any).select('user_id, name').in('user_id', userIds).then(r => r as any),
+        categoryIds.length ? supabase.from('financial_categories').select('id, name').in('id', categoryIds).then(r => r as any) : Promise.resolve({ data: [] as any[] }),
+        projectIds.length ? supabase.from('projects').select('id, name').in('id', projectIds).then(r => r as any) : Promise.resolve({ data: [] as any[] }),
+      ]);
+
 
       const nameMap = new Map(profiles?.map(p => [p.user_id, p.name]) || []);
+      const catMap = new Map((cats || []).map((c: any) => [c.id, c.name]));
+      const projMap = new Map((projs || []).map((p: any) => [p.id, p.name]));
+
       setExpenses(data.map(e => ({
         ...e,
-        user_name: nameMap.get(e.user_id) || 'Desconocido',
-        approver_name: e.approver_user_id ? nameMap.get(e.approver_user_id) || null : null,
-      })));
+        user_name: (nameMap.get(e.user_id) as string) || 'Desconocido',
+        approver_name: e.approver_user_id ? (nameMap.get(e.approver_user_id) as string) || null : null,
+        category_name: e.category_id ? (catMap.get(e.category_id) as string) || null : null,
+        project_name: e.project_id ? (projMap.get(e.project_id) as string) || null : null,
+      })) as unknown as Expense[]);
+
+
     }
     setLoading(false);
+  };
+
+  const handleDecision = async (expenseId: string, decision: 'approve' | 'reject') => {
+    let reason: string | null = null;
+    if (decision === 'reject') {
+      reason = window.prompt('Motivo del rechazo (opcional):') || null;
+    }
+    setBusyId(expenseId);
+    try {
+      const { data, error } = await supabase.rpc('approve_expense' as any, {
+        _expense_id: expenseId,
+        _decision: decision,
+        _reason: reason,
+      });
+      if (error) throw error;
+      if ((data as any)?.ok === false) throw new Error('No se pudo procesar');
+      toast.success(decision === 'approve' ? 'Gasto aprobado' : 'Gasto rechazado');
+      await fetchExpenses();
+    } catch (err: any) {
+      toast.error(err.message || 'Error al procesar decisión');
+    } finally {
+      setBusyId(null);
+    }
   };
 
   const now = new Date();
@@ -149,7 +197,6 @@ const ExpensesPage = () => {
         </div>
       </div>
 
-      {/* Summary cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="rx-panel">
           <div className="flex items-center justify-between mb-2">
@@ -181,7 +228,6 @@ const ExpensesPage = () => {
         </div>
       </div>
 
-      {/* Filters row */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-1 mr-2">
           <button onClick={() => setViewMode('list')} className={`text-xs px-3 py-1.5 rounded-md font-medium ${viewMode === 'list' ? 'bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground' : 'text-[var(--rx-t2)] hover:bg-[var(--rx-s2)]'}`}>
@@ -222,14 +268,16 @@ const ExpensesPage = () => {
                 <th className="text-left px-4 py-3 text-xs font-semibold text-[var(--rx-t2)] uppercase">Proveedor</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-[var(--rx-t2)] uppercase">Descripción</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-[var(--rx-t2)] uppercase">Categoría</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-[var(--rx-t2)] uppercase">Proyecto</th>
                 <th className="text-right px-4 py-3 text-xs font-semibold text-[var(--rx-t2)] uppercase">Monto</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-[var(--rx-t2)] uppercase">Estado</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-[var(--rx-t2)] uppercase">Docs</th>
+                {canApprove && <th className="text-right px-4 py-3 text-xs font-semibold text-[var(--rx-t2)] uppercase">Acciones</th>}
               </tr>
             </thead>
             <tbody>
               {filteredExpenses.length === 0 && (
-                <tr><td colSpan={9} className="px-4 py-8 text-center text-[var(--rx-t2)] text-xs">No hay registros en este periodo</td></tr>
+                <tr><td colSpan={canApprove ? 11 : 10} className="px-4 py-8 text-center text-[var(--rx-t2)] text-xs">No hay registros en este periodo</td></tr>
               )}
               {filteredExpenses.map(e => (
                 <tr key={e.id} className="border-b border-[var(--rx-b1)] last:border-b-0 hover:bg-[var(--rx-s2)]/30">
@@ -238,7 +286,8 @@ const ExpensesPage = () => {
                   <td className="px-4 py-3 font-medium text-foreground whitespace-nowrap">{e.user_name}</td>
                   <td className="px-4 py-3 text-foreground">{e.vendor_name || '—'}</td>
                   <td className="px-4 py-3 text-foreground max-w-[200px] truncate">{e.description || e.concept || '—'}</td>
-                  <td className="px-4 py-3"><span className="text-xs bg-[var(--rx-s2)] px-2 py-0.5 rounded-full">{e.category || 'General'}</span></td>
+                  <td className="px-4 py-3"><span className="text-xs bg-[var(--rx-s2)] px-2 py-0.5 rounded-full">{e.category_name || e.category || 'General'}</span></td>
+                  <td className="px-4 py-3 text-xs text-[var(--rx-t2)]">{e.project_name || '—'}</td>
                   <td className="px-4 py-3 text-right font-semibold text-foreground whitespace-nowrap">${Number(e.amount).toLocaleString('es-MX', { minimumFractionDigits: 2 })} {e.currency}</td>
                   <td className="px-4 py-3">
                     <div className="space-y-1">
@@ -267,6 +316,32 @@ const ExpensesPage = () => {
                       )}
                     </div>
                   </td>
+                  {canApprove && (
+                    <td className="px-4 py-3 text-right">
+                      {e.status === 'pending_approval' ? (
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            disabled={busyId === e.id}
+                            onClick={() => handleDecision(e.id, 'approve')}
+                            className="p-1.5 rounded-md text-emerald-600 hover:bg-emerald-500/10 disabled:opacity-40"
+                            title="Aprobar"
+                          >
+                            {busyId === e.id ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                          </button>
+                          <button
+                            disabled={busyId === e.id}
+                            onClick={() => handleDecision(e.id, 'reject')}
+                            className="p-1.5 rounded-md text-rose-600 hover:bg-rose-500/10 disabled:opacity-40"
+                            title="Rechazar"
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-[10px] text-[var(--rx-t2)]">—</span>
+                      )}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

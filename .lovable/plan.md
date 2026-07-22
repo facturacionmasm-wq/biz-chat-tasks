@@ -1,196 +1,125 @@
 
-# Finanzas Inteligentes · Fase 4 (corregida) — Plan
+# Plan · 2 pendientes (auditado, sin duplicar)
 
-Extensión sobre Fase 1-3. NO se toca Voz / WhatsApp / Recordatorios / Stripe SaaS / RLS ya endurecida / obra / stubs actuales de Fase 3. Cuatro puntos exactos:
+## Auditoría previa (hechos)
 
-## 1. Alertas financieras proactivas (cron)
+### PIN hoy
+- Columna única: `profiles.pin_hash` (formato `salt:hash`, PBKDF2 100k SHA-256).
+- Edge function `pin-service` con acciones `hash_pin`, `verify_pin`. Sin `reset_pin`, sin PIN temporal, sin flag de "cambio obligatorio".
+- Se usa en: WhatsApp bot (auth de empleados), voz (confirmaciones), `SettingsPage` (cambio propio). No hay UI de admin para resetear.
+- Invitaciones: `invite-member` crea el usuario con `password` (Supabase Auth) — nunca genera PIN. No hay canal de "envío de PIN" hoy; el canal de invitación existente es **email** (Supabase invita o el owner comparte password) y opcionalmente WhatsApp si el owner captura `whatsapp_number` al invitar.
 
-**Edge Function nueva** `supabase/functions/financial-alerts-scan/index.ts`:
-- Sin JWT (cron interno). Valida header `x-cron-secret` contra `CRON_SHARED_SECRET`. Si no existe todavía, se solicita vía `add_secret`.
-- Itera tenants activos (no bloqueados). Por cada tenant llama `compute_tenant_financial_summary` + `compute_tenant_health_score` y evalúa:
-  - `runway_days < 30` → alerta `low_runway`, severity `high`.
-  - Cualquier `financial_accounts.current_balance < 0` (no oculta) → `overdraft`, severity `critical`.
-  - `financial_budgets` con gasto real > 90% del planeado (JOIN `financial_budget_lines` + `financial_transactions` del periodo) → `budget_overrun`, severity `medium`.
-  - `expenses` con `paid_at IS NULL` y `expense_date < now() - 30d` → `overdue_payable`, severity `medium` (agrega monto total y conteo).
-- Inserta en `financial_alerts` existente con **dedupe**: no crear si ya existe una `active` del mismo `alert_type` en las últimas 24h.
-- Notifica al owner del tenant vía `internal_messages` + email Resend (`no-reply@rybixholding.com`) reutilizando helper. Como el helper hoy vive incrustado en `send-reminders`, se **extrae a `supabase/functions/_shared/notify-admin.ts`** (refactor no-op; `send-reminders` sigue funcionando idéntico importando desde ahí).
+### Gastos hoy
+- Tabla `expenses` completa: `status` (`pending`/`pending_approval`/`approved`/`rejected`/`paid`), `approval_required`, `approver_user_id`, `paid_at`, `receipt_url`, `document_*_drive_url`, `folio`, `vendor_name`, `concept`, `type` (expense|budget), `source`.
+- `category` es **text libre**, NO hay FK a `financial_categories` (que sí existe con `kind='expense'`).
+- NO existe `project_id` en `expenses`.
+- Pantalla `src/pages/ExpensesPage.tsx` (312 líneas) en ruta `/expenses` (fuera de /finance): listado con filtros por período/tipo/estado, vista por usuario, sin formulario de alta/edición ni acción de aprobar/rechazar/pagar desde UI (solo lectura). Se alimenta hoy vía WhatsApp bot (OCR) y app externa.
+- Módulo obra: `project_costs` es tabla separada; no hay pantalla de expenses en obra que reutilizar.
+- `expenses` ya alimenta AR/AP (`compute_tenant_financial_summary`), conciliación (`suggest_transaction_matches` vía `financial_transactions.reconciled_with_expense_id`) y health score (overdue payables). Se preserva íntegro.
 
-**Cron**: `pg_cron` cada 30 min invocando la function con `x-cron-secret`.
-
-**Frontend**:
-- `FinanceDashboardPage.tsx` → banner de `financial_alerts` activas con botón "Reconocer" (`status='acknowledged'`).
-- Nuevo hook `useFinanceAlerts` en `useFinance.ts` si aún no existe.
-
-## 2. Briefing semanal del CFO AI
-
-**Extracción no-op**: mover `buildFinancialContext` de `cfo-ai/index.ts` a `supabase/functions/_shared/cfo-context.ts` sin cambiar comportamiento.
-
-**Edge Function nueva** `supabase/functions/cfo-ai-weekly-briefing/index.ts`:
-- Cron dominical 08:00 en `America/Mexico_City` (para v1; iteraciones posteriores pueden respetar tz por tenant).
-- Reutiliza `buildFinancialContext` + Lovable AI Gateway `google/gemini-2.5-flash`.
-- Prompt fijo: "Redacta briefing ejecutivo semanal (máx 6 bullets) en español: saldo consolidado, flujo neto, top 3 gastos, alertas activas, runway, recomendación concreta."
-- Persiste en tabla nueva `cfo_ai_briefings(id, tenant_id, week_start, summary, context_snapshot jsonb, created_at)` con RLS tenant-scoped.
-- Envía email al owner con el briefing.
-
-**Frontend**:
-- `CFOAssistantPage.tsx` → panel lateral "Briefings anteriores" con historial (últimos 8).
-
-**Migración**:
-```sql
-CREATE TABLE public.cfo_ai_briefings (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id uuid NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
-  week_start date NOT NULL,
-  summary text NOT NULL,
-  context_snapshot jsonb NOT NULL DEFAULT '{}'::jsonb,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE(tenant_id, week_start)
-);
-GRANT SELECT ON public.cfo_ai_briefings TO authenticated;
-GRANT ALL ON public.cfo_ai_briefings TO service_role;
-ALTER TABLE public.cfo_ai_briefings ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "tenant members read briefings" ON public.cfo_ai_briefings
-  FOR SELECT TO authenticated
-  USING (tenant_id IN (SELECT tenant_id FROM public.profiles WHERE user_id = auth.uid()));
-```
-
-## 3. Adaptadores REALES de Belvo, Finerio y Prometeo (código listo, NO activados)
-
-Mismo patrón que Plaid en Fase 3: adaptador en `_shared/finance-providers.ts` + wiring en `financial-connection-init` / `-callback` / `-disconnect`. Cada proveedor detecta ausencia de secrets y devuelve `configured: false` (idéntico a Plaid hoy). Endpoints y flujos tomados de la documentación oficial pública vigente; cualquier ambigüedad se marca con comentario `// TODO(<provider>): <duda concreta>` y el adaptador cae al camino seguro.
-
-### 3.1 Belvo
-- Docs base: `https://developers.belvo.com/`. Base API: `https://api.belvo.com` (sandbox: `https://sandbox.belvo.com`).
-- **Init**: `POST /api/token/` con Basic Auth (`BELVO_SECRET_ID:BELVO_SECRET_PASSWORD`) para obtener `access` widget token; devuelve `{ configured:true, provider:'belvo', widget_token, widget_url:'https://widget.belvo.io' }`.
-- **Callback (link_id)**: el widget devuelve `link_id` al frontend. Backend hace `GET /api/accounts/?link=<link_id>` para hidratar cuentas, encripta `link_id` con `CREDENTIALS_ENCRYPTION_KEY` (AES-GCM), upsert en `financial_connections` (`external_item_id=link_id`, `provider='belvo'`).
-- **Sync**: `GET /api/accounts/?link=` + `POST /api/transactions/` con `link`, `date_from`, `date_to` (paginado con `next`).
-- **Disconnect**: `DELETE /api/links/{link_id}/`.
-- Secrets esperados: `BELVO_SECRET_ID`, `BELVO_SECRET_PASSWORD`, `BELVO_ENV` (`sandbox`|`production`).
-- Webhook opcional: `POST` al futuro `belvo-webhook` (fuera de esta fase; sólo se anota `// TODO(belvo): webhook signing header exact name`).
-
-### 3.2 Finerio Connect
-- Docs base: `https://finerioconnect.com/docs/` (Finerio Connect API). Base: `https://api.finerioconnect.com/v2`.
-- Auth: `Authorization: Bearer <FINERIO_API_KEY>` en cada request.
-- **Init**: `POST /users` (crea/reutiliza customer, idempotente por `customerId=tenant_id`) → luego `POST /widget-tokens` para obtener token del widget. Devuelve `{ configured, provider:'finerio', widget_token, widget_url:'https://widget.finerioconnect.com' }`.
-- **Callback (credential_id)**: el widget devuelve `credentialId`. Backend `GET /accounts?customerId=...` para listar, encripta `credentialId`, upsert.
-- **Sync**: `GET /accounts` + `GET /transactions?accountId=...&dateFrom=&dateTo=` con paginación.
-- **Disconnect**: `DELETE /credentials/{credentialId}`.
-- Secrets: `FINERIO_API_KEY`, `FINERIO_ENV` (`sandbox`|`production` → cambia base URL si aplica; `// TODO(finerio): confirmar host de sandbox exacto — dejar override por env`).
-
-### 3.3 Prometeo
-- Docs base: `https://docs.prometeoapi.com/`. Base: `https://banking.prometeoapi.net` (sandbox: `https://banking.sandbox.prometeoapi.com`).
-- Auth por request: header `X-API-Key: <PROMETEO_API_KEY>`.
-- **Init**: `POST /login/` con `{ provider, username, password }` — Prometeo es login-server-side (no widget). En esta fase el **init devuelve `configured:false` con `requires_custom_ui:true`** y una lista textual de proveedores soportados (`GET /provider/`), para que el wizard sepa que Prometeo requiere formulario propio de credenciales bancarias (a implementar en fase posterior con UI dedicada). No se piden credenciales de banco al usuario en Fase 4.
-- **Callback**: cuando la fase futura mande `{ provider, username, password }`, backend hace `POST /login/`, recibe `key` de sesión, encripta la `key` + credenciales (AES-GCM con `CREDENTIALS_ENCRYPTION_KEY`), upsert en `financial_connections`. Todo el flujo queda escrito y comentado, gated por env flag `PROMETEO_ENABLE_LOGIN_FLOW`.
-- **Sync**: `GET /account/?key=` + `GET /movement/?key=&account=&date_start=&date_end=`.
-- **Logout**: `GET /logout/?key=`.
-- Secrets: `PROMETEO_API_KEY`, `PROMETEO_ENV`.
-- Nota explícita: Prometeo maneja credenciales bancarias sensibles; en Fase 4 **solo se deja el andamiaje**; la activación real exige revisión de compliance separada (`// TODO(prometeo): revisar requerimientos legales antes de activar login flow en producción`).
-
-### Cambios de código para los 3 adaptadores
-
-- `supabase/functions/_shared/finance-providers.ts`: agregar `BelvoAdapter`, `FinerioAdapter`, `PrometeoAdapter` con misma interfaz que `PlaidAdapter` (`init`, `exchangeCallback`, `disconnect`, `getAccounts`, `getTransactions`, `configured()`).
-- `financial-connection-init` / `-callback` / `-disconnect`: switch por `provider` que enruta al adaptador correcto. Sin cambios de contrato para Plaid.
-- `src/lib/finance/providers/{belvo,finerio,prometeo}.ts`: reemplazar stubs por wrappers que llamen a `financial-connection-init` / `-callback` (mismo shape que el wrapper Plaid actual). Siguen devolviendo `available` según lo que responda el edge.
-- `src/components/finance/ConnectBankWizard.tsx`: cargar widget SDK correspondiente on-demand (`https://cdn.belvo.io/belvo-widget-1-stable.js`, `https://widget.finerioconnect.com/sdk.js`) y para Prometeo mostrar aviso "Este proveedor requiere formulario dedicado — próxima fase".
-- `FinanceIntegrationsPage.tsx`: los 4 proveedores muestran su estado real (`configured` o "Requiere credenciales" con nombres de secrets esperados).
-
-**No se piden secrets en esta fase**; la UI seguirá mostrando "Requiere credenciales" hasta que el usuario los cargue. Cero llamadas externas hasta entonces.
-
-## 4. Vista financiera consolidada para Super Admin
-
-**Ruta**: `/admin/finance-overview`, sólo visible cuando `has_role(auth.uid(),'super_admin')`. Se enlaza desde `SuperAdminPage.tsx`.
-
-**Regla de oro**: nunca exponer detalle transaccional cruzado entre tenants. Sólo agregados por tenant.
-
-**RPC nueva `admin_finance_overview()`** (SECURITY DEFINER, valida rol adentro):
-
-```sql
-CREATE OR REPLACE FUNCTION public.admin_finance_overview()
-RETURNS TABLE (
-  tenant_id uuid,
-  tenant_name text,
-  currency text,
-  health_score int,
-  total_balance numeric,
-  net_flow_30d numeric,
-  receivables numeric,
-  payables numeric,
-  active_alerts_count int,
-  critical_alerts_count int,
-  last_activity_at timestamptz
-) LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path='public' AS $$
-BEGIN
-  IF auth.uid() IS NULL OR NOT EXISTS (
-    SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role = 'super_admin'
-  ) THEN
-    RAISE EXCEPTION 'Only super_admin can read finance overview' USING ERRCODE = '42501';
-  END IF;
-
-  RETURN QUERY
-  SELECT
-    t.id,
-    t.name,
-    'MXN'::text,
-    COALESCE((public.compute_tenant_health_score(t.id)->>'score')::int, 0),
-    COALESCE((public.compute_tenant_financial_summary(t.id)->>'total_balance')::numeric, 0),
-    COALESCE((public.compute_tenant_financial_summary(t.id)->>'net_flow')::numeric, 0),
-    COALESCE((public.compute_tenant_financial_summary(t.id)->>'receivables')::numeric, 0),
-    COALESCE((public.compute_tenant_financial_summary(t.id)->>'payables')::numeric, 0),
-    (SELECT COUNT(*)::int FROM public.financial_alerts fa WHERE fa.tenant_id = t.id AND fa.status='active'),
-    (SELECT COUNT(*)::int FROM public.financial_alerts fa WHERE fa.tenant_id = t.id AND fa.status='active' AND fa.severity='critical'),
-    (SELECT MAX(posted_at) FROM public.financial_transactions WHERE tenant_id = t.id)
-  FROM public.tenants t
-  ORDER BY t.name;
-END;
-$$;
-REVOKE ALL ON FUNCTION public.admin_finance_overview() FROM public, anon;
-GRANT EXECUTE ON FUNCTION public.admin_finance_overview() TO authenticated;
-```
-
-**Frontend**:
-- `src/pages/admin/FinanceOverviewPage.tsx` — tabla ordenable con columnas listadas arriba + badges de severidad + búsqueda por tenant. Gate doble: guard en `App.tsx` (`role !== 'super_admin'` → redirect a `/`) y RLS por la RPC.
-- Enlace en `SuperAdminPage.tsx`.
+**Anti-duplicación**: se **extiende** `ExpensesPage.tsx` reutilizándolo dentro de `/finance/expenses` (no se crea segunda pantalla). Se **agregan** FK a `financial_categories` y `project_id` como columnas opcionales, sin romper el text libre existente.
 
 ---
 
-## Archivos tocados (resumen)
+## PENDIENTE 1 · Reset de PIN + PIN temporal en invitación
+
+### Migración (una sola)
+- `profiles`: agregar `pin_must_change boolean DEFAULT false`, `pin_temp_expires_at timestamptz`, `pin_updated_at timestamptz`, `pin_set_by uuid` (quién lo asignó, para audit).
+- Función `admin_reset_user_pin(_target_user uuid)` SECURITY DEFINER: valida caller es `owner`/`admin`/`super_admin` del tenant del target; genera PIN de 6 dígitos aleatorio server-side, lo hashea (PBKDF2 con el mismo esquema), guarda `pin_hash`, `pin_must_change=true`, `pin_temp_expires_at = now()+72h`, escribe `audit_events`, y **devuelve el PIN en claro solo en el retorno** (nunca se persiste en claro).
+- Trigger: al hacer `UPDATE` de `pin_hash` desde `pin-service` con `action='hash_pin'` (usuario cambiando), el edge fuerza `pin_must_change=false`, `pin_temp_expires_at=null`, `pin_updated_at=now()`.
+
+### Edge functions
+- **Extender** `pin-service/index.ts`:
+  - Nueva acción `admin_reset_pin` → llama `admin_reset_user_pin` y opcionalmente envía por WhatsApp (si el target tiene `whatsapp_number` y hay Twilio configurado) o email (Resend `no-reply@rybixholding.com`). Retorna `{ pin_temp, expires_at, sent_via }`.
+  - Nueva acción `verify_pin` (si no existe con este contrato): ya devuelve además `must_change` y `expired`.
+  - En `hash_pin` (cambio propio): limpiar flags temporales.
+- **Extender** `invite-member/index.ts`:
+  - Si `payload.generate_temp_pin=true` (default true), después de crear el user llama a `admin_reset_user_pin` para ese user y adjunta el PIN al mismo email/mensaje de invitación existente. Sin nueva función de correo — se reutiliza el helper de email ya presente en el flujo de invitación.
+
+### Frontend
+- **Extender** `src/pages/SettingsPage.tsx` (sección PIN): si `pin_must_change=true` al montar → forzar modal "Cambia tu PIN temporal" bloqueando cierre; al guardar llama `hash_pin` y limpia flags.
+- **Extender** `src/components/AppLayout.tsx` (o guard equivalente): banner global "Tu PIN temporal expira en Xh — cámbialo ahora" con link a Settings, si `pin_must_change=true`.
+- **Nuevo** `src/components/team/ResetPinDialog.tsx`: botón "Resetear PIN" en la lista de miembros (ubicación existente: `src/pages/SettingsPage.tsx` sección equipo, o donde ya se listan miembros) → llama `pin-service` acción `admin_reset_pin`, muestra el PIN una sola vez con botón copiar y aviso "válido 72h, debe cambiarse en primer uso".
+- **Extender** WhatsApp bot verify (`whatsapp-bot/*` autenticación con PIN): si `must_change=true` o `expired`, responder "Debes actualizar tu PIN desde la app antes de continuar" — no bloquea funciones de solo lectura ya definidas.
+
+### Archivos pendiente 1
 
 | Tipo | Ruta |
 |---|---|
-| Nuevo | `supabase/functions/financial-alerts-scan/index.ts` |
-| Nuevo | `supabase/functions/cfo-ai-weekly-briefing/index.ts` |
-| Nuevo | `supabase/functions/_shared/notify-admin.ts` (extract) |
-| Nuevo | `supabase/functions/_shared/cfo-context.ts` (extract) |
-| Nuevo | `src/pages/admin/FinanceOverviewPage.tsx` |
-| Extensión | `supabase/functions/_shared/finance-providers.ts` (+3 adapters) |
-| Extensión | `supabase/functions/financial-connection-{init,callback,disconnect}/index.ts` |
-| Extensión | `supabase/functions/cfo-ai/index.ts` (import desde `_shared/cfo-context.ts`) |
-| Extensión | `supabase/functions/send-reminders/index.ts` (import desde `_shared/notify-admin.ts`) |
-| Extensión | `src/lib/finance/providers/{belvo,finerio,prometeo}.ts` |
-| Extensión | `src/components/finance/ConnectBankWizard.tsx` |
-| Extensión | `src/pages/finance/{FinanceDashboard,FinanceIntegrations,CFOAssistant}Page.tsx` |
-| Extensión | `src/pages/SuperAdminPage.tsx`, `src/App.tsx` (ruta admin) |
+| Migración | `profiles` (+4 cols) + `admin_reset_user_pin()` + índice |
+| Extensión | `supabase/functions/pin-service/index.ts` |
+| Extensión | `supabase/functions/invite-member/index.ts` |
+| Extensión | `src/pages/SettingsPage.tsx` |
+| Extensión | `src/components/AppLayout.tsx` (banner) |
+| Nuevo | `src/components/team/ResetPinDialog.tsx` |
+| Extensión mínima | `supabase/functions/whatsapp-bot/*` (mensaje si must_change) — solo si el helper de auth centraliza; si no, se omite |
+
+---
+
+## PENDIENTE 2 · Módulo Gastos en Finanzas Inteligentes
+
+### Migración (una sola, aditiva)
+- `expenses`: agregar `category_id uuid REFERENCES financial_categories(id) ON DELETE SET NULL` y `project_id uuid REFERENCES projects(id) ON DELETE SET NULL`. Se mantiene `category` text por compatibilidad. Índices `(tenant_id, category_id)` y `(tenant_id, project_id)`.
+- Backfill idempotente: para cada expense sin `category_id`, intentar match por `name ILIKE category` dentro de `financial_categories` mismo tenant + `kind='expense'`. Deja el text como fallback.
+- Nueva RPC `approve_expense(_id uuid, _action text, _reason text)` SECURITY DEFINER: valida rol y transiciona `pending_approval → approved | rejected`, setea `approved_at`/`rejected_at`/`rejection_reason`, escribe `audit_events`. **No** toca `paid_at` (eso queda para conciliación existente).
+
+### Frontend
+- **Nuevo** `src/pages/finance/FinanceExpensesPage.tsx`: **wrapper** que reutiliza los mismos hooks/queries de `ExpensesPage.tsx` extraídos a un componente compartido `src/components/expenses/ExpensesList.tsx` (refactor no-op de la lista actual) + agrega:
+  - Filtros extra: categoría (`financial_categories`), proyecto (`projects`), rango de fecha.
+  - Formulario alta/edición (`ExpenseFormDialog.tsx`): monto, moneda, fecha, categoría (select FK), proyecto (opcional), vendor, concept, notas, `approval_required`, subir comprobante a bucket Storage (`expenses-receipts`, RLS por tenant) → guarda `receipt_url`.
+  - Acciones inline: Aprobar / Rechazar (para admins/owners cuando `status='pending_approval'`) → llama `approve_expense`. Marcar pagado (setea `paid_at`) — solo si el usuario tiene rol admin/owner.
+- **Extensión** `src/pages/finance/FinanceLayout.tsx`: agregar pestaña "Gastos" apuntando a `/finance/expenses`.
+- **Extensión** `src/App.tsx`: ruta `/finance/expenses` → `FinanceExpensesPage` bajo el mismo guard que las otras finance pages.
+- La ruta actual `/expenses` sigue viva (compat), pero internamente renderiza el mismo `ExpensesList` compartido.
+- **Nuevo** `src/components/expenses/ExpensesList.tsx` y `ExpenseFormDialog.tsx`.
+- **Extensión** `src/hooks/useFinance.ts`: agregar `useExpenses`, `useExpenseMutations`, `useApproveExpense` reutilizando patrón existente.
+
+### Storage
+- Bucket `expenses-receipts` (privado) + policies: authenticated puede leer/escribir sólo dentro de `tenant_id/…`; `service_role` full.
+
+### Impacto en resto de finanzas
+- Cero cambios en `compute_tenant_financial_summary`, `compute_tenant_health_score`, `suggest_transaction_matches`, `financial_alerts` scan. Todo sigue leyendo `expenses` igual (payables por `paid_at IS NULL`, overdue >30d).
+- La conciliación existente `suggest_transaction_matches` sigue funcionando por description/amount; ahora se puede además reforzar por `category_id` en fase futura (fuera de alcance).
+
+### Archivos pendiente 2
+
+| Tipo | Ruta |
+|---|---|
+| Migración | `expenses` (+2 cols FK) + backfill + `approve_expense()` + bucket + policies |
+| Nuevo | `src/pages/finance/FinanceExpensesPage.tsx` |
+| Nuevo | `src/components/expenses/ExpensesList.tsx` |
+| Nuevo | `src/components/expenses/ExpenseFormDialog.tsx` |
+| Extensión | `src/pages/finance/FinanceLayout.tsx` (tab) |
+| Extensión | `src/App.tsx` (ruta) |
+| Extensión | `src/pages/ExpensesPage.tsx` (usar `ExpensesList`) |
 | Extensión | `src/hooks/useFinance.ts` |
-| Migración | CREATE `cfo_ai_briefings`, CREATE fn `admin_finance_overview`, 2 cron jobs |
-| Secrets nuevos | Ninguno obligatorio en esta fase. `CRON_SHARED_SECRET` se solicita si no existe. Belvo/Finerio/Prometeo se piden sólo cuando el usuario decida activar cada uno. |
+
+---
 
 ## Fuera de alcance (explícito)
+Voz, WhatsApp de citas, recordatorios de citas, Stripe SaaS, RLS existente, adaptadores bancarios, obra (excepto FK opcional `project_id` en expenses).
 
-- NO auto-conciliación ni reglas de categorización.
-- NO sandbox demo por tenant.
-- NO activación real de ningún banco (los adaptadores quedan listos, sin secrets cargados).
-- NO se toca Voz, WhatsApp, Recordatorios, Stripe SaaS, RLS endurecida, obra, Plaid ya funcionando.
+## Rollback exacto
 
-## Rollback
+**Pendiente 1**
+```sql
+ALTER TABLE public.profiles
+  DROP COLUMN pin_must_change,
+  DROP COLUMN pin_temp_expires_at,
+  DROP COLUMN pin_updated_at,
+  DROP COLUMN pin_set_by;
+DROP FUNCTION public.admin_reset_user_pin(uuid);
+```
+Revertir cambios en `pin-service`, `invite-member`, `SettingsPage`, `AppLayout`. Borrar `ResetPinDialog.tsx`.
 
-- **Código**: eliminar los 5 archivos nuevos + revertir extensiones en los archivos listados.
-- **Migración**:
-  ```sql
-  DROP TABLE public.cfo_ai_briefings;
-  DROP FUNCTION public.admin_finance_overview();
-  SELECT cron.unschedule('financial-alerts-scan');
-  SELECT cron.unschedule('cfo-ai-weekly-briefing');
-  ```
-- **Deps**: ninguna nueva.
+**Pendiente 2**
+```sql
+ALTER TABLE public.expenses DROP COLUMN category_id, DROP COLUMN project_id;
+DROP FUNCTION public.approve_expense(uuid, text, text);
+-- storage: eliminar bucket expenses-receipts si se creó
+```
+Revertir `FinanceLayout`, `App.tsx`, `ExpensesPage`, `useFinance`. Borrar `FinanceExpensesPage.tsx`, `ExpensesList.tsx`, `ExpenseFormDialog.tsx`.
 
-Confirma para ejecutar Fase 4 con estos 4 puntos.
+---
+
+Confirma para ejecutar ambos en orden (1 → 2), migración por pendiente, veredicto item por item al final.

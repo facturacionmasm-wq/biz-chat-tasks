@@ -16,6 +16,8 @@ import { PresenceProvider } from '@/contexts/PresenceContext';
 import BottomNav from '@/components/BottomNav';
 import { useRybixTheme } from '@/hooks/useRybixTheme';
 import TrialCardBanner from '@/components/TrialCardBanner';
+import PinChangeBanner from '@/components/PinChangeBanner';
+
 
 
 const navItems = [
@@ -184,7 +186,9 @@ const AppLayout = ({ children }: AppLayoutProps) => {
           </header>
           <main className={`flex-1 min-h-0 overflow-auto ${isMobile ? 'pb-[var(--bottom-nav-height)]' : ''}`}>
             <TrialCardBanner />
+            <PinChangeBanner />
             {children}
+
           </main>
 
         </div>

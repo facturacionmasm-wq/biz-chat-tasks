@@ -45,6 +45,8 @@ import FinanceLayout from "./pages/finance/FinanceLayout";
 import FinanceDashboardPage from "./pages/finance/FinanceDashboardPage";
 import FinanceAccountsPage from "./pages/finance/FinanceAccountsPage";
 import FinanceTransactionsPage from "./pages/finance/FinanceTransactionsPage";
+import FinanceExpensesPage from "./pages/finance/FinanceExpensesPage";
+
 import FinanceReconciliationPage from "./pages/finance/FinanceReconciliationPage";
 import FinanceCashflowPage from "./pages/finance/FinanceCashflowPage";
 import { ReceivablesPage, PayablesPage } from "./pages/finance/AgingPages";
@@ -196,6 +198,8 @@ const AppRoutes = () => (
       <Route index element={<FinanceDashboardPage />} />
       <Route path="accounts" element={<FinanceAccountsPage />} />
       <Route path="transactions" element={<FinanceTransactionsPage />} />
+      <Route path="expenses" element={<FinanceExpensesPage />} />
+
       <Route path="reconciliation" element={<FinanceReconciliationPage />} />
       <Route path="cashflow" element={<FinanceCashflowPage />} />
       <Route path="receivables" element={<ReceivablesPage />} />
