@@ -4,7 +4,7 @@ export const PrometeoProvider: FinancialDataProvider & { requiredSecrets: string
   id: 'prometeo',
   label: 'Prometeo',
   available: false,
-  requiredSecrets: ['PROMETEO_API_KEY'],
+  requiredSecrets: ['PROMETEO_API_KEY', 'PROMETEO_ENV'],
   docsUrl: 'https://docs.prometeoapi.com/',
   async connectInstitution() { throw new Error('Prometeo: provider_not_configured — solicitar credenciales'); },
   async exchangeConnectionToken() { throw new Error('Prometeo: provider_not_configured'); },

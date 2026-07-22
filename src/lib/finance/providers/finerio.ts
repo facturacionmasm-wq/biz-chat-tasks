@@ -2,10 +2,10 @@ import type { FinancialDataProvider } from './types';
 
 export const FinerioProvider: FinancialDataProvider & { requiredSecrets: string[]; docsUrl: string } = {
   id: 'finerio',
-  label: 'Finerio',
+  label: 'Finerio Connect',
   available: false,
-  requiredSecrets: ['FINERIO_API_KEY', 'FINERIO_CLIENT_ID'],
-  docsUrl: 'https://finerioconnect.com/docs',
+  requiredSecrets: ['FINERIO_API_KEY', 'FINERIO_ENV'],
+  docsUrl: 'https://finerioconnect.com/docs/',
   async connectInstitution() { throw new Error('Finerio: provider_not_configured — solicitar credenciales'); },
   async exchangeConnectionToken() { throw new Error('Finerio: provider_not_configured'); },
   async refreshConnection() { throw new Error('Finerio: provider_not_configured'); },
