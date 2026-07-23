@@ -251,6 +251,63 @@ function facturamaAuth(creds: Record<string, string>): string {
   return 'Basic ' + btoa(`${creds.user}:${creds.password}`);
 }
 
+/**
+ * Facturama Multiemisor / Integrador:
+ * The master account uploads each client's CSD (.cer + .key + password) under
+ * that client's RFC. Facturama then keeps the CSD server-side and stamps every
+ * CFDI whose Issuer.Rfc matches it. We check first (GET /api-lite/csds/{rfc})
+ * and upload once (POST /api-lite/csds), then stamp `facturama_csd_synced_at`
+ * so we do not re-upload on every invoice.
+ */
+export async function ensureFacturamaIntegratorCsd(
+  admin: SupabaseClient,
+  tenantId: string,
+  pac: PacCredentials,
+  issuer: IssuerIdentity,
+): Promise<{ ok: true } | { ok: false; error: string; raw?: unknown }> {
+  if (pac.provider !== 'facturama' || pac.facturamaMode !== 'integrator') return { ok: true };
+  if (pac.csdSyncedAt) return { ok: true };
+  if (!pac.csd) return { ok: false, error: 'integrator_csd_missing' };
+
+  const base = facturamaBase(pac.mode);
+  const auth = facturamaAuth(pac.credentials);
+
+  // Best-effort probe: if a CSD already exists for this RFC in the master
+  // account, mark it as synced instead of re-uploading.
+  try {
+    const probe = await fetch(`${base}/api-lite/csds/${encodeURIComponent(issuer.rfc)}`, {
+      headers: { Authorization: auth },
+    });
+    if (probe.ok) {
+      await admin
+        .from('tenant_fiscal_profiles')
+        .update({ facturama_csd_synced_at: new Date().toISOString() })
+        .eq('tenant_id', tenantId);
+      return { ok: true };
+    }
+  } catch (_e) { /* fall through to upload */ }
+
+  const resp = await fetch(`${base}/api-lite/csds`, {
+    method: 'POST',
+    headers: { Authorization: auth, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      Rfc: issuer.rfc,
+      Certificate: pac.csd.cerB64,
+      PrivateKey: pac.csd.keyB64,
+      PrivateKeyPassword: pac.csd.password,
+    }),
+  });
+  const raw = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    return { ok: false, error: `facturama_csd_upload_${resp.status}:${JSON.stringify(raw).slice(0, 300)}`, raw };
+  }
+  await admin
+    .from('tenant_fiscal_profiles')
+    .update({ facturama_csd_synced_at: new Date().toISOString() })
+    .eq('tenant_id', tenantId);
+  return { ok: true };
+}
+
 export const FacturamaAdapter: CfdiAdapter = {
   id: 'facturama',
   label: 'Facturama',
@@ -258,6 +315,7 @@ export const FacturamaAdapter: CfdiAdapter = {
   async issue(input) {
     const base = facturamaBase(input.pac.mode);
     const auth = facturamaAuth(input.pac.credentials);
+    const isIntegrator = input.pac.facturamaMode === 'integrator';
     const payload = {
       NameId: 1,
       Folio: input.document.folio ?? undefined,
@@ -299,7 +357,11 @@ export const FacturamaAdapter: CfdiAdapter = {
     };
 
     try {
-      const resp = await fetch(`${base}/3/cfdis`, {
+      // Integrator path uses /api-lite/3/cfdis which routes the request against
+      // the client CSD previously registered for Issuer.Rfc. `own` accounts
+      // stamp against their single account CSD at /3/cfdis.
+      const url = isIntegrator ? `${base}/api-lite/3/cfdis` : `${base}/3/cfdis`;
+      const resp = await fetch(url, {
         method: 'POST',
         headers: { Authorization: auth, 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -323,10 +385,13 @@ export const FacturamaAdapter: CfdiAdapter = {
   async cancel(input) {
     const base = facturamaBase(input.pac.mode);
     const auth = facturamaAuth(input.pac.credentials);
+    const isIntegrator = input.pac.facturamaMode === 'integrator';
     try {
       const q = new URLSearchParams({ motive: input.motivo });
       if (input.folio_sustitucion) q.set('uuidReplacement', input.folio_sustitucion);
-      const resp = await fetch(`${base}/cfdi/${input.uuid}?${q.toString()}`, {
+      // Integrator cancellations use the api-lite namespace as well.
+      const path = isIntegrator ? `/api-lite/cfdis/${input.uuid}` : `/cfdi/${input.uuid}`;
+      const resp = await fetch(`${base}${path}?${q.toString()}`, {
         method: 'DELETE',
         headers: { Authorization: auth },
       });
@@ -342,6 +407,7 @@ export const FacturamaAdapter: CfdiAdapter = {
     const base = facturamaBase(pac.mode);
     const auth = facturamaAuth(pac.credentials);
     try {
+      // Works for both master and single-tenant accounts.
       const resp = await fetch(`${base}/api-lite/clients?limit=1`, { headers: { Authorization: auth } });
       if (!resp.ok) return { ok: false, error: `facturama_ping_${resp.status}` };
       return { ok: true };
@@ -350,6 +416,7 @@ export const FacturamaAdapter: CfdiAdapter = {
     }
   },
 };
+
 
 // ── SW Sapien / Finkok stubs (multi-tenant shape ready) ──────────────────
 export const SwSapienAdapter: CfdiAdapter = {
