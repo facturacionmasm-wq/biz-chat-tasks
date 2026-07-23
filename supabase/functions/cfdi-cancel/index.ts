@@ -1,26 +1,22 @@
+import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors';
+import { makeAdminClient, resolveTenantFiscal } from '../_shared/cfdi-providers.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.98.0';
-import { getCfdiAdapter } from '../_shared/cfdi-providers.ts';
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
 
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   try {
     const authHeader = req.headers.get('Authorization');
     if (!authHeader?.startsWith('Bearer ')) return json({ error: 'Unauthorized' }, 401);
-    const supabase = createClient(
+    const anonClient = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_ANON_KEY')!,
       { global: { headers: { Authorization: authHeader } } },
     );
-    const { data: claims } = await supabase.auth.getClaims(authHeader.replace('Bearer ', ''));
+    const { data: claims } = await anonClient.auth.getClaims(authHeader.replace('Bearer ', ''));
     if (!claims?.claims) return json({ error: 'Unauthorized' }, 401);
     const userId = claims.claims.sub as string;
 
-    const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+    const admin = makeAdminClient();
     const { data: prof } = await admin.from('profiles').select('tenant_id').eq('user_id', userId).maybeSingle();
     const tenantId = prof?.tenant_id as string | undefined;
     if (!tenantId) return json({ error: 'no_tenant' }, 403);
@@ -29,7 +25,6 @@ Deno.serve(async (req) => {
       cfdi_document_id?: string;
       motivo?: string;
       folio_sustitucion?: string | null;
-      provider?: string;
     };
     if (!body.cfdi_document_id) return json({ error: 'cfdi_document_id required' }, 400);
     if (!body.motivo) return json({ error: 'motivo required (01,02,03,04)' }, 400);
@@ -45,14 +40,15 @@ Deno.serve(async (req) => {
       return json({ error: 'cfdi_not_stamped' }, 409);
     }
 
-    const providerId = body.provider ?? doc.provider ?? 'facturama';
-    const adapter = getCfdiAdapter(providerId);
-    const cfg = adapter.isConfigured();
-    if (!cfg.configured) {
-      return json({ ok: false, configured: false, missing_secrets: cfg.missing });
+    const resolved = await resolveTenantFiscal(admin, tenantId);
+    if (!resolved.ok) {
+      return json({ ok: false, code: resolved.code, error: resolved.message, requires_setup: true });
     }
+    const { adapter, pac } = resolved;
 
     const result = await adapter.cancel({
+      tenantId,
+      pac,
       uuid: doc.uuid_fiscal,
       motivo: body.motivo,
       folio_sustitucion: body.folio_sustitucion ?? null,
@@ -66,7 +62,7 @@ Deno.serve(async (req) => {
       actor_id: userId,
       resource_type: 'cfdi_documents',
       resource_id: doc.id,
-      payload: { uuid: doc.uuid_fiscal, motivo: body.motivo },
+      payload: { uuid: doc.uuid_fiscal, motivo: body.motivo, provider: adapter.id },
     });
 
     return json({ ok: true });
