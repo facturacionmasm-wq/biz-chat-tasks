@@ -486,7 +486,7 @@ const ProjectsPage = () => {
               <button onClick={() => setShowNewMilestone(true)} className="ml-auto text-xs text-[var(--rx-brand)] hover:underline flex items-center gap-1"><Plus size={12} /> Agregar</button>
             </div>
             {selectedProject.milestones.length > 0 ? (
-              <div className="flex items-center gap-2 overflow-x-auto pb-1">
+              <div className="h-scroll items-center gap-2 pb-1">
                 {selectedProject.milestones.map((m, i) => (
                   <div key={m.id} className="flex items-center gap-1.5 shrink-0">
                     <button onClick={() => toggleMilestone(selectedProject.id, m.id)}
