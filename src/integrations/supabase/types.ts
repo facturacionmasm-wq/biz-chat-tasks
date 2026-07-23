@@ -5066,6 +5066,89 @@ export type Database = {
           },
         ]
       }
+      tenant_fiscal_profiles: {
+        Row: {
+          codigo_postal: string
+          created_at: string
+          csd_cer_encrypted: string | null
+          csd_key_encrypted: string | null
+          csd_password_encrypted: string | null
+          csd_serial: string | null
+          csd_uploaded_at: string | null
+          csd_valid_from: string | null
+          csd_valid_to: string | null
+          is_active: boolean
+          last_test_at: string | null
+          last_test_error: string | null
+          last_test_status: string | null
+          pac_credentials_encrypted: string | null
+          pac_mode: string
+          pac_provider: string | null
+          razon_social: string
+          regimen_fiscal_sat: string
+          rfc: string
+          tenant_id: string
+          updated_at: string
+          use_shared_sandbox: boolean
+        }
+        Insert: {
+          codigo_postal: string
+          created_at?: string
+          csd_cer_encrypted?: string | null
+          csd_key_encrypted?: string | null
+          csd_password_encrypted?: string | null
+          csd_serial?: string | null
+          csd_uploaded_at?: string | null
+          csd_valid_from?: string | null
+          csd_valid_to?: string | null
+          is_active?: boolean
+          last_test_at?: string | null
+          last_test_error?: string | null
+          last_test_status?: string | null
+          pac_credentials_encrypted?: string | null
+          pac_mode?: string
+          pac_provider?: string | null
+          razon_social: string
+          regimen_fiscal_sat: string
+          rfc: string
+          tenant_id: string
+          updated_at?: string
+          use_shared_sandbox?: boolean
+        }
+        Update: {
+          codigo_postal?: string
+          created_at?: string
+          csd_cer_encrypted?: string | null
+          csd_key_encrypted?: string | null
+          csd_password_encrypted?: string | null
+          csd_serial?: string | null
+          csd_uploaded_at?: string | null
+          csd_valid_from?: string | null
+          csd_valid_to?: string | null
+          is_active?: boolean
+          last_test_at?: string | null
+          last_test_error?: string | null
+          last_test_status?: string | null
+          pac_credentials_encrypted?: string | null
+          pac_mode?: string
+          pac_provider?: string | null
+          razon_social?: string
+          regimen_fiscal_sat?: string
+          rfc?: string
+          tenant_id?: string
+          updated_at?: string
+          use_shared_sandbox?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_fiscal_profiles_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenant_ltv_estimates: {
         Row: {
           avg_monthly_revenue: number
@@ -6299,6 +6382,83 @@ export type Database = {
             foreignKeyName: "profiles_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_fiscal_profiles_public: {
+        Row: {
+          codigo_postal: string | null
+          created_at: string | null
+          csd_serial: string | null
+          csd_uploaded_at: string | null
+          csd_valid_from: string | null
+          csd_valid_to: string | null
+          has_csd: boolean | null
+          has_pac_credentials: boolean | null
+          is_active: boolean | null
+          last_test_at: string | null
+          last_test_error: string | null
+          last_test_status: string | null
+          pac_mode: string | null
+          pac_provider: string | null
+          razon_social: string | null
+          regimen_fiscal_sat: string | null
+          rfc: string | null
+          tenant_id: string | null
+          updated_at: string | null
+          use_shared_sandbox: boolean | null
+        }
+        Insert: {
+          codigo_postal?: string | null
+          created_at?: string | null
+          csd_serial?: string | null
+          csd_uploaded_at?: string | null
+          csd_valid_from?: string | null
+          csd_valid_to?: string | null
+          has_csd?: never
+          has_pac_credentials?: never
+          is_active?: boolean | null
+          last_test_at?: string | null
+          last_test_error?: string | null
+          last_test_status?: string | null
+          pac_mode?: string | null
+          pac_provider?: string | null
+          razon_social?: string | null
+          regimen_fiscal_sat?: string | null
+          rfc?: string | null
+          tenant_id?: string | null
+          updated_at?: string | null
+          use_shared_sandbox?: boolean | null
+        }
+        Update: {
+          codigo_postal?: string | null
+          created_at?: string | null
+          csd_serial?: string | null
+          csd_uploaded_at?: string | null
+          csd_valid_from?: string | null
+          csd_valid_to?: string | null
+          has_csd?: never
+          has_pac_credentials?: never
+          is_active?: boolean | null
+          last_test_at?: string | null
+          last_test_error?: string | null
+          last_test_status?: string | null
+          pac_mode?: string | null
+          pac_provider?: string | null
+          razon_social?: string | null
+          regimen_fiscal_sat?: string | null
+          rfc?: string | null
+          tenant_id?: string | null
+          updated_at?: string | null
+          use_shared_sandbox?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_fiscal_profiles_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
             referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
