@@ -207,13 +207,44 @@ export default function CFDISettingsPage() {
             </select>
           </div>
         </div>
-        <div className="text-xs text-muted-foreground">
-          {row?.has_pac_credentials ? 'Credenciales del PAC ya guardadas (cifradas). Vuelve a capturarlas para reemplazar.' : 'Captura las credenciales que te entregó tu PAC.'}
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <Field label="Usuario / API user" value={pacUser} onChange={setPacUser} />
-          <Field label="Contraseña / API key" value={pacPass} onChange={setPacPass} type="password" />
-        </div>
+
+        {provider === 'facturama' && (
+          <div className="rounded-xl border border-border bg-secondary/40 p-3 space-y-2">
+            <div className="text-xs font-medium">Modo de cuenta Facturama</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              <label className={`flex items-start gap-2 text-xs cursor-pointer p-2 rounded-lg border ${facturamaMode === 'own' ? 'border-primary bg-primary/5' : 'border-border'}`}>
+                <input type="radio" checked={facturamaMode === 'own'} onChange={() => setFacturamaMode('own')} className="mt-0.5" />
+                <span>
+                  <b>Cuenta propia</b> — tu empresa tiene su propia cuenta Facturama. Captura abajo tu API user/password.
+                </span>
+              </label>
+              <label className={`flex items-start gap-2 text-xs cursor-pointer p-2 rounded-lg border ${facturamaMode === 'integrator' ? 'border-primary bg-primary/5' : 'border-border'}`}>
+                <input type="radio" checked={facturamaMode === 'integrator'} onChange={() => setFacturamaMode('integrator')} className="mt-0.5" />
+                <span>
+                  <b>Integrador (Multiemisor)</b> — la plataforma registra tu CSD bajo su cuenta maestra Facturama y timbra usando tu RFC. No necesitas API user/password.
+                  {row?.facturama_csd_synced_at && (
+                    <div className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-0.5">
+                      CSD sincronizado con Facturama el {new Date(row.facturama_csd_synced_at).toLocaleString('es-MX')}.
+                    </div>
+                  )}
+                </span>
+              </label>
+            </div>
+          </div>
+        )}
+
+        {facturamaMode !== 'integrator' && (
+          <>
+            <div className="text-xs text-muted-foreground">
+              {row?.has_pac_credentials ? 'Credenciales del PAC ya guardadas (cifradas). Vuelve a capturarlas para reemplazar.' : 'Captura las credenciales que te entregó tu PAC.'}
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <Field label="Usuario / API user" value={pacUser} onChange={setPacUser} />
+              <Field label="Contraseña / API key" value={pacPass} onChange={setPacPass} type="password" />
+            </div>
+          </>
+        )}
+
         {mode === 'sandbox' && (
           <label className="flex items-start gap-2 text-xs text-muted-foreground cursor-pointer">
             <input type="checkbox" checked={useShared} onChange={(e) => setUseShared(e.target.checked)} className="mt-0.5" />
