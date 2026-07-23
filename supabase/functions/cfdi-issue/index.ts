@@ -63,7 +63,19 @@ Deno.serve(async (req) => {
     if (cErr) return json({ error: cErr.message }, 500);
     if (!concepts?.length) return json({ error: 'no_concepts' }, 400);
 
+    // Facturama integrator mode: ensure the tenant CSD is registered under the
+    // master account before stamping. No-op for 'own' mode / other PACs.
+    const csdSync = await ensureFacturamaIntegratorCsd(admin, tenantId, pac, issuer);
+    if (!csdSync.ok) {
+      await admin
+        .from('cfdi_documents')
+        .update({ estado: 'error', error_message: csdSync.error, provider: adapter.id })
+        .eq('id', doc.id);
+      return json({ ok: false, error: csdSync.error, code: 'csd_sync_failed' });
+    }
+
     const result = await adapter.issue({
+
       tenantId,
       issuer,
       pac,
