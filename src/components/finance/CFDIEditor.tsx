@@ -41,6 +41,19 @@ export default function CFDIEditor({
   const products = useProducts();
   const upsert = useUpsertCfdi();
   const issue = useIssueCfdi();
+  const [fiscalReady, setFiscalReady] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    supabase
+      .from('tenant_fiscal_profiles_public')
+      .select('is_active')
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!cancelled) setFiscalReady(!!data?.is_active);
+      });
+    return () => { cancelled = true; };
+  }, []);
 
   const [form, setForm] = useState<CfdiInput>(() => ({
     id: existing?.id ?? null,
