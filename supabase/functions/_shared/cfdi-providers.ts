@@ -53,7 +53,16 @@ export type PacCredentials = {
   useSharedSandbox: boolean;
   // Decrypted per-tenant credentials JSON (shape depends on provider).
   credentials: Record<string, string>;
+  // Facturama-only: 'own' = each tenant has its own Facturama account creds;
+  // 'integrator' = master platform account registers each tenant's CSD under
+  //                a single API user (Multiemisor pattern).
+  facturamaMode?: 'own' | 'integrator';
+  // When integrator, this carries the decrypted CSD material so cfdi-issue can
+  // upload it once to Facturama's /api-lite/csds endpoint per tenant RFC.
+  csd?: { cerB64: string; keyB64: string; password: string } | null;
+  csdSyncedAt?: string | null;
 };
+
 
 export type CfdiIssueInput = {
   tenantId: string;
