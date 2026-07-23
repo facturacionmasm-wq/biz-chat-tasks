@@ -84,39 +84,40 @@ const SuperAdminDashboard = () => {
   return (
     <div className="p-4 sm:p-6 space-y-6 max-w-[1400px] mx-auto">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-foreground flex items-center gap-2">
             <Globe size={24} className="text-[var(--rx-brand)]" /> Panel SuperAdmin Global
           </h1>
           <p className="text-[var(--rx-t2)] text-sm mt-1">Métricas financieras, KPIs unicornio, fraude, churn y proyecciones.</p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button asChild variant="outline" size="sm" className="gap-2">
-            <a href="/admin/finance-overview"><ShieldAlert size={14} /> Vista financiera consolidada</a>
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+          <Button asChild variant="outline" size="sm" className="gap-2 w-full sm:w-auto min-h-11 sm:min-h-9 justify-center">
+            <a href="/admin/finance-overview"><ShieldAlert size={14} /> <span className="whitespace-nowrap">Vista financiera consolidada</span></a>
           </Button>
           <Button
             variant="outline"
             size="sm"
             onClick={() => globalData.generateMetrics.mutate()}
             disabled={globalData.generateMetrics.isPending}
-            className="gap-2"
+            className="gap-2 w-full sm:w-auto min-h-11 sm:min-h-9 justify-center"
           >
             {globalData.generateMetrics.isPending ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-            Calcular métricas
+            <span className="whitespace-nowrap">Calcular métricas</span>
           </Button>
         </div>
       </div>
 
       <Tabs defaultValue="global" className="space-y-4">
-        <TabsList className="bg-[var(--rx-s2)]/50 flex-wrap h-auto">
-          <TabsTrigger value="global" className="gap-1.5"><Globe size={14} /> Métricas Globales</TabsTrigger>
-          <TabsTrigger value="tenants" className="gap-1.5"><Building2 size={14} /> Tenants</TabsTrigger>
-          <TabsTrigger value="consumption" className="gap-1.5"><Package size={14} /> Consumo</TabsTrigger>
-          <TabsTrigger value="operations" className="gap-1.5"><Activity size={14} /> Operaciones</TabsTrigger>
-          <TabsTrigger value="risk" className="gap-1.5"><ShieldAlert size={14} /> Riesgo</TabsTrigger>
-          <TabsTrigger value="projections" className="gap-1.5"><Brain size={14} /> Proyecciones IA</TabsTrigger>
+        <TabsList className="bg-[var(--rx-s2)]/50 h-auto h-scroll gap-1 p-1 justify-start w-full">
+          <TabsTrigger value="global" className="gap-1.5 shrink-0"><Globe size={14} /> Métricas Globales</TabsTrigger>
+          <TabsTrigger value="tenants" className="gap-1.5 shrink-0"><Building2 size={14} /> Tenants</TabsTrigger>
+          <TabsTrigger value="consumption" className="gap-1.5 shrink-0"><Package size={14} /> Consumo</TabsTrigger>
+          <TabsTrigger value="operations" className="gap-1.5 shrink-0"><Activity size={14} /> Operaciones</TabsTrigger>
+          <TabsTrigger value="risk" className="gap-1.5 shrink-0"><ShieldAlert size={14} /> Riesgo</TabsTrigger>
+          <TabsTrigger value="projections" className="gap-1.5 shrink-0"><Brain size={14} /> Proyecciones IA</TabsTrigger>
         </TabsList>
+
 
         {/* === GLOBAL METRICS TAB === */}
         <TabsContent value="global" className="space-y-6">
