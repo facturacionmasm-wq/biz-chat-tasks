@@ -15,6 +15,9 @@ type ProfileRow = {
   pac_mode: 'sandbox' | 'production';
   has_pac_credentials: boolean;
   use_shared_sandbox: boolean;
+  facturama_account_mode: 'own' | 'integrator';
+  facturama_csd_synced_at: string | null;
+
   is_active: boolean;
   last_test_at: string | null;
   last_test_status: string | null;
