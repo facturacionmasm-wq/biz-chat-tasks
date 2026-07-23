@@ -77,6 +77,8 @@ export default function CFDISettingsPage() {
     const body: Record<string, unknown> = {
       rfc, razon_social: razon, regimen_fiscal_sat: regimen, codigo_postal: cp,
       pac_provider: provider, pac_mode: mode, use_shared_sandbox: useShared,
+      facturama_account_mode: facturamaMode,
+
     };
     if (cerFile && keyFile && csdPassword) {
       body.csd_cer_b64 = await fileToBase64(cerFile);
