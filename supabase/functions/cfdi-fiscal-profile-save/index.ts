@@ -77,7 +77,15 @@ Deno.serve(async (req) => {
     if (body.pac_provider !== undefined) patch.pac_provider = body.pac_provider;
     if (body.pac_mode !== undefined) patch.pac_mode = body.pac_mode;
     if (body.use_shared_sandbox !== undefined) patch.use_shared_sandbox = !!body.use_shared_sandbox;
+    if (body.facturama_account_mode !== undefined) {
+      patch.facturama_account_mode = body.facturama_account_mode;
+      // Force re-sync when the topology changes.
+      if (existing?.facturama_account_mode !== body.facturama_account_mode) {
+        patch.facturama_csd_synced_at = null;
+      }
+    }
     if (body.is_active !== undefined) patch.is_active = !!body.is_active;
+
 
     // CSD (all-or-nothing set of 3)
     if (body.csd_cer_b64 || body.csd_key_b64 || body.csd_password) {
