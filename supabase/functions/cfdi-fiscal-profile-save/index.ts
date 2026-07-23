@@ -96,7 +96,9 @@ Deno.serve(async (req) => {
       patch.csd_key_encrypted = await encryptSecret(body.csd_key_b64);
       patch.csd_password_encrypted = await encryptSecret(body.csd_password);
       patch.csd_uploaded_at = new Date().toISOString();
-      // Serial/vigencia parsing is done best-effort client-side (or later); we keep DB fields nullable.
+      // A new CSD must be re-registered under the integrator master account.
+      patch.facturama_csd_synced_at = null;
+
     }
 
     // PAC credentials
