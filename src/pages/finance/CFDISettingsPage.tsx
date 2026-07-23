@@ -47,6 +47,8 @@ export default function CFDISettingsPage() {
   const [pacUser, setPacUser] = useState('');
   const [pacPass, setPacPass] = useState('');
   const [useShared, setUseShared] = useState(false);
+  const [facturamaMode, setFacturamaMode] = useState<'own' | 'integrator'>('own');
+
   const [cerFile, setCerFile] = useState<File | null>(null);
   const [keyFile, setKeyFile] = useState<File | null>(null);
   const [csdPassword, setCsdPassword] = useState('');
