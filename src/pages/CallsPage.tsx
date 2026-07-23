@@ -944,7 +944,7 @@ const CallsPage = () => {
           <input type="text" placeholder="Buscar por nombre, teléfono o transcripción..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="bg-transparent text-sm outline-none flex-1 text-foreground placeholder:text-[var(--rx-t2)]" />
         </div>
         <ManualCallDialog onCallRegistered={loadDbCalls} />
-        <div className="flex items-center gap-1 overflow-x-auto">
+        <div className="h-scroll items-center gap-1">
           <button onClick={() => setStatusFilter(null)} className={`text-xs px-3 py-1.5 rounded-full transition-colors shrink-0 ${!statusFilter ? 'bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground' : 'bg-[var(--rx-s2)] text-[var(--rx-t2)] hover:bg-[var(--rx-s2)]/80'}`}>Todas</button>
           {['completed', 'in_progress', 'missed', 'no_answer', 'failed'].map(key => {
             const cfg = statusConfig[key];
