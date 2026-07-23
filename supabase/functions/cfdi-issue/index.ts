@@ -119,7 +119,7 @@ Deno.serve(async (req) => {
       actor_id: userId,
       resource_type: 'cfdi_documents',
       resource_id: doc.id,
-      payload: { uuid: result.uuid, provider: adapter.id, mode: pac.mode, shared_sandbox: pac.useSharedSandbox },
+      payload: { uuid: result.uuid, provider: adapter.id, mode: pac.mode, shared_sandbox: pac.useSharedSandbox, facturama_mode: pac.facturamaMode ?? null },
     });
 
     return json({ ok: true, uuid: result.uuid, xml_url: result.xml_url, pdf_url: result.pdf_url });
