@@ -302,139 +302,184 @@ export default function SuperAdminTenantsTab() {
         <div className="py-10 flex justify-center"><Loader2 className="animate-spin text-[var(--rx-brand)]" /></div>
       ) : rows.length === 0 ? (
         <p className="text-sm text-[var(--rx-t2)] text-center py-6">Sin tenants.</p>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-[var(--rx-b1)] text-left">
-                <th className="py-2 px-3 font-medium text-[var(--rx-t2)]">Tenant</th>
-                <th className="py-2 px-3 font-medium text-[var(--rx-t2)]">Plan</th>
-                <th className="py-2 px-3 font-medium text-[var(--rx-t2)]">Estado</th>
-                <th className="py-2 px-3 font-medium text-[var(--rx-t2)]">Trial expira</th>
-                <th className="py-2 px-3 font-medium text-[var(--rx-t2)] text-right">Días</th>
-                <th className="py-2 px-3 font-medium text-[var(--rx-t2)]">Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map(t => {
-                const draft = extendDaysDraft[t.tenant_id] ?? 15;
-                const busy = busyId === t.tenant_id;
-                return (
-                  <tr key={t.tenant_id} className="border-b border-[var(--rx-b1)]/50 align-top">
-                    <td className="py-3 px-3 min-w-[160px] max-w-[240px]">
-                      <div className="flex min-w-0 items-center gap-1.5 font-medium text-foreground">
+      ) : (() => {
+        const renderActions = (t: AdminTenantRow, draft: number, busy: boolean) => (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <div className="flex items-center gap-1">
+              <Input
+                type="number"
+                min={1}
+                max={365}
+                value={draft}
+                disabled={busy}
+                onChange={e => setExtendDaysDraft(s => ({ ...s, [t.tenant_id]: Math.max(1, Number(e.target.value) || 15) }))}
+                className="h-9 w-16 px-2 text-xs"
+              />
+              <Button
+                size="sm" variant="outline" className="min-h-9 gap-1 px-2 py-1 text-xs"
+                disabled={busy}
+                onClick={() => setPending({ kind: 'extend_trial', tenant: t, days: draft })}
+              >
+                <Clock size={12} /> Trial
+              </Button>
+            </div>
+
+            <Select
+              disabled={busy || t.is_master}
+              onValueChange={(v) => setPending({ kind: 'set_status', tenant: t, status: v as any })}
+            >
+              <SelectTrigger className="min-h-9 w-[110px] text-xs">
+                <SelectValue placeholder="Pago…" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="active">active (pagado)</SelectItem>
+                <SelectItem value="trialing">trialing</SelectItem>
+                <SelectItem value="past_due">past_due</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {t.is_blocked ? (
+              <Button
+                size="sm" variant="outline" className="min-h-9 gap-1 px-2 py-1 text-xs text-[var(--rx-emerald)]"
+                disabled={busy}
+                onClick={() => setPending({ kind: 'activate', tenant: t })}
+              >
+                <ShieldCheck size={12} /> Activar
+              </Button>
+            ) : (
+              <Button
+                size="sm" variant="outline" className="min-h-9 gap-1 px-2 py-1 text-xs text-[var(--rx-rose)]"
+                disabled={busy || t.is_master}
+                onClick={() => setPending({ kind: 'block', tenant: t })}
+              >
+                <ShieldOff size={12} /> Bloquear
+              </Button>
+            )}
+
+            <Button
+              size="sm" variant="outline" className="min-h-9 gap-1 px-2 py-1 text-xs"
+              disabled={busy}
+              onClick={() => openProvision(t)}
+            >
+              <Phone size={12} /> Twilio
+            </Button>
+
+            <Select
+              disabled={busy || t.is_master || plans.length === 0}
+              value={t.plan_slug || undefined}
+              onValueChange={(v) => { if (v !== t.plan_slug) setPending({ kind: 'change_plan', tenant: t, plan_slug: v }); }}
+            >
+              <SelectTrigger className="min-h-9 w-[120px] text-xs">
+                <SelectValue placeholder="Plan…" />
+              </SelectTrigger>
+              <SelectContent>
+                {plans.map(p => (
+                  <SelectItem key={p.slug} value={p.slug}>
+                    <Package size={12} className="inline mr-1" /> {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {!t.is_master && (
+              <Button
+                size="sm" variant="outline" className="min-h-9 gap-1 px-2 py-1 text-xs text-[var(--rx-rose)]"
+                disabled={busy}
+                onClick={() => { setDeleteTarget(t); setDeleteConfirmName(''); }}
+              >
+                <Trash2 size={12} /> Eliminar
+              </Button>
+            )}
+          </div>
+        );
+
+        return isDesktop ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-[var(--rx-b1)] text-left">
+                  <th className="py-2 px-3 font-medium text-[var(--rx-t2)]">Tenant</th>
+                  <th className="py-2 px-3 font-medium text-[var(--rx-t2)]">Plan</th>
+                  <th className="py-2 px-3 font-medium text-[var(--rx-t2)]">Estado</th>
+                  <th className="py-2 px-3 font-medium text-[var(--rx-t2)]">Trial expira</th>
+                  <th className="py-2 px-3 font-medium text-[var(--rx-t2)] text-right">Días</th>
+                  <th className="py-2 px-3 font-medium text-[var(--rx-t2)]">Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map(t => {
+                  const draft = extendDaysDraft[t.tenant_id] ?? 15;
+                  const busy = busyId === t.tenant_id;
+                  return (
+                    <tr key={t.tenant_id} className="border-b border-[var(--rx-b1)]/50 align-top">
+                      <td className="py-3 px-3 min-w-[160px] max-w-[240px]">
+                        <div className="flex min-w-0 items-center gap-1.5 font-medium text-foreground">
+                          {t.is_master && <Crown size={12} className="text-[var(--rx-amber)]" />}
+                          <span className="min-w-0 break-words leading-snug">{t.tenant_name}</span>
+                        </div>
+                        <div className="text-[10px] text-[var(--rx-t2)] font-mono mt-0.5">{t.tenant_id.slice(0, 8)}…</div>
+                      </td>
+                      <td className="py-3 px-3 text-[var(--rx-t2)]">{t.plan_name || '—'}</td>
+                      <td className="py-3 px-3">
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${statusBadge(t.status, t.is_blocked)}`}>
+                          {t.is_blocked ? 'BLOQUEADO' : t.status}
+                        </span>
+                      </td>
+                      <td className="py-3 px-3 text-[var(--rx-t2)] text-xs">
+                        {t.trial_ends_at ? format(new Date(t.trial_ends_at), 'd MMM yyyy', { locale: es }) : '—'}
+                      </td>
+                      <td className="py-3 px-3 text-right font-semibold text-foreground">{t.days_remaining}</td>
+                      <td className="py-3 px-3">{renderActions(t, draft, busy)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {rows.map(t => {
+              const draft = extendDaysDraft[t.tenant_id] ?? 15;
+              const busy = busyId === t.tenant_id;
+              return (
+                <div key={t.tenant_id} className="rounded-xl border border-[var(--rx-b1)] bg-card/60 p-3 space-y-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 font-semibold text-foreground text-sm">
                         {t.is_master && <Crown size={12} className="text-[var(--rx-amber)]" />}
                         <span className="min-w-0 break-words leading-snug">{t.tenant_name}</span>
                       </div>
                       <div className="text-[10px] text-[var(--rx-t2)] font-mono mt-0.5">{t.tenant_id.slice(0, 8)}…</div>
-                    </td>
-                    <td className="py-3 px-3 text-[var(--rx-t2)]">{t.plan_name || '—'}</td>
-                    <td className="py-3 px-3">
-                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${statusBadge(t.status, t.is_blocked)}`}>
-                        {t.is_blocked ? 'BLOQUEADO' : t.status}
-                      </span>
-                    </td>
-                    <td className="py-3 px-3 text-[var(--rx-t2)] text-xs">
-                      {t.trial_ends_at ? format(new Date(t.trial_ends_at), 'd MMM yyyy', { locale: es }) : '—'}
-                    </td>
-                    <td className="py-3 px-3 text-right font-semibold text-foreground">{t.days_remaining}</td>
-                    <td className="py-3 px-3">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <div className="flex items-center gap-1">
-                          <Input
-                            type="number"
-                            min={1}
-                            max={365}
-                            value={draft}
-                            disabled={busy}
-                            onChange={e => setExtendDaysDraft(s => ({ ...s, [t.tenant_id]: Math.max(1, Number(e.target.value) || 15) }))}
-                            className="h-7 w-16 px-2 text-xs"
-                          />
-                          <Button
-                            size="sm" variant="outline" className="min-h-7 gap-1 px-2 py-1 text-xs"
-                            disabled={busy}
-                            onClick={() => setPending({ kind: 'extend_trial', tenant: t, days: draft })}
-                          >
-                            <Clock size={12} /> Trial
-                          </Button>
-                        </div>
+                    </div>
+                    <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${statusBadge(t.status, t.is_blocked)}`}>
+                      {t.is_blocked ? 'BLOQUEADO' : t.status}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-xs pt-2 border-t border-[var(--rx-b1)]/60">
+                    <div>
+                      <div className="text-[10px] uppercase text-[var(--rx-t2)]">Plan</div>
+                      <div className="font-medium text-foreground truncate">{t.plan_name || '—'}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase text-[var(--rx-t2)]">Trial</div>
+                      <div className="font-medium text-foreground text-[11px]">{t.trial_ends_at ? format(new Date(t.trial_ends_at), 'd MMM yy', { locale: es }) : '—'}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-[10px] uppercase text-[var(--rx-t2)]">Días</div>
+                      <div className="font-semibold text-foreground">{t.days_remaining}</div>
+                    </div>
+                  </div>
+                  <div className="pt-2 border-t border-[var(--rx-b1)]/60">
+                    <div className="text-[10px] uppercase text-[var(--rx-t2)] mb-1.5">Acciones</div>
+                    {renderActions(t, draft, busy)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
 
-                        <Select
-                          disabled={busy || t.is_master}
-                          onValueChange={(v) => setPending({ kind: 'set_status', tenant: t, status: v as any })}
-                        >
-                          <SelectTrigger className="min-h-7 w-[110px] text-xs">
-                            <SelectValue placeholder="Pago…" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="active">active (pagado)</SelectItem>
-                            <SelectItem value="trialing">trialing</SelectItem>
-                            <SelectItem value="past_due">past_due</SelectItem>
-                          </SelectContent>
-                        </Select>
-
-                        {t.is_blocked ? (
-                          <Button
-                            size="sm" variant="outline" className="min-h-7 gap-1 px-2 py-1 text-xs text-[var(--rx-emerald)]"
-                            disabled={busy}
-                            onClick={() => setPending({ kind: 'activate', tenant: t })}
-                          >
-                            <ShieldCheck size={12} /> Activar
-                          </Button>
-                        ) : (
-                          <Button
-                            size="sm" variant="outline" className="min-h-7 gap-1 px-2 py-1 text-xs text-[var(--rx-rose)]"
-                            disabled={busy || t.is_master}
-                            onClick={() => setPending({ kind: 'block', tenant: t })}
-                          >
-                            <ShieldOff size={12} /> Bloquear
-                          </Button>
-                        )}
-
-                        <Button
-                          size="sm" variant="outline" className="min-h-7 gap-1 px-2 py-1 text-xs"
-                          disabled={busy}
-                          onClick={() => openProvision(t)}
-                        >
-                          <Phone size={12} /> Twilio
-                        </Button>
-
-                        <Select
-                          disabled={busy || t.is_master || plans.length === 0}
-                          value={t.plan_slug || undefined}
-                          onValueChange={(v) => { if (v !== t.plan_slug) setPending({ kind: 'change_plan', tenant: t, plan_slug: v }); }}
-                        >
-                            <SelectTrigger className="min-h-7 w-[120px] text-xs">
-                            <SelectValue placeholder="Plan…" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {plans.map(p => (
-                              <SelectItem key={p.slug} value={p.slug}>
-                                <Package size={12} className="inline mr-1" /> {p.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-
-                        {!t.is_master && (
-                          <Button
-                            size="sm" variant="outline" className="min-h-7 gap-1 px-2 py-1 text-xs text-[var(--rx-rose)]"
-                            disabled={busy}
-                            onClick={() => { setDeleteTarget(t); setDeleteConfirmName(''); }}
-                          >
-                            <Trash2 size={12} /> Eliminar
-                          </Button>
-                        )}
-                      </div>
-
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
 
       <AlertDialog open={!!pending} onOpenChange={(open) => !open && setPending(null)}>
         <AlertDialogContent>
