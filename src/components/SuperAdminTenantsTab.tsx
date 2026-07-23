@@ -51,6 +51,7 @@ const statusBadge = (status: string, isBlocked: boolean) => {
 };
 
 export default function SuperAdminTenantsTab() {
+  const isDesktop = useIsDesktop();
   const [rows, setRows] = useState<AdminTenantRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
