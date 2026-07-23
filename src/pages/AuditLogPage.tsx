@@ -184,24 +184,36 @@ const AuditLogPage = () => {
 
       {/* Mobile cards */}
       <div className="md:hidden space-y-3">
+        {rows.length === 0 && !loading && (
+          <div className="rx-panel text-center text-sm text-[var(--rx-t2)]">Sin eventos para los filtros seleccionados.</div>
+        )}
         {rows.map(event => {
           const cfg = labelFor(event.event_type);
           const isOpen = expanded.has(event.id);
+          const preview = event.payload ? JSON.stringify(event.payload) : '';
           return (
-            <div key={event.id} className="rx-panel" onClick={() => toggle(event.id)}>
-              <div className="flex items-center justify-between">
+            <div key={event.id} className="rx-panel cursor-pointer" onClick={() => toggle(event.id)}>
+              <div className="flex items-center justify-between gap-2">
                 <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${cfg.color}`}>{cfg.label}</span>
-                <span className="text-[10px] text-[var(--rx-t2)]">{format(new Date(event.created_at), "d MMM HH:mm", { locale: es })}</span>
+                <span className="text-[10px] text-[var(--rx-t2)] shrink-0">{format(new Date(event.created_at), "d MMM HH:mm", { locale: es })}</span>
               </div>
-              <p className="text-sm font-medium text-foreground mt-1">{event.actor_name ?? 'Sistema'}</p>
-              <p className="text-xs text-[var(--rx-t2)] font-mono">{event.resource_type ?? '-'}{event.resource_id ? `/${event.resource_id.slice(0, 12)}` : ''}</p>
+              <p className="text-sm font-medium text-foreground mt-2">{event.actor_name ?? 'Sistema'}</p>
+              <p className="text-xs text-[var(--rx-t2)] font-mono truncate">{event.resource_type ?? '-'}{event.resource_id ? `/${event.resource_id.slice(0, 12)}` : ''}</p>
+              {preview && !isOpen && (
+                <p className="text-[11px] text-[var(--rx-t2)] mt-1 truncate">{preview}</p>
+              )}
               {isOpen && (
                 <pre className="mt-2 text-[10px] text-[var(--rx-t2)] whitespace-pre-wrap break-all font-mono">{JSON.stringify(event.payload ?? {}, null, 2)}</pre>
               )}
+              <div className="flex items-center gap-1 mt-2 text-[10px] text-[var(--rx-t2)]">
+                {isOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                {isOpen ? 'Ocultar detalles' : 'Ver detalles'}
+              </div>
             </div>
           );
         })}
       </div>
+
 
       <div className="mt-4 flex justify-center">
         {hasMore ? (
