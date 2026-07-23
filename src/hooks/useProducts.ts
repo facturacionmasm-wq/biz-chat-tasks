@@ -69,20 +69,23 @@ export function useUpsertProduct() {
       if (input.sat_clave_unidad && !/^[A-Z0-9]{2,3}$/.test(input.sat_clave_unidad)) {
         throw new Error('Clave Unidad SAT: 2-3 caracteres (A-Z, 0-9)');
       }
-      const row = {
+      const nz = (v?: string | null) => {
+        const s = (v ?? '').trim();
+        return s.length ? s : null;
+      };
+      const row: Record<string, unknown> = {
         tenant_id: tenantId,
-        sku: input.sku ?? null,
+        sku: nz(input.sku),
         name: input.name.trim(),
-        description: input.description ?? null,
+        description: nz(input.description),
         unit_price: Number(input.unit_price) || 0,
         currency: input.currency ?? 'MXN',
-        unit_of_measure: input.unit_of_measure ?? null,
-        sat_clave_prod_serv: input.sat_clave_prod_serv ?? null,
-        sat_clave_unidad: input.sat_clave_unidad ?? null,
+        unit_of_measure: nz(input.unit_of_measure),
+        sat_clave_prod_serv: nz(input.sat_clave_prod_serv),
+        sat_clave_unidad: nz(input.sat_clave_unidad),
         stock_quantity: Number(input.stock_quantity ?? 0),
         category_id: input.category_id ?? null,
         is_active: input.is_active ?? true,
-        created_by: user?.id ?? null,
       };
       if (input.id) {
         const { data, error } = await supabase
@@ -93,6 +96,7 @@ export function useUpsertProduct() {
           .single();
         if (error) throw error;
         return data;
+
       } else {
         const { data, error } = await supabase
           .from('products')
