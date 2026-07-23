@@ -5077,6 +5077,8 @@ export type Database = {
           csd_uploaded_at: string | null
           csd_valid_from: string | null
           csd_valid_to: string | null
+          facturama_account_mode: string
+          facturama_csd_synced_at: string | null
           is_active: boolean
           last_test_at: string | null
           last_test_error: string | null
@@ -5101,6 +5103,8 @@ export type Database = {
           csd_uploaded_at?: string | null
           csd_valid_from?: string | null
           csd_valid_to?: string | null
+          facturama_account_mode?: string
+          facturama_csd_synced_at?: string | null
           is_active?: boolean
           last_test_at?: string | null
           last_test_error?: string | null
@@ -5125,6 +5129,8 @@ export type Database = {
           csd_uploaded_at?: string | null
           csd_valid_from?: string | null
           csd_valid_to?: string | null
+          facturama_account_mode?: string
+          facturama_csd_synced_at?: string | null
           is_active?: boolean
           last_test_at?: string | null
           last_test_error?: string | null
@@ -6395,6 +6401,8 @@ export type Database = {
           csd_uploaded_at: string | null
           csd_valid_from: string | null
           csd_valid_to: string | null
+          facturama_account_mode: string | null
+          facturama_csd_synced_at: string | null
           has_csd: boolean | null
           has_pac_credentials: boolean | null
           is_active: boolean | null
@@ -6417,6 +6425,8 @@ export type Database = {
           csd_uploaded_at?: string | null
           csd_valid_from?: string | null
           csd_valid_to?: string | null
+          facturama_account_mode?: string | null
+          facturama_csd_synced_at?: string | null
           has_csd?: never
           has_pac_credentials?: never
           is_active?: boolean | null
@@ -6439,6 +6449,8 @@ export type Database = {
           csd_uploaded_at?: string | null
           csd_valid_from?: string | null
           csd_valid_to?: string | null
+          facturama_account_mode?: string | null
+          facturama_csd_synced_at?: string | null
           has_csd?: never
           has_pac_credentials?: never
           is_active?: boolean | null
