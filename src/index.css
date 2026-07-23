@@ -319,6 +319,23 @@
    RYBIX UTILITIES
 ════════════════════════════════════════ */
 @layer utilities {
+  /* Horizontal scroll container for tab bars / pill rows on mobile.
+     Guarantees touch + trackpad horizontal scrolling regardless of ancestors. */
+  .h-scroll {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    scroll-snap-type: x proximity;
+    max-width: 100%;
+  }
+  .h-scroll::-webkit-scrollbar { display: none; height: 0; }
+  .h-scroll > * { flex: 0 0 auto; scroll-snap-align: start; }
+
   /* Page */
   .rx-page { padding: clamp(14px,3vw,28px); max-width: 1400px; margin: 0 auto; }
   .rx-page-header {
