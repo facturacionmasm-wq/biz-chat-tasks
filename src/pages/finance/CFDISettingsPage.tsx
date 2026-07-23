@@ -65,6 +65,8 @@ export default function CFDISettingsPage() {
       setProvider((data.pac_provider ?? 'facturama') as any);
       setMode((data.pac_mode ?? 'sandbox') as any);
       setUseShared(!!data.use_shared_sandbox);
+      setFacturamaMode((data.facturama_account_mode ?? 'own') as any);
+
     }
     setLoading(false);
   }
