@@ -19,9 +19,13 @@ type SaveBody = {
   pac_mode?: 'sandbox' | 'production';
   pac_credentials?: Record<string, string>; // provider-specific JSON, plaintext in transit
   use_shared_sandbox?: boolean;
+  // Facturama account topology: 'own' (per-tenant Facturama account) or
+  // 'integrator' (platform master account registers each tenant's CSD).
+  facturama_account_mode?: 'own' | 'integrator';
   // Activation switch
   is_active?: boolean;
 };
+
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
@@ -73,7 +77,15 @@ Deno.serve(async (req) => {
     if (body.pac_provider !== undefined) patch.pac_provider = body.pac_provider;
     if (body.pac_mode !== undefined) patch.pac_mode = body.pac_mode;
     if (body.use_shared_sandbox !== undefined) patch.use_shared_sandbox = !!body.use_shared_sandbox;
+    if (body.facturama_account_mode !== undefined) {
+      patch.facturama_account_mode = body.facturama_account_mode;
+      // Force re-sync when the topology changes.
+      if (existing?.facturama_account_mode !== body.facturama_account_mode) {
+        patch.facturama_csd_synced_at = null;
+      }
+    }
     if (body.is_active !== undefined) patch.is_active = !!body.is_active;
+
 
     // CSD (all-or-nothing set of 3)
     if (body.csd_cer_b64 || body.csd_key_b64 || body.csd_password) {
@@ -84,7 +96,9 @@ Deno.serve(async (req) => {
       patch.csd_key_encrypted = await encryptSecret(body.csd_key_b64);
       patch.csd_password_encrypted = await encryptSecret(body.csd_password);
       patch.csd_uploaded_at = new Date().toISOString();
-      // Serial/vigencia parsing is done best-effort client-side (or later); we keep DB fields nullable.
+      // A new CSD must be re-registered under the integrator master account.
+      patch.facturama_csd_synced_at = null;
+
     }
 
     // PAC credentials
@@ -102,17 +116,27 @@ Deno.serve(async (req) => {
       if (missing.length) return json({ error: 'missing_fields', fields: missing }, 400);
     }
 
-    // Activation guard: require csd + pac credentials (or shared sandbox opt-in)
+    // Activation guard: require csd + pac credentials (or shared sandbox opt-in,
+    // or Facturama integrator mode which uses platform master credentials).
     const willBeActive = body.is_active === true;
     if (willBeActive) {
       const hasCsd = !!(patch.csd_cer_encrypted || existing?.csd_cer_encrypted);
+      const effectiveFactMode =
+        (patch.facturama_account_mode as string | undefined) ??
+        existing?.facturama_account_mode ??
+        'own';
+      const effectiveProvider =
+        (patch.pac_provider as string | undefined) ?? existing?.pac_provider;
+      const integratorPath = effectiveProvider === 'facturama' && effectiveFactMode === 'integrator';
       const hasPacCreds =
+        integratorPath ||
         !!(patch.pac_credentials_encrypted || existing?.pac_credentials_encrypted) ||
         !!(body.use_shared_sandbox ?? existing?.use_shared_sandbox);
       if (!hasCsd || !hasPacCreds) {
         return json({ error: 'cannot_activate', message: 'Carga CSD y credenciales del PAC antes de activar.' }, 400);
       }
     }
+
 
     const { data, error } = await admin
       .from('tenant_fiscal_profiles')

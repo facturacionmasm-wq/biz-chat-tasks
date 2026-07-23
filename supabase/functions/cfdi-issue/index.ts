@@ -1,5 +1,5 @@
 import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors';
-import { makeAdminClient, resolveTenantFiscal } from '../_shared/cfdi-providers.ts';
+import { makeAdminClient, resolveTenantFiscal, ensureFacturamaIntegratorCsd } from '../_shared/cfdi-providers.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.98.0';
 
 Deno.serve(async (req) => {
@@ -63,7 +63,19 @@ Deno.serve(async (req) => {
     if (cErr) return json({ error: cErr.message }, 500);
     if (!concepts?.length) return json({ error: 'no_concepts' }, 400);
 
+    // Facturama integrator mode: ensure the tenant CSD is registered under the
+    // master account before stamping. No-op for 'own' mode / other PACs.
+    const csdSync = await ensureFacturamaIntegratorCsd(admin, tenantId, pac, issuer);
+    if (!csdSync.ok) {
+      await admin
+        .from('cfdi_documents')
+        .update({ estado: 'error', error_message: csdSync.error, provider: adapter.id })
+        .eq('id', doc.id);
+      return json({ ok: false, error: csdSync.error, code: 'csd_sync_failed' });
+    }
+
     const result = await adapter.issue({
+
       tenantId,
       issuer,
       pac,
@@ -107,7 +119,7 @@ Deno.serve(async (req) => {
       actor_id: userId,
       resource_type: 'cfdi_documents',
       resource_id: doc.id,
-      payload: { uuid: result.uuid, provider: adapter.id, mode: pac.mode, shared_sandbox: pac.useSharedSandbox },
+      payload: { uuid: result.uuid, provider: adapter.id, mode: pac.mode, shared_sandbox: pac.useSharedSandbox, facturama_mode: pac.facturamaMode ?? null },
     });
 
     return json({ ok: true, uuid: result.uuid, xml_url: result.xml_url, pdf_url: result.pdf_url });
