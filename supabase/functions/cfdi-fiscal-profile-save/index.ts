@@ -19,9 +19,13 @@ type SaveBody = {
   pac_mode?: 'sandbox' | 'production';
   pac_credentials?: Record<string, string>; // provider-specific JSON, plaintext in transit
   use_shared_sandbox?: boolean;
+  // Facturama account topology: 'own' (per-tenant Facturama account) or
+  // 'integrator' (platform master account registers each tenant's CSD).
+  facturama_account_mode?: 'own' | 'integrator';
   // Activation switch
   is_active?: boolean;
 };
+
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
