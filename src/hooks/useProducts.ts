@@ -100,12 +100,13 @@ export function useUpsertProduct() {
       } else {
         const { data, error } = await supabase
           .from('products')
-          .insert(row)
+          .insert({ ...row, created_by: user?.id ?? null })
           .select()
           .single();
         if (error) throw error;
         return data;
       }
+
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['products'] });
