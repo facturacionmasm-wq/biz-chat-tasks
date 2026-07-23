@@ -6364,6 +6364,10 @@ export type Database = {
         Args: { _base_delay_minutes?: number; _retry_count: number }
         Returns: string
       }
+      can_access_project: {
+        Args: { _project_id: string; _user_id: string }
+        Returns: boolean
+      }
       can_assign_role: {
         Args: {
           _assigner: string
@@ -6450,6 +6454,7 @@ export type Database = {
       }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
+      storage_path_project_id: { Args: { _name: string }; Returns: string }
       suggest_transaction_matches: {
         Args: { _lookback_days?: number; _tenant_id: string }
         Returns: {
