@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X, Plus, Trash2, Loader2 } from 'lucide-react';
 import { useProducts } from '@/hooks/useProducts';
 import { useUpsertCfdi, useIssueCfdi, type CfdiInput, type CfdiConcept, type CfdiDocument } from '@/hooks/useCFDI';
+import { supabase } from '@/integrations/supabase/client';
 
 const USO_CFDI = [
   ['G01', 'Adquisición de mercancías'],
@@ -40,6 +41,19 @@ export default function CFDIEditor({
   const products = useProducts();
   const upsert = useUpsertCfdi();
   const issue = useIssueCfdi();
+  const [fiscalReady, setFiscalReady] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    supabase
+      .from('tenant_fiscal_profiles_public')
+      .select('is_active')
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!cancelled) setFiscalReady(!!data?.is_active);
+      });
+    return () => { cancelled = true; };
+  }, []);
 
   const [form, setForm] = useState<CfdiInput>(() => ({
     id: existing?.id ?? null,
@@ -276,11 +290,12 @@ export default function CFDIEditor({
           </button>
           <button
             onClick={() => save(true)}
-            disabled={!canSave || upsert.isPending || issue.isPending}
+            disabled={!canSave || upsert.isPending || issue.isPending || fiscalReady === false}
+            title={fiscalReady === false ? 'Completa tus datos fiscales primero' : undefined}
             className="px-4 py-2 text-sm rounded-xl bg-primary text-primary-foreground disabled:opacity-50 flex items-center gap-2"
           >
             {(upsert.isPending || issue.isPending) && <Loader2 size={14} className="animate-spin" />}
-            Guardar y timbrar
+            {fiscalReady === false ? 'Completa tus datos fiscales primero' : 'Guardar y timbrar'}
           </button>
         </div>
       </div>
