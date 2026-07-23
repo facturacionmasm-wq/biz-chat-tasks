@@ -4,6 +4,8 @@ import { Loader2, ShieldAlert, TrendingUp, TrendingDown, AlertTriangle, Activity
 import { Input } from '@/components/ui/input';
 import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { useIsDesktop } from '@/hooks/useMediaQuery';
+
 
 interface Row {
   tenant_id: string;
