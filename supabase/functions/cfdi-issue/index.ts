@@ -1,5 +1,5 @@
 import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors';
-import { makeAdminClient, resolveTenantFiscal } from '../_shared/cfdi-providers.ts';
+import { makeAdminClient, resolveTenantFiscal, ensureFacturamaIntegratorCsd } from '../_shared/cfdi-providers.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.98.0';
 
 Deno.serve(async (req) => {
