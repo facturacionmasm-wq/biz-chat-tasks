@@ -290,11 +290,12 @@ export default function CFDIEditor({
           </button>
           <button
             onClick={() => save(true)}
-            disabled={!canSave || upsert.isPending || issue.isPending}
+            disabled={!canSave || upsert.isPending || issue.isPending || fiscalReady === false}
+            title={fiscalReady === false ? 'Completa tus datos fiscales primero' : undefined}
             className="px-4 py-2 text-sm rounded-xl bg-primary text-primary-foreground disabled:opacity-50 flex items-center gap-2"
           >
             {(upsert.isPending || issue.isPending) && <Loader2 size={14} className="animate-spin" />}
-            Guardar y timbrar
+            {fiscalReady === false ? 'Completa tus datos fiscales primero' : 'Guardar y timbrar'}
           </button>
         </div>
       </div>
