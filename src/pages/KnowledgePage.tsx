@@ -551,7 +551,7 @@ const KnowledgePage = () => {
             className="w-full pl-9 pr-3 py-2 bg-[var(--rx-s2)]/50 rounded-xl text-sm border border-[var(--rx-b1)] focus:outline-none focus:ring-2 focus:ring-primary/30"
           />
         </div>
-        <div className="flex items-center gap-2 overflow-x-auto pb-1">
+        <div className="h-scroll items-center gap-2 pb-1">
           <button
             onClick={() => setSelectedCategory(null)}
             className={`shrink-0 text-xs px-3 py-1.5 rounded-full border transition-colors ${!selectedCategory ? 'bg-[var(--rx-brand)] text-[var(--rx-brand)]-foreground border-primary' : 'border-[var(--rx-b1)] text-[var(--rx-t2)] hover:border-primary'}`}
