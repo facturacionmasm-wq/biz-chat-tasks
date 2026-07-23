@@ -144,9 +144,38 @@ export async function resolveTenantFiscal(
   if (!row.pac_provider) return { ok: false, code: 'invalid_provider', message: 'Selecciona un PAC (Facturama / SW / Finkok).' };
 
   const useShared = row.use_shared_sandbox === true && row.pac_mode === 'sandbox';
+  const providerId = row.pac_provider as ProviderId;
+  const integrator =
+    providerId === 'facturama' && (row.facturama_account_mode ?? 'own') === 'integrator';
+
   let creds: Record<string, string> = {};
 
-  if (useShared) {
+  if (integrator) {
+    // Master integrator credentials live in env, not per-tenant.
+    creds = {
+      user:
+        (row.pac_mode === 'production'
+          ? Deno.env.get('FACTURAMA_MASTER_USER_PROD')
+          : Deno.env.get('FACTURAMA_MASTER_USER_SANDBOX')) ??
+        Deno.env.get('FACTURAMA_MASTER_USER') ??
+        Deno.env.get('FACTURAMA_USER') ??
+        '',
+      password:
+        (row.pac_mode === 'production'
+          ? Deno.env.get('FACTURAMA_MASTER_PASSWORD_PROD')
+          : Deno.env.get('FACTURAMA_MASTER_PASSWORD_SANDBOX')) ??
+        Deno.env.get('FACTURAMA_MASTER_PASSWORD') ??
+        Deno.env.get('FACTURAMA_PASSWORD') ??
+        '',
+    };
+    if (!creds.user || !creds.password) {
+      return {
+        ok: false,
+        code: 'no_credentials',
+        message: 'Faltan credenciales de la cuenta maestra Facturama (modo integrador).',
+      };
+    }
+  } else if (useShared) {
     // Only opt-in explicit shared sandbox fallback (Facturama demo).
     creds = {
       user: Deno.env.get('FACTURAMA_SANDBOX_USER') ?? Deno.env.get('FACTURAMA_USER') ?? '',
@@ -167,9 +196,26 @@ export async function resolveTenantFiscal(
     }
   }
 
-  const providerId = row.pac_provider as ProviderId;
   const adapter = registry[providerId];
   if (!adapter) return { ok: false, code: 'invalid_provider', message: `Proveedor no soportado: ${providerId}` };
+
+  // For integrator mode we must also carry the tenant's CSD so it can be
+  // registered lazily under the master account.
+  let csd: { cerB64: string; keyB64: string; password: string } | null = null;
+  if (integrator) {
+    if (!row.csd_cer_encrypted || !row.csd_key_encrypted || !row.csd_password_encrypted) {
+      return { ok: false, code: 'no_credentials', message: 'Carga tu CSD (.cer, .key y contraseña) antes de timbrar en modo integrador.' };
+    }
+    try {
+      csd = {
+        cerB64: await decryptSecret(row.csd_cer_encrypted),
+        keyB64: await decryptSecret(row.csd_key_encrypted),
+        password: await decryptSecret(row.csd_password_encrypted),
+      };
+    } catch (_e) {
+      return { ok: false, code: 'no_credentials', message: 'No se pudo descifrar el CSD.' };
+    }
+  }
 
   return {
     ok: true,
@@ -185,8 +231,12 @@ export async function resolveTenantFiscal(
       mode: row.pac_mode,
       useSharedSandbox: useShared,
       credentials: creds,
+      facturamaMode: providerId === 'facturama' ? (integrator ? 'integrator' : 'own') : undefined,
+      csd,
+      csdSyncedAt: row.facturama_csd_synced_at ?? null,
     },
   };
+
 }
 
 export function makeAdminClient(): SupabaseClient {
