@@ -31,8 +31,8 @@ export default function FinanceLayout() {
         <p className="text-sm text-muted-foreground mt-1">Vista financiera consolidada a nivel empresa</p>
       </div>
 
-      <div className="px-2 mb-4 overflow-x-auto">
-        <div className="flex gap-2 min-w-max px-2">
+      <div className="mb-4">
+        <div className="h-scroll gap-2 px-4 pb-1">
           {tabs.map((t) => {
             const active = t.end ? pathname === t.to : pathname.startsWith(t.to);
             return (
@@ -40,7 +40,7 @@ export default function FinanceLayout() {
                 key={t.to}
                 to={t.to}
                 end={t.end}
-                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-medium whitespace-nowrap transition-all ${
+                className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-medium whitespace-nowrap transition-all shrink-0 ${
                   active
                     ? 'bg-[var(--rx-brand)] text-[var(--rx-brand-foreground,white)] shadow-soft'
                     : 'bg-[var(--rx-s2)] text-[var(--rx-t2)] hover:bg-[var(--rx-s2)]/70'
@@ -53,6 +53,7 @@ export default function FinanceLayout() {
           })}
         </div>
       </div>
+
 
       <div className="px-4">
         <Outlet />
