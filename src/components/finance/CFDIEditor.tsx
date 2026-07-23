@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X, Plus, Trash2, Loader2 } from 'lucide-react';
 import { useProducts } from '@/hooks/useProducts';
 import { useUpsertCfdi, useIssueCfdi, type CfdiInput, type CfdiConcept, type CfdiDocument } from '@/hooks/useCFDI';
+import { supabase } from '@/integrations/supabase/client';
 
 const USO_CFDI = [
   ['G01', 'Adquisición de mercancías'],
