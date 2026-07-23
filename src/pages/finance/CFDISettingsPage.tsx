@@ -145,10 +145,18 @@ export default function CFDISettingsPage() {
 
       {/* CSD */}
       <section className="bg-card border border-border rounded-2xl p-4 space-y-3">
-        <h3 className="font-semibold text-sm">2. Certificado de Sello Digital (CSD)</h3>
+        <h3 className="font-semibold text-sm flex items-center gap-2">
+          2. Certificado de Sello Digital (CSD)
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-destructive/10 text-destructive font-medium">SENSIBLE</span>
+        </h3>
+        <div className="text-xs bg-destructive/5 border border-destructive/20 rounded-lg p-3 text-muted-foreground">
+          <div className="font-medium text-foreground mb-1">Información fiscal sensible</div>
+          Tu <b>.cer</b>, <b>.key</b> y contraseña se cifran con AES-GCM antes de guardarse y nunca se muestran de vuelta.
+          Solo dueños y administradores de tu empresa pueden cargarlos o reemplazarlos.
+        </div>
         {row?.has_csd ? (
           <div className="text-xs text-muted-foreground">
-            CSD cargado el {row.csd_uploaded_at ? new Date(row.csd_uploaded_at).toLocaleDateString('es-MX') : '—'}. Sube uno nuevo para reemplazar.
+            CSD cargado el {row.csd_uploaded_at ? new Date(row.csd_uploaded_at).toLocaleDateString('es-MX') : '—'}. Deja los campos vacíos para conservarlo, o sube uno nuevo para reemplazarlo.
           </div>
         ) : (
           <div className="text-xs text-orange-600 dark:text-orange-400">Aún no has cargado tu CSD.</div>
@@ -156,9 +164,17 @@ export default function CFDISettingsPage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <FileField label=".cer" file={cerFile} onFile={setCerFile} accept=".cer" />
           <FileField label=".key" file={keyFile} onFile={setKeyFile} accept=".key" />
-          <Field label="Contraseña CSD" value={csdPassword} onChange={setCsdPassword} type="password" />
+          <Field
+            label="Contraseña CSD"
+            value={csdPassword}
+            onChange={setCsdPassword}
+            type="password"
+            placeholder={row?.has_csd ? '•••••••• (guardada)' : ''}
+            autoComplete="new-password"
+          />
         </div>
       </section>
+
 
       {/* PAC */}
       <section className="bg-card border border-border rounded-2xl p-4 space-y-3">
