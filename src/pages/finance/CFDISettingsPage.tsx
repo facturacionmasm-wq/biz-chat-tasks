@@ -243,8 +243,8 @@ export default function CFDISettingsPage() {
   );
 }
 
-function Field({ label, value, onChange, placeholder, type, upper, className }: {
-  label: string; value: string; onChange: (v: string) => void; placeholder?: string; type?: string; upper?: boolean; className?: string;
+function Field({ label, value, onChange, placeholder, type, upper, className, autoComplete }: {
+  label: string; value: string; onChange: (v: string) => void; placeholder?: string; type?: string; upper?: boolean; className?: string; autoComplete?: string;
 }) {
   return (
     <div className={className}>
@@ -254,11 +254,13 @@ function Field({ label, value, onChange, placeholder, type, upper, className }: 
         onChange={(e) => onChange(upper ? e.target.value.toUpperCase() : e.target.value)}
         placeholder={placeholder}
         type={type ?? 'text'}
+        autoComplete={autoComplete}
         className="mt-1 w-full bg-secondary rounded-lg px-3 py-2 text-sm border border-border"
       />
     </div>
   );
 }
+
 
 function FileField({ label, file, onFile, accept }: { label: string; file: File | null; onFile: (f: File | null) => void; accept: string }) {
   return (
