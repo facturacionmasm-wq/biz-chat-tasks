@@ -1,7 +1,9 @@
-import { useState } from 'react';
-import { FileText, Plus, ExternalLink, Ban, AlertTriangle, Loader2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { FileText, Plus, ExternalLink, Ban, AlertTriangle, Loader2, Settings } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import CFDIEditor from '@/components/finance/CFDIEditor';
 import { useCfdiList, useCancelCfdi, type CfdiDocument } from '@/hooks/useCFDI';
+import { supabase } from '@/integrations/supabase/client';
 
 const CANCEL_MOTIVOS = [
   ['02', 'Comprobante emitido con errores sin relación'],
@@ -23,18 +25,40 @@ export default function CFDIPage() {
   const [editing, setEditing] = useState<CfdiDocument | null | undefined>(undefined);
   const [cancelling, setCancelling] = useState<CfdiDocument | null>(null);
   const [motivo, setMotivo] = useState('02');
+  const [profileActive, setProfileActive] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    supabase.from('tenant_fiscal_profiles_public').select('is_active').maybeSingle()
+      .then(({ data }) => setProfileActive(data?.is_active ?? false));
+  }, []);
 
   const rows = list.data ?? [];
   const fmt = (n: number, cur: string) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: cur }).format(n);
 
   return (
     <div className="space-y-4">
-      <div className="bg-primary/5 border border-primary/20 rounded-2xl p-4 flex items-start gap-3">
-        <AlertTriangle size={18} className="text-primary shrink-0 mt-0.5" />
-        <div className="text-xs text-muted-foreground">
-          El timbrado requiere credenciales del PAC (Facturama / SW Sapien / Finkok) y CSD vigente cargados en Secrets. Sin ellos, los CFDI quedarán en <b>borrador</b> y el botón "Timbrar" devolverá "Requiere credenciales".
+      {profileActive === false && (
+        <div className="bg-orange-500/5 border border-orange-500/30 rounded-2xl p-4 flex items-start gap-3">
+          <AlertTriangle size={18} className="text-orange-500 shrink-0 mt-0.5" />
+          <div className="flex-1 text-sm">
+            <div className="font-medium">Configura tu perfil fiscal antes de timbrar</div>
+            <div className="text-xs text-muted-foreground mt-0.5">
+              Cada empresa emite CFDI bajo su propia identidad legal (RFC, CSD, PAC). Sin perfil activo, el timbrado está bloqueado.
+            </div>
+          </div>
+          <Link to="/finance/cfdi/settings"
+            className="text-xs px-3 py-1.5 rounded-lg bg-orange-500 text-white flex items-center gap-1 shrink-0">
+            <Settings size={12} /> Configurar
+          </Link>
         </div>
-      </div>
+      )}
+      {profileActive && (
+        <div className="flex justify-end">
+          <Link to="/finance/cfdi/settings" className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
+            <Settings size={12} /> Perfil fiscal
+          </Link>
+        </div>
+      )}
 
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>

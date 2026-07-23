@@ -55,6 +55,7 @@ import FinanceHealthPage from "./pages/finance/FinanceHealthPage";
 import CFOAssistantPage from "./pages/finance/CFOAssistantPage";
 import FinanceIntegrationsPage from "./pages/finance/FinanceIntegrationsPage";
 import CFDIPage from "./pages/finance/CFDIPage";
+import CFDISettingsPage from "./pages/finance/CFDISettingsPage";
 import ProductsPage from "./pages/ProductsPage";
 import FinanceOverviewPage from "./pages/admin/FinanceOverviewPage";
 
@@ -209,6 +210,7 @@ const AppRoutes = () => (
       <Route path="payables" element={<PayablesPage />} />
       <Route path="budgets" element={<FinanceBudgetsPage />} />
       <Route path="cfdi" element={<CFDIPage />} />
+      <Route path="cfdi/settings" element={<CFDISettingsPage />} />
       <Route path="health" element={<FinanceHealthPage />} />
       <Route path="cfo-ai" element={<CFOAssistantPage />} />
       <Route path="integrations" element={<FinanceIntegrationsPage />} />
