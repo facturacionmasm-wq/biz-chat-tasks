@@ -1,0 +1,1 @@
+DELETE FROM public.call_records WHERE external_call_id LIKE 'selftest_%' OR id = '7f214cf4-d15f-40cd-b0cd-dd721098f45a';
