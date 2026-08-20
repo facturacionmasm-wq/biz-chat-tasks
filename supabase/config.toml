@@ -167,6 +167,3 @@ verify_jwt = false
 
 [functions.sms-inbound]
 verify_jwt = false
-
-[functions.post-call-selftest]
-verify_jwt = false
